@@ -1,22 +1,26 @@
-import { Controller, Get, Post, Param } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query } from '@nestjs/common';
 import { MusicService } from './music.service';
+import { normalizeProvider } from '../common/provider';
 
 @Controller('music')
 export class MusicController {
   constructor(private readonly musicService: MusicService) {}
 
   @Get('next')
-  getNextTrack() {
-    return this.musicService.getNextTrack();
+  getNextTrack(@Query('provider') provider: string) {
+    return this.musicService.getNextTrack(normalizeProvider(provider));
   }
 
   @Post('like/:trackId')
-  likeTrack(@Param('trackId') trackId: string) {
-    return this.musicService.likeTrack(trackId);
+  likeTrack(
+    @Param('trackId') trackId: string,
+    @Query('provider') provider: string,
+  ) {
+    return this.musicService.likeTrack(normalizeProvider(provider), trackId);
   }
 
   @Get('liked')
-  getLikedTracks() {
-    return this.musicService.getLikedTracks();
+  getLikedTracks(@Query('provider') provider: string) {
+    return this.musicService.getLikedTracks(normalizeProvider(provider));
   }
 }

@@ -32,6 +32,22 @@
   text-transform: uppercase;
 }
 
+.source-switch {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.2s ease;
+}
+
+.source-switch:hover {
+  color: var(--text-primary);
+}
+
+.source-switch-icon {
+  font-size: 12px;
+}
+
 .titlebar-auth {
   -webkit-app-region: no-drag;
 }

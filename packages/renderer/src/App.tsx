@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { fetchNextTrack, toggleLike, getAuthStatus, getLoginUrl, logout } from './api';
-import type { Track, AuthStatus } from './api';
+import {
+  fetchNextTrack,
+  toggleLike,
+  getAuthStatus,
+  getLoginUrl,
+  logout,
+  PROVIDER_LABELS,
+} from './api';
+import type { Track, AuthStatus, MusicProvider } from './api';
+import SourceSelect from './SourceSelect';
 import './App.css';
+
+const PROVIDER_STORAGE_KEY = 'music-provider';
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -9,9 +19,26 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function readStoredProvider(): MusicProvider | null {
+  const stored = localStorage.getItem(PROVIDER_STORAGE_KEY);
+  return stored === 'qq' || stored === 'netease' ? stored : null;
+}
+
 export default function App() {
+  const [provider, setProvider] = useState<MusicProvider | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromCallback = params.get('provider');
+    if (fromCallback === 'qq' || fromCallback === 'netease') {
+      return fromCallback;
+    }
+    return readStoredProvider();
+  });
   const [track, setTrack] = useState<Track | null>(null);
-  const [auth, setAuth] = useState<AuthStatus>({ loggedIn: false, user: null });
+  const [auth, setAuth] = useState<AuthStatus>({
+    provider: 'qq',
+    loggedIn: false,
+    user: null,
+  });
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -20,10 +47,11 @@ export default function App() {
 
   // Check auth on mount and when returning from OAuth
   useEffect(() => {
-    // Handle auth callback via URL params
+    if (!provider) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('nickname')) {
       setAuth({
+        provider,
         loggedIn: true,
         user: {
           nickname: params.get('nickname') || '',
@@ -33,14 +61,15 @@ export default function App() {
       });
       window.history.replaceState({}, '', '/');
     } else {
-      getAuthStatus().then(setAuth).catch(() => {});
+      getAuthStatus(provider).then(setAuth).catch(() => {});
     }
-  }, []);
+  }, [provider]);
 
   const loadNextTrack = useCallback(async () => {
+    if (!provider) return;
     setLoading(true);
     try {
-      const nextTrack = await fetchNextTrack();
+      const nextTrack = await fetchNextTrack(provider);
       setTrack(nextTrack);
       setCurrentTime(0);
       setPlaying(true);
@@ -49,12 +78,13 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [provider]);
 
-  // Auto-load first track
+  // Auto-load first track whenever the provider changes
   useEffect(() => {
+    if (!provider) return;
     loadNextTrack();
-  }, [loadNextTrack]);
+  }, [provider, loadNextTrack]);
 
   // Audio element event handlers
   useEffect(() => {
@@ -94,6 +124,22 @@ export default function App() {
     }
   }, [playing, track]);
 
+  const handleSelectSource = (next: MusicProvider) => {
+    localStorage.setItem(PROVIDER_STORAGE_KEY, next);
+    setProvider(next);
+  };
+
+  const handleSwitchSource = () => {
+    audioRef.current?.pause();
+    setPlaying(false);
+    setTrack(null);
+    setCurrentTime(0);
+    setDuration(0);
+    setAuth({ provider: 'qq', loggedIn: false, user: null });
+    localStorage.removeItem(PROVIDER_STORAGE_KEY);
+    setProvider(null);
+  };
+
   const handlePlayPause = () => {
     setPlaying((p) => !p);
   };
@@ -103,21 +149,27 @@ export default function App() {
   };
 
   const handleLike = async () => {
-    if (!track) return;
-    const result = await toggleLike(track.id);
+    if (!track || !provider) return;
+    const result = await toggleLike(provider, track.id);
     if (result.success) {
       setTrack((prev) => (prev ? { ...prev, liked: result.liked } : prev));
     }
   };
 
   const handleLogin = () => {
-    window.location.href = getLoginUrl();
+    if (!provider) return;
+    window.location.href = getLoginUrl(provider);
   };
 
   const handleLogout = async () => {
-    await logout();
-    setAuth({ loggedIn: false, user: null });
+    if (!provider) return;
+    await logout(provider);
+    setAuth({ provider, loggedIn: false, user: null });
   };
+
+  if (!provider) {
+    return <SourceSelect onSelect={handleSelectSource} />;
+  }
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -125,7 +177,14 @@ export default function App() {
     <div className="app">
       {/* Title bar area for dragging */}
       <div className="titlebar">
-        <div className="titlebar-text">QQ FM</div>
+        <button
+          className="titlebar-text source-switch"
+          onClick={handleSwitchSource}
+          title="切换音源"
+        >
+          {PROVIDER_LABELS[provider]}
+          <span className="source-switch-icon">⇄</span>
+        </button>
         <div className="titlebar-auth">
           {auth.loggedIn ? (
             <button className="auth-btn" onClick={handleLogout} title="退出登录">
@@ -133,7 +192,7 @@ export default function App() {
             </button>
           ) : (
             <button className="auth-btn login-btn" onClick={handleLogin}>
-              QQ 登录
+              登录
             </button>
           )}
         </div>
