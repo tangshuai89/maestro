@@ -33,6 +33,7 @@ export default function SourceSelect({ onSelect }: SourceSelectProps) {
     <div className="source-select">
       <div className="source-titlebar" />
       <div className="source-heading">
+        <div className="source-brand">FM</div>
         <div className="source-title">选择音乐来源</div>
         <div className="source-subtitle">挑一个音源，开始你的电台</div>
       </div>

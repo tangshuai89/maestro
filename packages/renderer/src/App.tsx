@@ -199,20 +199,17 @@ export default function App() {
       </div>
 
       {/* Album cover */}
-      <div className="cover-container">
+      <div className={`cover-container ${playing ? 'is-playing' : ''}`}>
         {track?.coverUrl ? (
-          <img
-            className={`cover-image ${playing ? 'spinning' : ''}`}
-            src={track.coverUrl}
-            alt={track.album}
-          />
+          <img className="cover-image" src={track.coverUrl} alt={track.album} />
         ) : (
-          <div className={`cover-placeholder ${playing ? 'spinning' : ''}`}>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48">
+          <div className="cover-placeholder">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="56" height="56">
               <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
             </svg>
           </div>
         )}
+        <span className="cover-channel">FM</span>
       </div>
 
       {/* Track info */}

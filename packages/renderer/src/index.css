@@ -5,17 +5,21 @@
 }
 
 :root {
-  --bg-primary: #fafaf9;
-  --bg-secondary: #f5f5f4;
-  --text-primary: #1c1917;
-  --text-secondary: #78716c;
-  --text-tertiary: #a8a29e;
-  --accent: #d6d3d1;
-  --accent-hover: #a8a29e;
-  --heart-active: #ef4444;
-  --heart-inactive: #d6d3d1;
-  --border: #e7e5e4;
-  --shadow: rgba(0, 0, 0, 0.04);
+  /* Douban FM inspired — warm cream paper + 豆沙绿 (bean-paste green) */
+  --bg-primary: #fbfaf6;
+  --bg-secondary: #f3f1e9;
+  --bg-card: #ffffff;
+  --text-primary: #33312c;
+  --text-secondary: #7c7a72;
+  --text-tertiary: #aba79c;
+  --accent: #6aa84f;
+  --accent-hover: #5a9341;
+  --accent-soft: rgba(106, 168, 79, 0.12);
+  --heart-active: #e0533f;
+  --heart-inactive: #cfccc1;
+  --border: #e8e5db;
+  --shadow: rgba(60, 55, 40, 0.08);
+  --shadow-strong: rgba(60, 55, 40, 0.16);
 }
 
 html, body, #root {
