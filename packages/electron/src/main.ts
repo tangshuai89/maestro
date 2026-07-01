@@ -14,8 +14,15 @@ let mainWindow: BrowserWindow | null = null;
 /** When a login flow is in progress, the BrowserWindow we opened for it. */
 let activeLoginWindow: BrowserWindow | null = null;
 
+/** The QQ Music login window (kept alive hidden after success so we could
+ * proxy through its Chromium session later if QQ ever tightens anti-bot). */
+let activeQqLoginWindow: BrowserWindow | null = null;
+
 /** IPC response channel for cookie-based login (NetEase). */
 const NETEASE_LOGIN_CHANNEL = 'netease-login-result';
+
+/** IPC response channel for cookie-based login (QQ Music). */
+const QQ_LOGIN_CHANNEL = 'qq-login-result';
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -264,6 +271,176 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
   });
 }
 
+// ── QQ Music login via embedded browser ────────────────────────────────────
+
+interface QqLoginResult {
+  /** Full "k=v; k=v" cookie header captured from the QQ login window. This is
+   * the REAL QQ Music login state (qm_keyst / qqmusic_key / uin …) — NOT a
+   * QQ Connect OAuth token. */
+  cookie: string;
+  /** Normalised numeric uin (leading 'o'/zeros stripped) for musicu.fcg. */
+  uin?: string;
+  /** All captured cookies, for debugging / forwarding. */
+  extraCookies?: Record<string, string>;
+}
+
+/** QQ / QQ-Music cookies live across several *.qq.com hosts. */
+const QQ_DOMAINS = ['.qq.com', '.y.qq.com', 'y.qq.com', 'qq.com'];
+
+/** The cookie whose appearance means "QQ Music login just completed". Newer
+ * web login sets `qm_keyst`; older flows set `qqmusic_key`. Either is enough. */
+const QQ_LOGIN_MARKERS = ['qm_keyst', 'qqmusic_key'];
+
+/** uin cookie looks like `o0361503867` — strip the leading `o` and zeros so
+ * musicu.fcg's `uin` param is the bare QQ number. */
+function normaliseUin(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const digits = raw.replace(/^o/i, '').replace(/^0+/, '');
+  return digits || undefined;
+}
+
+async function readQqCookies(win: BrowserWindow): Promise<{
+  cookie: string;
+  uin?: string;
+  all: Record<string, string>;
+  hasMarker: boolean;
+}> {
+  const all: Record<string, string> = {};
+  const seen = new Set<string>();
+  for (const domain of QQ_DOMAINS) {
+    let cookies;
+    try {
+      cookies = await win.webContents.session.cookies.get({ domain });
+    } catch {
+      continue;
+    }
+    for (const c of cookies) {
+      if (!c.name || seen.has(c.name)) continue;
+      seen.add(c.name);
+      if (c.expirationDate && c.expirationDate * 1000 < Date.now()) continue;
+      all[c.name] = c.value;
+    }
+  }
+  const cookie = Object.entries(all)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('; ');
+  const uin = normaliseUin(all['uin'] ?? all['wxuin'] ?? all['p_uin']);
+  const hasMarker = QQ_LOGIN_MARKERS.some((m) => Boolean(all[m]));
+  return { cookie, uin, all, hasMarker };
+}
+
+/**
+ * Open a child window on y.qq.com, let the user log into QQ Music, and resolve
+ * once the login-marker cookie (qm_keyst / qqmusic_key) appears. We keep the
+ * window hidden-alive afterwards, same as the NetEase one.
+ *
+ * Unlike QQ Connect OAuth, this needs NO appid/secret and NO registered app —
+ * we just capture the browser's own login cookies.
+ */
+function openQqLoginWindow(): Promise<QqLoginResult> {
+  return new Promise((resolve, reject) => {
+    if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
+      activeQqLoginWindow.show();
+      activeQqLoginWindow.focus();
+      return;
+    }
+
+    const loginWin = new BrowserWindow({
+      width: 1000,
+      height: 760,
+      minWidth: 720,
+      minHeight: 540,
+      title: '登录 QQ 音乐',
+      parent: mainWindow ?? undefined,
+      modal: false,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+    activeQqLoginWindow = loginWin;
+
+    // QQ's login panel sometimes opens a popup (ptlogin / graph). Allow child
+    // windows so the flow can complete inside Electron rather than the OS
+    // browser. They share this window's session, so cookies land on it.
+    loginWin.webContents.setWindowOpenHandler(() => ({ action: 'allow' }));
+
+    loginWin.loadURL('https://y.qq.com/');
+
+    let resolved = false;
+    let pollTimer: NodeJS.Timeout | null = null;
+
+    const stop = (): void => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const finish = (result: QqLoginResult): void => {
+      if (resolved) return;
+      resolved = true;
+      stop();
+      console.log(
+        `[qq-login] captured ${
+          Object.keys(result.extraCookies ?? {}).length
+        } cookies, uin=${result.uin ?? '?'}, keys=[${Object.keys(
+          result.extraCookies ?? {},
+        ).join(',')}]`,
+      );
+      if (!loginWin.isDestroyed()) loginWin.hide();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(QQ_LOGIN_CHANNEL, result);
+      }
+      resolve(result);
+    };
+
+    const fail = (err: Error): void => {
+      if (resolved) return;
+      resolved = true;
+      stop();
+      if (!loginWin.isDestroyed()) loginWin.close();
+      if (activeQqLoginWindow === loginWin) activeQqLoginWindow = null;
+      reject(err);
+    };
+
+    const tryCapture = async (): Promise<void> => {
+      if (resolved || loginWin.isDestroyed()) return;
+      try {
+        const { cookie, uin, all, hasMarker } = await readQqCookies(loginWin);
+        if (hasMarker) {
+          finish({ cookie, uin, extraCookies: all });
+        }
+      } catch {
+        // ignore — next tick retries
+      }
+    };
+
+    const cookieListener = (
+      _event: unknown,
+      cookie: Electron.Cookie,
+      _cause: string,
+      removed: boolean,
+    ): void => {
+      if (removed) return;
+      if (!(cookie.domain ?? '').includes('qq.com')) return;
+      if (QQ_LOGIN_MARKERS.includes(cookie.name) && cookie.value) {
+        void tryCapture();
+      }
+    };
+    loginWin.webContents.session.cookies.on('changed', cookieListener);
+
+    // Polling fallback — cookie 'changed' can miss updates after redirects.
+    pollTimer = setInterval(() => void tryCapture(), POLL_INTERVAL_MS);
+
+    loginWin.on('closed', () => {
+      if (activeQqLoginWindow === loginWin) activeQqLoginWindow = null;
+      if (!resolved) fail(new Error('login_cancelled'));
+    });
+  });
+}
+
 // ── Internal HTTP proxy (NestJS → Electron → NetEase) ──────────────────────
 
 interface ProxyRequest {
@@ -425,6 +602,15 @@ function startProxyServer(): Promise<number> {
 ipcMain.handle('netease:login', async () => {
   try {
     const result = await openNeteaseLoginWindow();
+    return { success: true, ...result };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+});
+
+ipcMain.handle('qq:login', async () => {
+  try {
+    const result = await openQqLoginWindow();
     return { success: true, ...result };
   } catch (err) {
     return { success: false, error: (err as Error).message };

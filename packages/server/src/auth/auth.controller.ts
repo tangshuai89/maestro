@@ -10,58 +10,53 @@ import {
 } from '@nestjs/common';
 import { normalizeProvider } from '../common/provider';
 import { Request, Response } from 'express';
-import { QqOAuthStrategy } from './qq.strategy';
+import { QqAuthStrategy } from './qq.strategy';
 import { NeteaseAuthStrategy } from './netease-auth.strategy';
 import { SessionService } from '../common/session';
-import { ConfigService } from '../common/config';
 
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly qq: QqOAuthStrategy,
+    private readonly qq: QqAuthStrategy,
     private readonly netease: NeteaseAuthStrategy,
     private readonly sessionService: SessionService,
-    private readonly cfg: ConfigService,
   ) {}
 
-  // ── QQ ────────────────────────────────────────────────────────────────────
+  // ── QQ 音乐（cookie 登录，非 QQ 互联 OAuth）────────────────────────────────
 
-  @Get('qq/login')
-  qqLogin(@Req() req: Request, @Res() res: Response) {
-    if (!this.qq.isConfigured()) {
-      return res.redirect(
-        `${this.cfg.rendererBase}/?provider=qq&error=qq_not_configured`,
-      );
-    }
-    const state = this.qq.newState();
-    const url = this.qq.buildAuthorizeUrl(state);
-    return res.redirect(url);
-  }
-
-  @Get('qq/callback')
-  async qqCallback(
-    @Query('code') code: string,
-    @Query('state') state: string,
+  /**
+   * 接受内嵌登录窗口（Electron main）捕获的 QQ 音乐 cookie，存入 session。
+   * 浏览器调试时也可手动粘贴 cookie。
+   */
+  @Post('qq/cookie')
+  async qqCookieLogin(
+    @Body()
+    body: {
+      cookie?: string;
+      uin?: string;
+      extraCookies?: Record<string, string>;
+    },
     @Req() req: Request,
-    @Res() res: Response,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    if (!code) {
-      return res.redirect(
-        `${this.cfg.rendererBase}/?provider=qq&error=missing_code`,
-      );
+    if (!body?.cookie) {
+      throw new BadRequestException('Missing QQ cookie');
     }
-    try {
-      const profile = await this.qq.exchangeCode(code);
-      const session = this.sessionService.resolve(req, res);
-      this.sessionService.setProvider(session, 'qq', profile);
-      return res.redirect(`${this.cfg.rendererBase}/?provider=qq&login=ok`);
-    } catch (err) {
-      return res.redirect(
-        `${this.cfg.rendererBase}/?provider=qq&error=${encodeURIComponent(
-          (err as Error).message,
-        )}`,
-      );
-    }
+    const session = this.sessionService.resolve(req, res);
+    const profile = await this.qq.loginWithCookie(
+      body.cookie,
+      body.uin,
+      body.extraCookies,
+    );
+    this.sessionService.setProvider(session, 'qq', profile);
+    return {
+      success: true,
+      user: {
+        nickname: profile.nickname,
+        avatarUrl: profile.avatarUrl,
+        provider: 'qq' as const,
+      },
+    };
   }
 
   // ── NetEase ───────────────────────────────────────────────────────────────
@@ -137,7 +132,7 @@ export class AuthController {
     const ps = session.providers[p];
     return {
       provider: p,
-      loggedIn: Boolean(ps?.accessToken || ps?.musicU),
+      loggedIn: Boolean(ps?.qqCookie || ps?.musicU),
       user: ps
         ? {
             nickname: ps.nickname ?? '',

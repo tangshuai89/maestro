@@ -21,6 +21,22 @@ export interface NeteaseLoginResponse {
   error?: string;
 }
 
+export interface QqLoginResult {
+  /** Full "k=v; k=v" QQ Music login cookie header. */
+  cookie: string;
+  /** Normalised numeric uin for musicu.fcg. */
+  uin?: string;
+  extraCookies?: Record<string, string>;
+}
+
+export interface QqLoginResponse {
+  success: boolean;
+  cookie?: string;
+  uin?: string;
+  extraCookies?: Record<string, string>;
+  error?: string;
+}
+
 const electronAPI = {
   platform: process.platform,
 
@@ -36,6 +52,16 @@ const electronAPI = {
     ): void => cb(payload);
     ipcRenderer.on('netease-login-result', handler);
     return () => ipcRenderer.removeListener('netease-login-result', handler);
+  },
+
+  /** Open a QQ Music login window; resolves when the login cookie is captured. */
+  qqLogin: (): Promise<QqLoginResponse> => ipcRenderer.invoke('qq:login'),
+
+  /** Subscribe to QQ login-completed events. */
+  onQqLoginSuccess: (cb: (r: QqLoginResult) => void): (() => void) => {
+    const handler = (_e: unknown, payload: QqLoginResult): void => cb(payload);
+    ipcRenderer.on('qq-login-result', handler);
+    return () => ipcRenderer.removeListener('qq-login-result', handler);
   },
 
   /** Tell main we're in Electron so the renderer can branch its behaviour. */

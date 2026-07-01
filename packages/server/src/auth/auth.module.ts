@@ -1,6 +1,6 @@
 import { Module, Global } from '@nestjs/common';
 import { AuthController } from './auth.controller';
-import { QqOAuthStrategy } from './qq.strategy';
+import { QqAuthStrategy } from './qq.strategy';
 import { NeteaseAuthStrategy } from './netease-auth.strategy';
 import { CommonModule } from '../common/common.module';
 
@@ -8,7 +8,7 @@ import { CommonModule } from '../common/common.module';
 @Module({
   imports: [CommonModule],
   controllers: [AuthController],
-  providers: [QqOAuthStrategy, NeteaseAuthStrategy],
-  exports: [QqOAuthStrategy, NeteaseAuthStrategy],
+  providers: [QqAuthStrategy, NeteaseAuthStrategy],
+  exports: [QqAuthStrategy, NeteaseAuthStrategy],
 })
 export class AuthModule {}

@@ -5,10 +5,11 @@ import {
   toggleLike,
   dislike,
   getAuthStatus,
-  getLoginUrl,
   logout,
   loginNeteaseCookie,
+  loginQqCookie,
   PROVIDER_LABELS,
+  QQ_QUALITY_LABELS,
 } from './api';
 import type {
   Track,
@@ -16,9 +17,11 @@ import type {
   MusicProvider,
   AuthUser,
   DeezerEditorial,
+  QqQuality,
 } from './api';
 import SourceSelect from './SourceSelect';
 import NeteaseCookieModal from './NeteaseCookieModal';
+import SearchPanel from './SearchPanel';
 import ErrorPanel from './ErrorPanel';
 import './App.css';
 
@@ -147,6 +150,25 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showCookieFallback, setShowCookieFallback] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
+  const QQ_QUALITY_KEY = 'musicbox:qq-quality';
+  const [qqQuality, setQqQuality] = useState<QqQuality>(() => {
+    const v = localStorage.getItem(QQ_QUALITY_KEY);
+    return v === 'high' || v === 'lossless' ? v : 'standard';
+  });
+  // 搜索模式的客户端队列。非空时 loadNextTrack 在结果里前进，而不是走
+  // 服务端电台。用 ref 存，避免 loadNextTrack 的闭包读到旧值。
+  const queueRef = useRef<{ tracks: Track[]; idx: number } | null>(null);
+  // 切换音源时若当前有歌在放，标记跳过一次「provider 变化触发的自动加载」，
+  // 让当前歌继续放到结束 / 用户点下一首，才从新音源取歌（不打断播放）。
+  const skipAutoLoadRef = useRef(false);
+  // presentTrack 用 ref 读当前音质，避免把 qqQuality 塞进它的依赖。
+  const qqQualityRef = useRef<QqQuality>(qqQuality);
+  qqQualityRef.current = qqQuality;
+  // 切换音质时用于换源后跳回原播放进度。
+  const pendingSeekRef = useRef<number | null>(null);
   // Deezer preset (e.g. 'all' | 'asia' | 'pop' | 'rap' | …). Persisted
   // to localStorage so the user's pick sticks across restarts.
   const DEEZER_PRESET_KEY = 'musicbox:deezer-preset';
@@ -217,8 +239,41 @@ export default function App() {
     }
   }, [provider]);
 
+  // 把一首 Track 呈现到播放器：解析绝对 audioUrl、换封面、置播放意图。
+  // 服务端电台和搜索结果两条路径都复用它。
+  const presentTrack = useCallback((next: Track) => {
+    let audioUrl =
+      next.audioUrl && next.audioUrl.startsWith('/')
+        ? (import.meta.env.DEV ? '' : 'http://localhost:3200') + next.audioUrl
+        : next.audioUrl;
+    // QQ：把当前选择的音质拼进流地址（?mm=... 已在，追加 &q=）。
+    if (next.provider === 'qq' && audioUrl.includes('/music/stream/qq/')) {
+      const sep = audioUrl.includes('?') ? '&' : '?';
+      audioUrl += `${sep}q=${qqQualityRef.current}`;
+    }
+    if (next.coverUrl) {
+      void applyCoverImage(
+        next.coverUrl,
+        bgLayerRef.current,
+        coverBackdropRef.current,
+      );
+    }
+    setTrack({ ...next, audioUrl });
+    setCurrentTime(0);
+    const audio = audioRef.current;
+    if (audio) audio.dataset.wantPlay = '1';
+    setPlaying(true);
+  }, []);
+
   const loadNextTrack = useCallback(async () => {
     if (!provider) return;
+    // 搜索模式：在结果队列里前进（循环），不打服务端电台。
+    const q = queueRef.current;
+    if (q && q.tracks.length) {
+      q.idx = (q.idx + 1) % q.tracks.length;
+      presentTrack(q.tracks[q.idx]);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -226,46 +281,32 @@ export default function App() {
         provider,
         provider === 'deezer' ? deezerPreset : undefined,
       );
-      // Resolve the server-relative audioUrl to an absolute URL. The
-      // <audio> element loads this directly, so a relative path won't
-      // resolve correctly in production (where Electron loads the
-      // renderer from file://). In dev we keep it relative so Vite's
-      // /music proxy routes it to the NestJS server.
-      const audioUrl =
-        next.audioUrl && next.audioUrl.startsWith('/')
-          ? (import.meta.env.DEV ? '' : 'http://localhost:3200') + next.audioUrl
-          : next.audioUrl;
-      console.log(
-        '[audio] track set, audioUrl=',
-        audioUrl,
-        'readyState-after-set will be visible in next tick',
-      );
-      // If the new track has a cover, push it into both the left
-      // backdrop and the global bg-layer so the window echoes the
-      // new song. Fire-and-forget; the request resolves async.
-      if (next.coverUrl) {
-        void applyCoverImage(next.coverUrl, bgLayerRef.current, coverBackdropRef.current);
-      }
-      setTrack({ ...next, audioUrl });
-      setCurrentTime(0);
-      // We always want to auto-play once data is ready. We don't call
-      // play() here — that would race against the audio element's own
-      // data loading. Instead, set the intent flag; the onCanPlay
-      // listener will call play() when data is actually available, and
-      // the play/pause useEffect below will also try once it sees
-      // readyState >= 3.
-      const audio = audioRef.current;
-      if (audio) audio.dataset.wantPlay = '1';
-      setPlaying(true);
+      presentTrack(next);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [provider, deezerPreset]);
+  }, [provider, deezerPreset, presentTrack]);
+
+  /** 从搜索面板点某一行：整批结果作为队列，从 index 开始播。 */
+  const handlePlaySearch = useCallback(
+    (results: Track[], index: number) => {
+      queueRef.current = { tracks: results, idx: index };
+      setSearchOpen(false);
+      setError(null);
+      presentTrack(results[index]);
+    },
+    [presentTrack],
+  );
 
   useEffect(() => {
     if (!provider) return;
+    // 延迟切换音源时：跳过这一次自动加载，保住当前正在播放的歌。
+    if (skipAutoLoadRef.current) {
+      skipAutoLoadRef.current = false;
+      return;
+    }
     loadNextTrack();
   }, [provider, deezerPreset, loadNextTrack]);
 
@@ -284,6 +325,15 @@ export default function App() {
     };
     const onLoadedMetadata = () => {
       setDuration(audio.duration || 0);
+      // 切换音质换源后，跳回原播放进度。
+      if (pendingSeekRef.current != null) {
+        try {
+          audio.currentTime = pendingSeekRef.current;
+        } catch {
+          // 忽略：偶发 seek 越界
+        }
+        pendingSeekRef.current = null;
+      }
     };
     const onCanPlay = () => {
       if (audio.dataset.wantPlay === '1' && audio.paused) {
@@ -389,9 +439,46 @@ export default function App() {
     setTrack(null);
     setCurrentTime(0);
     setDuration(0);
+    queueRef.current = null;
+    setSearchOpen(false);
     setAuth({ provider: 'qq', loggedIn: false, user: null });
     localStorage.removeItem(PROVIDER_STORAGE_KEY);
     setProvider(null);
+  };
+
+  /**
+   * 从下拉菜单切换音源，不打断当前播放：
+   *  - 选中同一个音源 → 什么都不做（歌继续放）
+   *  - 选中不同音源 → 只切换「后续曲目来源」，当前歌放完 / 点下一首才生效
+   */
+  const switchToProvider = (next: MusicProvider) => {
+    setSourceMenuOpen(false);
+    if (next === provider) return;
+    queueRef.current = null; // 搜索队列是 QQ 专属，切走就清掉
+    setSearchOpen(false);
+    localStorage.setItem(PROVIDER_STORAGE_KEY, next);
+    // 当前有歌在放 → 延迟加载，保住这首；否则（空闲）立即加载新音源。
+    if (track) skipAutoLoadRef.current = true;
+    setProvider(next);
+  };
+
+  /** 切换 QQ 音质：立即用新音质重载当前歌，保留播放进度。 */
+  const changeQuality = (q: QqQuality) => {
+    setQualityMenuOpen(false);
+    setQqQuality(q);
+    qqQualityRef.current = q;
+    localStorage.setItem(QQ_QUALITY_KEY, q);
+    const audio = audioRef.current;
+    if (audio && track && track.provider === 'qq' && track.audioUrl) {
+      pendingSeekRef.current = audio.currentTime; // 换源后跳回此进度
+      const base = track.audioUrl
+        .replace(/[?&]q=[^&]*/, '')
+        .replace(/[?&]$/, '');
+      const sep = base.includes('?') ? '&' : '?';
+      setTrack((prev) =>
+        prev ? { ...prev, audioUrl: `${base}${sep}q=${q}` } : prev,
+      );
+    }
   };
 
   const handlePlayPause = () => setPlaying((p) => !p);
@@ -447,10 +534,38 @@ export default function App() {
   };
 
   /**
-   * QQ login: redirect to QQ OAuth. Works the same in Electron and browser.
+   * QQ login: in Electron, open an embedded QQ Music login window that
+   * captures the real login cookie (qm_keyst / uin …) automatically —
+   * no appid/secret, no QQ Connect OAuth. In a plain browser there's no
+   * cookie-capture path, so we tell the user to use the desktop app.
    */
-  const handleQqLogin = () => {
-    window.location.href = getLoginUrl('qq');
+  const handleQqLogin = async () => {
+    if (!isElectron || !window.electronAPI?.qqLogin) {
+      setError('QQ 音乐登录需要在桌面 App 中进行(浏览器无法捕获登录 cookie)');
+      return;
+    }
+    setError(null);
+    setLoggingIn(true);
+    try {
+      const result = await window.electronAPI.qqLogin();
+      if (!result.success || !result.cookie) {
+        setError(result.error ?? '登录已取消');
+        return;
+      }
+      const r = await loginQqCookie(
+        result.cookie,
+        result.uin,
+        result.extraCookies,
+      );
+      if (r.success) {
+        setAuth({ provider: 'qq', loggedIn: true, user: r.user });
+        loadNextTrack();
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoggingIn(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -472,6 +587,8 @@ export default function App() {
     setTrack(null);
     setCurrentTime(0);
     setDuration(0);
+    queueRef.current = null;
+    setSearchOpen(false);
     setAuth({ provider: 'qq', loggedIn: false, user: null });
     setProvider(null);
     setTheme('system');
@@ -522,6 +639,55 @@ export default function App() {
           </select>
         )}
 
+        {provider === 'qq' && auth.loggedIn && (
+          <button
+            className="titlebar-btn search-btn"
+            onClick={() => setSearchOpen(true)}
+            title="搜索歌手 / 歌名"
+          >
+            🔍 搜索
+          </button>
+        )}
+
+        {provider === 'qq' && auth.loggedIn && (
+          <div className="quality-wrap">
+            <button
+              className="titlebar-btn"
+              onClick={() => setQualityMenuOpen((v) => !v)}
+              title="音质（无损需会员）"
+            >
+              {QQ_QUALITY_LABELS[qqQuality]}
+            </button>
+            {qualityMenuOpen && (
+              <>
+                <div
+                  className="source-menu-backdrop"
+                  onClick={() => setQualityMenuOpen(false)}
+                />
+                <div className="source-menu source-menu--right" role="menu">
+                  {(['standard', 'high', 'lossless'] as QqQuality[]).map((q) => (
+                    <button
+                      key={q}
+                      className={`source-menu-item${
+                        q === qqQuality ? ' source-menu-item--active' : ''
+                      }`}
+                      onClick={() => changeQuality(q)}
+                      role="menuitem"
+                    >
+                      <span className="source-menu-check">
+                        {q === qqQuality ? '✓' : ''}
+                      </span>
+                      <span className="source-menu-label">
+                        {QQ_QUALITY_LABELS[q]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {auth.loggedIn ? null : (
           <button
             className="titlebar-btn login-btn"
@@ -546,17 +712,51 @@ export default function App() {
           image here via background-image; the LP textures (rings,
           centre label, hole) are absolutely-positioned siblings so
           they rotate together. */}
-      {/* Source-switch button — pulled out of the titlebar to the
-          top-left of the body area. Keeps the full "DEEZER ⇄"
-          label so the provider name is obvious. */}
-      <button
-        className="body-corner-btn source-switch"
-        onClick={handleSwitchSource}
-        title={`切换音源（${PROVIDER_LABELS[provider]}）`}
-      >
-        {PROVIDER_LABELS[provider]}
-        <span className="source-switch-icon">⇄</span>
-      </button>
+      {/* Source-switch — 点击弹出下拉菜单，不打断当前播放。 */}
+      <div className="source-switch-wrap">
+        <button
+          className="body-corner-btn source-switch"
+          onClick={() => setSourceMenuOpen((v) => !v)}
+          title="切换音源"
+        >
+          {PROVIDER_LABELS[provider]}
+          <span className="source-switch-icon">⇄</span>
+        </button>
+
+        {sourceMenuOpen && (
+          <>
+            {/* 透明背板：点空白处关闭菜单，不影响播放 */}
+            <div
+              className="source-menu-backdrop"
+              onClick={() => setSourceMenuOpen(false)}
+            />
+            <div className="source-menu" role="menu">
+              {(['qq', 'netease', 'deezer'] as MusicProvider[]).map((p) => {
+                const disabled = p === 'netease'; // 网易云反爬暂不可用
+                return (
+                  <button
+                    key={p}
+                    className={`source-menu-item${
+                      p === provider ? ' source-menu-item--active' : ''
+                    }${disabled ? ' source-menu-item--disabled' : ''}`}
+                    onClick={() => !disabled && switchToProvider(p)}
+                    disabled={disabled}
+                    role="menuitem"
+                  >
+                    <span className="source-menu-check">
+                      {p === provider ? '✓' : ''}
+                    </span>
+                    <span className="source-menu-label">
+                      {PROVIDER_LABELS[p]}
+                      {disabled ? '（暂不可用）' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* The provider's "logged in as" label moves to the top-right
           corner, mirroring the source-switch on the left. */}
@@ -691,6 +891,14 @@ export default function App() {
         <NeteaseCookieModal
           onClose={() => setShowCookieFallback(false)}
           onSuccess={handleCookieFallbackSuccess}
+        />
+      )}
+
+      {searchOpen && provider === 'qq' && (
+        <SearchPanel
+          provider="qq"
+          onPlay={handlePlaySearch}
+          onClose={() => setSearchOpen(false)}
         />
       )}
     </div>

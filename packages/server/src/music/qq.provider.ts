@@ -2,6 +2,10 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Track } from './music.service';
 import { ProviderSession } from '../common/session';
 
+/** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
+export type QqQuality = 'standard' | 'high' | 'lossless';
+export const QQ_QUALITIES: QqQuality[] = ['standard', 'high', 'lossless'];
+
 /**
  * QQ 音乐电台 + 流地址。
  *
@@ -71,73 +75,125 @@ interface MusicuVkeyResponse {
   };
 }
 
+interface SearchResponse {
+  code: number;
+  data?: {
+    song?: {
+      list?: Array<{
+        mid: string;
+        name?: string;
+        title?: string;
+        singer?: { name: string; mid: string }[];
+        album?: { name: string; mid: string };
+        interval?: number; // 时长（秒）
+        // file.strMediaMid 是取流用的 media_mid（可能 ≠ songmid），
+        // 高音质 filename 必须用它拼接。size_* 反映各音质是否可用。
+        file?: {
+          strMediaMid?: string;
+          media_mid?: string;
+          size_320mp3?: number;
+          size_flac?: number;
+        };
+      }>;
+    };
+  };
+}
+
 @Injectable()
 export class QqMusicProvider {
   private readonly logger = new Logger(QqMusicProvider.name);
 
-  /** 流行电台的固定 id（QQ 音乐内置电台 id）。 */
-  private static readonly DEFAULT_RADIO_ID = 87;
+  /** 种子电台的关键词池——老的 radio_radio_user_list.fcg 已返回 HTML 报废，
+   * 改用「随机热门关键词 + 搜索」来喂一个类电台的随机流。 */
+  private static readonly RADIO_SEEDS = [
+    '周杰伦',
+    '林俊杰',
+    '邓紫棋',
+    '陈奕迅',
+    '李荣浩',
+    '毛不易',
+    '华语流行',
+    '经典老歌',
+    'Taylor Swift',
+    '抖音热歌',
+  ];
 
   isConfigured(session: ProviderSession | undefined): boolean {
-    return Boolean(session?.accessToken && session?.openId);
+    return Boolean(session?.qqCookie);
   }
 
-  /** 取一批电台歌曲。本地缓存用 playlistSize 控制长度。 */
+  /**
+   * 取一批"电台"歌曲。老的电台接口已废（返回 HTML），这里退化为
+   * 「随机热门关键词 → 搜索 → 打乱」的种子电台，保证 /music/next 恒有结果。
+   */
   async fetchRadioBatch(
     session: ProviderSession,
-    radioId: number = QqMusicProvider.DEFAULT_RADIO_ID,
-    count = 5,
+    _radioId?: number,
+    count = 10,
   ): Promise<Track[]> {
-    const url = new URL(
-      'https://c.y.qq.com/radio/cgi-bin/radio_radio_user_list.fcg',
-    );
-    url.searchParams.set('id', String(radioId));
-    url.searchParams.set('num', String(count));
-    url.searchParams.set('song_num', String(count));
+    const seeds = QqMusicProvider.RADIO_SEEDS;
+    const seed = seeds[Math.floor(Math.random() * seeds.length)];
+    const tracks = await this.search(session, seed, 20);
+    // Fisher–Yates 打乱后取前 count 首
+    for (let i = tracks.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+    }
+    this.logger.log(`QQ radio(seed="${seed}") → ${tracks.length} 首`);
+    return tracks.slice(0, count).map((t) => ({
+      ...t,
+      audioUrl: '', // 由 getStreamUrl 在播放时动态获取
+    }));
+  }
+
+  /**
+   * 按关键词（歌手 / 歌名）搜索。这是产品核心入口：搜歌手 → 出歌单 →
+   * 点播放走 getStreamPath 出全曲流。搜索本身不强制登录态，但带上 cookie
+   * 无害（会影响个性化结果）。
+   */
+  async search(
+    session: ProviderSession,
+    keyword: string,
+    count = 20,
+  ): Promise<Track[]> {
+    const url = new URL('https://c.y.qq.com/soso/fcgi-bin/client_search_cp');
+    url.searchParams.set('w', keyword);
+    url.searchParams.set('p', '1');
+    url.searchParams.set('n', String(count));
     url.searchParams.set('format', 'json');
-    url.searchParams.set('inCharset', 'utf8');
-    url.searchParams.set('outCharset', 'utf-8');
+    url.searchParams.set('cr', '1'); // 中文
+    url.searchParams.set('t', '0'); // 0 = 单曲
+    url.searchParams.set('flag_qc', '0');
+    url.searchParams.set('new_json', '1'); // 返回结构化 data.song.list
 
     const res = await fetch(url.toString(), {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
         Referer: 'https://y.qq.com/',
-        // QQ 风的 cookie，登录态由 session 提供
-        Cookie: `uin=${session.openId}; qqmusic_uin=${session.openId}; qqmusic_key=${session.accessToken}`,
+        Cookie: session.qqCookie ?? '',
       },
     });
-    const json = (await res.json()) as RadioResponse;
-    if (json.code !== 0 || !json.data?.songList?.length) {
-      throw new BadRequestException(
-        `QQ radio fetch failed: code=${json.code}`,
-      );
+    const json = (await res.json()) as SearchResponse;
+    if (json.code !== 0) {
+      throw new BadRequestException(`QQ search failed: code=${json.code}`);
     }
-
-    const songs = json.data.songList;
-    // 用 song_detail 批量拉元数据（标题、艺人、专辑、封面）
-    const details = await this.fetchSongDetails(
-      session,
-      songs.map((s) => s.mid),
-    );
-
-    return songs.map((s, i) => {
-      const d = details.get(s.mid);
-      return {
-        id: s.mid,
-        provider: 'qq' as const,
-        title: d?.name ?? s.name ?? s.title ?? '未知歌曲',
-        artist:
-          d?.singer?.map((x) => x.name).join(' / ') ??
-          s.singer?.map((x) => x.name).join(' / ') ??
-          '未知艺人',
-        album: d?.album?.name ?? s.album?.name ?? '',
-        coverUrl: '', // 后续若要封面可用 https://y.gtimg.cn/music/photo_new/T002R300x300M000{mid}.jpg
-        audioUrl: '', // 由 getStreamUrl 在播放时动态获取
-        duration: 0,
-        liked: false,
-      };
-    });
+    const list = json.data?.song?.list ?? [];
+    this.logger.log(`QQ search "${keyword}" → ${list.length} 首`);
+    return list.map((s) => ({
+      id: s.mid,
+      provider: 'qq' as const,
+      title: s.name ?? s.title ?? '未知歌曲',
+      artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
+      album: s.album?.name ?? '',
+      coverUrl: s.album?.mid
+        ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${s.album.mid}.jpg`
+        : '',
+      audioUrl: '', // 播放时由 getStreamPath 动态获取
+      duration: s.interval ?? 0,
+      liked: false,
+      mediaMid: s.file?.strMediaMid ?? s.file?.media_mid ?? '',
+    }));
   }
 
   /**
@@ -145,20 +201,51 @@ export class QqMusicProvider {
    * 即将播放时实时拉，不缓存。返回相对路径 /music/stream/qq/{mid}，
    * 让前端统一走后端代理，前端永远拿不到 raw URL。
    */
+  /** 音质档位 → GetVkey filename 的前缀 / 扩展名。standard 用默认 m4a。 */
+  private static readonly QUALITY: Record<
+    QqQuality,
+    { prefix: string; ext: string } | null
+  > = {
+    standard: null, // 默认 C400 m4a，不传 filename
+    high: { prefix: 'M800', ext: '.mp3' }, // 320 kbps
+    lossless: { prefix: 'F000', ext: '.flac' }, // flac 无损
+  };
+
   async getStreamPath(
     session: ProviderSession,
     songmid: string,
+    mediaMid?: string,
+    quality: QqQuality = 'standard',
   ): Promise<string> {
-    const vkey = await this.fetchVkey(session, [songmid]);
-    const info = vkey?.data?.midurlinfo?.[0];
+    // 高音质需要 media_mid 拼 filename；没有就退回默认 m4a。
+    const spec = QqMusicProvider.QUALITY[quality];
+    const filename =
+      spec && mediaMid ? [`${spec.prefix}${mediaMid}${spec.ext}`] : undefined;
+
+    let vkey = await this.fetchVkey(session, [songmid], filename);
+    let info = vkey?.data?.midurlinfo?.[0];
+
+    // 请求了高音质但没权限/该音质不存在（purl 空）→ 回退默认音质再试一次。
+    if (!info?.purl && filename) {
+      this.logger.warn(
+        `QQ ${quality} 无 purl(errtype=${info?.errtype})，回退默认音质：${songmid}`,
+      );
+      vkey = await this.fetchVkey(session, [songmid]);
+      info = vkey?.data?.midurlinfo?.[0];
+    }
+
     if (!info?.purl) {
+      // errtype 常见含义：无版权 / 需付费 / 登录态失效。日志留痕便于排查。
+      this.logger.warn(
+        `QQ GetVkey 无 purl: mid=${songmid}, errtype=${info?.errtype}, ` +
+          `hasCookie=${Boolean(session.qqCookie)}, uin=${session.qqUin ?? '?'}`,
+      );
       throw new BadRequestException(
-        `QQ vkey missing purl for ${songmid}: errtype=${info?.errtype}`,
+        `QQ vkey missing purl for ${songmid}: errtype=${info?.errtype}（可能无版权/需会员/登录态失效）`,
       );
     }
-    // 把 raw url 暂存到 storage 一段短暂时间，由 /music/stream 端点读取后 302
-    // 这里我们直接拼成完整的 upstream URL 让 controller 302
-    const upstreamHost = vkey?.data?.sip?.[0] ?? 'https://ws.stream.qqmusic.qq.com/';
+    const upstreamHost =
+      vkey?.data?.sip?.[0] ?? 'https://ws.stream.qqmusic.qq.com/';
     return upstreamHost.replace(/\/$/, '/') + info.purl;
   }
 
@@ -180,7 +267,7 @@ export class QqMusicProvider {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
         Referer: 'https://y.qq.com/',
-        Cookie: `qqmusic_key=${session.accessToken}`,
+        Cookie: session.qqCookie ?? '',
       },
     });
     const json = (await res.json()) as SongDetailResponse;
@@ -195,8 +282,20 @@ export class QqMusicProvider {
   private async fetchVkey(
     session: ProviderSession,
     songmids: string[],
+    filenames?: string[],
   ): Promise<MusicuVkeyResponse['req_0']> {
     const guid = this.randomGuid();
+    const param: Record<string, unknown> = {
+      guid,
+      songmid: songmids,
+      songtype: songmids.map(() => 0),
+      uin: session.qqUin ?? '',
+      loginflag: 1,
+      platform: '20',
+      h5guid: guid,
+    };
+    // 指定 filename 才会返回对应音质的流地址（否则默认 m4a）。
+    if (filenames) param.filename = filenames;
     const body = {
       comm: {
         cv: 4747474,
@@ -207,20 +306,12 @@ export class QqMusicProvider {
         notice: 0,
         platform: 'yqq.json',
         needNewCode: 1,
-        uin: session.openId ?? '',
+        uin: session.qqUin ?? '',
       },
       req_0: {
         module: 'music.vkey.GetVkey',
         method: 'UrlGetVkey',
-        param: {
-          guid,
-          songmid: songmids,
-          songtype: songmids.map(() => 0),
-          uin: session.openId ?? '',
-          loginflag: 1,
-          platform: '20',
-          h5guid: guid,
-        },
+        param,
       },
     };
 
@@ -233,7 +324,7 @@ export class QqMusicProvider {
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
           Referer: 'https://y.qq.com/',
-          Cookie: `qqmusic_key=${session.accessToken}; qqmusic_uin=${session.openId}; uin=${session.openId}`,
+          Cookie: session.qqCookie ?? '',
         },
         body: JSON.stringify(body),
       },

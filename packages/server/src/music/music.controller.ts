@@ -13,6 +13,7 @@ import { MusicService } from './music.service';
 import { normalizeProvider, MusicProvider } from '../common/provider';
 import { SessionService, Session } from '../common/session';
 import { DeezerMusicProvider } from './deezer.provider';
+import { QqQuality } from './qq.provider';
 
 @Controller('music')
 export class MusicController {
@@ -36,6 +37,25 @@ export class MusicController {
       session.prefs = { ...(session.prefs ?? {}), deezerPreset: preset };
     }
     return this.musicService.getNextTrack(session, normalizeProvider(provider));
+  }
+
+  /**
+   * 搜索歌曲（歌手 / 歌名）。产品核心入口:GET /music/search?provider=qq&q=周杰伦
+   */
+  @Get('search')
+  async search(
+    @Query('provider') provider: string,
+    @Query('q') q: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const items = await this.musicService.searchTracks(
+      session,
+      normalizeProvider(provider),
+      q ?? '',
+    );
+    return { items };
   }
 
   /**
@@ -108,6 +128,8 @@ export class MusicController {
   async stream(
     @Param('provider') providerParam: string,
     @Param('trackId') trackId: string,
+    @Query('mm') mm: string | undefined,
+    @Query('q') q: string | undefined,
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -118,10 +140,16 @@ export class MusicController {
         await this.streamDeezer(session, trackId, res);
         return;
       }
+      const quality = (['standard', 'high', 'lossless'] as const).includes(
+        q as QqQuality,
+      )
+        ? (q as QqQuality)
+        : 'standard';
       const upstream = await this.musicService.getStreamUrl(
         session,
         provider,
         decodeURIComponent(trackId),
+        { mediaMid: mm, quality },
       );
       res.redirect(302, upstream);
     } catch (err) {

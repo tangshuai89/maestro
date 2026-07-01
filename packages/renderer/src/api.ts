@@ -31,7 +31,16 @@ export interface Track {
   audioUrl: string; // /music/stream/{provider}/{id}，浏览器直接当 src 用
   duration: number;
   liked: boolean;
+  mediaMid?: string; // QQ 取流用的 media_mid（高音质需要）
 }
+
+/** QQ 音质档位。standard=m4a，high=320mp3，lossless=flac（需会员）。 */
+export type QqQuality = 'standard' | 'high' | 'lossless';
+export const QQ_QUALITY_LABELS: Record<QqQuality, string> = {
+  standard: '标准',
+  high: '极高 320',
+  lossless: '无损',
+};
 
 export interface AuthUser {
   nickname: string;
@@ -112,11 +121,37 @@ export async function getAuthStatus(
   );
 }
 
-export function getLoginUrl(provider: MusicProvider): string {
-  if (provider === 'qq') {
-    return `${API_BASE}/auth/qq/login`;
-  }
-  return `${API_BASE}/auth/netease/qr/start`;
+/**
+ * QQ 音乐 cookie 登录。cookie 由 Electron 内嵌登录窗口捕获后透传;浏览器
+ * 调试时也可手动传入。
+ */
+export async function loginQqCookie(
+  cookie: string,
+  uin?: string,
+  extraCookies?: Record<string, string>,
+): Promise<{ success: boolean; user: AuthUser }> {
+  return json(
+    await fetch(`${API_BASE}/auth/qq/cookie`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cookie, uin, extraCookies }),
+    }),
+  );
+}
+
+/** 按关键词搜索(歌手 / 歌名)。当前仅 QQ 支持。 */
+export async function searchTracks(
+  provider: MusicProvider,
+  q: string,
+): Promise<Track[]> {
+  const res = await json<{ items: Track[] }>(
+    await fetch(
+      `${API_BASE}/music/search?provider=${provider}&q=${encodeURIComponent(q)}`,
+      { credentials: 'include' },
+    ),
+  );
+  return res.items;
 }
 
 export interface DeezerEditorial {

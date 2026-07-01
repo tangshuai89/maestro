@@ -30,7 +30,7 @@ const SOURCES: {
   {
     provider: 'qq',
     name: 'QQ 音乐',
-    desc: '随心听电台（需要 QQ 互联）',
+    desc: '登录后可搜索 + 播全曲（桌面扫码登录）',
     className: 'source-qq',
     initial: 'Q',
   },

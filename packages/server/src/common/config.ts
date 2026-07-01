@@ -17,7 +17,6 @@ export class ConfigService {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  readonly redirectBase = process.env.REDIRECT_BASE ?? 'http://localhost:3200';
   readonly rendererBase =
     process.env.RENDERER_BASE ?? 'http://localhost:5173';
 
@@ -28,12 +27,7 @@ export class ConfigService {
 
   readonly storageDir = process.env.STORAGE_DIR ?? path.resolve('.storage');
 
-  // QQ 互联
-  readonly qqAppId = process.env.QQ_APP_ID ?? '';
-  readonly qqAppSecret = process.env.QQ_APP_SECRET ?? '';
-  readonly qqRedirectUri =
-    process.env.QQ_REDIRECT_URI ??
-    `${this.redirectBase}/auth/qq/callback`;
+  // QQ 音乐:走内嵌登录窗口捕获 cookie，无需 appid/secret（QQ 互联那套已废弃）
 
   // 网易云（没有公开 OAuth，用 cookie / 扫码）
   readonly neteaseMusicU = process.env.NETEASE_MUSIC_U ?? '';

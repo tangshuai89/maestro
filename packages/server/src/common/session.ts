@@ -10,12 +10,9 @@ import { ConfigService } from './config';
 import { MusicProvider } from './provider';
 
 export interface ProviderSession {
-  // QQ
-  accessToken?: string;
-  refreshToken?: string;
-  openId?: string;
-  unionId?: string;
-  expiresAt?: number;
+  // QQ 音乐（真登录 cookie，来自内嵌登录窗口；不是 QQ 互联 OAuth token）
+  qqCookie?: string; // 完整 "k=v; k=v" cookie header
+  qqUin?: string; // 归一化后的纯数字 uin，用于 musicu.fcg
   // NetEase
   musicU?: string;
   csrfToken?: string;

@@ -7,7 +7,7 @@ import {
 import { MusicProvider } from '../common/provider';
 import { StorageService } from '../common/storage';
 import { ProviderSession, Session } from '../common/session';
-import { QqMusicProvider } from './qq.provider';
+import { QqMusicProvider, QqQuality } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { DeezerMusicProvider } from './deezer.provider';
 
@@ -21,6 +21,8 @@ export interface Track {
   audioUrl: string; // 这里是 /music/stream/{provider}/{id} 相对路径，不是真实 URL
   duration: number;
   liked: boolean;
+  /** QQ 取流用的 media_mid（可能 ≠ songmid），高音质 filename 需要它。 */
+  mediaMid?: string;
 }
 
 interface ProviderState {
@@ -51,26 +53,41 @@ export class MusicService {
   }
 
   private loadState(session: Session): Record<MusicProvider, ProviderState> {
-    const persisted = this.storage.get<Record<MusicProvider, ProviderState>>(
+    const fresh = (): ProviderState => ({
+      queue: [],
+      liked: new Set<string>(),
+      disliked: new Set<string>(),
+    });
+    // 始终以完整默认骨架起步，再叠加持久化数据，保证三个 provider 都存在。
+    const state: Record<MusicProvider, ProviderState> = {
+      qq: fresh(),
+      netease: fresh(),
+      deezer: fresh(),
+    };
+
+    const persisted = this.storage.get<Record<string, unknown>>(
       this.stateKey(session.id),
     );
     if (persisted) {
-      for (const key of Object.keys(persisted) as MusicProvider[]) {
-        const s = persisted[key];
-        if (Array.isArray((s.liked as unknown))) {
-          s.liked = new Set(s.liked as unknown as string[]);
-        }
-        if (Array.isArray((s.disliked as unknown))) {
-          s.disliked = new Set(s.disliked as unknown as string[]);
-        }
+      for (const key of ['qq', 'netease', 'deezer'] as MusicProvider[]) {
+        const s = persisted[key] as Partial<ProviderState> | undefined;
+        if (!s) continue;
+        // 稳健还原：无论持久化里是数组、旧版 Set→{} 空对象、还是 undefined，
+        // 一律 coerce 成 Set / 数组，避免 `.has is not a function`。
+        state[key] = {
+          queue: Array.isArray(s.queue) ? (s.queue as Track[]) : [],
+          liked: new Set(
+            Array.isArray(s.liked) ? (s.liked as unknown as string[]) : [],
+          ),
+          disliked: new Set(
+            Array.isArray(s.disliked)
+              ? (s.disliked as unknown as string[])
+              : [],
+          ),
+        };
       }
-      return persisted;
     }
-    return {
-      qq: { queue: [], liked: new Set(), disliked: new Set() },
-      netease: { queue: [], liked: new Set(), disliked: new Set() },
-      deezer: { queue: [], liked: new Set(), disliked: new Set() },
-    };
+    return state;
   }
 
   private saveState(session: Session, state: Record<MusicProvider, ProviderState>): void {
@@ -140,7 +157,7 @@ export class MusicService {
         // over-engineered workaround that turned out to break autoplay.
         const audioUrl = provider === 'deezer' && t.audioUrl && t.audioUrl.startsWith('http')
           ? t.audioUrl
-          : `/music/stream/${provider}/${encodeURIComponent(t.id)}`;
+          : this.streamPath(t);
         return {
           ...t,
           audioUrl,
@@ -180,15 +197,59 @@ export class MusicService {
     session: Session,
     provider: MusicProvider,
     trackId: string,
+    opts?: { mediaMid?: string; quality?: QqQuality },
   ): Promise<string> {
     const ps = this.requireProviderSession(session, provider);
     if (provider === 'qq') {
-      return this.qq.getStreamPath(ps!, trackId);
+      return this.qq.getStreamPath(
+        ps!,
+        trackId,
+        opts?.mediaMid,
+        opts?.quality ?? 'standard',
+      );
     }
     if (provider === 'netease') {
       return this.netease.getStreamPath(ps!, trackId);
     }
     return this.deezer.getStreamPath(ps!, trackId);
+  }
+
+  /**
+   * 按关键词搜索（当前仅 QQ）。搜索不强制登录——用户可以先搜再登录；
+   * 但真正播放（getStreamUrl）需要登录态。返回的 audioUrl 统一是后端
+   * 代理相对路径，前端拿不到 raw URL。
+   */
+  async searchTracks(
+    session: Session,
+    provider: MusicProvider,
+    keyword: string,
+  ): Promise<Track[]> {
+    const kw = keyword.trim();
+    if (!kw) return [];
+    if (provider !== 'qq') {
+      throw new BadRequestException(`搜索暂不支持 ${provider}`);
+    }
+    const ps = session.providers.qq; // 可能未登录
+    const tracks = await this.qq.search(ps ?? {}, kw);
+    const state = this.loadState(session);
+    const { liked, disliked } = state.qq;
+    return tracks
+      .filter((t) => !disliked.has(t.id))
+      .map((t) => ({
+        ...t,
+        audioUrl: this.streamPath(t),
+        liked: liked.has(t.id),
+      }));
+  }
+
+  /** 后端代理相对路径；QQ 带上 media_mid 以便播放时选高音质。 */
+  private streamPath(track: Track): string {
+    const base = `/music/stream/${track.provider}/${encodeURIComponent(
+      track.id,
+    )}`;
+    return track.provider === 'qq' && track.mediaMid
+      ? `${base}?mm=${encodeURIComponent(track.mediaMid)}`
+      : base;
   }
 
   async toggleLike(
