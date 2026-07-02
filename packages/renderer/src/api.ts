@@ -55,8 +55,16 @@ export interface AuthStatus {
 }
 
 export interface NeteaseQrStart {
+  key: string;
   qrImg: string;
   qrUrl: string;
+}
+
+export interface NeteaseQrCheck {
+  /** 800 过期 / 801 等待扫码 / 802 已扫码待确认 / 803 登录成功 */
+  code: number;
+  message: string;
+  user?: AuthUser;
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -174,17 +182,23 @@ export async function logout(provider: MusicProvider): Promise<void> {
   });
 }
 
-/**
- * Ask the server to generate a NetEase QR image. Note that scanning this
- * will NOT auto-log us in (NetEase removed the server-side callback), so the
- * UI mostly uses this as a hint to open music.163.com on the phone.
- */
+/** 真·扫码登录第一步：拿二维码（key + dataURL 图片）。 */
 export async function startNeteaseQr(): Promise<NeteaseQrStart> {
   return json<NeteaseQrStart>(
     await fetch(`${API_BASE}/auth/netease/qr/start`, {
       method: 'POST',
       credentials: 'include',
     }),
+  );
+}
+
+/** 真·扫码登录第二步：轮询扫码状态，803 时服务端已入 session。 */
+export async function checkNeteaseQr(key: string): Promise<NeteaseQrCheck> {
+  return json<NeteaseQrCheck>(
+    await fetch(
+      `${API_BASE}/auth/netease/qr/check?key=${encodeURIComponent(key)}`,
+      { credentials: 'include' },
+    ),
   );
 }
 

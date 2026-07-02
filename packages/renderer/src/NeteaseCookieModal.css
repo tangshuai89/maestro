@@ -134,6 +134,50 @@
   text-align: center;
 }
 
+.qr-image-wrap {
+  position: relative;
+  align-self: center;
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.qr-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.qr-image--loading {
+  background: var(--bg-secondary);
+}
+
+.qr-refresh {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.qr-manual-toggle {
+  margin-top: 12px;
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.qr-manual-toggle:hover {
+  color: var(--text-primary);
+}
+
 .qr-cookie-form {
   display: flex;
   flex-direction: column;

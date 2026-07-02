@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuthUser } from './api';
-import { loginNeteaseCookie } from './api';
+import { checkNeteaseQr, loginNeteaseCookie, startNeteaseQr } from './api';
 import './NeteaseCookieModal.css';
 
 interface Props {
@@ -8,18 +8,78 @@ interface Props {
   onClose: () => void;
 }
 
+const POLL_MS = 1500;
+
 /**
- * 网易云 Cookie 兜底登录弹窗——只在浏览器调试（非 Electron）时使用。
- * Electron 包走的是 main 进程的内嵌登录窗口，自动捕获 MUSIC_U，不需要
- * 这里。
+ * 网易云扫码登录弹窗。
+ *
+ * 服务端生成二维码（/auth/netease/qr/start），手机网易云 App 扫码确认后，
+ * 轮询 /auth/netease/qr/check 拿到 803 即登录成功（cookie 已入服务端
+ * session）。底部保留手动粘贴 MUSIC_U 的兜底入口。
  */
 export default function NeteaseCookieModal({ onSuccess, onClose }: Props) {
-  const [musicU, setMusicU] = useState('');
-  const [csrfToken, setCsrfToken] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [qrImg, setQrImg] = useState<string | null>(null);
+  const [status, setStatus] = useState('生成二维码中…');
+  const [expired, setExpired] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async () => {
+  // 手动粘贴 cookie 的兜底
+  const [showManual, setShowManual] = useState(false);
+  const [musicU, setMusicU] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stoppedRef = useRef(false);
+
+  const beginQrFlow = useCallback(async () => {
+    setExpired(false);
+    setError(null);
+    setQrImg(null);
+    setStatus('生成二维码中…');
+    try {
+      const { key, qrImg } = await startNeteaseQr();
+      setQrImg(qrImg);
+      setStatus('打开手机网易云音乐 App 扫码');
+
+      const poll = async () => {
+        if (stoppedRef.current) return;
+        try {
+          const r = await checkNeteaseQr(key);
+          if (r.code === 803 && r.user) {
+            setStatus('登录成功');
+            onSuccess(r.user);
+            return;
+          }
+          if (r.code === 800) {
+            setExpired(true);
+            setStatus('二维码已过期');
+            return;
+          }
+          if (r.code === 802) {
+            setStatus('已扫码，请在手机上确认登录');
+          }
+        } catch (e) {
+          setError((e as Error).message);
+        }
+        timerRef.current = setTimeout(poll, POLL_MS);
+      };
+      timerRef.current = setTimeout(poll, POLL_MS);
+    } catch (e) {
+      setError((e as Error).message);
+      setStatus('二维码生成失败');
+    }
+  }, [onSuccess]);
+
+  useEffect(() => {
+    stoppedRef.current = false;
+    void beginQrFlow();
+    return () => {
+      stoppedRef.current = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [beginQrFlow]);
+
+  const handleManualSubmit = async () => {
     if (!musicU.trim()) {
       setError('请粘贴 MUSIC_U');
       return;
@@ -27,13 +87,8 @@ export default function NeteaseCookieModal({ onSuccess, onClose }: Props) {
     setError(null);
     setSubmitting(true);
     try {
-      const r = await loginNeteaseCookie(
-        musicU.trim(),
-        csrfToken.trim() || undefined,
-      );
-      if (r.success) {
-        onSuccess(r.user);
-      }
+      const r = await loginNeteaseCookie(musicU.trim());
+      if (r.success) onSuccess(r.user);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -47,48 +102,60 @@ export default function NeteaseCookieModal({ onSuccess, onClose }: Props) {
         <button className="qr-close" onClick={onClose} aria-label="关闭">
           ×
         </button>
-        <h3 className="qr-title">网易云登录（浏览器模式）</h3>
-        <p className="qr-help" style={{ marginTop: 0, marginBottom: 12 }}>
-          在桌面 app 中本步骤是自动的。这里只是浏览器调试时的兜底。
-        </p>
+        <h3 className="qr-title">网易云扫码登录</h3>
 
         {error && <div className="qr-error">{error}</div>}
 
-        <div className="qr-cookie-form">
-          <label className="qr-field-label">
-            MUSIC_U <span className="qr-required">*</span>
-          </label>
-          <input
-            className="qr-input"
-            placeholder="从 music.163.com DevTools 复制"
-            value={musicU}
-            onChange={(e) => setMusicU(e.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-          />
-          <label className="qr-field-label">
-            __csrf <span className="qr-optional">(可选)</span>
-          </label>
-          <input
-            className="qr-input"
-            placeholder="同一来源，可不填"
-            value={csrfToken}
-            onChange={(e) => setCsrfToken(e.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-          />
-          <div className="qr-help">
-            浏览器登录 <a href="https://music.163.com" target="_blank" rel="noreferrer">music.163.com</a> →
-            DevTools → Application → Cookies → 复制 <code>MUSIC_U</code> 的值
-          </div>
-          <button
-            className="qr-submit"
-            onClick={handleSubmit}
-            disabled={submitting}
-          >
-            {submitting ? '验证中…' : '登录'}
-          </button>
+        <div className="qr-image-wrap">
+          {qrImg ? (
+            <img className="qr-image" src={qrImg} alt="网易云登录二维码" />
+          ) : (
+            <div className="qr-image qr-image--loading" />
+          )}
+          {expired && (
+            <button className="qr-refresh" onClick={() => void beginQrFlow()}>
+              刷新二维码
+            </button>
+          )}
         </div>
+        <p className="qr-help">{status}</p>
+
+        {!showManual ? (
+          <button
+            className="qr-manual-toggle"
+            onClick={() => setShowManual(true)}
+          >
+            扫不了码？手动粘贴 Cookie
+          </button>
+        ) : (
+          <div className="qr-cookie-form">
+            <label className="qr-field-label">
+              MUSIC_U <span className="qr-required">*</span>
+            </label>
+            <input
+              className="qr-input"
+              placeholder="从 music.163.com DevTools 复制"
+              value={musicU}
+              onChange={(e) => setMusicU(e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <div className="qr-help">
+              浏览器登录{' '}
+              <a href="https://music.163.com" target="_blank" rel="noreferrer">
+                music.163.com
+              </a>{' '}
+              → DevTools → Application → Cookies → 复制 <code>MUSIC_U</code>
+            </div>
+            <button
+              className="qr-submit"
+              onClick={handleManualSubmit}
+              disabled={submitting}
+            >
+              {submitting ? '验证中…' : '登录'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,27 +1,25 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Track } from './music.service';
 import { ProviderSession } from '../common/session';
-import { NeteaseProxy } from './netease-proxy';
 
 /**
- * 网易云音乐：私人 FM + 播放 URL。
+ * 网易云音乐：私人 FM + 播放 URL + 红心。
  *
- * 所有写操作（私人 FM、点赞）必须带 MUSIC_U cookie；未登录时会返回
- * { code: 301 }。我们在 controller 层提前校验。
+ * 2026-07 实测：明文 `/api/*` 端点对服务端直连是放行的（此前认为必须经
+ * Electron 内嵌 Chromium 转发 weapi 的结论只适用于加密 weapi 通道）。
+ * 因此这里全部走服务端直连 + cookie header，架构大幅简化。
  *
  * 端点：
- *   - 私人 FM:        POST /weapi/radio/get
- *   - 播放 URL:        POST /weapi/song/enhance/player/url/v1?csrf_token=
- *   - 红心 / 垃圾桶:    POST /weapi/radio/like?csrf_token=  /like?alg=itembased
+ *   - 私人 FM:      POST /api/radio/get
+ *   - 播放 URL:      POST /api/song/enhance/player/url/v1
+ *   - 红心:          POST /api/radio/like?alg=itembased
+ *   - 垃圾桶:        POST /api/radio/trash/add
  *
- * 反爬说明：
- *   网易云对 weapi 调用做了 TLS+header+cookie 多维度反爬，从 Node 进程
- *   直接 fetch 会被识别成 bot 并返回 200 + 空 body。
- *
- *   解决：所有 weapi 调用都通过 Electron 内嵌的登录窗口转发——那是一个
- *   真实的 Chromium 页面，自己持有 MUSIC_U cookie、自己做 weapi 加密、
- *   自己发出请求。NestJS 端只负责构造 payload，**不**参与加密。
+ * 未登录/cookie 过期时接口返回 { code: 301 }。
  */
+
+const UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 interface NeteaseSong {
   id: number;
@@ -34,7 +32,7 @@ interface NeteaseSong {
 
 interface RadioResponse {
   code: number;
-  data?: { songs?: NeteaseSong[] };
+  data?: NeteaseSong[];
 }
 
 interface SongUrlItem {
@@ -44,7 +42,7 @@ interface SongUrlItem {
   size: number;
   type?: string;
   level?: string;
-  encodeType?: string;
+  code?: number;
 }
 
 interface SongUrlResponse {
@@ -56,30 +54,28 @@ interface SongUrlResponse {
 export class NeteaseMusicProvider {
   private readonly logger = new Logger(NeteaseMusicProvider.name);
 
-  constructor(private readonly proxy: NeteaseProxy) {}
-
   isConfigured(session: ProviderSession | undefined): boolean {
     return Boolean(session?.musicU);
   }
 
-  /**
-   * 取一批私人 FM 歌曲。
-   * @param session  当前会话
-   * @param count    一次性拿多少首（默认 3，存到 playlist 队列里供后续消费）
-   */
+  /** 取一批私人 FM 歌曲。 */
   async fetchRadioBatch(
     session: ProviderSession,
     count = 3,
   ): Promise<Track[]> {
-    const data = await this.weapiCall<RadioResponse>(
+    const data = await this.apiCall<RadioResponse>(
       session,
-      'https://music.163.com/weapi/radio/get',
+      'https://music.163.com/api/radio/get',
       {},
     );
     if (data.code !== 200) {
-      throw new BadRequestException(`netease radio failed: code=${data.code}`);
+      throw new BadRequestException(
+        data.code === 301
+          ? '网易云登录已过期，请重新扫码登录'
+          : `netease radio failed: code=${data.code}`,
+      );
     }
-    const songs = (data.data?.songs ?? []).slice(0, count);
+    const songs = (data.data ?? []).slice(0, count);
     return songs.map((s) => ({
       id: String(s.id),
       provider: 'netease' as const,
@@ -93,27 +89,24 @@ export class NeteaseMusicProvider {
     }));
   }
 
-  /**
-   * 取歌曲的真实播放 URL。和 QQ 一样 URL 有时效，所以即时拉即时用。
-   * 返回 raw URL，由 controller 层做 302。
-   */
+  /** 取歌曲的真实播放 URL（有时效，即拉即用）。 */
   async getStreamPath(
     session: ProviderSession,
     songId: string,
   ): Promise<string> {
-    const data = await this.weapiCall<SongUrlResponse>(
+    const data = await this.apiCall<SongUrlResponse>(
       session,
-      'https://music.163.com/weapi/song/enhance/player/url/v1',
+      'https://music.163.com/api/song/enhance/player/url/v1',
       {
-        ids: [Number(songId)],
-        br: 999000, // 320kbps mp3
+        ids: `[${Number(songId)}]`,
+        level: 'exhigh',
+        encodeType: 'aac',
       },
-      true, // use csrf token from cookie
     );
     const item = data.data?.[0];
     if (!item?.url) {
       throw new BadRequestException(
-        `netease stream url missing for ${songId}: code=${data.code}`,
+        `netease stream url missing for ${songId}: code=${item?.code ?? data.code}`,
       );
     }
     return item.url;
@@ -121,79 +114,72 @@ export class NeteaseMusicProvider {
 
   /** 给一首歌点红心。 */
   async like(session: ProviderSession, songId: string): Promise<boolean> {
-    const data = await this.weapiCall<{ code: number }>(
+    const data = await this.apiCall<{ code: number }>(
       session,
-      'https://music.163.com/weapi/radio/like',
+      'https://music.163.com/api/radio/like',
       {
         alg: 'itembased',
-        trackId: Number(songId),
-        like: true,
+        trackId: String(songId),
+        like: 'true',
+        time: '3',
       },
-      true,
     );
     return data.code === 200;
   }
 
   /** 标记「不喜欢」，私人 FM 会减少推荐。 */
   async unlike(session: ProviderSession, songId: string): Promise<boolean> {
-    const data = await this.weapiCall<{ code: number }>(
+    const data = await this.apiCall<{ code: number }>(
       session,
-      'https://music.163.com/weapi/radio/trash/add',
+      'https://music.163.com/api/radio/trash/add',
       {
         alg: 'itembased',
-        songId: Number(songId),
+        songId: String(songId),
+        time: '25',
       },
-      true,
     );
     return data.code === 200;
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────
 
-  private async weapiCall<T>(
+  private async apiCall<T>(
     session: ProviderSession,
     endpoint: string,
-    payload: Record<string, unknown>,
-    useCsrf = false,
+    payload: Record<string, string>,
   ): Promise<T> {
-    // The Electron side handles encryption + fetch; we just hand over the
-    // raw payload. The login window's page carries MUSIC_U / __csrf cookies
-    // and uses the browser's own fetch, so NetEase's anti-bot sees a real
-    // browser request and lets it through.
-    await this.proxy.ensureDiscovered();
-    if (!this.proxy.isAvailable()) {
-      throw new BadRequestException(
-        '网易云未连接：请通过 Electron 启动应用 (npm run dev) 完成网易云登录',
-      );
-    }
+    const cookie =
+      `MUSIC_U=${session.musicU}; os=pc` +
+      (session.csrfToken ? `; __csrf=${session.csrfToken}` : '');
 
-    let status = 0;
     let text = '';
+    let status = 0;
     try {
-      const r = await this.proxy.fetch(endpoint, {
-        payload,
-        csrfToken: useCsrf ? session.csrfToken : undefined,
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': UA,
+          Referer: 'https://music.163.com/',
+          Origin: 'https://music.163.com',
+          Accept: 'application/json, text/plain, */*',
+          Cookie: cookie,
+        },
+        body: new URLSearchParams(payload).toString(),
+        redirect: 'manual',
       });
-      status = r.status;
-      text = r.body;
+      status = res.status;
+      text = await res.text();
     } catch (err) {
-      // The Electron-side proxy returns 502 with a JSON body containing
-      // `message` for any error. The proxy body is included in the error
-      // message by netease-proxy.ts — extract it for the log.
-      const msg = (err as Error).message;
-      this.logger.warn(`proxy fetch failed: ${msg}`);
-      if (msg.includes('window not open')) {
-        throw new BadRequestException('请先在网易云登录窗口完成登录，再尝试听歌');
-      }
-      throw new BadRequestException(`网易云请求失败: ${msg}`);
+      throw new BadRequestException(
+        `网易云请求失败: ${(err as Error).message}`,
+      );
     }
 
     try {
       return JSON.parse(text) as T;
     } catch {
-      this.logger.error(
-        `netease response not JSON: ${text.slice(0, 200)}`,
-      );
+      this.logger.error(`netease response not JSON: ${text.slice(0, 200)}`);
       throw new BadRequestException(
         `网易云返回非 JSON（status=${status}，bodyLen=${text.length}）`,
       );
