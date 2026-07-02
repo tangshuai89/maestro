@@ -6,7 +6,6 @@ import {
   dislike,
   getAuthStatus,
   logout,
-  loginNeteaseCookie,
   loginQqCookie,
   PROVIDER_LABELS,
   QQ_QUALITY_LABELS,
@@ -499,38 +498,12 @@ export default function App() {
   };
 
   /**
-   * NetEase login: in Electron, open an embedded login window that captures
-   * MUSIC_U automatically. In a plain browser tab, fall back to the manual
-   * cookie paste flow.
+   * NetEase login: 服务端生成二维码，手机网易云 App 扫码确认，服务端轮询
+   * 拿到 MUSIC_U 入 session。浏览器和 Electron 统一走这个弹窗。
    */
-  const handleNeteaseLogin = async () => {
-    if (!isElectron || !window.electronAPI) {
-      setShowCookieFallback(true);
-      return;
-    }
+  const handleNeteaseLogin = () => {
     setError(null);
-    setLoggingIn(true);
-    try {
-      const result = await window.electronAPI.neteaseLogin();
-      if (!result.success || !result.musicU) {
-        setError(result.error ?? '登录已取消');
-        return;
-      }
-      const r = await loginNeteaseCookie(
-        result.musicU,
-        result.csrfToken,
-        result.extraCookies,
-      );
-      if (r.success) {
-        setAuth({ provider: 'netease', loggedIn: true, user: r.user });
-        // 登录成功立刻拉一首——之前那次失败是因为还没登录窗口
-        loadNextTrack();
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoggingIn(false);
-    }
+    setShowCookieFallback(true);
   };
 
   /**
@@ -598,6 +571,7 @@ export default function App() {
     setShowCookieFallback(false);
     if (!provider) return;
     setAuth({ provider, loggedIn: true, user });
+    loadNextTrack();
   };
 
   if (!provider) {
@@ -731,28 +705,21 @@ export default function App() {
               onClick={() => setSourceMenuOpen(false)}
             />
             <div className="source-menu" role="menu">
-              {(['qq', 'netease', 'deezer'] as MusicProvider[]).map((p) => {
-                const disabled = p === 'netease'; // 网易云反爬暂不可用
-                return (
-                  <button
-                    key={p}
-                    className={`source-menu-item${
-                      p === provider ? ' source-menu-item--active' : ''
-                    }${disabled ? ' source-menu-item--disabled' : ''}`}
-                    onClick={() => !disabled && switchToProvider(p)}
-                    disabled={disabled}
-                    role="menuitem"
-                  >
-                    <span className="source-menu-check">
-                      {p === provider ? '✓' : ''}
-                    </span>
-                    <span className="source-menu-label">
-                      {PROVIDER_LABELS[p]}
-                      {disabled ? '（暂不可用）' : ''}
-                    </span>
-                  </button>
-                );
-              })}
+              {(['qq', 'netease', 'deezer'] as MusicProvider[]).map((p) => (
+                <button
+                  key={p}
+                  className={`source-menu-item${
+                    p === provider ? ' source-menu-item--active' : ''
+                  }`}
+                  onClick={() => switchToProvider(p)}
+                  role="menuitem"
+                >
+                  <span className="source-menu-check">
+                    {p === provider ? '✓' : ''}
+                  </span>
+                  <span className="source-menu-label">{PROVIDER_LABELS[p]}</span>
+                </button>
+              ))}
             </div>
           </>
         )}

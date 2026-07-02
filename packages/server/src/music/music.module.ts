@@ -4,7 +4,6 @@ import { MusicService } from './music.service';
 import { QqMusicProvider } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { DeezerMusicProvider } from './deezer.provider';
-import { NeteaseProxy } from './netease-proxy';
 import { CommonModule } from '../common/common.module';
 
 @Module({
@@ -15,7 +14,6 @@ import { CommonModule } from '../common/common.module';
     QqMusicProvider,
     NeteaseMusicProvider,
     DeezerMusicProvider,
-    NeteaseProxy,
   ],
   exports: [MusicService],
 })

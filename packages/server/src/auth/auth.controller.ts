@@ -62,13 +62,42 @@ export class AuthController {
   // ── NetEase ───────────────────────────────────────────────────────────────
 
   /**
-   * Generate a QR image for convenience (用户可以在手机网易云上扫这个码登
-   * 录 music.163.com，但本服务器收不到通知）。前端主要用来在 modal 里展示
-   * "用手机扫码" 提示。
+   * 真·扫码登录第一步：生成二维码（unikey + dataURL 图片）。
+   * 前端展示后轮询 /auth/netease/qr/check。
    */
   @Post('netease/qr/start')
   async neteaseQrStart() {
-    return this.netease.generateQr();
+    return this.netease.qrStart();
+  }
+
+  /**
+   * 真·扫码登录第二步：轮询扫码状态。
+   * 800 过期 / 801 等待 / 802 已扫码待确认 / 803 成功（此时入 session）。
+   */
+  @Get('netease/qr/check')
+  async neteaseQrCheck(
+    @Query('key') key: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!key) {
+      throw new BadRequestException('Missing key');
+    }
+    const result = await this.netease.qrCheck(key);
+    if (result.code === 803 && result.session) {
+      const session = this.sessionService.resolve(req, res);
+      this.sessionService.setProvider(session, 'netease', result.session);
+      return {
+        code: 803,
+        message: result.message,
+        user: {
+          nickname: result.session.nickname,
+          avatarUrl: result.session.avatarUrl,
+          provider: 'netease' as const,
+        },
+      };
+    }
+    return { code: result.code, message: result.message };
   }
 
   /**
@@ -94,7 +123,6 @@ export class AuthController {
     const profile = await this.netease.loginWithCookie(
       body.musicU,
       body.csrfToken,
-      body.extraCookies,
     );
     this.sessionService.setProvider(session, 'netease', profile);
     return {
