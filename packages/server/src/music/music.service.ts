@@ -10,6 +10,7 @@ import { ProviderSession, Session } from '../common/session';
 import { QqMusicProvider, QqQuality } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { DeezerMusicProvider } from './deezer.provider';
+import { SpotifyMusicProvider } from './spotify.provider';
 import { type LyricLine } from '../common/lyrics';
 import type {
   UnifiedSearchResult,
@@ -71,6 +72,7 @@ export class MusicService {
     private readonly qq: QqMusicProvider,
     private readonly netease: NeteaseMusicProvider,
     private readonly deezer: DeezerMusicProvider,
+    private readonly spotify: SpotifyMusicProvider,
     private readonly match: MatchService,
   ) {}
 
@@ -89,6 +91,7 @@ export class MusicService {
       qq: fresh(),
       netease: fresh(),
       deezer: fresh(),
+      spotify: fresh(),
     };
     const fanOut: Record<string, MusicProvider[]> = {};
 
@@ -101,7 +104,7 @@ export class MusicService {
       const persistedProviders =
         (persisted as { providers?: Record<string, unknown> }).providers ??
         (persisted as unknown as Record<string, unknown>);
-      for (const key of ['qq', 'netease', 'deezer'] as MusicProvider[]) {
+      for (const key of ['qq', 'netease', 'deezer', 'spotify'] as MusicProvider[]) {
         const s = persistedProviders[key] as Partial<ProviderState> | undefined;
         if (!s) continue;
         // 稳健还原：无论持久化里是数组、旧版 Set→{} 空对象、还是 undefined，
@@ -151,6 +154,11 @@ export class MusicService {
           ...state.providers.deezer,
           liked: [...state.providers.deezer.liked],
           disliked: [...state.providers.deezer.disliked],
+        },
+        spotify: {
+          ...state.providers.spotify,
+          liked: [...state.providers.spotify.liked],
+          disliked: [...state.providers.spotify.disliked],
         },
       },
       fanOut: state.fanOut,
@@ -264,6 +272,9 @@ export class MusicService {
     if (provider === 'netease') {
       return this.netease.getStreamPath(ps!, trackId, opts?.quality ?? 'standard');
     }
+    if (provider === 'spotify') {
+      return this.spotify.getStreamPath(ps!, trackId);
+    }
     return this.deezer.getStreamPath(ps!, trackId);
   }
 
@@ -288,6 +299,9 @@ export class MusicService {
       // 网易云搜索需要登录态（cookie）。未登录时 requireProviderSession 抛 404。
       const ps = this.requireProviderSession(session, 'netease');
       tracks = await this.netease.search(ps!, kw);
+    } else if (provider === 'spotify') {
+      const ps = this.requireProviderSession(session, 'spotify');
+      tracks = await this.spotify.search(ps!, kw);
     } else {
       throw new BadRequestException(`搜索暂不支持 ${provider}`);
     }
@@ -370,6 +384,11 @@ export class MusicService {
       } else if (provider === 'netease') {
         const ps = this.requireProviderSession(session, 'netease');
         tracks = await this.netease.search(ps!, keyword, 30);
+      } else if (provider === 'spotify') {
+        // Spotify 搜索需要登录态；未登录时 requireProviderSession 抛 404，
+        // 这里 catch 起来返回空 tracks + error，不阻塞其他平台。
+        const ps = this.requireProviderSession(session, 'spotify');
+        tracks = await this.spotify.search(ps!, keyword, 30);
       } else {
         tracks = await this.deezer.search(
           session.providers.deezer ?? {},
@@ -488,8 +507,8 @@ export class MusicService {
     newLiked: boolean,
   ): Promise<void> {
     // NetEase 是唯一真正有公开 ❤ API 的平台；QQ / Deezer 走 radio-like
-    // / favorites API 都要登录态 + 签名，本地记录即可。Spotify 接入后
-    // 这边再补（届时会需要 PKCE access token 持久化到 session）。
+    // NetEase 和 Spotify 都有公开 ❤ API 同步；QQ / Deezer 走 radio-like
+    // / favorites API 都要登录态 + 签名，本地记录即可。
     if (provider === 'netease') {
       const ps = session.providers[provider];
       if (!ps?.musicU) return;
@@ -503,6 +522,22 @@ export class MusicService {
       } catch (err) {
         this.logger.warn(
           `netease like sync failed: ${(err as Error).message}`,
+        );
+      }
+      return;
+    }
+    if (provider === 'spotify') {
+      const ps = session.providers[provider];
+      if (!ps?.spotify) return;
+      try {
+        if (newLiked) {
+          await this.spotify.like(ps, trackId);
+        } else {
+          await this.spotify.unlike(ps, trackId);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `spotify like sync failed: ${(err as Error).message}`,
         );
       }
     }
@@ -657,6 +692,31 @@ export class MusicService {
       count: 0,
       error: 'qq_favorites_requires_signature_not_yet_implemented',
     });
+
+    // Spotify: 已登录 → 走 /me/tracks；未登录 → not_logged_in
+    try {
+      const ps = session.providers.spotify;
+      if (!ps?.spotify) {
+        sourceResults.push({
+          provider: 'spotify',
+          count: 0,
+          error: 'not_logged_in',
+        });
+      } else {
+        const tracks = await this.spotify.fetchLiked(ps, 1000);
+        sourceResults.push({ provider: 'spotify', count: tracks.length });
+        allTracks.push(...tracks);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `spotify fetchLiked failed: ${(err as Error).message}`,
+      );
+      sourceResults.push({
+        provider: 'spotify',
+        count: 0,
+        error: (err as Error).message,
+      });
+    }
 
     // Deezer: 匿名模式无 user 概念
     sourceResults.push({
