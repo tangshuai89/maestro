@@ -35,6 +35,9 @@ export class ConfigService {
     process.env.NETEASE_QR_POLL_MS ?? 1500,
   );
 
+  // DeepSeek（AI 推荐引擎，用户自带 Key，仅本地使用，不上传）
+  readonly deepSeekApiKey = process.env.DEEPSEEK_API_KEY ?? '';
+
   constructor() {
     fs.mkdirSync(this.storageDir, { recursive: true });
   }

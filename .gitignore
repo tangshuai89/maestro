@@ -9,3 +9,7 @@ Thumbs.db
 
 # Local session storage (cookies, MUSIC_U, etc.) — never commit
 packages/server/.storage/
+.storage/
+
+# Claude Code：只提交共享配置，本地个人权限/覆盖不提交
+.claude/settings.local.json
