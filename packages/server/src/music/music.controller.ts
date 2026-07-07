@@ -40,22 +40,45 @@ export class MusicController {
   }
 
   /**
-   * 搜索歌曲（歌手 / 歌名）。产品核心入口:GET /music/search?provider=qq&q=周杰伦
+   * 搜索歌曲。
+   *
+   * - 单平台: GET /music/search?provider=qq&q=周杰伦
+   * - 统一搜索(跨 QQ+网易云+Deezer): GET /music/search?q=周杰伦&page=1&pageSize=20
+   *
+   * 统一搜索同时查三个平台，合并去重，自动选有版权的平台为 bestSource。
+   * 单个平台挂了不影响其他平台——部分结果仍然返回。
    */
   @Get('search')
   async search(
-    @Query('provider') provider: string,
+    @Query('provider') provider: string | undefined,
     @Query('q') q: string,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @Query('keyword') keyword: string | undefined,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    const items = await this.musicService.searchTracks(
+    // q 参数兼容 'keyword' 别名
+    const query = q ?? keyword ?? '';
+
+    // 指定了 provider → 单平台搜索（现有行为，保持不变）
+    if (provider) {
+      const items = await this.musicService.searchTracks(
+        session,
+        normalizeProvider(provider),
+        query,
+      );
+      return { items };
+    }
+
+    // 未指定 provider → 统一跨平台搜索（新功能）
+    return this.musicService.searchUnified(
       session,
-      normalizeProvider(provider),
-      q ?? '',
+      query,
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 20,
     );
-    return { items };
   }
 
   /**

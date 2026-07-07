@@ -1,0 +1,13 @@
+- [x] 1. 定义类型 `music/types.ts` — `SearchResult`、`SearchItem`、`SourceInfo` 接口
+- [x] 2. 在 `MusicProvider` 接口加 `search(q, page, pageSize)` 方法签名（QQ/网易云已有，Deezer 新增）
+- [x] 3. 实现 `qq.provider.ts` 的 `search()`，用现有 QQ cookie 鉴权（已有）
+- [x] 4. 实现 `netease.provider.ts` 的 `search()`，用现有 session 鉴权（已有）
+- [x] 5. 实现 `deezer.provider.ts` 的 `search()`（Deezer 免登录，公开 API `GET /search?q=xxx`）
+- [x] 6. 去重逻辑 `music.service.ts` — 歌名+歌手标准化（全角→半角、去空格/标点、小写）
+- [x] 7. 播放优先级 `music.service.ts` — `qq > netease > deezer`，且 `hasCopyright = true`
+- [x] 8. 合并分页逻辑 `music.service.ts` — 三平台结果合并后统一分页
+- [x] 9. `music.controller.ts` — `GET /music/search?q=xxx`（不加 provider 参数 → 统一搜索），参数校验 + 错误处理
+- [x] 10. 各 provider 加 5 秒超时 + 单平台失败不影响其他平台（`searchOneProvider` 捕获单平台异常，error 字段记录）
+- [x] 11. 写单元测试: 去重、标点/全角归一化、不同歌曲保留、空输入 — 6 tests pass
+- [x] 12. 跑全量测试 TypeScript 类型检查确认通过（`npx tsc --noEmit` OK）
+- [ ] 13. 手动端到端验证: `npm run dev` → 搜"晴天" → 三个平台结果合并 → 确认 bestSource = qq

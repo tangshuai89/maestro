@@ -16,11 +16,13 @@
     "build:electron": "cd packages/electron && npm run build",
     "build": "npm run build:server && npm run build:renderer && npm run build:electron",
     "lint": "cd packages/renderer && npm run lint",
-    "typecheck": "cd packages/renderer && npm run typecheck"
+    "typecheck": "cd packages/renderer && npm run typecheck",
+    "test": "cd packages/server && ts-node src/music/search.test.ts"
   },
   "author": "tangshuai89",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.3",
+    "ts-node": "^10.9.2"
   }
 }

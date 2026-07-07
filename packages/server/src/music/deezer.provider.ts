@@ -107,6 +107,33 @@ export class DeezerMusicProvider {
    * @param opts.preset  'all' | 'asia' | 'pop' | 'rap' | 'rock' | 'dance' | 'rnb' | 'classical' | 'jazz'
    * @param count        一次性拿多少首
    */
+  /**
+   * Search tracks by keyword. Deezer's public search API is anonymous
+   * — no auth required. Returns up to `count` tracks.
+   *
+   * Endpoint: GET https://api.deezer.com/search?q={keyword}&limit={count}
+   */
+  async search(
+    _session: ProviderSession,
+    keyword: string,
+    count = 20,
+  ): Promise<Track[]> {
+    const url = new URL(`${DeezerMusicProvider.API}/search`);
+    url.searchParams.set('q', keyword);
+    url.searchParams.set('limit', String(Math.min(count, 50)));
+
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'QQ-FM-Player/1.0 (Deezer anonymous)' },
+    });
+    if (!res.ok) {
+      throw new Error(`deezer search failed: ${res.status}`);
+    }
+    const json = (await res.json()) as { data?: DeezerTrack[]; total?: number };
+    const data = json.data ?? [];
+    this.logger.log(`Deezer search "${keyword}" → ${data.length} 首`);
+    return data.map((t) => this.toTrack(t));
+  }
+
   async fetchRadioBatch(
     _session: ProviderSession,
     preset: string = 'all',

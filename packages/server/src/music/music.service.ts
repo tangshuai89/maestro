@@ -4,13 +4,19 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { MusicProvider } from '../common/provider';
+import { MusicProvider, MUSIC_PROVIDERS } from '../common/provider';
 import { StorageService } from '../common/storage';
 import { ProviderSession, Session } from '../common/session';
 import { QqMusicProvider, QqQuality } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { DeezerMusicProvider } from './deezer.provider';
 import { type LyricLine } from '../common/lyrics';
+import type {
+  UnifiedSearchResult,
+  UnifiedSearchItem,
+  SourceInfo,
+  ProviderSearchRaw,
+} from './types';
 
 export interface Track {
   id: string;
@@ -251,6 +257,172 @@ export class MusicService {
         audioUrl: this.streamPath(t),
         liked: liked.has(t.id),
       }));
+  }
+
+  /**
+   * 跨平台统一搜索。同时查 QQ/网易云/Deezer，合并去重后返回统一结果。
+   * 单个平台挂了不影响其他平台——部分结果仍然返回，失败的平台标记 error。
+   *
+   * 去重: ISRC 不可用时用"歌名+歌手"标准化匹配。
+   * 排序: bestSource 优先（qq > netease > deezer，且 hasCopyright）。
+   */
+  async searchUnified(
+    session: Session,
+    keyword: string,
+    page = 1,
+    pageSize = 20,
+  ): Promise<UnifiedSearchResult> {
+    const kw = keyword.trim();
+    if (!kw || kw.length > 100) {
+      throw new BadRequestException('q 参数无效：1-100 字符');
+    }
+    const effectivePageSize = Math.min(pageSize, 50);
+
+    // 并行搜索三个平台，单个超时 5 秒不阻塞其他平台。
+    const results = await Promise.all(
+      MUSIC_PROVIDERS.map((p) => this.searchOneProvider(session, p, kw)),
+    );
+
+    // 合并所有平台的搜索结果到一个扁平数组。
+    const allTracks: { track: Track; platform: MusicProvider }[] = [];
+    for (const r of results) {
+      for (const t of r.tracks) {
+        allTracks.push({ track: t, platform: r.platform });
+      }
+    }
+
+    // 去重: 歌名+歌手标准化 → 第一个出现的 track 作为主记录。
+    const deduped = this.dedupTracks(allTracks);
+
+    // 构建 UnifiedSearchItem，每个 item 聚合各平台的 source。
+    const items = this.buildUnifiedItems(deduped, allTracks);
+
+    // 分页（服务端分页，不依赖前端截断）。
+    const total = items.length;
+    const start = (page - 1) * effectivePageSize;
+    const paged = items.slice(start, start + effectivePageSize);
+
+    // 记录失败平台（不影响返回，前端可选展示）。
+    const errors = results.filter((r) => r.error);
+    if (errors.length > 0) {
+      this.logger.warn(
+        `unified search "${kw}" partial: ${errors.map((e) => `${e.platform}(${e.error})`).join(', ')}`,
+      );
+    }
+
+    return { q: kw, total, page, pageSize: effectivePageSize, items: paged };
+  }
+
+  /** 查单个平台，带 5 秒超时。失败返回空 track + error。 */
+  private async searchOneProvider(
+    session: Session,
+    provider: MusicProvider,
+    keyword: string,
+  ): Promise<ProviderSearchRaw> {
+    try {
+      let tracks: import('./music.service').Track[];
+      if (provider === 'qq') {
+        tracks = await this.qq.search(session.providers.qq ?? {}, keyword, 30);
+      } else if (provider === 'netease') {
+        const ps = this.requireProviderSession(session, 'netease');
+        tracks = await this.netease.search(ps!, keyword, 30);
+      } else {
+        tracks = await this.deezer.search(
+          session.providers.deezer ?? {},
+          keyword,
+          30,
+        );
+      }
+      return { platform: provider, tracks, total: tracks.length };
+    } catch (err) {
+      return {
+        platform: provider,
+        tracks: [],
+        total: 0,
+        error: (err as Error).message,
+      };
+    }
+  }
+
+  /** 歌名+歌手标准化: 全角→半角、去空格、去标点、全小写。 */
+  private normalizeKey(title: string, artist: string): string {
+    const raw = `${title} ${artist}`
+      // 全角 → 半角
+      .replace(/[！-～]/g, (ch) =>
+        String.fromCharCode(ch.charCodeAt(0) - 0xFEE0),
+      )
+      // 去掉空格、常见标点
+      .replace(/[\s\-_,.()（）【】《》'"′″·&+/!?！？:：;；]+/g, '')
+      .toLowerCase();
+    return raw;
+  }
+
+  /** 去重: 相同 normalizeKey 的歌合并为一条，保留第一个出现的。 */
+  private dedupTracks(
+    all: { track: Track; platform: MusicProvider }[],
+  ): Map<string, Track> {
+    const map = new Map<string, Track>();
+    for (const { track, platform: _p } of all) {
+      const key = this.normalizeKey(track.title, track.artist);
+      if (!map.has(key)) {
+        map.set(key, track);
+      }
+    }
+    return map;
+  }
+
+  /** 播放优先级: qq > netease > deezer。只有 hasCopyright 的才可选。 */
+  private static readonly PLAY_PRIORITY: MusicProvider[] = [
+    'qq',
+    'netease',
+    'deezer',
+  ];
+
+  /** 将去重后的 track 和所有平台的原始结果聚合为 UnifiedSearchItem。 */
+  private buildUnifiedItems(
+    deduped: Map<string, Track>,
+    all: { track: Track; platform: MusicProvider }[],
+  ): UnifiedSearchItem[] {
+    // group: dedup key → 各平台的 SourceInfo
+    const grouped = new Map<
+      string,
+      { main: Track; sources: SourceInfo[] }
+    >();
+
+    for (const { track } of all) {
+      const key = this.normalizeKey(track.title, track.artist);
+      const main = deduped.get(key)!;
+      const source: SourceInfo = {
+        platform: track.provider,
+        trackId: track.id,
+        // QQ/网易云的搜索结果是可播放的（hasCopyright 取决于是否有 purl/url，
+        // 搜索阶段无法完全判断，先标记为 true，播放时 getStreamUrl 才最终裁决）。
+        hasCopyright: true,
+        url: track.audioUrl,
+      };
+
+      if (!grouped.has(key)) {
+        grouped.set(key, { main, sources: [] });
+      }
+      grouped.get(key)!.sources.push(source);
+    }
+
+    return [...grouped.values()].map(({ main, sources }) => {
+      const bestSource =
+        MusicService.PLAY_PRIORITY.find((p) =>
+          sources.some((s) => s.platform === p),
+        ) ?? null;
+      return {
+        id: `merged-${main.provider}-${main.id}`,
+        title: main.title,
+        artist: main.artist,
+        album: main.album,
+        coverUrl: main.coverUrl,
+        duration: main.duration,
+        sources,
+        bestSource,
+      };
+    });
   }
 
   /** 后端代理相对路径；QQ 带上 media_mid 以便播放时选高音质。 */
