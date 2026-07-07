@@ -151,10 +151,21 @@ function makeTrack(
   console.log('✅ 8. bestSource 降级到 Deezer');
 }
 
-// ── 9. PLAY_PRIORITY 顺序：qq > netease > deezer ─────────────
+// ── 9. PLAY_PRIORITY 顺序：qq > netease > deezer > spotify ────
 {
-  assert.deepStrictEqual(PLAY_PRIORITY, ['qq', 'netease', 'deezer']);
-  console.log('✅ 9. 播放优先级常量');
+  assert.deepStrictEqual(PLAY_PRIORITY, ['qq', 'netease', 'deezer', 'spotify']);
+  console.log('✅ 9. 播放优先级常量（含 spotify）');
+}
+
+// ── 9b. Spotify 能当 bestSource（回归：曾漏在 PLAY_PRIORITY）────
+{
+  const all = [
+    { track: makeTrack('spotify', 'sp-1', 'Only On Spotify', 'X'), platform: 'spotify' },
+  ];
+  const deduped = dedupTracks(all);
+  const items = buildUnifiedItems(deduped, all);
+  assert.strictEqual(items[0].bestSource, 'spotify', '仅 Spotify 时 bestSource 必须是 spotify，不能是 null');
+  console.log('✅ 9b. Spotify 可当 bestSource');
 }
 
 // ── 10. 各 source 都有 url / hasCopyright 默认 true ──────────
@@ -237,4 +248,4 @@ function makeTrack(
   console.log('✅ 12. fan-out unlike 幂等（不动未心过的平台）');
 }
 
-console.log('\n🎉 全部 12 个测试通过');
+console.log('\n🎉 全部 13 个测试通过');

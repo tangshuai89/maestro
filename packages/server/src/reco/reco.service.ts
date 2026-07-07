@@ -256,16 +256,9 @@ export class RecoService {
         // fall through
       }
     }
-    // strategy 3: 找首个 [ ... ] 块
-    const arrayStart = raw.indexOf('[');
-    const arrayEnd = raw.lastIndexOf(']');
-    if (arrayStart >= 0 && arrayEnd > arrayStart) {
-      try {
-        return this.extractArray(JSON.parse(raw.slice(arrayStart, arrayEnd + 1)));
-      } catch {
-        // fall through
-      }
-    }
+    // 之前还有 strategy 3（找首个 [ ... ] 块）——它会被模型输出里的任何
+    // 方括号噪声污染（explanations / 引用标记 / 多段输出），slice 出来
+    // 不是合法 JSON 时直接抛，对 retry 没帮助。删掉。
     this.logger.warn(`recommend parse failed, raw: ${raw.slice(0, 200)}`);
     throw new BadRequestException('recommend_parse_failed: 模型响应无法解析');
   }

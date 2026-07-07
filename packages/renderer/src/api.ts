@@ -111,9 +111,9 @@ export async function toggleLike(
  * Heart fan-out：把一个 unified track 的 ❤ 一次性写到所有 hasCopyright 的平台。
  * sources 是 UnifiedSearchItem.sources 列表（去掉 hasCopyright=false 的）。
  *
- * 返回的 fannedOutTo 是这次实际写入/清掉的平台——前端 UI 可以据此展示
- * "❤ (3)" 这种小角标，告诉用户心动了多少个平台。失败的部分不在列表里
- * （单平台同步失败不影响整体 success）。
+ * 返回的 fannedOutTo：liked=true 时是当前 mergedId 心动过的**全部平台**
+ * （含之前单独心过的），UI 角标直接用它的 length 表达"这首歌在几个平台有 ❤"；
+ * liked=false 时是空数组。
  */
 export async function fanOutLike(
   mergedId: string,

@@ -23,6 +23,15 @@ import {
   normalizeKey,
 } from './search.util';
 import { MatchService } from '../match/match.service';
+import { withTimeout } from '../common/timeout';
+
+/** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
+ *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
+const UNIFIED_SEARCH_TIMEOUT_MS = 5_000;
+
+/** fanOut 状态上限——超过这个数 loadState 时按插入顺序淘汰最早的。
+ *  5000 对应重度用户 1-2 年的累计 ❤ 量，再多就是滥用。 */
+const FANOUT_MAX = 5_000;
 
 export interface Track {
   id: string;
@@ -128,11 +137,32 @@ export class MusicService {
           if (Array.isArray(v)) {
             fanOut[k] = v.filter(
               (p): p is MusicProvider =>
-                p === 'qq' || p === 'netease' || p === 'deezer',
+                p === 'qq' || p === 'netease' || p === 'deezer' || p === 'spotify',
             );
           }
         }
       }
+    }
+    // fanOut GC：
+    //  1) orphan：mergedId 对应的所有 platform 都没在 liked 集合里 → 删
+    //     （理论上 fanOutLike 写时已经保证一致，但用户可能在外部 JSON
+    //     改过 state.json，或者 unified-search mergedId 重建后变孤儿）
+    //  2) LRU 上限：超过 FANOUT_MAX 就按插入顺序淘汰最早的
+    // （unified track 是按"被心动"的顺序写入的，对应 Object 插入顺序）
+    for (const [mergedId, platforms] of Object.entries(fanOut)) {
+      const stillLiked = platforms.some((p) => providers[p].liked.size > 0);
+      // 粗粒度判断：只要该平台有任意 liked 就算 mergedId 仍可能有效。
+      // 实际"哪首歌在哪个平台 liked"是精确匹配；这里做廉价启发式，
+      // 误删概率低（删了用户重新 heart 即可）。
+      const orphan = !stillLiked;
+      if (orphan) {
+        delete fanOut[mergedId];
+      }
+    }
+    const keys = Object.keys(fanOut);
+    if (keys.length > FANOUT_MAX) {
+      const drop = keys.length - FANOUT_MAX;
+      for (let i = 0; i < drop; i++) delete fanOut[keys[i]];
     }
     return { providers, fanOut };
   }
@@ -334,7 +364,12 @@ export class MusicService {
     if (!kw || kw.length > 100) {
       throw new BadRequestException('q 参数无效：1-100 字符');
     }
-    const effectivePageSize = Math.min(pageSize, 50);
+    // 输入清洗：page / pageSize 来自 query string，可能是 "abc"/"-1"/"999"。
+    // 不防御性 cast 直接传到 slice 会产生 NaN slice / 负 length 数组。
+    const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    const effectivePageSize = Number.isFinite(pageSize)
+      ? Math.min(50, Math.max(1, Math.floor(pageSize)))
+      : 20;
 
     // 并行搜索三个平台，单个超时 5 秒不阻塞其他平台。
     const results = await Promise.all(
@@ -357,7 +392,7 @@ export class MusicService {
 
     // 分页（服务端分页，不依赖前端截断）。
     const total = items.length;
-    const start = (page - 1) * effectivePageSize;
+    const start = (safePage - 1) * effectivePageSize;
     const paged = items.slice(start, start + effectivePageSize);
 
     // 记录失败平台（不影响返回，前端可选展示）。
@@ -368,7 +403,7 @@ export class MusicService {
       );
     }
 
-    return { q: kw, total, page, pageSize: effectivePageSize, items: paged };
+    return { q: kw, total, page: safePage, pageSize: effectivePageSize, items: paged };
   }
 
   /** 查单个平台，带 5 秒超时。失败返回空 track + error。 */
@@ -377,46 +412,55 @@ export class MusicService {
     provider: MusicProvider,
     keyword: string,
   ): Promise<ProviderSearchRaw> {
-    try {
-      let tracks: import('./music.service').Track[];
-      if (provider === 'qq') {
-        tracks = await this.qq.search(session.providers.qq ?? {}, keyword, 30);
-      } else if (provider === 'netease') {
-        const ps = this.requireProviderSession(session, 'netease');
-        tracks = await this.netease.search(ps!, keyword, 30);
-      } else if (provider === 'spotify') {
-        // Spotify 搜索需要登录态；未登录时 requireProviderSession 抛 404，
-        // 这里 catch 起来返回空 tracks + error，不阻塞其他平台。
-        const ps = this.requireProviderSession(session, 'spotify');
-        tracks = await this.spotify.search(ps!, keyword, 30);
-      } else {
-        tracks = await this.deezer.search(
-          session.providers.deezer ?? {},
-          keyword,
-          30,
-        );
-      }
-      // 统一搜索结果里 sources[].url 要带可播放的代理路径——provider.search()
-      // 返回的 track.audioUrl 可能是空（QQ/网易云 URL 短期过期，播放时由
-      // getStreamUrl 重新拿），所以这里替换成后端代理的相对路径，前端拼 base
-      // 后直接当 <audio src> 用。Dealer 的 audioUrl 已是 http 完整 URL（30s
-      // 预览），保留原值。
-      tracks = tracks.map((t) => ({
-        ...t,
-        audioUrl:
-          provider === 'deezer' && t.audioUrl && t.audioUrl.startsWith('http')
-            ? t.audioUrl
-            : this.streamPath(t),
-      }));
-      return { platform: provider, tracks, total: tracks.length };
-    } catch (err) {
-      return {
-        platform: provider,
-        tracks: [],
-        total: 0,
-        error: (err as Error).message,
-      };
+    return withTimeout(
+      () => this.doSearchOneProvider(session, provider, keyword),
+      UNIFIED_SEARCH_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `unified search "${keyword}" on ${provider} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+        ),
+    ).then(
+      (res) => res ?? { platform: provider, tracks: [], total: 0, error: 'timeout' },
+    );
+  }
+
+  /** 真正发请求的逻辑。剥离出来便于在 searchOneProvider 外面套 withTimeout。 */
+  private async doSearchOneProvider(
+    session: Session,
+    provider: MusicProvider,
+    keyword: string,
+  ): Promise<ProviderSearchRaw> {
+    let tracks: import('./music.service').Track[];
+    if (provider === 'qq') {
+      tracks = await this.qq.search(session.providers.qq ?? {}, keyword, 30);
+    } else if (provider === 'netease') {
+      const ps = this.requireProviderSession(session, 'netease');
+      tracks = await this.netease.search(ps!, keyword, 30);
+    } else if (provider === 'spotify') {
+      // Spotify 搜索需要登录态；未登录时 requireProviderSession 抛 404，
+      // 这里 catch 起来返回空 tracks + error，不阻塞其他平台。
+      const ps = this.requireProviderSession(session, 'spotify');
+      tracks = await this.spotify.search(ps!, keyword, 30);
+    } else {
+      tracks = await this.deezer.search(
+        session.providers.deezer ?? {},
+        keyword,
+        30,
+      );
     }
+    // 统一搜索结果里 sources[].url 要带可播放的代理路径——provider.search()
+    // 返回的 track.audioUrl 可能是空（QQ/网易云 URL 短期过期，播放时由
+    // getStreamUrl 重新拿），所以这里替换成后端代理的相对路径，前端拼 base
+    // 后直接当 <audio src> 用。Dealer 的 audioUrl 已是 http 完整 URL（30s
+    // 预览），保留原值。
+    tracks = tracks.map((t) => ({
+      ...t,
+      audioUrl:
+        provider === 'deezer' && t.audioUrl && t.audioUrl.startsWith('http')
+          ? t.audioUrl
+          : this.streamPath(t),
+    }));
+    return { platform: provider, tracks, total: tracks.length };
   }
 
   /** 歌名+歌手标准化: 全角→半角、去空格、去标点、全小写。
@@ -480,9 +524,7 @@ export class MusicService {
 
   /**
    * 在给定 state 上「反转」某平台的 like 状态，返回反转前是否已 like。
-   * 纯内存操作（不 IO）。复用于单平台 toggleLike 和 fanOutLike——必须
-   * 共享同一 state 对象，否则 fanOutLike 里调 toggleLike 会出现"内层
-   * 保存后外层再保存覆盖回去"的状态漂移 bug。
+   * 纯内存操作（不 IO）。单平台 toggleLike 用它——用户点 ❤ 是"翻转"语义。
    */
   private applyLikeToggle(
     state: MusicSessionState,
@@ -497,6 +539,33 @@ export class MusicService {
       psState.liked.add(trackId);
     }
     return wasLiked;
+  }
+
+  /**
+   * 在给定 state 上把某平台的 like 状态「设为」目标值（幂等），返回是否
+   * 发生了改变。fanOutLike 用它——fan-out 是"确保为目标态"语义，不是翻转：
+   * 重复 like 一首已心动的歌不应把它 unlike。
+   *
+   * （回归测试 like.e2e #4 曾因 fanOutLike 误用 applyLikeToggle 翻转导致
+   * "重复 like → 实际 unlike" 的 bug。）
+   */
+  private setLike(
+    state: MusicSessionState,
+    provider: MusicProvider,
+    trackId: string,
+    liked: boolean,
+  ): boolean {
+    const psState = state.providers[provider];
+    const has = psState.liked.has(trackId);
+    if (liked && !has) {
+      psState.liked.add(trackId);
+      return true;
+    }
+    if (!liked && has) {
+      psState.liked.delete(trackId);
+      return true;
+    }
+    return false; // 已是目标态，无改变
   }
 
   /** 把 liked 状态同步到远端平台（best-effort，失败仅记录日志）。 */
@@ -575,21 +644,33 @@ export class MusicService {
     mergedId: string,
     sources: Array<{ platform: MusicProvider; trackId: string }>,
     liked: boolean,
-  ): Promise<{ success: boolean; liked: boolean; fannedOutTo: MusicProvider[] }> {
+  ): Promise<{
+    success: boolean;
+    liked: boolean;
+    /**
+     * 当前 mergedId 在所有平台上心动过的**完整列表**——也就是
+     * `state.fanOut[mergedId]` 的真值。UI 拿这个当 ❤ 角标数。
+     *
+     * 之前实现里 fannedOutTo 只含"本次 flip"的平台，但用户可能之前
+     * 单平台心过同一个 track，那部分不计入——导致 UI 显示 "1❤" 实际
+     * 是 2 平台已 ❤ 的歧义。改成"全集"消除歧义。
+     */
+    fannedOutTo: MusicProvider[];
+  }> {
     const state = this.loadState(session);
-    const fannedOutTo: MusicProvider[] = [];
+    /** 本次调用实际 flip 状态的平台（用于 sync remote / 日志）。 */
+    const flipped: MusicProvider[] = [];
 
     if (liked) {
+      // 当前 mergedId 已心动的平台（保持）。这次 sources 里没列的旧
+      // 平台也保留——避免"老 fan-out 记录被覆盖"丢状态。
+      const current = new Set(state.fanOut[mergedId] ?? []);
       for (const src of sources) {
+        current.add(src.platform);
         try {
-          const wasLiked = this.applyLikeToggle(
-            state,
-            src.platform,
-            src.trackId,
-          );
-          // 只有"写入"（wasLiked=false）才计入 fannedOutTo——如果用户
-          // 之前已经单独心过这个 track，重复心动不应再被视作"新 fan-out"。
-          if (!wasLiked) fannedOutTo.push(src.platform);
+          // setLike 是幂等的：已心动的不会被翻回 unlike
+          const changed = this.setLike(state, src.platform, src.trackId, true);
+          if (changed) flipped.push(src.platform);
           void this.syncLikeRemote(session, src.platform, src.trackId, true);
         } catch (err) {
           this.logger.warn(
@@ -597,7 +678,7 @@ export class MusicService {
           );
         }
       }
-      state.fanOut[mergedId] = fannedOutTo;
+      state.fanOut[mergedId] = [...current];
     } else {
       // 取消心动：按之前 fanOut 记录的平台列表 unlike（幂等）。
       const toUnlike = state.fanOut[mergedId] ?? [];
@@ -605,13 +686,8 @@ export class MusicService {
         const src = sources.find((s) => s.platform === platform);
         if (!src) continue;
         try {
-          const wasLiked = this.applyLikeToggle(
-            state,
-            platform,
-            src.trackId,
-          );
-          // 同样：只有"清掉"（wasLiked=true）才计入。
-          if (wasLiked) fannedOutTo.push(platform);
+          const changed = this.setLike(state, platform, src.trackId, false);
+          if (changed) flipped.push(platform);
           void this.syncLikeRemote(session, platform, src.trackId, false);
         } catch (err) {
           this.logger.warn(
@@ -623,6 +699,8 @@ export class MusicService {
     }
 
     this.saveState(session, state);
+    // 返回"全集"——liked=true 时就是当前 fan-out 列表；liked=false 时空数组
+    const fannedOutTo = liked ? state.fanOut[mergedId] ?? [] : [];
     return { success: true, liked, fannedOutTo };
   }
 

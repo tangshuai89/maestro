@@ -50,8 +50,11 @@ export interface FanOutLikeRequest {
   liked: boolean;
 }
 
-/** Heart fan-out 响应。fannedOutTo 列这次实际写入/清掉的平台——失败的平台
- *  不在列表里（best-effort 同步：单平台挂了不影响整体）。 */
+/** Heart fan-out 响应。
+ *  - liked=true 时 fannedOutTo = 当前 mergedId 心动过的**全部平台**（含之前
+ *    单独心过的，非仅本次 flip）——UI 角标直接用它的 length，语义 = 这首歌
+ *    在几个平台有 ❤。
+ *  - liked=false 时 fannedOutTo = []（全部清掉）。 */
 export interface FanOutLikeResponse {
   success: boolean;
   liked: boolean;

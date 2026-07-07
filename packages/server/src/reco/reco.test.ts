@@ -66,13 +66,18 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
   console.log('✅ 3. 响应解析: ```json 围栏 retry');
 }
 
-// ── 4. 响应解析：前后有多余文字 + 首个 [...] 块 ─────────
+// ── 4. 响应解析：prose 包裹裸数组（无围栏）→ 抛错 ────────
+// 曾经用"首个 [ 到末个 ]"切片能救这种，但那个策略对括号噪声
+// （[1] 引用 / 多段数组）会静默抓垃圾，比干净失败更坏——已删除。
+// DeepSeek 调用侧已设 response_format: json_object 强制结构化输出，
+// 所以裸 prose-wrapped 实际几乎不会发生；真发生了就 fail loud + retry。
 {
-  const items = svc['parseRecommendations'](
-    '我推荐：[{"title":"A","artist":"B"}]，希望你喜欢',
+  assert.throws(
+    () => svc['parseRecommendations']('我推荐：[{"title":"A","artist":"B"}]，希望你喜欢'),
+    /recommend_parse_failed/,
+    'prose 包裹无围栏应干净失败（不再脆弱切片）',
   );
-  assert.strictEqual(items.length, 1);
-  console.log('✅ 4. 响应解析: 多余文字 + 数组块提取');
+  console.log('✅ 4. 响应解析: prose 裸数组 → 干净失败（删了脆弱切片）');
 }
 
 // ── 5. 响应解析：全坏 → 抛错 ────────────────────────────

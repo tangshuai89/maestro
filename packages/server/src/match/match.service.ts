@@ -5,6 +5,7 @@ import { DeezerMusicProvider } from '../music/deezer.provider';
 import type { Track } from '../music/music.service';
 import type { UnifiedSearchItem } from '../music/types';
 import type { MusicProvider } from '../common/provider';
+import { withTimeout } from '../common/timeout';
 import { buildUnifiedItems, dedupTracks, normalizeKey } from '../music/search.util';
 
 /** 跨平台匹配候选 + 置信度。 */
@@ -107,7 +108,7 @@ export class MatchService {
   }
 
   /**
-   * 用 Promise.race 给单平台搜索加超时。返回 null 表示失败。
+   * 用 withTimeout 给单平台搜索加超时。返回 null 表示失败。
    * 内部吞掉异常（避免 reject 污染 Promise.all）。
    */
   private async searchWithTimeout(
@@ -115,47 +116,40 @@ export class MatchService {
     title: string,
     artist: string,
   ): Promise<Track | null> {
-    const searchPromise = (async () => {
-      try {
-        if (provider === 'qq') {
-          const tracks = await this.qq.search({}, `${title} ${artist}`, 5);
-          return tracks[0] ?? null;
-        }
-        if (provider === 'netease') {
-          // NetEase.search 需要登录态，未登录时直接返回 null（不要 throw）
-          // 实际上 netease.search 会 throw NotFoundException，我们 catch 掉
-          try {
-            const tracks = await this.netease.search({} as never, `${title} ${artist}`, 5);
+    return withTimeout(
+      async () => {
+        try {
+          if (provider === 'qq') {
+            const tracks = await this.qq.search({}, `${title} ${artist}`, 5);
             return tracks[0] ?? null;
-          } catch {
-            return null;
           }
+          if (provider === 'netease') {
+            try {
+              const tracks = await this.netease.search(
+                {} as never,
+                `${title} ${artist}`,
+                5,
+              );
+              return tracks[0] ?? null;
+            } catch {
+              return null;
+            }
+          }
+          const tracks = await this.deezer.search({}, `${title} ${artist}`, 5);
+          return tracks[0] ?? null;
+        } catch (err) {
+          this.logger.debug(
+            `${provider} search failed: ${(err as Error).message}`,
+          );
+          return null;
         }
-        const tracks = await this.deezer.search({}, `${title} ${artist}`, 5);
-        return tracks[0] ?? null;
-      } catch (err) {
-        this.logger.debug(
-          `${provider} search failed: ${(err as Error).message}`,
-        );
-        return null;
-      }
-    })();
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise<null>((resolve) => {
-      timer = setTimeout(() => {
+      },
+      SEARCH_TIMEOUT_MS,
+      () =>
         this.logger.warn(
           `${provider} search timed out (>${SEARCH_TIMEOUT_MS}ms) for "${title}"`,
-        );
-        resolve(null);
-      }, SEARCH_TIMEOUT_MS);
-    });
-
-    try {
-      return await Promise.race([searchPromise, timeoutPromise]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+        ),
+    );
   }
 
   /**

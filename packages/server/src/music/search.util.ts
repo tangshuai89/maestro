@@ -38,8 +38,15 @@ export function dedupTracks(all: RawSearchEntry[]): Map<string, Track> {
   return map;
 }
 
-/** 播放优先级: qq > netease > deezer。只有 hasCopyright 的才可选。 */
-export const PLAY_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
+/** 播放优先级: qq > netease > deezer > spotify。只有 hasCopyright 的才可选。
+ *  Spotify 排最后——30s 预览是它的硬限制，能用但不优；QQ/网易云通常有完整曲流。
+ *  ⚠️ 加新 provider 时务必在这里 append，否则 unified 永远拿不到它当 bestSource。 */
+export const PLAY_PRIORITY: MusicProvider[] = [
+  'qq',
+  'netease',
+  'deezer',
+  'spotify',
+];
 
 /** 将去重后的 track 和所有平台的原始结果聚合为 UnifiedSearchItem。 */
 export function buildUnifiedItems(

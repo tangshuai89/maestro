@@ -32,6 +32,7 @@ import NeteaseCookieModal from './NeteaseCookieModal';
 import SearchPanel from './SearchPanel';
 import ErrorPanel from './ErrorPanel';
 import LyricsPanel from './LyricsPanel';
+import RecoKeyModal from './RecoKeyModal';
 import './App.css';
 
 const PROVIDER_STORAGE_KEY = 'music-provider';
@@ -887,8 +888,9 @@ export default function App() {
         .map((s) => ({ platform: s.platform, trackId: s.trackId }));
       try {
         const result = await fanOutLike(q.mergedId, sources, nextLiked);
-        // 成功：更新 ❤ 角标数。fannedOutTo 这次实际写到的平台数——
-        // 失败的不在数组里，所以这个数 ≤ sources.length。
+        // 成功：更新 ❤ 角标数。fannedOutTo 现在是"当前 mergedId 心动过的
+        // 全部平台"（含之前单独心过的），不再是"本次 flip"——所以角标数
+        // 语义明确 = 这首歌在多少个平台上有 ❤。
         setFanOutCount(nextLiked ? result.fannedOutTo.length : 0);
         setTrack((prev) => (prev ? { ...prev, liked: nextLiked } : prev));
       } catch (e) {
@@ -1529,78 +1531,6 @@ export default function App() {
           onClose={() => setRecoKeyOpen(false)}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * 极简 DeepSeek key 输入弹窗。
- * 故意做成内联组件：只有"输入 + 保存"两步，单独抽文件不值。
- * 留 "DeepSeek 平台" 链接让用户去申请 key。
- */
-function RecoKeyModal({
-  onSave,
-  onClose,
-}: {
-  onSave: (key: string) => void;
-  onClose: () => void;
-}) {
-  const [key, setKey] = useState('');
-  return (
-    <div className="search-overlay" onClick={onClose}>
-      <div className="search-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="search-bar">
-          <span style={{ flex: 1, fontSize: 14, color: '#f2f2f5' }}>
-            设置 DeepSeek API Key
-          </span>
-          <button className="search-close" onClick={onClose} aria-label="关闭">
-            ×
-          </button>
-        </div>
-        <div style={{ padding: '16px 14px' }}>
-          <p style={{ fontSize: 12, color: '#9a9aa2', margin: '0 0 10px' }}>
-            需要 DeepSeek API key 才能用 AI 推荐。
-            没账号先去{' '}
-            <a
-              href="https://platform.deepseek.com"
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: '#31c27c' }}
-            >
-              platform.deepseek.com
-            </a>{' '}
-            申请一个，存到本地不外发。
-          </p>
-          <input
-            autoFocus
-            type="password"
-            className="search-input"
-            placeholder="sk-..."
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onSave(key);
-            }}
-            style={{ width: '100%' }}
-          />
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button
-              className="search-go"
-              onClick={() => onSave(key)}
-              disabled={!key || key.length < 8}
-            >
-              保存
-            </button>
-            <button
-              className="search-close"
-              onClick={onClose}
-              style={{ width: 'auto', padding: '0 14px' }}
-            >
-              取消
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

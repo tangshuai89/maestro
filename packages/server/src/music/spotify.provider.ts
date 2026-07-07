@@ -76,6 +76,10 @@ export class SpotifyMusicProvider {
     { codeVerifier: string; createdAt: number }
   >();
 
+  /** PKCE flow TTL：10 分钟。超过这个时间视为过期，exchangeCode 拒绝。
+   *  同时用于 lazy GC——startAuth 时清掉所有 >TTL 的 orphan。 */
+  private static readonly PKCE_TTL_MS = 10 * 60_000;
+
   constructor() {}
 
   // ── 配置 / 鉴权基础 ─────────────────────────────────────
@@ -164,6 +168,9 @@ export class SpotifyMusicProvider {
     authorizeUrl: string;
     state: string;
   } {
+    // Lazy GC：每次 start 都清掉过期的 orphan，避免用户多次开启又不回调
+    // 时 Map 无限增长。检查 200ms 内开销可忽略。
+    this.evictExpiredFlows();
     const codeVerifier = base64UrlEncode(randomBytes(32));
     const codeChallenge = base64UrlEncode(
       sha256(Buffer.from(codeVerifier)),
@@ -184,6 +191,16 @@ export class SpotifyMusicProvider {
     return { authorizeUrl: url.toString(), state };
   }
 
+  /** 删掉 >TTL 的 flow entries。startAuth 入口 lazy 调用。 */
+  private evictExpiredFlows(): void {
+    const cutoff = Date.now() - SpotifyMusicProvider.PKCE_TTL_MS;
+    for (const [state, flow] of this.pendingFlows) {
+      if (flow.createdAt < cutoff) {
+        this.pendingFlows.delete(state);
+      }
+    }
+  }
+
   /**
    * 用户授权后回调。用 code + verifier 换 token。state 必须匹配之前存的 verifier。
    * 返回 { token, profile }。失败抛 BadRequestException。
@@ -200,7 +217,7 @@ export class SpotifyMusicProvider {
     }
     this.pendingFlows.delete(state);
     // PKCE flow TTL: 10 分钟
-    if (Date.now() - flow.createdAt > 10 * 60_000) {
+    if (Date.now() - flow.createdAt > SpotifyMusicProvider.PKCE_TTL_MS) {
       throw new BadRequestException('expired_state：请重新登录');
     }
     const clientId = process.env.SPOTIFY_CLIENT_ID;
