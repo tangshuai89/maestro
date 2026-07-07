@@ -976,6 +976,23 @@
               0 0 0 8px color-mix(in oklab, var(--cover-accent) 28%, transparent);
 }
 
+/** 推荐按钮 + 未配 key 的小红点提示。复用 .titlebar-btn 基础样式。 */
+.reco-btn {
+  position: relative;
+}
+
+.reco-key-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff7b7b;
+  box-shadow: 0 0 0 2px rgba(24, 24, 28, 0.96);
+  pointer-events: none;
+}
+
 .like-btn.liked {
   color: var(--heart-active);
 }

@@ -11,6 +11,9 @@ import {
   loginNeteaseCookie,
   fetchLyrics,
   pickPlayableTrack,
+  fetchRecoStatus,
+  runReco,
+  saveRecoKey,
   PROVIDER_LABELS,
   QQ_QUALITY_LABELS,
 } from './api';
@@ -206,6 +209,10 @@ export default function App() {
   // Lyrics: fetched on track change, cleared on source switch.
   const [lyrics, setLyrics] = useState<LyricLine[] | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
+  // DeepSeek 推荐：状态 + key 输入弹窗
+  const [recoStatus, setRecoStatus] = useState<{ configured: boolean; librarySize: number } | null>(null);
+  const [recoRunning, setRecoRunning] = useState(false);
+  const [recoKeyOpen, setRecoKeyOpen] = useState(false);
   const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const QQ_QUALITY_KEY = 'musicbox:qq-quality';
   const [qqQuality, setQqQuality] = useState<QqQuality>(() => {
@@ -393,6 +400,15 @@ export default function App() {
       .then(setDeezerEditorials)
       .catch(() => setDeezerEditorials([]));
   }, []);
+
+  // Fetch reco status (DeepSeek key configured + library size) once on mount
+  // + 每次用户保存 key 之后（用 version 触发刷新）。
+  const [recoStatusVersion, setRecoStatusVersion] = useState(0);
+  useEffect(() => {
+    fetchRecoStatus()
+      .then(setRecoStatus)
+      .catch(() => setRecoStatus({ configured: false, librarySize: 0 }));
+  }, [recoStatusVersion]);
 
   // OAuth callback handler
   useEffect(() => {
@@ -980,6 +996,62 @@ export default function App() {
   };
 
   /**
+   * 推荐按钮：先看 status，没 key 弹 key 输入；有了直接跑。
+   * 跑完把 UnifiedSearchItem[] 当搜索队列灌进 handlePlaySearch 那条路。
+   */
+  const handleReco = useCallback(async () => {
+    setError(null);
+    // 重新拉一次 status（防 stale）
+    let status = recoStatus;
+    try {
+      status = await fetchRecoStatus();
+      setRecoStatus(status);
+    } catch (e) {
+      setError(`推荐状态查询失败：${(e as Error).message}`);
+      return;
+    }
+    if (!status.configured) {
+      setRecoKeyOpen(true);
+      return;
+    }
+    if (status.librarySize === 0) {
+      setError('先 POST /music/library/import 导入你的"我的喜欢"再来推荐');
+      return;
+    }
+    setRecoRunning(true);
+    try {
+      const result = await runReco({ count: 10 });
+      if (result.items.length === 0) {
+        setError('推荐没拿到结果，换个心情/语言试试？');
+        return;
+      }
+      // 走搜索队列的同一条播放链路
+      handlePlaySearch(result.items, 0);
+    } catch (e) {
+      setError(`推荐失败：${(e as Error).message}`);
+    } finally {
+      setRecoRunning(false);
+    }
+  }, [recoStatus, handlePlaySearch]);
+
+  const handleSaveRecoKey = useCallback(async (key: string) => {
+    if (!key || key.length < 8) {
+      setError('key 太短');
+      return;
+    }
+    try {
+      const r = await saveRecoKey(key);
+      setRecoKeyOpen(false);
+      setRecoStatusVersion((v) => v + 1);
+      setError(null);
+      // 不把 tail 在 UI 上展示，避免提示"已设置"。用户可以从 status 推断。
+      void r; // 仅用于触发刷新
+    } catch (e) {
+      setError(`保存 key 失败：${(e as Error).message}`);
+    }
+  }, []);
+
+  /**
    * Wipe all client-side state and bounce back to the source picker. Useful
    * when stuck on a provider that's no longer working (e.g. NetEase), or
    * to start fresh.
@@ -1100,6 +1172,24 @@ export default function App() {
             title="搜索歌手 / 歌名（跨平台统一搜索）"
           >
             🔍 搜索
+          </button>
+        )}
+
+        {provider && (
+          <button
+            className="titlebar-btn reco-btn"
+            onClick={() => void handleReco()}
+            disabled={recoRunning}
+            title={
+              recoStatus?.configured
+                ? '基于你的统一库推荐新歌'
+                : '设置 DeepSeek API key 后基于你的统一库推荐新歌'
+            }
+          >
+            {recoRunning ? '…' : '🎲 推荐'}
+            {recoStatus && !recoStatus.configured && (
+              <span className="reco-key-dot" aria-hidden="true" />
+            )}
           </button>
         )}
 
@@ -1432,6 +1522,85 @@ export default function App() {
           onClose={() => setSearchOpen(false)}
         />
       )}
+
+      {recoKeyOpen && (
+        <RecoKeyModal
+          onSave={handleSaveRecoKey}
+          onClose={() => setRecoKeyOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 极简 DeepSeek key 输入弹窗。
+ * 故意做成内联组件：只有"输入 + 保存"两步，单独抽文件不值。
+ * 留 "DeepSeek 平台" 链接让用户去申请 key。
+ */
+function RecoKeyModal({
+  onSave,
+  onClose,
+}: {
+  onSave: (key: string) => void;
+  onClose: () => void;
+}) {
+  const [key, setKey] = useState('');
+  return (
+    <div className="search-overlay" onClick={onClose}>
+      <div className="search-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="search-bar">
+          <span style={{ flex: 1, fontSize: 14, color: '#f2f2f5' }}>
+            设置 DeepSeek API Key
+          </span>
+          <button className="search-close" onClick={onClose} aria-label="关闭">
+            ×
+          </button>
+        </div>
+        <div style={{ padding: '16px 14px' }}>
+          <p style={{ fontSize: 12, color: '#9a9aa2', margin: '0 0 10px' }}>
+            需要 DeepSeek API key 才能用 AI 推荐。
+            没账号先去{' '}
+            <a
+              href="https://platform.deepseek.com"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#31c27c' }}
+            >
+              platform.deepseek.com
+            </a>{' '}
+            申请一个，存到本地不外发。
+          </p>
+          <input
+            autoFocus
+            type="password"
+            className="search-input"
+            placeholder="sk-..."
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSave(key);
+            }}
+            style={{ width: '100%' }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button
+              className="search-go"
+              onClick={() => onSave(key)}
+              disabled={!key || key.length < 8}
+            >
+              保存
+            </button>
+            <button
+              className="search-close"
+              onClick={onClose}
+              style={{ width: 'auto', padding: '0 14px' }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

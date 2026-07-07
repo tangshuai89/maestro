@@ -287,6 +287,53 @@ export async function logout(provider: MusicProvider): Promise<void> {
   });
 }
 
+/** DeepSeek 推荐相关 API（v1：BYO key + 跑一次推荐）。 */
+export interface RecoStatus {
+  configured: boolean;
+  librarySize: number;
+}
+
+export interface RecoRequest {
+  count?: number;
+  language?: 'zh' | 'en' | 'ja' | 'auto' | string;
+  mood?: string;
+}
+
+export interface RecoRunResult {
+  items: UnifiedSearchItem[];
+  model: string;
+  runAt: number;
+  raw?: string; // 调试用，模型原始响应（截断）
+}
+
+export async function fetchRecoStatus(): Promise<RecoStatus> {
+  return json(
+    await fetch(`${API_BASE}/reco/status`, { credentials: 'include' }),
+  );
+}
+
+export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
+  return json(
+    await fetch(`${API_BASE}/reco/run`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }),
+  );
+}
+
+export async function saveRecoKey(apiKey: string): Promise<{ ok: true; tail: string }> {
+  return json(
+    await fetch(`${API_BASE}/reco/key`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey }),
+    }),
+  );
+}
+
 /** 真·扫码登录第一步：拿二维码（key + dataURL 图片）。 */
 export async function startNeteaseQr(): Promise<NeteaseQrStart> {
   return json<NeteaseQrStart>(
