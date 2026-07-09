@@ -5,3 +5,11 @@
 - [x] 5. 持久化 key: library:{sessionId}
 - [x] 6. typecheck + 20/20 测试通过
 - [x] 7. e2e smoke test: nest + curl，未登录 NetEase 时 sources[].error = not_logged_in；路径映射 /music/library/import 正确
+- [x] 8. ProviderSession 加 qqCookies?: Record<string,string> 字段（packages/server/src/common/session.ts）
+- [x] 9. QqAuthStrategy.loginWithCookie 把 extraCookies 写入 session.qqCookies（packages/server/src/auth/qq.strategy.ts）
+- [x] 10. QqMusicProvider 加 computeGtk(skey) + getGtk(session) 私有方法（DJB2，无 skey 兜底 '5381'）
+- [x] 11. QqMusicProvider 加 fetchLiked(session, maxTracks)：getmyfav (dirid=201) → songlist detail，硬上限 1000
+- [x] 12. MusicService.importLiked 把 QQ 块换成 try/catch + fetchLiked 模式（packages/server/src/music/music.service.ts）
+- [x] 13. 单测：qq.provider.test.ts 验证 computeGtk DJB2 实现
+- [x] 14. 根 package.json test 脚本加入 qq.provider.test.ts
+- [x] 15. spec.md 验收标准 + 范围段更新；tasks.md 7 → 15 项

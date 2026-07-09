@@ -13,6 +13,14 @@ export interface ProviderSession {
   // QQ 音乐（真登录 cookie，来自内嵌登录窗口；不是 QQ 互联 OAuth token）
   qqCookie?: string; // 完整 "k=v; k=v" cookie header
   qqUin?: string; // 归一化后的纯数字 uin，用于 musicu.fcg
+  /**
+   * 解析后的 cookie map（qqmusic_key / qm_keyst / skey / p_skey / p_uin /
+   * uin / …）。与 qqCookie 共存：qqCookie 是拼好的请求头，qqCookies 是按
+   * 名访问的 map（g_tk 计算 / 后续端点按名取值都用这个）。
+   * 老 session 里可能只有 qqCookie，没有 qqCookies —— 缺字段时直接兜底
+   * '5381'（DJB2 of ""），favorites 仍能走（cookie 才是真鉴权）。
+   */
+  qqCookies?: Record<string, string>;
   // NetEase
   musicU?: string;
   csrfToken?: string;

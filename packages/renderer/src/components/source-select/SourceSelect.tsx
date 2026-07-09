@@ -35,6 +35,13 @@ const SOURCES: {
     className: 'source-deezer',
     initial: 'D',
   },
+  {
+    provider: 'spotify',
+    name: 'Spotify',
+    desc: '国际曲库 · 全曲播放 · 需 OAuth 登录',
+    className: 'source-spotify',
+    initial: 'S',
+  },
 ];
 
 export default function SourceSelect({ onSelect }: SourceSelectProps) {

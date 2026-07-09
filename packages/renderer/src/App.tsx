@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
 import { useVolume } from './hooks/useVolume';
 import { useLyrics } from './hooks/useLyrics';
@@ -6,6 +6,8 @@ import { useAuth } from './hooks/useAuth';
 import { useReco } from './hooks/useReco';
 import { useTheme } from './hooks/useTheme';
 import { useDeezerEditorials } from './hooks/useDeezerEditorials';
+import { getLibrary } from './api';
+import type { LibraryImportResult } from './api';
 import SourceSelect from './components/source-select/SourceSelect';
 import Titlebar from './components/layout/Titlebar';
 import CoverCard from './components/player/CoverCard';
@@ -17,6 +19,7 @@ import TransportBar from './components/player/TransportBar';
 import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
 import RecoKeyModal from './components/modals/RecoKeyModal';
+import LikedLibraryModal from './components/modals/LikedLibraryModal';
 
 /**
  * Composition layer. All logic lives in hooks/ (usePlayer owns the audio
@@ -53,6 +56,22 @@ export default function App() {
     theme.resetTheme();
   };
 
+  // Liked library modal: 缓存的库（getLibrary 不强制 import）—— titlebar ❤
+  // 按钮上展示数量，点击弹窗内自己处理 refresh。
+  const [likedOpen, setLikedOpen] = useState(false);
+  const [likedCount, setLikedCount] = useState(0);
+  const reloadLikedCount = async () => {
+    try {
+      const res: LibraryImportResult | null = await getLibrary();
+      setLikedCount(res?.items.length ?? 0);
+    } catch {
+      setLikedCount(0);
+    }
+  };
+  useEffect(() => {
+    void reloadLikedCount();
+  }, [player.provider, auth.auth.loggedIn]);
+
   if (!player.provider) {
     return <SourceSelect onSelect={player.selectSource} />;
   }
@@ -79,12 +98,19 @@ export default function App() {
         onLogin={
           player.provider === 'netease'
             ? auth.handleNeteaseLogin
-            : auth.handleQqLogin
+            : player.provider === 'spotify'
+              ? auth.handleSpotifyLogin
+              : auth.handleQqLogin
         }
         onAccount={
           player.provider === 'deezer' ? handleSwitchSource : auth.handleLogout
         }
         onReset={handleResetLocal}
+        likedCount={likedCount}
+        onOpenLiked={() => {
+          void reloadLikedCount();
+          setLikedOpen(true);
+        }}
       />
 
       {/* Full-window blurred cover layer — the backdrop the glass cards blur.
@@ -169,6 +195,19 @@ export default function App() {
         <RecoKeyModal
           onSave={reco.handleSaveRecoKey}
           onClose={() => reco.setRecoKeyOpen(false)}
+        />
+      )}
+
+      {likedOpen && (
+        <LikedLibraryModal
+          onClose={() => {
+            setLikedOpen(false);
+            void reloadLikedCount();
+          }}
+          onPlay={(items, idx) => {
+            setLikedOpen(false);
+            player.playSearch(items, idx);
+          }}
         />
       )}
     </div>

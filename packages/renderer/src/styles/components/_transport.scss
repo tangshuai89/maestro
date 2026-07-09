@@ -74,6 +74,23 @@
   pointer-events: none;
 }
 
+// ❤ 红心库按钮：复用 .titlebar-btn 基础样式，右侧带数字徽章。
+.liked-btn {
+  position: relative;
+  font-size: 15px;
+}
+
+.liked-count-badge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: $overlay-hover;
+  color: $overlay-text-dim;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
 .like-btn.liked {
   color: var(--heart-active);
 }

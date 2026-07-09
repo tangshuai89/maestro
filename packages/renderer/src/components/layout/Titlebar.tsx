@@ -27,6 +27,9 @@ interface Props {
   onAccount: () => void;
   // Reset
   onReset: () => void;
+  // Liked library
+  likedCount: number;
+  onOpenLiked: () => void;
 }
 
 /**
@@ -53,6 +56,8 @@ export default function Titlebar({
   onLogin,
   onAccount,
   onReset,
+  likedCount,
+  onOpenLiked,
 }: Props) {
   const showQuality =
     (provider === 'qq' || provider === 'netease') && loggedIn;
@@ -90,6 +95,19 @@ export default function Titlebar({
         {recoRunning ? '…' : '🎲 推荐'}
         {recoStatus && !recoStatus.configured && (
           <span className="reco-key-dot" aria-hidden="true" />
+        )}
+      </button>
+
+      <button
+        className="titlebar-btn liked-btn"
+        onClick={onOpenLiked}
+        title="查看所有平台已 ❤ 的歌曲"
+      >
+        ❤
+        {likedCount > 0 && (
+          <span className="liked-count-badge" aria-label={`共 ${likedCount} 首`}>
+            {likedCount > 999 ? '999+' : likedCount}
+          </span>
         )}
       </button>
 

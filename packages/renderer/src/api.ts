@@ -174,6 +174,56 @@ export async function getAuthStatus(
 }
 
 /**
+ * 启动 Spotify OAuth PKCE 流程：服务端生成 code_verifier / state 并缓存，
+ * 返回授权 URL。renderer 拿到后用 shell.openExternal 在系统浏览器打开，
+ * 用户登录后 Spotify 跳回 redirect_uri（默认是 renderer 的
+ * /auth/spotify/callback），后端在那里用 verifier 换 token 存进 session。
+ * 之后调 `getAuthStatus('spotify')` 就能看到 loggedIn=true。
+ *
+ * 注意：调用前必须已经通过 POST /auth/spotify/client-id 设过 client_id，
+ * 否则会返回 400。useAuth 在调用前会先检查 hasClientId。
+ */
+export async function startSpotify(redirectUri?: string): Promise<{
+  authorizeUrl: string;
+  state: string;
+}> {
+  return json(
+    await fetch(`${API_BASE}/auth/spotify/start`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(redirectUri ? { redirectUri } : {}),
+    }),
+  );
+}
+
+/** 检查 Spotify client_id 是否已设（不返回 id 本身）。 */
+export async function getSpotifyStatus(): Promise<{
+  hasClientId: boolean;
+  loggedIn: boolean;
+}> {
+  return json(
+    await fetch(`${API_BASE}/auth/spotify/status`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/** 设置 Spotify OAuth client_id（用户在 Spotify Developer 后台创建应用拿到的）。 */
+export async function setSpotifyClientId(
+  clientId: string,
+): Promise<{ ok: true; tail: string }> {
+  return json(
+    await fetch(`${API_BASE}/auth/spotify/client-id`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId }),
+    }),
+  );
+}
+
+/**
  * QQ 音乐 cookie 登录。cookie 由 Electron 内嵌登录窗口捕获后透传;浏览器
  * 调试时也可手动传入。
  */

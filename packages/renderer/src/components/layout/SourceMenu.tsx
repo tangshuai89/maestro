@@ -7,7 +7,7 @@ interface Props {
   onSelect: (next: MusicProvider) => void;
 }
 
-const SELECTABLE: MusicProvider[] = ['qq', 'netease', 'deezer'];
+const SELECTABLE: MusicProvider[] = ['qq', 'netease', 'deezer', 'spotify'];
 
 /** Source-switch pill + its dropdown. Owns its own open state; a transparent
  *  fixed backdrop catches outside clicks without interrupting playback. */
