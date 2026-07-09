@@ -146,6 +146,53 @@ export class MusicController {
     );
   }
 
+  /**
+   * 切歌时的红心检测 + 自动同步。查这首统一 track 在各平台的红心情况，
+   * 任一平台已红心 → 补齐其余平台并返回 liked=true。
+   *
+   * 请求体: { mergedId, sources: [{platform, trackId}] }
+   * 响应: { liked, fannedOutTo: MusicProvider[] }
+   *
+   * ⚠️ 同 like/merged：必须注册在 /like/:trackId 之前，否则被截胡。
+   */
+  @Post('like/detect')
+  async likeDetect(
+    @Body() body: {
+      mergedId?: string;
+      sources?: Array<{ platform: string; trackId: string }>;
+    },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
+    if (!body?.mergedId || typeof body.mergedId !== 'string') {
+      throw new BadRequestException('mergedId 必填');
+    }
+    if (!Array.isArray(body.sources) || body.sources.length === 0) {
+      throw new BadRequestException('sources 至少 1 项');
+    }
+    const sources: Array<{ platform: MusicProvider; trackId: string }> = [];
+    for (const s of body.sources) {
+      if (
+        !s ||
+        typeof s.platform !== 'string' ||
+        typeof s.trackId !== 'string' ||
+        !s.trackId.length
+      ) {
+        throw new BadRequestException('sources 每项需要 platform + trackId');
+      }
+      sources.push({
+        platform: normalizeProvider(s.platform),
+        trackId: s.trackId,
+      });
+    }
+    const session = this.sessionService.resolve(req, res);
+    return this.musicService.detectLikedAndSync(
+      session,
+      body.mergedId,
+      sources,
+    );
+  }
+
   @Post('like/:trackId')
   async like(
     @Param('trackId') trackId: string,

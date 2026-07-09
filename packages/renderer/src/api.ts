@@ -143,6 +143,25 @@ export async function fanOutLike(
   );
 }
 
+/**
+ * 切歌时的红心检测 + 自动同步：查这首统一 track 在各平台的红心情况，
+ * 任一平台已红心 → 后端补齐其余平台并返回 liked=true + 完整平台列表。
+ * 全没红心 → liked=false（不写任何东西）。
+ */
+export async function detectLiked(
+  mergedId: string,
+  sources: Array<{ platform: MusicProvider; trackId: string }>,
+): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
+  return json(
+    await fetch(`${API_BASE}/music/like/detect`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mergedId, sources }),
+    }),
+  );
+}
+
 export async function dislike(
   provider: MusicProvider,
   trackId: string,
