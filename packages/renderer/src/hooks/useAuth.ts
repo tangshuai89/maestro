@@ -1,9 +1,12 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   getAuthStatus,
+  getSpotifyStatus,
   logout,
   loginQqCookie,
   loginNeteaseCookie,
+  setSpotifyClientId,
+  startSpotify,
 } from '../api';
 import type { AuthStatus, AuthUser, MusicProvider } from '../api';
 
@@ -126,6 +129,63 @@ export function useAuth(
     setAuth({ provider, loggedIn: false, user: null });
   };
 
+  /**
+   * Spotify login: OAuth PKCE. 流程：
+   *  1. POST /auth/spotify/start → 拿 authorizeUrl + state（后端缓存 verifier）
+   *  2. shell.openExternal 在系统浏览器打开 authorizeUrl
+   *  3. 用户在浏览器里登录 Spotify；Spotify 跳回 redirect_uri
+   *     （renderer 的 /auth/spotify/callback），后端在那里换 token 入 session
+   *  4. 我们轮询 /auth/status?provider=spotify，直到 loggedIn=true 或超时
+   *
+   * 客户端不能直接收 callback——回调 hit 浏览器而非 Electron，所以靠轮询
+   * 而不是 postMessage / IPC。90s 超时够 OAuth 走完；如果用户没设 client_id
+   * 引导他们去设置面板粘进来（复用 RecoKeyModal 风格的小弹窗太重，先
+   * 在错误里给明确指引）。
+   */
+  const handleSpotifyLogin = async () => {
+    setError(null);
+    setLoggingIn(true);
+    try {
+      const status = await getSpotifyStatus();
+      if (!status.hasClientId) {
+        const id = window.prompt(
+          '需要先在 Spotify Developer 后台创建应用，拿到 client_id 后粘到这里：\n' +
+            '（https://developer.spotify.com/dashboard → Create app）',
+        );
+        if (!id || !id.trim()) {
+          setError('已取消：未填 Spotify client_id');
+          return;
+        }
+        await setSpotifyClientId(id.trim());
+      }
+      const { authorizeUrl } = await startSpotify();
+      if (isElectron && window.electronAPI?.openExternal) {
+        await window.electronAPI.openExternal(authorizeUrl);
+      } else {
+        // 浏览器调试模式：直接新窗口打开
+        window.open(authorizeUrl, '_blank', 'noopener');
+      }
+      // 轮询 status；Spotify 跳回 callback 后后端会入 session，
+      // 下一次轮询就会看到 loggedIn=true。
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const s = await getSpotifyStatus();
+        if (s.loggedIn) {
+          const full = await getAuthStatus('spotify');
+          setAuth({ provider: 'spotify', loggedIn: true, user: full.user });
+          loadNextTrack();
+          return;
+        }
+      }
+      setError('Spotify 登录超时（90s），请重试');
+    } catch (e) {
+      setError(`Spotify 登录失败：${(e as Error).message}`);
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
   const handleCookieFallbackSuccess = (user: AuthUser) => {
     setShowCookieFallback(false);
     if (!provider) return;
@@ -143,6 +203,7 @@ export function useAuth(
     setShowCookieFallback,
     handleNeteaseLogin,
     handleQqLogin,
+    handleSpotifyLogin,
     handleLogout,
     handleCookieFallbackSuccess,
     resetAuth,

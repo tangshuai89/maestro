@@ -65,7 +65,17 @@ export class QqAuthStrategy {
       );
     }
 
-    return { qqCookie: cookie, qqUin: uin, nickname, avatarUrl };
+    // extraCookies 是 Electron 登录窗口解析后的完整 cookie map（qqmusic_key
+    // / qm_keyst / skey / p_skey / p_uin / uin / …）。把它落进 session，
+    // QQ provider 需要按名取 skey 算 g_tk、做 favorites 鉴权时直接读。
+    // 老 session 没这个字段 → provider 那边用 '5381' 兜底，不阻塞。
+    return {
+      qqCookie: cookie,
+      qqUin: uin,
+      qqCookies: extraCookies,
+      nickname,
+      avatarUrl,
+    };
   }
 
   isConfigured(session: ProviderSession | undefined): boolean {

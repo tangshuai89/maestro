@@ -84,6 +84,11 @@ interface SearchResponse {
 export class QqMusicProvider {
   private readonly logger = new Logger(QqMusicProvider.name);
 
+  /** 所有 QQ 请求统一 UA（与现有 search / fetchVkey / getLyrics 保持一致）。 */
+  private static readonly UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
   /** 种子电台的关键词池——老的 radio_radio_user_list.fcg 已返回 HTML 报废，
    * 改用「随机热门关键词 + 搜索」来喂一个类电台的随机流。 */
   private static readonly RADIO_SEEDS = [
@@ -101,6 +106,154 @@ export class QqMusicProvider {
 
   isConfigured(session: ProviderSession | undefined): boolean {
     return Boolean(session?.qqCookie);
+  }
+
+  /**
+   * 拉取用户的"我喜欢"收藏歌曲。
+   *
+   * 两步走（endpoint + 字段名都对着真实响应验证过，见 2026-07 排查）：
+   *  1. `c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss?hostuin=<uin>`
+   *     → 拿用户「创建的歌单」列表，find `dirid === 201`（"我喜欢" 的魔法值）
+   *     拿它的 `tid`（真正的歌单 dissid）。
+   *     ⚠️ 之前误用 `fcg_musiclist_getmyfav` —— 那个返回的是"哪些 songid 被
+   *     收藏"的位图（给红心态用），没有 dissid，所以永远拿不到歌。
+   *  2. `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?disstid=<tid>`
+   *     → 拿歌单内歌曲。这是老接口，字段是**扁平**的（songmid / songname /
+   *     albummid / interval / strMediaMid 直接挂歌对象上，不是嵌套 file）。
+   *     支持 `song_begin` + `song_num` 分页，实测 song_num=1000 精确返回 1000。
+   *
+   * 两个端点都用字面 `g_tk=5381`（cookie 才是真鉴权；与现有 `getLyrics` 一致），
+   * 但保留 `computeGtk(skey)` 备用。
+   *
+   * 失败模式：
+   *  - step1 `code === 1000` → cookie 失效 → `throw 'not_logged_in'`
+   *  - 找不到 dirid===201 → 返回 `[]`（用户没有"我喜欢"歌单，罕见）
+   *  - 其他非零 code → 抛错让上层兜底
+   *
+   * 硬上限 maxTracks（默认 1000，与 NetEase 对齐）。
+   */
+  async fetchLiked(
+    session: ProviderSession,
+    maxTracks = 1000,
+  ): Promise<Track[]> {
+    if (!this.isConfigured(session)) return [];
+
+    const cookie = session.qqCookie ?? '';
+    const gtk = this.getGtk(session);
+    const uin = session.qqUin ?? '';
+
+    // Step 1: 用户创建的歌单列表 → 找 "我喜欢"（dirid=201）的 tid
+    const dissUrl =
+      'https://c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss' +
+      `?hostuin=${encodeURIComponent(uin)}&hostUin=0&sin=0&size=200` +
+      `&g_tk=${encodeURIComponent(gtk)}&format=json&inCharset=utf8` +
+      '&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0';
+    const r1 = await fetch(dissUrl, {
+      headers: {
+        'User-Agent': QqMusicProvider.UA,
+        Referer: 'https://y.qq.com/',
+        Cookie: cookie,
+      },
+    });
+    const j1 = (await r1.json()) as {
+      code: number;
+      data?: {
+        disslist?: Array<{ dirid?: number; tid?: number; song_cnt?: number }>;
+      };
+    };
+    if (j1.code === 1000) {
+      throw new BadRequestException('not_logged_in');
+    }
+    if (j1.code !== 0) {
+      throw new BadRequestException(`QQ created_diss failed: code=${j1.code}`);
+    }
+    const fav = (j1.data?.disslist ?? []).find((d) => d.dirid === 201);
+    const dissid = fav?.tid;
+    if (!dissid) {
+      this.logger.warn('QQ fetchLiked: no "我喜欢"(dirid=201) playlist found');
+      return [];
+    }
+
+    // Step 2: 分页拉歌曲（扁平字段）
+    const PAGE = 1000;
+    const collected: Track[] = [];
+    for (let begin = 0; begin < maxTracks; begin += PAGE) {
+      const num = Math.min(PAGE, maxTracks - begin);
+      const detailUrl =
+        'https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg' +
+        `?type=1&utf8=1&disstid=${dissid}&loginUin=0&format=json` +
+        `&song_begin=${begin}&song_num=${num}`;
+      const r2 = await fetch(detailUrl, {
+        headers: {
+          'User-Agent': QqMusicProvider.UA,
+          Referer: 'https://y.qq.com/n/yqq/playlist',
+          Cookie: cookie,
+        },
+      });
+      const j2 = (await r2.json()) as {
+        code: number;
+        cdlist?: Array<{
+          songlist?: Array<{
+            songmid?: string;
+            songname?: string;
+            singer?: { name: string; mid: string }[];
+            albumname?: string;
+            albummid?: string;
+            interval?: number;
+            strMediaMid?: string;
+            media_mid?: string;
+          }>;
+        }>;
+      };
+      if (j2.code !== 0) {
+        throw new BadRequestException(
+          `QQ songlist detail failed: code=${j2.code}`,
+        );
+      }
+      const songlist = j2.cdlist?.[0]?.songlist ?? [];
+      if (songlist.length === 0) break;
+      collected.push(
+        ...songlist
+          .filter((s) => s.songmid)
+          .map((s) => ({
+            id: s.songmid as string,
+            provider: 'qq' as const,
+            title: s.songname ?? '未知歌曲',
+            artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
+            album: s.albumname ?? '',
+            coverUrl: s.albummid
+              ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${s.albummid}.jpg`
+              : '',
+            audioUrl: '', // 由 getStreamPath 在播放时动态获取
+            duration: s.interval ?? 0,
+            liked: true, // 来源就是"我喜欢"，全部视为已 ❤
+            mediaMid: s.strMediaMid ?? s.media_mid ?? '',
+          })),
+      );
+      if (songlist.length < num) break; // 末页
+    }
+
+    this.logger.log(`QQ fetchLiked → ${collected.length} 首`);
+    return collected.slice(0, maxTracks);
+  }
+
+  /**
+   * QQ g_tk = DJB2(skey)。公式：hash = 5381; hash = hash*33 + charCode;
+   * unsigned 32-bit via >>> 0。参考 Tencent web_player 的 `getHash`。
+   * 如果 skey 为空（未登录 / 老 session 无 qqCookies） → 返回 '5381'
+   * （即 DJB2 of ""），与 `getLyrics` 已用的字面值一致。
+   */
+  private computeGtk(skey: string): string {
+    let hash = 5381;
+    for (let i = 0; i < skey.length; i++) {
+      hash = ((hash << 5) + hash + skey.charCodeAt(i)) >>> 0;
+    }
+    return String(hash);
+  }
+
+  private getGtk(session: ProviderSession): string {
+    const skey = session.qqCookies?.skey ?? session.qqCookies?.p_skey;
+    return skey ? this.computeGtk(skey) : '5381';
   }
 
   /**

@@ -746,9 +746,12 @@ export class MusicService {
   /**
    * 拉取各平台"我的喜欢" → 合并为统一库 → 持久化到 .storage。
    *
-   * 当前实现：仅 NetEase 真正能拉（"我喜欢的音乐" 走 /api/v6/playlist/detail）。
-   * QQ 收藏需要签名（vkey/g_tk），本轮不做；Deezer 走匿名模式无 user 概念。
-   * 后续接入 Spotify / QQ 后在这里加 case。
+   * 当前实现：
+   *   - NetEase: 三步拉"我喜欢的音乐"歌单（/api/v6/playlist/detail）
+   *   - QQ: 两步拉"我喜欢"（splcloud/getmyfav → qzone/cdinfo_byids_cp），
+   *     详见 QqMusicProvider.fetchLiked
+   *   - Spotify: 已登录 → /me/tracks；未登录 → not_logged_in
+   *   - Deezer: 匿名模式无 user 概念
    *
    * 单平台失败不阻塞——返回的 `sources` 数组里如实记录每个平台的拉取状态
    * （{provider, count, error?}），前端可以分别展示。
@@ -794,12 +797,31 @@ export class MusicService {
       });
     }
 
-    // QQ: 公开 ❤ / 收藏 API 都需要签名，本轮留空
-    sourceResults.push({
-      provider: 'qq',
-      count: 0,
-      error: 'qq_favorites_requires_signature_not_yet_implemented',
-    });
+    // QQ: 两步拉取（getmyfav dirid=201 → songlist detail），详见
+    // QqMusicProvider.fetchLiked。失败不阻塞其他平台。
+    try {
+      const ps = session.providers.qq;
+      if (!ps?.qqCookie) {
+        sourceResults.push({
+          provider: 'qq',
+          count: 0,
+          error: 'not_logged_in',
+        });
+      } else {
+        // 上限 2000（fetchLiked 内部按 1000/页分页）—— 覆盖绝大多数用户的
+        // 收藏规模；1093 首的用户不会被 1000 截断。
+        const tracks = await this.qq.fetchLiked(ps, 2000);
+        sourceResults.push({ provider: 'qq', count: tracks.length });
+        allTracks.push(...tracks);
+      }
+    } catch (err) {
+      this.logger.warn(`qq fetchLiked failed: ${(err as Error).message}`);
+      sourceResults.push({
+        provider: 'qq',
+        count: 0,
+        error: (err as Error).message,
+      });
+    }
 
     // Spotify: 已登录 → 走 /me/tracks；未登录 → not_logged_in
     try {

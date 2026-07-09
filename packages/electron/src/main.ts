@@ -522,6 +522,19 @@ ipcMain.handle('netease:login', async () => {
   }
 });
 
+/**
+ * Open URL in the OS default browser (Spotify OAuth authorizeUrl, etc.).
+ * Renderer hands the URL through main rather than calling shell.openExternal
+ * directly because Electron's renderer-side window.open has different
+ * semantics across platforms.
+ */
+ipcMain.handle('shell:open-external', async (_event, url: string) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    throw new Error('openExternal: only http(s) URLs are allowed');
+  }
+  await shell.openExternal(url);
+});
+
 // ── App lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {

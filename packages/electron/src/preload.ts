@@ -69,6 +69,16 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('qq-login-result', handler);
   },
 
+  /**
+   * Open a URL in the user's default browser. Used by Spotify OAuth — the
+   * authorization URL needs to land in a real browser session, not inside
+   * the Electron webview. The Electron docs warn that opening arbitrary
+   * external URLs from a renderer is a security smell, so this is bridged
+   * through main where shell.openExternal can validate / whitelist.
+   */
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke('shell:open-external', url),
+
   /** Tell main we're in Electron so the renderer can branch its behaviour. */
   isElectron: true as const,
 };
