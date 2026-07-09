@@ -734,40 +734,68 @@ export class MusicService {
   }
 
   /**
+   * 把 sources 按平台归组。统一搜索的合并 key 只按「歌名+歌手」归一化、没有
+   * 时长门槛，所以一首歌（如 "If I Ain't Got You"）常把同平台的十几个变体
+   * 版本塞进同一个 unified item 的 sources。fan-out 必须**每个平台最多一首**，
+   * 否则会把十几个变体全部收藏（实测 bug：点一首收藏一大堆）。
+   */
+  private groupByPlatform(
+    sources: Array<{ platform: MusicProvider; trackId: string }>,
+  ): Map<MusicProvider, string[]> {
+    const m = new Map<MusicProvider, string[]>();
+    for (const s of sources) {
+      const arr = m.get(s.platform) ?? [];
+      arr.push(s.trackId);
+      m.set(s.platform, arr);
+    }
+    return m;
+  }
+
+  /**
    * 切歌时调：查这首统一 track 在各平台的红心情况。
    *  - 任一平台已红心 → 把「其余有版权但还没红心」的平台也补上红心（fan-out），
    *    返回 liked=true + 现在红心的完整平台列表。
    *  - 全都没红心 → 返回 liked=false（不写任何东西）。
    *
-   * 只对已登录平台生效；Deezer / 未登录平台跳过（isLikedOn 返回 false）。
-   * 幂等：已红心的平台不重复调远端写接口。
+   * **每个平台最多操作一首**：同平台若有多个变体源，只认/只写一首（优先已在
+   * 收藏里的那个变体，否则第一首）——否则会把同名的一堆变体全收藏。
+   * 只对已登录平台生效；Deezer / 未登录平台跳过。幂等：已红心的平台不重复写。
    */
   async detectLikedAndSync(
     session: Session,
     mergedId: string,
     sources: Array<{ platform: MusicProvider; trackId: string }>,
   ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
-    // 各平台当前红心状态
-    const status = await Promise.all(
-      sources.map(async (s) => ({
-        ...s,
-        liked: await this.isLikedOn(session, s.platform, s.trackId),
-      })),
+    const byPlatform = this.groupByPlatform(sources);
+
+    // 每个平台：判断是否已红心（任一变体在收藏里就算），并选一个代表 trackId
+    // （已收藏的那个变体优先，否则第一个）。
+    const perPlatform = await Promise.all(
+      [...byPlatform.entries()].map(async ([platform, trackIds]) => {
+        const set = await this.getLikedSet(session, platform);
+        const likedId = set ? trackIds.find((id) => set.has(id)) : undefined;
+        return {
+          platform,
+          liked: Boolean(likedId),
+          repId: likedId ?? trackIds[0],
+        };
+      }),
     );
-    const anyLiked = status.some((s) => s.liked);
+
+    const anyLiked = perPlatform.some((p) => p.liked);
     if (!anyLiked) {
       return { liked: false, fannedOutTo: [] };
     }
 
-    // 有红心 → 补齐其余平台
+    // 有红心 → 每个平台补齐（各一首）
     const state = this.loadState(session);
     const nowLiked: MusicProvider[] = [];
-    for (const s of status) {
-      this.setLike(state, s.platform, s.trackId, true);
-      nowLiked.push(s.platform);
-      if (!s.liked) {
-        // 该平台还没红心 → 补一发远端写（幂等）
-        void this.syncLikeRemote(session, s.platform, s.trackId, true);
+    for (const p of perPlatform) {
+      this.setLike(state, p.platform, p.repId, true);
+      nowLiked.push(p.platform);
+      if (!p.liked) {
+        // 该平台还没红心 → 只补这一首（幂等远端写）
+        void this.syncLikeRemote(session, p.platform, p.repId, true);
       }
     }
     state.fanOut[mergedId] = [...new Set(nowLiked)];
@@ -828,16 +856,20 @@ export class MusicService {
       // 当前 mergedId 已心动的平台（保持）。这次 sources 里没列的旧
       // 平台也保留——避免"老 fan-out 记录被覆盖"丢状态。
       const current = new Set(state.fanOut[mergedId] ?? []);
-      for (const src of sources) {
-        current.add(src.platform);
+      // **每个平台只收藏一首**：统一搜索会把同名的一堆变体塞进同一 item 的
+      // sources（无时长门槛），遍历全部会把十几个变体全收藏。按平台取第一首。
+      const byPlatform = this.groupByPlatform(sources);
+      for (const [platform, trackIds] of byPlatform) {
+        const trackId = trackIds[0];
+        current.add(platform);
         try {
           // setLike 是幂等的：已心动的不会被翻回 unlike
-          const changed = this.setLike(state, src.platform, src.trackId, true);
-          if (changed) flipped.push(src.platform);
-          void this.syncLikeRemote(session, src.platform, src.trackId, true);
+          const changed = this.setLike(state, platform, trackId, true);
+          if (changed) flipped.push(platform);
+          void this.syncLikeRemote(session, platform, trackId, true);
         } catch (err) {
           this.logger.warn(
-            `fan-out like failed (${src.platform}/${src.trackId}): ${(err as Error).message}`,
+            `fan-out like failed (${platform}/${trackId}): ${(err as Error).message}`,
           );
         }
       }
