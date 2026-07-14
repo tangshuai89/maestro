@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
+import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
 import { useVolume } from './hooks/useVolume';
 import { useLyrics } from './hooks/useLyrics';
 import { useAuth } from './hooks/useAuth';
@@ -20,6 +21,7 @@ import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
 import RecoKeyModal from './components/modals/RecoKeyModal';
 import LikedLibraryModal from './components/modals/LikedLibraryModal';
+import SettingsModal from './components/modals/SettingsModal';
 
 /**
  * Composition layer. All logic lives in hooks/ (usePlayer owns the audio
@@ -32,13 +34,34 @@ import LikedLibraryModal from './components/modals/LikedLibraryModal';
 export default function App() {
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const player = usePlayer(audioRef);
+  // WPS (Spotify Premium 全曲播放) 和 usePlayer 互相依赖：usePlayer 的
+  // transport 要驱动 WPS，而 WPS 的 enabled 又要读 player.provider + auth.tier。
+  // 用一个 ref 打破循环：usePlayer 拿 wpsRef（引用稳定），在 effect 里懒读
+  // wpsRef.current；wps 实例本身在所有 hook 之后再填进 ref。
+  const wpsRef = useRef<ReturnType<typeof useSpotifyWpsPlayer> | null>(null);
+
+  const player = usePlayer(audioRef, wpsRef);
   const volume = useVolume(audioRef, player.track);
   const lyrics = useLyrics(player.track, player.provider);
   const auth = useAuth(player.provider, player.loadNextTrack, player.setError);
   const reco = useReco(player.playSearch, player.setError);
   const theme = useTheme();
   const deezerEditorials = useDeezerEditorials();
+
+  // WPS 仅在 spotify Premium 时启用；Free / 其他 provider 走 <audio> + 30s 预览。
+  const wps = useSpotifyWpsPlayer({
+    enabled: player.provider === 'spotify' && auth.auth.tier === 'premium',
+  });
+  wpsRef.current = wps;
+
+  // WPS → progress bar：把 SDK 上报的播放位置 / 时长喂回 usePlayer，让
+  // ProgressBar / 时间轴与其它平台一致。
+  const applyWpsProgress = player.applyWpsProgress;
+  useEffect(() => {
+    if (wps.wpsReady && wps.state.hasTrack) {
+      applyWpsProgress(wps.state.positionMs, wps.state.track?.durationMs ?? 0);
+    }
+  }, [wps.wpsReady, wps.state, applyWpsProgress]);
 
   // Switch source (Deezer "account" button): drop playback + auth back to the
   // picker. Lyrics clear themselves via useLyrics when provider → null.
@@ -60,6 +83,7 @@ export default function App() {
   // 按钮上展示数量，点击弹窗内自己处理 refresh。
   const [likedOpen, setLikedOpen] = useState(false);
   const [likedCount, setLikedCount] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const reloadLikedCount = async () => {
     try {
       const res: LibraryImportResult | null = await getLibrary();
@@ -71,6 +95,35 @@ export default function App() {
   useEffect(() => {
     void reloadLikedCount();
   }, [player.provider, auth.auth.loggedIn]);
+
+  // Tray transport controls (Electron): map tray commands onto the player and
+  // report state back so the tray label/tooltip stay in sync. usePlayer stays
+  // the single source of truth — no duplicate playback logic in main. We route
+  // through a ref so the IPC listener is registered once (not re-subscribed on
+  // every currentTime tick).
+  const trayHandlersRef = useRef({
+    playpause: player.handlePlayPause,
+    next: player.handleSkip,
+    prev: player.handlePrev,
+  });
+  trayHandlersRef.current = {
+    playpause: player.handlePlayPause,
+    next: player.handleSkip,
+    prev: player.handlePrev,
+  };
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onTrayCommand) return;
+    return api.onTrayCommand((command) => trayHandlersRef.current[command]?.());
+  }, []);
+
+  useEffect(() => {
+    window.electronAPI?.reportPlaybackState?.({
+      isPlaying: player.playing,
+      title: player.track?.title,
+      artist: player.track?.artist,
+    });
+  }, [player.playing, player.track?.title, player.track?.artist]);
 
   if (!player.provider) {
     return <SourceSelect onSelect={player.selectSource} />;
@@ -111,6 +164,7 @@ export default function App() {
           void reloadLikedCount();
           setLikedOpen(true);
         }}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       {/* Full-window blurred cover layer — the backdrop the glass cards blur.
@@ -211,6 +265,8 @@ export default function App() {
           }}
         />
       )}
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

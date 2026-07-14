@@ -263,14 +263,48 @@ defaults.
 ## Build for production
 
 ```bash
-npm run build                         # server + renderer + electron
-cd packages/electron && npm run pack  # (packaging is in progress)
+npm run build   # tsc server + vite renderer + tsc electron
 ```
 
-> **Packaging is the last open block.** The NestJS server is being bundled
-> as a sidecar (Phase 6) and the renderer's production API base is being
-> fixed to match the server's unprefixed routes. Until that lands, dev
-> (`npm run dev`) is the supported way to run the app.
+This produces:
+
+- `packages/server/dist/` — compiled NestJS (runs standalone: `node packages/server/dist/main.js` serves `:3200`)
+- `packages/renderer/dist/` — static Vite bundle
+- `packages/electron/dist/` — compiled Electron main + preload
+
+### Package a macOS `.dmg`
+
+```bash
+# App icon + tray glyph (build/icon.icns, build/trayTemplate*.png).
+# Committed already; only re-run if you change scripts/gen-icons.cjs.
+cd packages/electron && npm run gen-icons
+
+# Build everything first, then pack. Disable code signing during dev
+# (electron-builder otherwise stalls looking for a Developer ID cert).
+npm run build
+cd packages/electron && CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack
+# → packages/electron/release/*.dmg
+```
+
+How the packaged app runs:
+
+- **Sidecar**: Electron main spawns `resources/server/main.js` as a NestJS
+  sidecar, polls `:3200/music/deezer/editorials` until ready, then opens the
+  window. On quit (Cmd+Q / tray "退出") the sidecar is killed.
+- **API base**: preload exposes `window.electronAPI.apiBase`; the renderer's
+  `api.ts` prefers it over the dev `localhost:3200` fallback.
+- **extraResources**: `renderer/`, `server/` (compiled dist) and `build/`
+  (icons) are copied into `.app/Contents/Resources/`.
+- **Tray**: a menubar tray icon with play/pause, prev/next, show-window and
+  quit. Closing the main window hides it to the tray (playback continues);
+  the app only exits via Cmd+Q or the tray "退出" item.
+
+> **Known limitation** — the sidecar needs the server's runtime
+> `node_modules`. With npm workspaces those are hoisted to the repo root, so a
+> fully self-contained `.dmg` still needs the server deps bundled (or an
+> esbuild bundle that preserves NestJS decorator metadata). See
+> `specs/packaging/spec.md` → "已知限制". Dev (`npm run dev`) remains the
+> fully-supported way to run the app.
 
 ---
 

@@ -30,15 +30,26 @@ const SPOTIFY_CLIENT_ID_KEY = 'secrets:spotify-client-id';
 const SPOTIFY_API = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS = 'https://accounts.spotify.com';
 const SPOTIFY_SCOPES = [
-  'user-library-read',  // 读 liked
-  'user-library-modify', // 写 liked
-  'streaming',           // （虽然我们不用，留作未来 Web Playback）
+  'user-library-read',     // 读 liked
+  'user-library-modify',   // 写 liked
+  'user-read-email',       // 读 /v1/me → 拿 product（premium/free）做 WPS 路由
+  'streaming',             // Web Playback SDK 必需（Premium 校验）
+  'user-modify-playback-state', // WPS 的 transfer/resume/seek
 ].join(' ');
+
+/** Spotify product tier from /v1/me's `product` field. Drives the renderer's
+ * decision to route playback through the WPS (premium) or the 30s preview
+ * proxy (free / open). */
+export type SpotifyProductTier = 'premium' | 'free' | 'open';
 
 interface SpotifyAccessToken {
   accessToken: string;
   refreshToken: string;
   expiresAt: number; // ms epoch
+  /** Cached tier from /v1/me. Filled by exchangeCode + getMeInfo. */
+  tier?: SpotifyProductTier;
+  spotifyUserId?: string;
+  spotifyDisplayName?: string;
 }
 
 interface SpotifyTrack {
@@ -223,6 +234,7 @@ export class SpotifyMusicProvider {
   /**
    * 用户授权后回调。用 code + verifier 换 token。state 必须匹配之前存的 verifier。
    * 返回 { token, profile }。失败抛 BadRequestException。
+   * 顺带从 /v1/me 缓存 product tier（premium/free）—— render 端据此决定走 WPS 还是 30s 预览。
    */
   async exchangeCode(
     session: ProviderSession,
@@ -263,23 +275,106 @@ export class SpotifyMusicProvider {
       refresh_token: string;
       expires_in: number;
     };
+
+    // /v1/me 拿 tier + profile。失败不阻塞登录（退化成 free + 占位 profile），
+    // 后续 getMeInfo 懒查询可以补上。
     const token: SpotifyAccessToken = {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       expiresAt: Date.now() + data.expires_in * 1000,
     };
-
-    // 顺手拿用户 profile，方便 UI 显示
-    const profileRes = await fetch(`${SPOTIFY_API}/me`, {
-      headers: { Authorization: `Bearer ${token.accessToken}` },
-    });
-    let profile = { id: 'unknown', displayName: 'Spotify User' };
-    if (profileRes.ok) {
-      const p = (await profileRes.json()) as { id: string; display_name?: string };
-      profile = { id: p.id, displayName: p.display_name ?? 'Spotify User' };
+    const meInfo = await this.fetchMeInfo(data.access_token);
+    if (meInfo) {
+      token.tier = meInfo.tier;
+      token.spotifyUserId = meInfo.id;
+      token.spotifyDisplayName = meInfo.displayName;
+    } else {
+      // OAuth 成功但 /v1/me 失败：保守当 free（UI 走 30s 预览路径）
+      this.logger.warn('exchangeCode: /v1/me failed; defaulting tier to free');
+      token.tier = 'free';
     }
     session.spotify = token;
-    return { token, profile };
+    return {
+      token,
+      profile: {
+        id: token.spotifyUserId ?? 'unknown',
+        displayName: token.spotifyDisplayName ?? 'Spotify User',
+      },
+    };
+  }
+
+  /** GET /v1/me → { id, displayName, tier } | null。轻量 helper，refresh / lazy fill 复用。 */
+  private async fetchMeInfo(
+    accessToken: string,
+  ): Promise<{ id: string; displayName: string; tier: SpotifyProductTier } | null> {
+    try {
+      const res = await fetch(`${SPOTIFY_API}/me`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return null;
+      const p = (await res.json()) as {
+        id?: string;
+        display_name?: string;
+        product?: string;
+      };
+      const rawTier = (p.product ?? 'free').toLowerCase();
+      const tier: SpotifyProductTier =
+        rawTier === 'premium' ? 'premium' : rawTier === 'open' ? 'open' : 'free';
+      return {
+        id: p.id ?? 'unknown',
+        displayName: p.display_name ?? 'Spotify User',
+        tier,
+      };
+    } catch (err) {
+      this.logger.warn(`fetchMeInfo exception: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 渲染端用的 token 端点：返回当前有效 access_token + expiresAt + tier。
+   * 必要时先 refresh。renderer 把 accessToken 喂给 WPS SDK；WPS 自己管 WebSocket 续连。
+   * expiresAt 给 renderer 用来提前 60s 重新拉一次（防 WPS 静默掉线）。
+   */
+  async getValidTokenForRenderer(
+    session: ProviderSession,
+  ): Promise<{ accessToken: string; expiresAt: number; tier: SpotifyProductTier | null } | null> {
+    const tok = this.readToken(session);
+    if (!tok) return null;
+    let accessToken: string | null = tok.accessToken;
+    if (tok.expiresAt <= Date.now() + 30_000) {
+      accessToken = await this.refreshAccessToken(session, tok.refreshToken);
+      if (!accessToken) return null;
+    }
+    return {
+      accessToken,
+      expiresAt: tok.expiresAt,
+      tier: tok.tier ?? null,
+    };
+  }
+
+  /** 渲染端用的 /me 端点。tier 缺省时懒查一次（老 session 从老 OAuth 留回来的）。 */
+  async getMeInfo(
+    session: ProviderSession,
+  ): Promise<{ id: string; displayName: string; tier: SpotifyProductTier } | null> {
+    const tok = this.readToken(session);
+    if (!tok) return null;
+    if (tok.tier && tok.spotifyUserId) {
+      return {
+        id: tok.spotifyUserId,
+        displayName: tok.spotifyDisplayName ?? 'Spotify User',
+        tier: tok.tier,
+      };
+    }
+    const accessToken = await this.getValidAccessToken(session);
+    if (!accessToken) return null;
+    const info = await this.fetchMeInfo(accessToken);
+    if (info) {
+      tok.tier = info.tier;
+      tok.spotifyUserId = info.id;
+      tok.spotifyDisplayName = info.displayName;
+    }
+    return info;
   }
 
   // ── 业务接口（MusicProvider 家族） ─────────────────────

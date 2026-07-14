@@ -7,6 +7,7 @@
     "dev": "tsc && electron dist/main.js",
     "build": "tsc",
     "start": "electron dist/main.js",
+    "gen-icons": "node scripts/gen-icons.cjs",
     "pack": "electron-builder --mac",
     "typecheck": "tsc --noEmit"
   },
@@ -14,7 +15,7 @@
     "electron-is-dev": "^2.0.0"
   },
   "devDependencies": {
-    "electron": "^31.3.1",
+    "electron": "31.7.7",
     "electron-builder": "^24.13.3",
     "typescript": "^5.5.4",
     "@types/node": "^22.0.0"
@@ -24,7 +25,8 @@
     "productName": "QQ FM Player",
     "mac": {
       "category": "public.app-category.music",
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     },
     "directories": {
       "output": "release"
@@ -36,6 +38,14 @@
       {
         "from": "../renderer/dist",
         "to": "renderer"
+      },
+      {
+        "from": "../server/dist",
+        "to": "server"
+      },
+      {
+        "from": "build",
+        "to": "build"
       }
     ]
   }

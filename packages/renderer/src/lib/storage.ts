@@ -109,3 +109,30 @@ export function readStoredTheme(): ThemeMode {
 export function writeStoredTheme(theme: ThemeMode): void {
   localStorage.setItem(STORAGE_KEYS.theme, theme);
 }
+
+// ── Backup: collect / restore all known keys ──
+// The export bundle carries these so a fresh install restores prefs too, not
+// just the server-side login/liked state. Driven off STORAGE_KEYS so adding a
+// key here automatically includes it in backups.
+export function collectLocalStorage(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.values(STORAGE_KEYS)) {
+    const v = localStorage.getItem(key);
+    if (v != null) out[key] = v;
+  }
+  return out;
+}
+
+export function restoreLocalStorage(data: Record<string, string>): void {
+  // Only restore keys we recognise (ignore anything unexpected in the file).
+  const known = new Set<string>(Object.values(STORAGE_KEYS));
+  for (const [key, value] of Object.entries(data ?? {})) {
+    if (known.has(key) && typeof value === 'string') {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        /* quota / private mode — skip */
+      }
+    }
+  }
+}

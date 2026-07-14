@@ -73,6 +73,9 @@ export interface AuthStatus {
   provider: MusicProvider;
   loggedIn: boolean;
   user: AuthUser | null;
+  /** Spotify-only: cached product tier, null for non-spotify providers or
+   * when tier is unknown. */
+  tier?: 'premium' | 'free' | 'open' | null;
 }
 
 export interface NeteaseQrStart {
@@ -238,9 +241,39 @@ export async function startSpotify(redirectUri?: string): Promise<{
 export async function getSpotifyStatus(): Promise<{
   hasClientId: boolean;
   loggedIn: boolean;
+  /** Cached Spotify product tier, populated at login from /v1/me's `product`
+   * field. Drives the WPS-vs-preview routing decision. null = not logged in
+   * or tier not yet known. */
+  tier: 'premium' | 'free' | 'open' | null;
 }> {
   return json(
     await fetch(`${API_BASE}/auth/spotify/status`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/** 拿当前有效的 Spotify access_token 给 WPS SDK 用。server 会自动 refresh。 */
+export async function getSpotifyToken(): Promise<{
+  accessToken: string;
+  expiresAt: number;
+  tier: 'premium' | 'free' | 'open' | null;
+}> {
+  return json(
+    await fetch(`${API_BASE}/auth/spotify/token`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/** 拿 Spotify /me 缓存（id / displayName / tier）。用于 SourceSelect 等 UI 显名。 */
+export async function getSpotifyMe(): Promise<{
+  id: string;
+  displayName: string;
+  tier: 'premium' | 'free' | 'open';
+}> {
+  return json(
+    await fetch(`${API_BASE}/auth/spotify/me`, {
       credentials: 'include',
     }),
   );
@@ -534,4 +567,49 @@ export async function fetchLyrics(
   if (!res.ok) return null;
   const data = (await res.json()) as { lyrics: LyricLine[] | null };
   return data.lyrics ?? null;
+}
+
+// ── 会话快照 备份/导出/导入 ──────────────────────────────────────────────
+
+/** 拉整个服务端 state.json（导出时和 localStorage 一起加密打包）。 */
+export async function getStateSnapshot(): Promise<{
+  stateJson: Record<string, unknown>;
+}> {
+  return json(
+    await fetch(`${API_BASE}/storage/state`, { credentials: 'include' }),
+  );
+}
+
+/** 把解密出来的 state.json 合并进服务端（additive，不覆盖已有红心/登录态）。 */
+export async function importState(
+  stateJson: Record<string, unknown>,
+): Promise<{ merged: string[] }> {
+  return json(
+    await fetch(`${API_BASE}/storage/import`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stateJson }),
+    }),
+  );
+}
+
+/** 立即触发一次本地备份。 */
+export async function triggerBackup(): Promise<{ path: string; count: number }> {
+  return json(
+    await fetch(`${API_BASE}/storage/backup`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
+  );
+}
+
+/** 备份目录 + 现有份数（Settings 显示用）。 */
+export async function getBackupInfo(): Promise<{
+  backupDir: string;
+  backupCount: number;
+}> {
+  return json(
+    await fetch(`${API_BASE}/storage/info`, { credentials: 'include' }),
+  );
 }

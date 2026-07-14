@@ -27,6 +27,13 @@ export class ConfigService {
 
   readonly storageDir = process.env.STORAGE_DIR ?? path.resolve('.storage');
 
+  // Auto-backup target. On macOS the packaged app resolves this to
+  // ~/Library/Application Support/musicbox/backups via the STORAGE_BACKUP_DIR
+  // env (set by Electron main); dev falls back to <storageDir>/backups.
+  readonly backupDir =
+    process.env.STORAGE_BACKUP_DIR ?? path.join(this.storageDir, 'backups');
+  readonly backupRetention = Number(process.env.STORAGE_BACKUP_RETENTION ?? 7);
+
   // QQ 音乐:走内嵌登录窗口捕获 cookie，无需 appid/secret（QQ 互联那套已废弃）
 
   // 网易云（没有公开 OAuth，用 cookie / 扫码）

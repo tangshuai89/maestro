@@ -30,6 +30,8 @@ interface Props {
   // Liked library
   likedCount: number;
   onOpenLiked: () => void;
+  // Settings (backup / export / import)
+  onOpenSettings: () => void;
 }
 
 /**
@@ -58,6 +60,7 @@ export default function Titlebar({
   onReset,
   likedCount,
   onOpenLiked,
+  onOpenSettings,
 }: Props) {
   const showQuality =
     (provider === 'qq' || provider === 'netease') && loggedIn;
@@ -134,6 +137,14 @@ export default function Titlebar({
           {accountName || 'User'}
         </button>
       )}
+
+      <button
+        className="titlebar-btn settings-btn-icon"
+        onClick={onOpenSettings}
+        title="设置 · 备份 / 导出 / 导入会话快照"
+      >
+        ⚙
+      </button>
 
       <button
         className="titlebar-btn reset-btn"

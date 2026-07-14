@@ -30,6 +30,16 @@ export interface NeteaseLoginResponse {
   error?: string;
 }
 
+/** Transport commands emitted by the macOS tray menu. */
+export type TrayCommand = 'playpause' | 'next' | 'prev';
+
+/** Playback state the renderer reports up so the tray stays in sync. */
+export interface PlaybackState {
+  isPlaying: boolean;
+  title?: string;
+  artist?: string;
+}
+
 const electronAPI = {
   platform: process.platform,
 
@@ -56,9 +66,7 @@ const electronAPI = {
   },
 
   /** Open a QQ Music login window; resolves when the login cookie is captured. */
-  qqLogin: (): Promise<QqLoginResponse> => ipcRenderer.invoke('qq:login'),
-
-  /** Open a NetEase login window; resolves when MUSIC_U is captured. */
+  qqLogin: (): Promise<QqLoginResponse> => ipcRenderer.invoke('qq:login'),  /** Open a NetEase login window; resolves when MUSIC_U is captured. */
   neteaseLogin: (): Promise<NeteaseLoginResponse> =>
     ipcRenderer.invoke('netease:login'),
 
@@ -78,6 +86,20 @@ const electronAPI = {
    */
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('shell:open-external', url),
+
+  /**
+   * Subscribe to tray transport commands ('playpause' | 'next' | 'prev').
+   * The renderer maps them onto usePlayer actions. Returns an unsubscribe fn.
+   */
+  onTrayCommand: (cb: (command: TrayCommand) => void): (() => void) => {
+    const handler = (_e: unknown, command: TrayCommand): void => cb(command);
+    ipcRenderer.on('tray:command', handler);
+    return () => ipcRenderer.removeListener('tray:command', handler);
+  },
+
+  /** Report current playback state to main so the tray label/tooltip sync. */
+  reportPlaybackState: (state: PlaybackState): void =>
+    ipcRenderer.send('player:state', state),
 
   /** Tell main we're in Electron so the renderer can branch its behaviour. */
   isElectron: true as const,

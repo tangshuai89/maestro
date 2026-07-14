@@ -3,6 +3,9 @@ import {
   BrowserWindow,
   shell,
   ipcMain,
+  Tray,
+  Menu,
+  nativeImage,
 } from 'electron';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'node:child_process';
@@ -10,6 +13,21 @@ import { spawn, ChildProcess } from 'node:child_process';
 const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Runtime asset (icons) resolver. In dev, assets live in `packages/electron/build`
+ * (one level up from the compiled `dist/`). In a packaged app they're copied to
+ * `Resources/build/` via electron-builder extraResources.
+ */
+function assetPath(name: string): string {
+  return isDev
+    ? path.join(__dirname, '..', 'build', name)
+    : path.join(process.resourcesPath, 'build', name);
+}
+
+/** Set true once the user really wants to quit (Cmd+Q / tray Quit), so the
+ * window `close` handler stops hiding-to-tray and lets the app exit. */
+let isQuitting = false;
 
 // ── NestJS sidecar（packaged 模式） ────────────────────────────────────────
 
@@ -48,6 +66,11 @@ function startSidecar(): Promise<void> {
       'main.js',
     );
     console.log(`[main] spawning sidecar: ${serverEntry}`);
+    // Persist under Electron's userData (~/Library/Application Support/musicbox
+    // on macOS) so state + backups survive app updates and live in a stable,
+    // user-discoverable place — not next to the read-only .app bundle. Backups
+    // sit alongside state.json in a `backups/` subdir.
+    const userData = app.getPath('userData');
     sidecar = spawn(process.execPath, [serverEntry], {
       env: {
         ...process.env,
@@ -56,6 +79,8 @@ function startSidecar(): Promise<void> {
         // ELECTRON_RUN_AS_NODE=1 才能当 node 用。
         ELECTRON_RUN_AS_NODE: '1',
         PORT: String(SIDECAR_PORT),
+        STORAGE_DIR: path.join(userData, '.storage'),
+        STORAGE_BACKUP_DIR: path.join(userData, 'backups'),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -85,6 +110,78 @@ function stopSidecar(): void {
     // ignore
   }
   sidecar = null;
+}
+
+// ── Tray + media controls ────────────────────────────────────────────────────
+//
+// The tray menu drives playback by sending 'tray:command' to the renderer,
+// which owns the actual player state (usePlayer). The renderer reports back its
+// state via 'player:state' so the tray label/tooltip stay in sync. This keeps a
+// single source of truth (no duplicate play logic in main).
+
+let tray: Tray | null = null;
+
+interface PlaybackState {
+  isPlaying: boolean;
+  title?: string;
+  artist?: string;
+}
+
+let playbackState: PlaybackState = { isPlaying: false };
+
+/** Bring the main window back from the tray (or recreate it if it was torn
+ * down). Used by the tray "Show" item and by app `activate`. */
+function showMainWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createWindow();
+  }
+}
+
+/** Send a transport command to the renderer's player. */
+function sendTrayCommand(command: 'playpause' | 'next' | 'prev'): void {
+  mainWindow?.webContents.send('tray:command', command);
+}
+
+/** Rebuild the tray context menu + tooltip from the current playback state. */
+function refreshTray(): void {
+  if (!tray) return;
+  const { isPlaying, title, artist } = playbackState;
+  const nowPlaying = title
+    ? `${title}${artist ? ` — ${artist}` : ''}`
+    : '未在播放';
+  const menu = Menu.buildFromTemplate([
+    { label: nowPlaying, enabled: false },
+    { type: 'separator' },
+    {
+      label: isPlaying ? '暂停' : '播放',
+      click: () => sendTrayCommand('playpause'),
+    },
+    { label: '上一首', click: () => sendTrayCommand('prev') },
+    { label: '下一首', click: () => sendTrayCommand('next') },
+    { type: 'separator' },
+    { label: '显示主窗口', click: () => showMainWindow() },
+    {
+      label: '退出 musicbox',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(menu);
+  tray.setToolTip(title ? `musicbox · ${nowPlaying}` : 'musicbox');
+}
+
+function createTray(): void {
+  if (tray) return;
+  const image = nativeImage.createFromPath(assetPath('trayTemplate.png'));
+  // Template image → macOS auto-inverts it for light/dark menubars.
+  image.setTemplateImage(true);
+  tray = new Tray(image);
+  refreshTray();
 }
 
 /** The QQ Music login window (kept alive hidden after success so we could
@@ -124,6 +221,8 @@ function createWindow(): void {
     backgroundColor: '#0f0f12',
     resizable: true,
     show: false,
+    // macOS uses the app-bundle .icns; Win/Linux need an explicit window icon.
+    icon: process.platform === 'darwin' ? undefined : assetPath('icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -171,6 +270,16 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // Close-to-tray: hide the window instead of quitting so playback keeps
+  // running in the background (macOS music-player convention). The app only
+  // truly exits via Cmd+Q / tray "退出", which set isQuitting first.
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow?.hide();
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -535,6 +644,17 @@ ipcMain.handle('shell:open-external', async (_event, url: string) => {
   await shell.openExternal(url);
 });
 
+/** Renderer → main: current playback state, so the tray label/tooltip reflect
+ * what's actually playing. Fire-and-forget (ipcRenderer.send). */
+ipcMain.on('player:state', (_event, state: PlaybackState) => {
+  playbackState = {
+    isPlaying: Boolean(state?.isPlaying),
+    title: state?.title,
+    artist: state?.artist,
+  };
+  refreshTray();
+});
+
 // ── App lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
@@ -549,12 +669,24 @@ app.whenReady().then(async () => {
   // 2. 打开主窗口
   createWindow();
 
+  // 3. 托盘常驻 + 自定义 Dock 图标（dev 也生效，方便验证图标）
+  createTray();
+  if (process.platform === 'darwin') {
+    try {
+      app.dock?.setIcon(nativeImage.createFromPath(assetPath('icon.png')));
+    } catch (err) {
+      console.warn('[main] dock.setIcon failed:', err);
+    }
+  }
+
   app.on('activate', () => {
-    if (mainWindow === null) createWindow();
+    // Clicking the Dock icon re-shows the (possibly hidden) window.
+    showMainWindow();
   });
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   stopSidecar();
 });
 
