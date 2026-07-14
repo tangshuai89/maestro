@@ -1,0 +1,56 @@
+# Claude Code GitHub Action — 让 @claude 在 issue / PR 里干活，产出的
+# commit / PR 挂在 claude[bot] 身份下（不再是仓库主人的账号）。
+#
+# 一次性手动步骤（脚本代替不了）：
+#   1. 安装 Claude 的 GitHub App 到本仓库：
+#        https://github.com/apps/claude  →  Install  →  选 musicbox
+#      （或本地 Claude Code 里跑  /install-github-app  走交互式引导）
+#   2. 加仓库 secret（Settings → Secrets and variables → Actions）：
+#        - 用 Anthropic API key：加 ANTHROPIC_API_KEY（console.anthropic.com，按量计费）
+#        - 或用 Claude 订阅额度：本地跑 `claude setup-token` 生成，加 CLAUDE_CODE_OAUTH_TOKEN
+#          （Max/Pro 订阅走这个更省，不额外扣 API 费）
+#   3. 合并本 PR 后，去任意 issue / PR 评论 "@claude 帮我改 X" 即可触发。
+#
+# 身份说明：commit / PR 的作者由 Claude GitHub App 的 token 决定 → claude[bot]，
+# 与触发者（你）的账号分开。
+
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+# claude[bot] 需要读写代码 / PR / issue；actions:read 让它能看 CI 结果去修。
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  id-token: write
+
+jobs:
+  claude:
+    # 只在评论 / issue 正文里 @claude 时才跑，避免每条评论都触发。
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          # 二选一鉴权（对应上面手动步骤 2）。用订阅就注释掉下面这行、
+          # 解开 CLAUDE_CODE_OAUTH_TOKEN 那行。
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
