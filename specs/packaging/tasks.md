@@ -9,4 +9,8 @@
 - [x] 9. electron-builder config: extraResources 加 server/dist
 - [x] 10. tsc 编译 + node dist/main.js 独立启动 :3200 已验过
 - [x] 11. typecheck + 39/39 测试通过
-- [ ] 12. 文档：README "Build for production" 一节更新（留给下一轮）
+- [x] 12. 文档：README "Build for production" 一节更新
+- [x] 13. 修 extraResources 实际漏配 server/dist（tasks#9 曾勾但 package.json 里只有 renderer）+ 补 build/（tray 图标运行时）
+- [x] 14. 修 electron-builder 无法探测 electron 版本（workspace 提升 → electron devDep 固定为 31.7.7）
+- [x] 15. 6.4：应用图标（build/icon.icns + Dock/窗口图标）+ macOS Tray（播放/暂停/上下首/显示/退出）+ 关窗到托盘、Cmd+Q 真退出并 kill sidecar
+- [ ] 16. 端到端冒烟：`npm run pack` 出 dmg（当前被环境缺失的 7zip-bin 传递依赖阻塞，需先 `npm install` 恢复；electron-builder 已能探测 electron 31.7.7 并进入 packaging 阶段）

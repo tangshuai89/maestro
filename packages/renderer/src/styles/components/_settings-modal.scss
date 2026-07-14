@@ -1,0 +1,183 @@
+@use '../abstracts' as *;
+
+// Settings dialog (会话快照 备份/导出/导入). Rendered inside the shared
+// .modal-panel; same always-dark $overlay-* palette as reco-key / liked modals.
+
+.settings-modal-panel {
+  width: min(92vw, 520px);
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid $overlay-divider;
+}
+
+.settings-modal-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: $overlay-text;
+}
+
+.settings-modal-close {
+  width: 32px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: $overlay-icon;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: #fff;
+  }
+}
+
+.settings-modal-body {
+  padding: 8px 14px 16px;
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+.settings-section {
+  padding: 14px 0;
+  border-bottom: 1px solid $overlay-divider;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.settings-section-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: $overlay-text;
+}
+
+.settings-section-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: $overlay-text-dim;
+}
+
+.settings-path {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: $overlay-field-bg;
+  border: 1px solid $overlay-field-border;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: $overlay-text-dim;
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+
+.settings-label {
+  display: block;
+  font-size: 11px;
+  color: $overlay-text-mute;
+  margin: 8px 0 4px;
+}
+
+.settings-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid $overlay-field-border;
+  background: $overlay-field-bg;
+  color: $overlay-text;
+  font-size: 13px;
+  outline: none;
+
+  &:focus {
+    border-color: $overlay-field-border-hi;
+  }
+}
+
+.settings-file {
+  width: 100%;
+  font-size: 12px;
+  color: $overlay-text-dim;
+  margin-bottom: 4px;
+}
+
+.settings-pass-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid $overlay-field-border;
+  border-radius: 9px;
+  background: $overlay-field-bg;
+  color: $overlay-text;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: $overlay-hover;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+.settings-btn-primary {
+  background: $accent-green;
+  border-color: transparent;
+  color: #06231a;
+  font-weight: 600;
+}
+
+.settings-btn-ghost {
+  width: 34px;
+  height: 34px;
+  border: 1px solid $overlay-field-border;
+  border-radius: 9px;
+  background: transparent;
+  color: $overlay-text-dim;
+  font-size: 15px;
+  cursor: pointer;
+
+  &:hover {
+    color: $overlay-text;
+  }
+}
+
+.settings-count {
+  font-size: 12px;
+  color: $overlay-text-mute;
+}
+
+.settings-status {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+
+  &--ok {
+    color: $accent-green;
+  }
+
+  &--err {
+    color: $overlay-error;
+  }
+}

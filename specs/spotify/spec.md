@@ -85,3 +85,79 @@ GET  /api/music/stream/spotify/{trackId}
 - 复用 P2 importLiked 把 Spotify liked 拉进统一库
 - 客户端 ID 走 .storage secrets，跟 DeepSeek key 同档管理
 - token 存 session.providers.spotify，刷新逻辑自己写（不依赖外部 SDK）
+
+---
+
+# v2：全曲播放（Web Playback SDK）+ ❤ 写回
+
+> v1 只做到 30s 预览。v2 把 Spotify 提到"平台对等"：Premium 全曲播放 +
+> ❤ 真正写进用户 Spotify 库。
+
+## 做什么
+
+1. **❤ 写回**（任何登录用户，不需要 Premium）：`fanOutLike` 已把 spotify 的
+   `like/unlike` 路由到 `PUT/DELETE /v1/me/tracks`，`user-library-modify`
+   scope 也早就在。v2 只补一个白盒测试锁死这个 HTTP 往返（之前只测响应形状，
+   没测真调用）。
+2. **全曲播放**（Premium-only）：接 Spotify Web Playback SDK。当统一 track 的
+   `bestSource === 'spotify'` 且用户是 Premium 且 WPS 已连 → 走 SDK 全曲流；
+   否则回退 v1 的 30s 预览代理路径。
+
+## 架构
+
+- **SDK 宿主**：同一个 renderer window（不另开隐藏 BrowserWindow）。
+  `index.html` defer 加载 `https://sdk.scdn.co/spotify-player.js`。
+- **token 桥**：新增 `GET /auth/spotify/token`，返回 `{ accessToken, expiresAt,
+  tier }`；server 自动 refresh 过期 token。renderer 把 accessToken 喂给 SDK，
+  SDK 自管 WebSocket 续连；renderer 用 expiresAt 提前 60s 重拉 + reconnect。
+- **tier 缓存**：`exchangeCode` 时多查一次 `/v1/me` 读 `product` 字段，缓存到
+  `session.spotify.tier`（premium/free/open）。新增 `GET /auth/spotify/me` +
+  扩展 `GET /auth/spotify/status` 带 tier。老 session 缺 tier → `getMeInfo`
+  懒查一次补上。
+- **播放路由**：`usePlayer` 收一个 `wpsRef`（打破 App↔usePlayer 循环依赖）。
+  spotify + premium + wpsReady → transport（play/pause/resume/seek）走 WPS，
+  且 `presentTrack` 把 spotify track 的 `audioUrl` 清空（防 `<audio>` 同时播
+  30s 预览造成双声道）。其他情况维持原 `<audio>` 路径不变。WPS 的
+  `player_state_changed` 的 position/duration 通过 `applyWpsProgress` 喂回
+  usePlayer 的时间轴，UI 其余部分对 WPS 无感知。
+- **feature flag**：整条 WPS 路径被 `tier === 'premium'` 门控。Free / 未登录 /
+  非 spotify → `wpsReady` 恒 false，行为与 v1 完全一致。
+
+## v2 验收标准
+
+### 可在本环境自动验证
+
+- [x] `like()` → `PUT /v1/me/tracks`，body 含 `ids:[trackId]`，header 带 Bearer
+- [x] `unlike()` → `DELETE /v1/me/tracks` 同上
+- [x] `like()` 遇非 2xx（401 等）→ `success:false` 不抛
+- [x] `getValidTokenForRenderer`：无 session → null；有效 → 透传 accessToken + tier
+- [x] `SPOTIFY_SCOPES` 含 `user-read-email` + `streaming` + `user-modify-playback-state`
+- [x] typecheck 干净、renderer vite build 通过、SDK script 进构建产物
+
+### 需 Premium 账号手动验证（本轮开发者无 Premium，代码 code-complete 未运行验证）
+
+- [ ] Premium 账号能从 Spotify 源直接播**完整**曲目（>30s）
+- [ ] Spotify 桌面端能看到 "musicbox-xxxx" 设备
+- [ ] pause / resume / skip / seek transport 生效
+- [ ] token 到期（1h）时自动重连不掉播
+
+### Free 账号可验证（回退路径）
+
+- [ ] Free 账号播 Spotify 曲目仍走 30s 预览（v1 路径），无回归
+
+## v2 不做什么
+
+- 不做 WPS 曲末自动切下一首（`<audio>` 的 `onEnded` 对无 src 的 spotify track
+  不触发；WPS 的曲末检测不可靠且无法本地验证）。用户手动 skip。**已知限制**。
+- 不做 Spotify 歌词（要另外 scope，deferred）。
+- 不做设备跨重启持久化（Spotify Connect 设备本就是临时的）。
+- 不做非 Premium 的 Web Playback（Spotify 硬性限制，接不了）。
+
+## v2 已知限制
+
+- **WPS 全链路未在本地运行验证**（开发者无 Premium）。缓解：Free 路径不变、
+  WPS 被 tier 门控、写回路径有测试锁死。上线前需 Premium 账号跑一遍手动验收。
+- **WPS token 中途轮换**：SDK 不自动 refresh；`useSpotifyWpsPlayer` 每 30s 检查
+  一次 expiresAt，将到期（<60s）就重拉 token + reconnect。设备名不变，位置能续。
+- **网络出口**：需能访问 `sdk.scdn.co` + `*.spotify.com`（含 wss）。仅在用户
+  主动选 Spotify + Premium 登录后才加载，不后台预载。

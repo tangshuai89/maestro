@@ -42,7 +42,18 @@ export function useAuth(
     const errParam = params.get('error');
     if (errParam) setError(decodeURIComponent(errParam));
     getAuthStatus(provider)
-      .then(setAuth)
+      .then((status) => {
+        // Spotify needs an extra tier query — /v1/me's product field isn't
+        // returned by the generic /auth/status. fetch tier only on first
+        // hit, then merge.
+        if (provider === 'spotify' && status.loggedIn) {
+          void getSpotifyStatus().then((s) => {
+            setAuth({ ...status, tier: s.tier });
+          });
+        } else {
+          setAuth(status);
+        }
+      })
       .catch((e) => setError((e as Error).message));
     if (params.toString()) {
       window.history.replaceState({}, '', '/');
@@ -173,7 +184,12 @@ export function useAuth(
         const s = await getSpotifyStatus();
         if (s.loggedIn) {
           const full = await getAuthStatus('spotify');
-          setAuth({ provider: 'spotify', loggedIn: true, user: full.user });
+          setAuth({
+            provider: 'spotify',
+            loggedIn: true,
+            user: full.user,
+            tier: s.tier,
+          });
           loadNextTrack();
           return;
         }

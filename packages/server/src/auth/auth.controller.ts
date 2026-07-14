@@ -8,6 +8,7 @@ import {
   Res,
   Logger,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { normalizeProvider } from '../common/provider';
 import { Request, Response } from 'express';
@@ -215,15 +216,69 @@ export class AuthController {
 
   /**
    * 当前是否已设 client_id 且登录态有效。给前端 UI 决定按钮态。
+   * 额外带 tier（'premium' / 'free' / 'open' / null）—— WPS 路由用。
    */
   @Get('spotify/status')
-  spotifyStatus(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async spotifyStatus(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const session = this.sessionService.resolve(req, res);
     const stored = this.storage.get<{ clientId?: string }>(SPOTIFY_CLIENT_ID_KEY);
+    const loggedIn = this.spotify.isConfigured(session.providers.spotify);
+    // tier 只在已登录时有意义；未登录直接 null（前端据此隐藏 WPS 相关 UI）。
+    let tier: string | null = null;
+    if (loggedIn) {
+      const me = await this.spotify.getMeInfo(session.providers.spotify!);
+      tier = me?.tier ?? null;
+    }
     return {
       hasClientId: Boolean(stored?.clientId),
-      loggedIn: this.spotify.isConfigured(session.providers.spotify),
+      loggedIn,
+      tier,
     };
+  }
+
+  /**
+   * 渲染端初始化 Web Playback SDK 时拿 token。会自动 refresh 过期 token。
+   * 返回 { accessToken, expiresAt, tier } —— renderer 用 expiresAt 提前 60s
+   * 重新拉一次以避免 WPS WebSocket 静默断连。
+   */
+  @Get('spotify/token')
+  async spotifyToken(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const ps = session.providers.spotify;
+    if (!ps) {
+      throw new UnauthorizedException('spotify_not_logged_in');
+    }
+    const tok = await this.spotify.getValidTokenForRenderer(ps);
+    if (!tok) {
+      throw new UnauthorizedException('spotify_token_unavailable');
+    }
+    return tok;
+  }
+
+  /**
+   * 渲染端用的 /me 信息（id / displayName / tier）。tier 缺省时懒查一次。
+   */
+  @Get('spotify/me')
+  async spotifyMe(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const ps = session.providers.spotify;
+    if (!ps) {
+      throw new UnauthorizedException('spotify_not_logged_in');
+    }
+    const me = await this.spotify.getMeInfo(ps);
+    if (!me) {
+      throw new UnauthorizedException('spotify_me_unavailable');
+    }
+    return me;
   }
 
   /**

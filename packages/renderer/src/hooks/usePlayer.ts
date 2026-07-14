@@ -5,6 +5,7 @@ import {
   useState,
   type RefObject,
 } from 'react';
+import type { UseSpotifyWpsPlayer } from './useSpotifyWpsPlayer';
 import {
   fetchNextTrack,
   toggleLike,
@@ -44,7 +45,19 @@ import { useCoverArt } from './useCoverArt';
  * `audioRef` is owned by the caller (App) and shared with useVolume + the
  * <audio> JSX + the progress/lyrics seek paths.
  */
-export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
+export function usePlayer(
+  audioRef: RefObject<HTMLAudioElement | null>,
+  /**
+   * Optional Premium Spotify Web Playback SDK bridge (v2), passed as a ref
+   * to break the circular dependency (App needs player.provider to decide
+   * whether WPS is enabled, and usePlayer needs WPS to route transport).
+   * When wpsRef.current is ready AND the current track is from spotify,
+   * transport commands (play / pause / resume) route through WPS instead of
+   * the HTML <audio> element. For non-spotify tracks or when WPS isn't ready,
+   * the existing <audio> path is used unchanged.
+   */
+  wpsRef?: RefObject<UseSpotifyWpsPlayer | null>,
+) {
   const [provider, setProvider] = useState<MusicProvider | null>(() => {
     const params = new URLSearchParams(window.location.search);
     const fromCallback = params.get('provider');
@@ -90,6 +103,9 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
   const skipAutoLoadRef = useRef(false);
   // For quality switches: jump back to the original position after reload.
   const pendingSeekRef = useRef<number | null>(null);
+  // WPS: 最近一次通过 WPS play() 送出的 spotify track id。用来区分
+  // "切到新歌 → play(newUri)" 和 "同一首暂停后恢复 → resume()"。
+  const wpsPlayedIdRef = useRef<string | null>(null);
 
   // Web Audio graph — created lazily on the first play (autoplay policy gates
   // AudioContext + MediaElementSource to user gestures). `analyser` is state
@@ -163,6 +179,11 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
       ) {
         const sep = audioUrl.includes('?') ? '&' : '?';
         audioUrl += `${sep}q=${qqQualityRef.current}`;
+      }
+      // Spotify Premium + WPS ready：清空 audioUrl，否则 <audio> 会同时播
+      // 30s 预览代理，跟 WPS 全曲流冲突（双声道）。WPS 就绪判断懒读 ref。
+      if (next.provider === 'spotify' && wpsRef?.current?.wpsReady) {
+        audioUrl = '';
       }
       if (next.coverUrl) {
         // presentCover reads the ref.current INSIDE its async work, so it
@@ -360,6 +381,38 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !track) return;
+    // Spotify Premium + WPS ready → 走 WPS 路径（HTMLAudioElement 不用，
+    // 否则会被 30s 预览代理劫持成 mp3 字节流）。wpsRef 引用稳定，effect 只在
+    // playing / track 变化时跑，此处懒读 .current 拿最新 WPS 实例。
+    const wps = wpsRef?.current ?? null;
+    const useWps = Boolean(
+      wps?.wpsReady && track.provider === 'spotify' && track.id,
+    );
+    if (useWps && wps) {
+      if (playing) {
+        audio.dataset.wantPlay = '1';
+        // 切到新歌 → play(newUri)；同一首暂停后恢复 → resume。用 ref 里记的
+        // 上一次 play 过的 id 区分（audio.dataset.wantPlay 无法区分这两种）。
+        if (wpsPlayedIdRef.current !== track.id) {
+          const uri = `spotify:track:${track.id}`;
+          wpsPlayedIdRef.current = track.id;
+          void wps.play(uri).catch((e: Error) => {
+            console.error('[wps] play() rejected:', e);
+            setError(`WPS 播放失败：${e.message}`);
+          });
+        } else {
+          void wps.resume().catch(() => {
+            // resume 失败常见于 SDK 内部状态；忽略
+          });
+        }
+      } else {
+        audio.dataset.wantPlay = '0';
+        void wps.pause().catch(() => {
+          // ignore
+        });
+      }
+      return;
+    }
     if (playing) {
       audio.dataset.wantPlay = '1';
       if (audio.readyState >= 3 /* HAVE_FUTURE_DATA */) {
@@ -372,7 +425,17 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
       audio.dataset.wantPlay = '0';
       audio.pause();
     }
-  }, [playing, track, audioRef]);
+  }, [playing, track, audioRef, wpsRef]);
+
+  /** WPS → 时间轴桥：App 在 wps.state 变化时调它，把 SDK 上报的位置/时长
+   *  喂回 usePlayer 的 currentTime / duration。仅在 WPS 播放 spotify 时用。 */
+  const applyWpsProgress = useCallback(
+    (positionMs: number, durationMs: number) => {
+      setCurrentTime(positionMs / 1000);
+      if (durationMs > 0) setDuration(durationMs / 1000);
+    },
+    [],
+  );
 
   // Bass-driven breathing for the cover card. RAF loop reads the analyser's
   // low-frequency bins and writes 0..1 to --bass-intensity on :root.
@@ -482,6 +545,19 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
 
   const handleSkip = () => loadNextTrack();
 
+  /** Go back one track within the search queue (looping). Radio has no history,
+   *  so prev is a no-op there. */
+  const loadPrevTrack = useCallback(() => {
+    const q = queueRef.current;
+    if (q && q.tracks.length) {
+      q.idx = (q.idx - 1 + q.tracks.length) % q.tracks.length;
+      presentTrack(q.tracks[q.idx]);
+      void detectAndApplyLiked(q.unifiedItems?.[q.idx]);
+    }
+  }, [presentTrack, detectAndApplyLiked]);
+
+  const handlePrev = () => loadPrevTrack();
+
   const handleLike = async () => {
     if (!track || !provider) return;
     // 语义：❤ 是开关。未收藏 → 在所有有版权的平台收藏（fan-out）；已收藏 →
@@ -536,8 +612,18 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
     loadNextTrack();
   };
 
-  /** Seek the live <audio> element (progress-bar click, lyric-line click). */
+  /** Seek the live <audio> element (progress-bar click, lyric-line click).
+   *  Spotify Premium + WPS ready → seek through the SDK instead (the <audio>
+   *  element isn't the playback source for those tracks). */
   const seek = (seconds: number) => {
+    const wps = wpsRef?.current ?? null;
+    if (wps?.wpsReady && track?.provider === 'spotify') {
+      setCurrentTime(seconds); // 乐观更新，SDK 回报后再校正
+      void wps.seek(Math.round(seconds * 1000)).catch(() => {
+        // ignore
+      });
+      return;
+    }
     const audio = audioRef.current;
     if (audio) audio.currentTime = seconds;
   };
@@ -585,8 +671,10 @@ export function usePlayer(audioRef: RefObject<HTMLAudioElement | null>) {
     changeDeezerPreset,
     loadNextTrack,
     playSearch,
+    applyWpsProgress,
     handlePlayPause,
     handleSkip,
+    handlePrev,
     handleLike,
     handleDislike,
     seek,

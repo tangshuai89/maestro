@@ -107,5 +107,117 @@ void (async () => {
   console.log('✅ 7. saveToken: 写 spotify 字段 + 保留其他');
 }
 
-console.log('\n🎉 全部 7 个测试通过');
+// ── 8. like: PUT /v1/me/tracks 正确 (v2 ❤ 写回验证) ─────
+{
+  // 注入 fetch mock：只关心它被以正确方法/URL/header/body 调用一次。
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: any, init: any) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return new Response('', { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const r = await svc.like(session as any, 'track-abc-123');
+    assert.strictEqual(r.success, true);
+    assert.strictEqual(calls.length, 1, 'like() 只调一次 fetch');
+    const c = calls[0];
+    assert.strictEqual(c.url, 'https://api.spotify.com/v1/me/tracks');
+    assert.strictEqual(c.init.method, 'PUT');
+    const headers = c.init.headers as Record<string, string>;
+    assert.strictEqual(headers['Authorization'], 'Bearer valid-tok');
+    assert.strictEqual(headers['Content-Type'], 'application/json');
+    const body = JSON.parse(c.init.body as string);
+    assert.deepStrictEqual(body.ids, ['track-abc-123'], 'body 应含 ids: [trackId]');
+    console.log('✅ 8. like: PUT /v1/me/tracks 带 Bearer + ids[]');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 9. unlike: DELETE /v1/me/tracks 同上 (v2 ❤ 写回验证) ─
+{
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: any, init: any) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return new Response('', { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const r = await svc.unlike(session as any, 'track-xyz-789');
+    assert.strictEqual(r.success, true);
+    assert.strictEqual(calls.length, 1);
+    const c = calls[0];
+    assert.strictEqual(c.url, 'https://api.spotify.com/v1/me/tracks');
+    assert.strictEqual(c.init.method, 'DELETE');
+    const body = JSON.parse(c.init.body as string);
+    assert.deepStrictEqual(body.ids, ['track-xyz-789']);
+    console.log('✅ 9. unlike: DELETE /v1/me/tracks 同 like 但 method=DELETE');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 10. like: 401 / 非 2xx → success=false ─────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response('{"error":{"status":401,"message":"token expired"}}', {
+      status: 401,
+    })) as typeof fetch;
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'expired',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const r = await svc.like(session as any, 'track-1');
+    assert.strictEqual(r.success, false, '非 2xx 应返 success=false');
+    console.log('✅ 10. like: 401 → success=false（不抛）');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 11. getValidTokenForRenderer: 未登录 → null ────────
+{
+  const r = await svc.getValidTokenForRenderer({} as any);
+  assert.strictEqual(r, null, '空 session 应返 null');
+  console.log('✅ 11. getValidTokenForRenderer: 无 session = null');
+}
+
+// ── 12. getValidTokenForRenderer: 有效 token 带 tier ─────
+{
+  const r = await svc.getValidTokenForRenderer({
+    spotify: {
+      accessToken: 'good',
+      refreshToken: 'r',
+      expiresAt: Date.now() + 60_000,
+      tier: 'premium',
+    },
+  } as any);
+  assert.ok(r, '应有返回');
+  assert.strictEqual(r!.accessToken, 'good');
+  assert.strictEqual(r!.tier, 'premium', 'tier 应透传');
+  console.log('✅ 12. getValidTokenForRenderer: 透传 accessToken + tier');
+}
+
+console.log('\n🎉 全部 12 个测试通过');
 })();

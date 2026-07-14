@@ -20,6 +20,7 @@ export default defineConfig({
       '/music': { target: 'http://localhost:3200', changeOrigin: true },
       '/auth': { target: 'http://localhost:3200', changeOrigin: true },
       '/reco': { target: 'http://localhost:3200', changeOrigin: true },
+      '/storage': { target: 'http://localhost:3200', changeOrigin: true },
     },
   },
   build: {

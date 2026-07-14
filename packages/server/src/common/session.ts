@@ -29,6 +29,15 @@ export interface ProviderSession {
     accessToken: string;
     refreshToken: string;
     expiresAt: number; // ms epoch
+    /** Cached Spotify product tier, captured during exchangeCode from /v1/me's
+     * `product` field. Used by the renderer to decide whether to route
+     * playback through the Web Playback SDK (premium) or fall back to the
+     * 30s preview path (free). Optional so old persisted sessions still
+     * load; the next /me call fills it in lazily. */
+    tier?: 'premium' | 'free' | 'open';
+    /** Cached profile info from the most recent /v1/me. Same lazy fill as tier. */
+    spotifyUserId?: string;
+    spotifyDisplayName?: string;
   };
   // Profile (shared)
   nickname?: string;

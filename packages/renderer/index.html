@@ -17,6 +17,11 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Spotify Web Playback SDK. Loads only the script (no auto-init);
+         spotify-wps.ts calls window.Spotify.Player when the user actually
+         has a Premium spotify session. SdkLazy load by `defer` so it doesn't
+         block first paint. -->
+    <script src="https://sdk.scdn.co/spotify-player.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
