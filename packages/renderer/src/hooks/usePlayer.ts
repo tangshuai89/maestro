@@ -822,38 +822,39 @@ export function usePlayer(
     [],
   );
 
-  // Bass-driven breathing for the cover card. RAF loop reads the analyser's
-  // low-frequency bins and writes 0..1 to --bass-intensity on :root.
   useEffect(() => {
-    // Freeze the pulse while the search overlay is open: its backdrop-filter
-    // re-samples the cover every scroll repaint, and a moving cover would
-    // flicker through the blur. Static cover behind the overlay → no flicker.
-    if (searchOpen) {
-      document.documentElement.style.setProperty('--bass-intensity', '0');
+    let target: HTMLDivElement | null = null;
+    let lastValue = '';
+    const writeBassIntensity = (value: string) => {
+      const nextTarget = coverBackdropRef.current;
+      if (nextTarget !== target) {
+        target = nextTarget;
+        lastValue = '';
+      }
+      if (target && value !== lastValue) {
+        target.style.setProperty('--bass-intensity', value);
+        lastValue = value;
+      }
+    };
+
+    if (searchOpen || !analyser || !playing) {
+      writeBassIntensity('0');
       return;
     }
+
     let raf = 0;
-    const buf = new Uint8Array(64); // small buffer; we only need low bins
+    const buf = new Uint8Array(64);
     const tick = () => {
-      if (analyser && playing) {
-        analyser.getByteFrequencyData(buf);
-        // Average bins 1..12 (bin 0 is DC; bin 12 ≈ ~1kHz at 44.1kHz with
-        // fftSize=256 — covers kick + bass + low mids).
-        let sum = 0;
-        for (let i = 1; i <= 12; i++) sum += buf[i];
-        const bass = sum / (12 * 255);
-        document.documentElement.style.setProperty(
-          '--bass-intensity',
-          (bass * 1.1).toFixed(3),
-        );
-      } else {
-        document.documentElement.style.setProperty('--bass-intensity', '0');
-      }
+      analyser.getByteFrequencyData(buf);
+      let sum = 0;
+      for (let i = 1; i <= 12; i++) sum += buf[i];
+      const bass = sum / (12 * 255);
+      writeBassIntensity(Math.min(1, bass * 1.1).toFixed(3));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, analyser, searchOpen]);
+  }, [playing, analyser, searchOpen, coverBackdropRef]);
 
   const selectSource = (next: MusicProvider) => {
     writeStoredProvider(next);

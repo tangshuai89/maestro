@@ -26,18 +26,8 @@ export default function CoverCard({
   onCloseError,
 }: Props) {
   return (
-    <div className={`glass-card cover-card${playing ? ' is-playing' : ''}`}>
-      {/* .cover-card-frost is a static sibling that hosts the backdrop-filter.
-          The frosted blur must NEVER be a descendant (or ancestor) of an
-          element whose descendants animate per-frame — Chromium re-rasterises
-          the cached blur whenever the filter element's subtree re-paints or
-          re-composites, so the bass "breathing" on .cover-art would force a
-          full blur resample every RAF tick the moment .cover-card repainted
-          (e.g. on hover's box-shadow change). Promoting the blur onto this
-          zero-descendant layer decouples it from the animated content. */}
+    <div className={`cover-card${playing ? ' is-playing' : ''}`}>
       <div className="cover-card-frost" aria-hidden="true" />
-      {/* .cover-card-inner owns the grid rows; it sits above the frost layer
-          and is the only place the actual cover art + meta live. */}
       <div className="cover-card-inner">
         <div className="cover-stack" key={`stack-${track?.id ?? 'empty'}`}>
           <div className="cover-art" ref={coverBackdropRef} onError={resetCoverColor}>
