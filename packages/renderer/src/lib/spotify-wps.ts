@@ -43,8 +43,10 @@ export interface WpsWrapper {
   readonly ready: boolean;
   /** EME / Widevine CDM 初始化是否成功（无 initialization_error）。 */
   readonly emeOk: boolean;
-  /** SDK 是否没有致命错误（authentication_error / initialization_error 等）。 */
-  readonly wpsFatal: boolean;
+  /** SDK ready 事件已 fire 且有 deviceId。 */
+  readonly hasDeviceId: boolean;
+  /** 注册一个回调在 SDK ready 事件 fire 且拿到 deviceId 后调用。 */
+  onSdkReady(cb: () => void): void;
   /** 注册一个状态变更订阅。返回 unsubscribe。 */
   onStateChange(cb: WpsStateCallback): () => void;
   /** 用新 token 重新连接（refresh 轮换时）。会断开旧 player 再建。 */
@@ -150,6 +152,8 @@ export function createWpsWrapper(): WpsWrapper {
   // WPS 致命错误：initialization_error / authentication_error / account_error
   // 任意一个 fire 则无法播放，useSpotifyWpsPlayer 据此退到 30s 预览
   let wpsFatal = false;
+  let deviceId: string | null = null;
+  const readyCallbacks: Array<() => void> = [];
   // 设备名在 wrapper 生命周期内固定：token 续期重连时复用同一名字，
   // Spotify Connect 才会把推流继续路由到同一设备（否则每次重连都冒出一个
   // 新设备、播放会断）。
@@ -196,12 +200,12 @@ export function createWpsWrapper(): WpsWrapper {
       });
     };
     const onReady = (payload: unknown): void => {
-      // 切到本设备：Spotify Connect 客户端调 PUT /v1/me/player 切到本 deviceId
-      // 即可（由 useSpotifyWpsPlayer 拿到 deviceId 后经 transferHere() 完成）。
       const info = payload as { device_id?: string };
       if (info?.device_id) {
-        // 注意：不能用闭包的 player——那可能在 connect() 内先于 player = p 被 fire
         (p as unknown as { _deviceId?: string })._deviceId = info.device_id;
+        deviceId = info.device_id;
+        readyCallbacks.forEach((cb) => { try { cb(); } catch { /* ignore */ } });
+        readyCallbacks.length = 0;
       }
     };
     const onNotReady = (): void => {
@@ -362,6 +366,13 @@ export function createWpsWrapper(): WpsWrapper {
     },
     get emeOk() {
       return !wpsFatal && Boolean(player);
+    },
+    get hasDeviceId() {
+      return Boolean(deviceId);
+    },
+    onSdkReady(cb: () => void): void {
+      if (deviceId) { cb(); return; }
+      readyCallbacks.push(cb);
     },
     onStateChange,
     connect,

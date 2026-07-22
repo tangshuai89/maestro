@@ -82,17 +82,26 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
         await w.connect(tok.accessToken);
         console.log('[wps hook] connect ok');
         if (cancelled) { w.disconnect(); return; }
-        // EME / Widevine CDM 初始化是异步的。connect() 返回 ok 后 SDK 几秒内
-        // 可能 fire initialization_error。等 3 秒给内部初始化，没报错 → 真 ready。
-        // 报错 → wpsReady=false → usePlayer 走 <audio> 30s 预览路径。
-        await new Promise((r) => setTimeout(r, 3000));
-        if (cancelled) { w.disconnect(); return; }
-        if (!w.emeOk) {
-          console.log('[wps hook] EME not ready, wpsReady=false (fallback <audio>)');
+        // 不等 fixed timeout——SDK ready 事件先到才真 ready。
+        // 安全上限 15s；期间 emeOk 变为 false 或 ready 不 fire 则退出。
+        const ready = await new Promise<boolean>((resolve) => {
+          const deadline = Date.now() + 15_000;
+          const check = () => {
+            if (cancelled) return resolve(false);
+            if (w.emeOk && w.hasDeviceId) return resolve(true);
+            if (!w.emeOk) return resolve(false);
+            if (Date.now() > deadline) return resolve(false);
+            setTimeout(check, 200);
+          };
+          // 如果 ready 事件在 connect 里已经 fire 了，立即检查
+          check();
+        });
+        if (!ready) {
+          console.log('[wps hook] SDK not ready in time, wpsReady=false (fallback <audio>)');
           setWpsReady(false);
           return;
         }
-        console.log('[wps hook] EME check ok, wpsReady=true');
+        console.log('[wps hook] SDK ready with deviceId, wpsReady=true');
         setWpsReady(true);
 
         // Token 续期定时器：每次 tick 检查 expiresAt；将到期则重拉 + connect

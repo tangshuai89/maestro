@@ -201,7 +201,6 @@ export function useAuth(
             provider: 'spotify',
             loggedIn: true,
             user: {
-              id: redeemed.profile.id,
               nickname: redeemed.profile.displayName,
               avatarUrl: '',
               provider: 'spotify',
