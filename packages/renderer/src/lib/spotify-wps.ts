@@ -201,12 +201,20 @@ export function createWpsWrapper(): WpsWrapper {
     const onError = (label: string) => (payload: unknown): void => {
       console.warn(`[spotify-wps] ${label}:`, payload);
     };
-    p.on('player_state_changed', onPlayerStateChanged);
-    p.on('ready', onReady);
-    p.on('not_ready', onNotReady);
-    p.on('initial_state', onPlayerStateChanged);
-    p.on('authentication_error', onError('authentication_error'));
-    p.on('playback_error', onError('playback_error'));
+    // SDK 提供 .addListener()，.on() 是 alias
+    // 'initial_state' 不是 SDK 正式事件——去掉，只 listen 官方文档的 6 个事件
+    const on = (event: string, cb: (p: unknown) => void) => {
+      if (typeof p.addListener === 'function') {
+        p.addListener(event, cb as never);
+      } else if (typeof (p as SpotifyPlayer).on === 'function') {
+        (p as SpotifyPlayer).on(event, cb);
+      }
+    };
+    on('player_state_changed', onPlayerStateChanged);
+    on('ready', onReady);
+    on('not_ready', onNotReady);
+    on('authentication_error', onError('authentication_error'));
+    on('playback_error', onError('playback_error'));
   }
 
   async function connect(token: string): Promise<void> {
