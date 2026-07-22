@@ -193,11 +193,13 @@ export function useAuth(
         );
         const redeemed = await redeemSpotifyCode(result.code, result.state);
         if (redeemed.ok) {
+          // 重新取 status——此时 session cookie 已写，tier 会是 redeem 后的正确值
+          const s = await getSpotifyStatus();
           setAuth({
             provider: 'spotify',
             loggedIn: true,
             user: redeemed.profile,
-            tier: status.tier,
+            tier: s.tier,
           });
           loadNextTrack();
         } else {
