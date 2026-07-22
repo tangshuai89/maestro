@@ -236,7 +236,7 @@ function createWindow(): void {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://127.0.0.1:5173');
     // Open DevTools so users can see renderer console errors (e.g. audio
     // loading failures, network issues with the Deezer preview URL).
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -250,7 +250,7 @@ function createWindow(): void {
   if (!isDev) {
     mainWindow.webContents.once('did-finish-load', () => {
       mainWindow?.webContents.send('sidecar-ready', {
-        apiBase: `http://localhost:${SIDECAR_PORT}`,
+        apiBase: `http://127.0.0.1:${SIDECAR_PORT}`,
       });
     });
   }
