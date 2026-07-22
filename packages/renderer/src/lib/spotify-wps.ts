@@ -41,6 +41,8 @@ export interface WpsPlayerState {
 export interface WpsWrapper {
   /** SDK 是否已 ready（connect 完成）。 */
   readonly ready: boolean;
+  /** EME / Widevine CDM 初始化是否成功（无 initialization_error）。 */
+  readonly emeOk: boolean;
   /** 注册一个状态变更订阅。返回 unsubscribe。 */
   onStateChange(cb: WpsStateCallback): () => void;
   /** 用新 token 重新连接（refresh 轮换时）。会断开旧 player 再建。 */
@@ -89,6 +91,7 @@ interface SpotifyPlayer {
   previousTrack?(): Promise<void>;
   // SDK 事件回调各自 payload 不同，统一收成 unknown，回调里 narrow。
   on(event: string, cb: (payload: unknown) => void): void;
+  addListener?(event: string, cb: (payload: unknown) => void): boolean;
 }
 
 interface SpotifyWebPlaybackState {
@@ -142,6 +145,8 @@ function makeDeviceName(): string {
 export function createWpsWrapper(): WpsWrapper {
   let player: SpotifyPlayer | null = null;
   let getToken: (() => Promise<string | null>) | null = null;
+  // EME / Widevine 初始化状态：initialization_error 事件被 fire 则置 true
+  let emeFailed = false;
   // 设备名在 wrapper 生命周期内固定：token 续期重连时复用同一名字，
   // Spotify Connect 才会把推流继续路由到同一设备（否则每次重连都冒出一个
   // 新设备、播放会断）。
@@ -215,6 +220,10 @@ export function createWpsWrapper(): WpsWrapper {
     on('not_ready', onNotReady);
     on('authentication_error', onError('authentication_error'));
     on('playback_error', onError('playback_error'));
+    on('initialization_error', (e: unknown) => {
+      emeFailed = true;
+      console.warn('[spotify-wps] initialization_error:', e);
+    });
   }
 
   async function connect(token: string): Promise<void> {
@@ -243,9 +252,6 @@ export function createWpsWrapper(): WpsWrapper {
         volume: 0.8,
       });
       bindListeners(p);
-      // 在 connect 前先声明 error 监听
-      p.on('initialization_error', (e: unknown) => console.warn('[spotify-wps] initialization_error:', e));
-      p.on('account_error', (e: unknown) => console.warn('[spotify-wps] account_error:', e));
       const ok = await p.connect();
       if (!ok) {
         throw new Error('spotify-wps: connect() 返 false');
@@ -340,6 +346,9 @@ export function createWpsWrapper(): WpsWrapper {
   return {
     get ready() {
       return Boolean(player);
+    },
+    get emeOk() {
+      return !emeFailed && Boolean(player);
     },
     onStateChange,
     connect,

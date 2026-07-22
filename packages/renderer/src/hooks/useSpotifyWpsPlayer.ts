@@ -80,11 +80,19 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
           if (!cancelled) setState(s);
         });
         await w.connect(tok.accessToken);
-        console.log('[wps hook] connect ok, wpsReady=true');
-        if (cancelled) {
-          w.disconnect();
+        console.log('[wps hook] connect ok');
+        if (cancelled) { w.disconnect(); return; }
+        // EME / Widevine CDM 初始化是异步的。connect() 返回 ok 后 SDK 几秒内
+        // 可能 fire initialization_error。等 3 秒给内部初始化，没报错 → 真 ready。
+        // 报错 → wpsReady=false → usePlayer 走 <audio> 30s 预览路径。
+        await new Promise((r) => setTimeout(r, 3000));
+        if (cancelled) { w.disconnect(); return; }
+        if (!w.emeOk) {
+          console.log('[wps hook] EME not ready, wpsReady=false (fallback <audio>)');
+          setWpsReady(false);
           return;
         }
+        console.log('[wps hook] EME check ok, wpsReady=true');
         setWpsReady(true);
 
         // Token 续期定时器：每次 tick 检查 expiresAt；将到期则重拉 + connect

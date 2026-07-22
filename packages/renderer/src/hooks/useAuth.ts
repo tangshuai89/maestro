@@ -200,7 +200,12 @@ export function useAuth(
           setAuth({
             provider: 'spotify',
             loggedIn: true,
-            user: redeemed.profile,
+            user: {
+              id: redeemed.profile.id,
+              nickname: redeemed.profile.displayName,
+              avatarUrl: '',
+              provider: 'spotify',
+            },
             tier: s.tier,
           });
           loadNextTrack();
