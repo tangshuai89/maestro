@@ -239,12 +239,17 @@ const FULL_SONG_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
 ]);
 
 /**
- * 选 bestSource：两档优先。
+ * 选 bestSource：三档优先——「能出全曲」 → 「非 VIP 锁」 → 「best-effort 试听」。
  *  1. **完整曲流平台里，有版权且非 VIP 锁**的（qq/网易云中能出全曲的）→ 按平台
  *     优先级选。这样"网易云免费全曲、QQ 绿钻独占"会直接选网易云，不再选中 QQ
  *     然后播成 30s 试听。
- *  2. 都没有 → 退回「按平台优先级选第一个有版权的」（**与之前完全一致**的行为，
- *     best-effort：QQ 试听仍优于 Deezer 预览，不会因 tier-1 漏选而把 Deezer 顶上来）。
+ *  2. 全部完整曲流平台都锁 → 在**所有平台**里找非锁的（避开试听）。这样
+ *     "Lydia 网易云试听 + QQ 锁 + Spotify 30s 预览"会选 Spotify（或 Deezer 30s
+ *     预览），而不是死磕网易云 30s 试听（试听更短 + 音质更差）。兑现
+ *     `types.ts:17` 注释承诺："全部源都锁时才退回"。
+ *  3. 全部都锁（罕见：所有平台都是 VIP 独占 / 区域限制）→ 退回「按平台优先级
+ *     选第一个有版权的」（best-effort：QQ 试听仍优于 Deezer 预览，保持以前
+ *     行为，不让任何平台都不可选导致黑屏）。
  */
 export function selectBestSource(sources: SourceInfo[]): MusicProvider | null {
   const byPriority = (pred: (s: SourceInfo) => boolean): MusicProvider | null =>
@@ -253,7 +258,9 @@ export function selectBestSource(sources: SourceInfo[]): MusicProvider | null {
   return (
     byPriority(
       (s) => s.hasCopyright && !s.vipLocked && FULL_SONG_PROVIDERS.has(s.platform),
-    ) ?? byPriority((s) => s.hasCopyright)
+    ) ??
+    byPriority((s) => s.hasCopyright && !s.vipLocked) ??
+    byPriority((s) => s.hasCopyright)
   );
 }
 

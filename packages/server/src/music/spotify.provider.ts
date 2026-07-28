@@ -599,7 +599,18 @@ export class SpotifyMusicProvider {
     return out;
   }
 
-  /** 字段映射：Web API → Track。 */
+  /**
+   * 字段映射：Web API → Track。
+   *
+   * Spotify 公开 API **永远只给 30s `preview_url`**（Free 给 30s mp3；Premium
+   * 走 WPS 解全曲另有路径，不经此入口）。`preview_url` 缺失/null 则是区域受限
+   * （CN Spotify 不服务）或专辑未启用预览——更糟，**没有可播音频**。
+   *
+   * 两种情况都标 `vipLocked=true`——30s 预览同样"听不完"（同 Deezer 限制），
+   * 跟 VIP 锁等价处理。selectBestSource 避开后由完整曲流平台（QQ/网易云）
+   * 先播；它们锁了再退回 30s 预览（Deezer）。Premium 用户走 WPS 路径不会触达
+   * 这里，vipLocked 标什么都跟它无关。
+   */
   private toTrack(t: SpotifyTrack): Track {
     return {
       id: t.id,
@@ -611,6 +622,7 @@ export class SpotifyMusicProvider {
       audioUrl: t.preview_url ?? '', // search 阶段没拿到时为空，播放时再 fetch
       duration: Math.round((t.duration_ms ?? 0) / 1000),
       liked: false,
+      vipLocked: true,
     };
   }
 }

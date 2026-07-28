@@ -555,9 +555,11 @@ function makeTrack(
   console.log('✅ 14. 全 VIP 锁 → 退回平台优先级');
 }
 
-// ── 15. VIP 锁的 QQ + Deezer 预览 → 仍选 QQ（不被 Deezer 预览顶掉）─────
-// 回归：tier-1「非锁」只在完整曲流平台(qq/netease)间挑；Deezer 匿名是 30s
-// 预览，不能仅因未标 VIP 锁就盖过 QQ 源（否则 QQ-only 用户会被切到更差的预览）。
+// ── 15. VIP 锁的 QQ + Deezer 预览 → 选 Deezer 预览（不硬选锁的 QQ）─────
+// 产品意图已变：tier-1「完整曲流平台 + 非锁」失败时，tier-2「所有平台非锁」
+// 会接管，避开 VIP 锁的源。Deezer 30s 预览优于 QQ 30s 试听（试听可能被切
+// 到更短片段 + 体验更差），且选非锁源能省掉前端 handleTrialDetected 的切源
+// 闪烁。兑现 `types.ts:17` 注释承诺："全部源都锁时才退回"。
 {
   const all = [
     {
@@ -575,10 +577,35 @@ function makeTrack(
   const items = buildUnifiedItems(deduped, all);
   assert.strictEqual(
     items[0].bestSource,
-    'qq',
-    'QQ 锁 + Deezer 预览 → 仍退回 QQ（Deezer 预览不算全曲源，不能顶掉）',
+    'deezer',
+    'QQ 锁 + Deezer 预览 → 选 Deezer 30s 预览（避开 VIP 锁）',
   );
-  console.log('✅ 15. VIP 锁 QQ + Deezer 预览 → 不被预览顶掉');
+  console.log('✅ 15. VIP 锁 QQ + Deezer 预览 → 选 Deezer 预览');
 }
 
-console.log('\n🎉 全部 16 个测试通过');
+// ── 16. 全部平台都锁（QQ + Deezer 都标锁）→ tier-3 退回平台优先级 ───
+// 上线前提：search 阶段 spotify.toTrack 永远标 vipLocked=true（公开 API 只
+// 给 30s 预览），所以「所有源都锁」的真实场景是"deezer/spotify 区域受限 +
+// qq/netease 全 VIP 独占"。Deezer 锁时（极罕见）就退回 QQ 试听。
+{
+  const all = [
+    {
+      track: makeTrack('qq', 'qq-w', '夜曲', '周杰伦', { vipLocked: true }),
+      platform: 'qq',
+    },
+    {
+      track: makeTrack('deezer', 'de-w', '夜曲', '周杰伦', { vipLocked: true }),
+      platform: 'deezer',
+    },
+  ];
+  const deduped = dedupTracks(all);
+  const items = buildUnifiedItems(deduped, all);
+  assert.strictEqual(
+    items[0].bestSource,
+    'qq',
+    '全部平台都锁 → 退回平台优先级（best-effort 播试听）',
+  );
+  console.log('✅ 16. 全部平台都锁 → 退回平台优先级（QQ 试听 best-effort）');
+}
+
+console.log('\n🎉 全部 17 个测试通过');
