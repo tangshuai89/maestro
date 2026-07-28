@@ -1832,16 +1832,31 @@ export class MusicService {
     );
 
     const importedAt = Date.now();
+    // 落地时给每个 item 填 likedPlatforms（= import 时刻的 sources 平台）。
+    // 后续运行时 fanOut 跨平台同步会用到这个字段——getLibrary 会再叠加 fanOut。
+    const enrichedItems = items.map((it) => ({
+      ...it,
+      likedPlatforms: it.sources.map((s) => s.platform),
+    }));
     this.storage.set(this.libraryKey(session.id), {
       importedAt,
-      items,
+      items: enrichedItems,
       sources: sourceResults,
     });
 
-    return { items, sources: sourceResults, importedAt };
+    return { items: enrichedItems, sources: sourceResults, importedAt };
   }
 
-  /** 读取最近一次 import 的库（无则返回 null）。 */
+  /** 读取最近一次 import 的库（无则返回 null）。
+   *
+   * **运行时叠加 fanOut 状态**：import 时刻只覆盖了 import 时的 ❤ 列表；
+   * 假设用户之后通过 detect / fanOutLike 在其他平台 ❤ 了这首歌（典型场景：
+   * 播过一次、detect 自动跨平台同步），库 badge 需要反映出来。这里把
+   * `fanOut[mergedId]` 里的平台与 `likedPlatforms`（或 sources）取并集，
+   * 保证 UI 看到的"红心来源"始终是真相。
+   *
+   * **Deezer 不参与**：fanOut 在 fanOutLike 写时已过滤，但历史持久化可能
+   * 渗入——这里再过一遍 isLikeable，双保险。 */
   getLibrary(session: Session): {
     items: UnifiedSearchItem[];
     sources: Array<{
@@ -1857,7 +1872,27 @@ export class MusicService {
       sources: Array<{ provider: MusicProvider; count: number; error?: string }>;
     }>(this.libraryKey(session.id));
     if (!stored) return null;
-    return stored;
+    const state = this.loadState(session);
+    const items = stored.items.map((item) => {
+      // 老 storage 迁移路径：旧 import 没写 likedPlatforms → fallback sources 平台。
+      // 老 storage 里 sources 仍是真实 ❤ 列表（import 来源），所以 fallback 准确。
+      const basePlatforms = item.likedPlatforms ?? item.sources.map((s) => s.platform);
+      const hadLikedPlatforms = item.likedPlatforms !== undefined;
+      const fanOutEntries = state.fanOut[item.id] ?? [];
+      const set = new Set<MusicProvider>(basePlatforms);
+      for (const e of fanOutEntries) {
+        if (this.isLikeable(e.platform)) set.add(e.platform);
+      }
+      const likedPlatforms = Array.from(set);
+      // 复用原对象：仅当 likedPlatforms 已存在且值未变（避免 React 重渲染）。
+      // 迁移路径（老 storage 无 likedPlatforms）必须显式落地，否则字段缺失。
+      const same =
+        hadLikedPlatforms &&
+        likedPlatforms.length === basePlatforms.length &&
+        likedPlatforms.every((p, i) => p === basePlatforms[i]);
+      return same ? item : { ...item, likedPlatforms };
+    });
+    return { ...stored, items };
   }
 
   /**

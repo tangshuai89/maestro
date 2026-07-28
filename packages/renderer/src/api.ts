@@ -379,6 +379,9 @@ export interface UnifiedSearchItem {
   duration: number;
   sources: UnifiedSourceInfo[];
   bestSource: MusicProvider | null;
+  /** UI 角标显示用：用户在哪些平台 ❤ 了这首歌（import + 运行时 fanOut 合并）。
+   *  缺失时回退到 sources.map(s => s.platform)。 */
+  likedPlatforms?: MusicProvider[];
 }
 
 /** 统一搜索的整页响应。 */
