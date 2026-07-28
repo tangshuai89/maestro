@@ -39,6 +39,18 @@ interface AccountResponse {
   account?: { id: number; userName: string } | null;
 }
 
+/** 网易云 VIP 信息响应（vip_info 端点）。只看 isVip/redVipLevel 即可判断
+ *  「该用户是不是黑胶/SVIP」；其他字段（到期时间 / 成长值）不关心。 */
+interface VipInfoResponse {
+  code: number;
+  data?: {
+    isVip?: boolean;
+    /** 0=免费，8=黑胶，9=黑胶 SVIP（也见过其他值，按 >0 视作付费用户）。 */
+    redVipLevel?: number;
+    redVip?: boolean;
+  } | null;
+}
+
 export interface NeteaseQrCheckResult {
   /** 800 过期 / 801 等待扫码 / 802 已扫码待确认 / 803 成功 */
   code: number;
@@ -115,6 +127,7 @@ export class NeteaseAuthStrategy {
     this.logger.log(`netease qr 803: captured MUSIC_U (len=${musicU.length})`);
 
     const profile = await this.fetchProfile(musicU, csrfToken);
+    const neteaseVip = await this.fetchVipStatus(musicU, csrfToken);
     return {
       code: 803,
       message: '登录成功',
@@ -123,6 +136,7 @@ export class NeteaseAuthStrategy {
         csrfToken,
         nickname: profile?.nickname ?? '网易云用户',
         avatarUrl: profile?.avatarUrl ?? '',
+        neteaseVip: neteaseVip ?? undefined,
       },
     };
   }
@@ -136,11 +150,13 @@ export class NeteaseAuthStrategy {
       throw new BadRequestException('MUSIC_U 看起来无效');
     }
     const profile = await this.fetchProfile(musicU, csrfToken ?? '');
+    const neteaseVip = await this.fetchVipStatus(musicU, csrfToken ?? '');
     return {
       musicU,
       csrfToken: csrfToken ?? '',
       nickname: profile?.nickname ?? '网易云用户',
       avatarUrl: profile?.avatarUrl ?? '',
+      neteaseVip: neteaseVip ?? undefined,
     };
   }
 
@@ -182,5 +198,41 @@ export class NeteaseAuthStrategy {
       nickname: 'Dev User',
       avatarUrl: '',
     };
+  }
+
+  /**
+   * 拉 VIP 状态缓存到 session。best-effort：失败返回 null，调用方按未登录前
+   * 行为（按非会员处理）兜底。失败原因通常：接口限流 / 登录态刚失效 / 接口变更
+   * ——都跟业务无关，重登后会再试。
+   *
+   * 网易云 `/api/music-vip-membership/front/vip/info` 是明文端点（无 weapi 加
+   * 密），服务端直连可用（同 `/api/nuser/account/get`）。响应里看 `data.isVip`
+   * 即可：`true` = 黑胶/SVIP，`false` = 免费。`data.redVipLevel` 是冗余字段
+   * （黑胶=8、SVIP=9），但某些老响应里只有 redVipLevel 没 isVip，两个一起看。
+   */
+  private async fetchVipStatus(
+    musicU: string,
+    csrfToken: string,
+  ): Promise<boolean | null> {
+    try {
+      const cookie =
+        `MUSIC_U=${musicU}; os=pc` + (csrfToken ? `; __csrf=${csrfToken}` : '');
+      const res = await fetch(
+        'https://music.163.com/api/music-vip-membership/front/vip/info',
+        {
+          method: 'POST',
+          headers: { ...BASE_HEADERS, Cookie: cookie },
+          body: '',
+        },
+      );
+      const data = (await res.json()) as VipInfoResponse;
+      if (data.code !== 200 || !data.data) return null;
+      const d = data.data;
+      // 任一字段为真即视作付费用户
+      return Boolean(d.isVip) || Boolean(d.redVip) || (d.redVipLevel ?? 0) > 0;
+    } catch (err) {
+      this.logger.warn(`netease vip_info fetch failed: ${(err as Error).message}`);
+      return null;
+    }
   }
 }
