@@ -34,8 +34,10 @@ const fakeStorage = {
 // 每个用例可变的搜索返回 + like 调用记录。
 let neteaseSearchResults: any[] = [];
 let qqSearchResults: any[] = [];
+let spotifySearchResults: any[] = [];
 const neteaseLikes: string[] = [];
 let qqLikedRemote: string[] = [];
+const spotifyLikes: string[] = [];
 const netease = {
   search: async () => neteaseSearchResults,
   like: async (_ps: unknown, id: string) => {
@@ -51,7 +53,15 @@ const qq = {
   fetchLikedMidSet: async () => new Set(qqLikedRemote),
 };
 const deezer = {};
-const spotify = {}; // 未登录 → canSyncLike=false → 匹配时跳过
+const spotify = {
+  search: async () => spotifySearchResults,
+  like: async (_ps: unknown, id: string) => {
+    spotifyLikes.push(id);
+    return { success: true };
+  },
+  unlike: async () => ({ success: true }),
+  fetchLiked: async () => [],
+};
 const match = {};
 const lyricsOvh = { getLyrics: async () => null };
 
@@ -277,6 +287,9 @@ async function main() {
 
   // ── 7. findPlayableEquivalent：时长差超容差 → 不匹配（返回 null） ─────
   {
+    // 清掉 test 6 写入的等价搜索缓存——它和 test 7 用同样的 (kw, dur)，但
+    // QQ 搜索结果不同，缓存命中会拿 test 6 的命中 → 误判时长门限失效。
+    (svc as any).equivSearchCache?.clear?.();
     qqSearchResults = [qqTrack('wrong', '突然好想你', '五月天', 180)]; // 差 86s
     const src = await svc.findPlayableEquivalent(session, 'netease', {
       title: '突然好想你',
@@ -345,7 +358,462 @@ async function main() {
     console.log('✅ 8. 跨平台匹配 → 增量补进库快照（bug3）');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 8 项通过');
+  // ── 9. 兜底搜索：原 kw 0 候选 → 剥括号内容再搜 ─────────────
+  // 修 "TO BE (存在) 滨崎步 (浜崎あゆみ)" → Spotify 0 candidates 的 bug。
+  // Spotify 对带版本标签 + 艺人别名括号的查询词命中率低，剥掉括号后就能命中。
+  // 这里用 netease 模拟"严格搜索返回 0"的行为（同 Spotify bug 的形态），验证
+  // 兜底搜索层 + 匹配层都正常工作。
+  {
+    let neteaseKwHistory: string[] = [];
+    const wrappedNetease = {
+      ...netease,
+      search: async (_ps: unknown, kw: string) => {
+        neteaseKwHistory.push(kw);
+        // 模拟"严格搜索 0 候选"：只要 kw 里有括号内容（存在 / 浜崎あゆみ）→ 0；
+        // 剥括号后 → 1 命中。
+        if (kw.includes('存在') || kw.includes('浜崎あゆみ')) {
+          return [];
+        }
+        return [
+          {
+            id: 'n-tobe',
+            provider: 'netease',
+            title: 'TO BE',
+            artist: '滨崎步',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 317,
+            liked: false,
+          },
+        ];
+      },
+    };
+    // spotify 走原本的空结果（不影响这一条用例）
+    spotifySearchResults = [];
+    const origNetease = (svc as any).netease;
+    (svc as any).netease = wrappedNetease;
+    try {
+      await svc.fanOutLike(
+        session,
+        'merged-tobe',
+        [{ platform: 'qq', trackId: 'q-tobe' }],
+        true,
+        { title: 'TO BE (存在)', artist: '滨崎步 (浜崎あゆみ)', duration: 317 },
+      );
+      const ok = await waitFor(async () =>
+        (await likedIds('netease')).includes('n-tobe'),
+      );
+      assert.ok(
+        ok,
+        '原 kw 0 候选 → 剥括号兜底命中 → netease 应被点亮',
+      );
+      assert.ok(
+        neteaseLikes.includes('n-tobe'),
+        '兜底命中后应同步远端 netease.like',
+      );
+      // 关键断言：搜索至少发起 2 次（原始 + 剥括号兜底），否则兜底没生效
+      assert.ok(
+        neteaseKwHistory.length >= 2,
+        `应至少 2 次搜索（原 kw + 兜底），实际 ${neteaseKwHistory.length} 次，kw=${JSON.stringify(neteaseKwHistory)}`,
+      );
+      assert.ok(
+        neteaseKwHistory[0].includes('存在'),
+        `第 1 次应仍是原 kw（带括号），实际 "${neteaseKwHistory[0]}"`,
+      );
+      assert.ok(
+        !neteaseKwHistory[1].includes('存在') && !neteaseKwHistory[1].includes('浜崎あゆみ'),
+        `第 2 次应是剥括号 kw，实际 "${neteaseKwHistory[1]}"`,
+      );
+    } finally {
+      (svc as any).netease = origNetease;
+    }
+    console.log('✅ 9. 兜底搜索：原 kw 0 候选 → 剥括号内容再搜');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 15 项通过');
+
+  // ── 10. 兜底：原 kw 非 0 但候选全是无关歌 → 4 tier 失败后用 title-only 收紧再搜 ──
+  // 修 "サマータイムシンデレラ (盛夏的灰姑娘) 緑黄色社会"：
+  // Spotify 原 kw 搜回 おつかれSUMMER / summertime / Remember Summer Days 三个
+  // 主题相关但无关候选，4 tier 匹配全失败 → 旧代码直接返回 null；新代码试
+  // title-only 变体（"サマータイムシンデレラ"），Spotify 这次返回真实歌曲。
+  {
+    let spotifyCalls: string[] = [];
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, kw: string, limit: number) => {
+        spotifyCalls.push(`q=${kw}&limit=${limit}`);
+        if (kw === 'サマータイムシンデレラ') return [
+          {
+            id: 's-summertime',
+            provider: 'spotify',
+            title: 'サマータイムシンデレラ',
+            artist: '緑黄色社会',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 228,
+            liked: false,
+          },
+        ];
+        // 原 kw 命中 3 个无关候选（模拟 Spotify 解析偏差）
+        return [
+          {
+            id: 's-otsukare',
+            provider: 'spotify',
+            title: 'おつかれSUMMER',
+            artist: 'HALCALI',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 240,
+            liked: false,
+          },
+          {
+            id: 's-summertime',
+            provider: 'spotify',
+            title: 'summertime',
+            artist: 'cinnamons / evening cinema',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 252,
+            liked: false,
+          },
+          {
+            id: 's-remember',
+            provider: 'spotify',
+            title: 'Remember Summer Days',
+            artist: 'Anri',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 296,
+            liked: false,
+          },
+        ];
+      },
+    };
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      const t = await (svc as any).searchEquivalent(
+        session,
+        'spotify',
+        {
+          title: 'サマータイムシンデレラ (盛夏的灰姑娘)',
+          artist: '緑黄色社会',
+          duration: 228,
+        },
+      );
+      assert.ok(t, 'title-only 变体应能命中真实歌曲');
+      assert.strictEqual(t.id, 's-summertime', '命中 title-only 那次返回的 result');
+      assert.ok(
+        spotifyCalls.length >= 2,
+        `至少 2 次搜索（原 kw + title-only），实际 ${spotifyCalls.length} 次：${JSON.stringify(spotifyCalls)}`,
+      );
+      assert.ok(
+        spotifyCalls[0].includes('サマータイムシンデレラ (盛夏的灰姑娘)'),
+        `第 1 次应是原 kw，实际 "${spotifyCalls[0]}"`,
+      );
+      assert.ok(
+        spotifyCalls[1].includes('サマータイムシンデレラ') &&
+          !spotifyCalls[1].includes('盛夏的灰姑娘'),
+        `第 2 次应是 title-only 变体（去掉中译括号），实际 "${spotifyCalls[1]}"`,
+      );
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 10. 兜底title-only：Spotify 候选全无关 → title-only 收紧再搜');
+  }
+
+  // ── 11. 标题剥括号内容 substring 兜底：seed 带中译括号，候选带 MV 标签 ──
+  // 修 "胸の煙 (焚心如火) - ずっと真夜中でいいのに。 (永远是深夜有多好｡)" 这种
+  // 回归：seed 标题 = "胸の煙 (焚心如火)"，候选 = "胸の煙 (Official MV)"。
+  // Tier 1-4 的 normalizeKey 字符串 includes 都失败（双方各自有独有尾缀）；
+  // Tier 5（strip parens content 后再 substring）应命中。
+  {
+    let spotifyCalls: string[] = [];
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, kw: string, _limit: number) => {
+        spotifyCalls.push(kw);
+        // 所有变体都返回同一个候选（模拟 Spotify 实际只有这一首）
+        return [
+          {
+            id: 's-munenonKemuri',
+            provider: 'spotify',
+            title: '胸の煙 (Official MV)',
+            artist: 'ずっと真夜中でいいのに。',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 249,
+            liked: false,
+          },
+        ];
+      },
+    };
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      const t = await (svc as any).searchEquivalent(
+        session,
+        'spotify',
+        {
+          title: '胸の煙 (焚心如火)',
+          artist: 'ずっと真夜中でいいのに。 (永远是深夜有多好｡)',
+          duration: 249,
+        },
+      );
+      assert.ok(t, 'Tier 5 (relaxed title stripped) 应能命中变体');
+      assert.strictEqual(t.id, 's-munenonKemuri', '命中 Official MV 候选');
+      assert.ok(
+        spotifyCalls.length >= 1,
+        `至少跑过 1 次搜索，实际 ${spotifyCalls.length} 次`,
+      );
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 11. 标题剥括号内容 substring 兜底：seed 中译 + 候选 MV 标签');
+  }
+
+  // ── 12. JW fuzzy title match：候选标题是 seed 轻微改写 ──
+  // 修「聖夜」vs「聖夜☆」这种一个字符差的情况。前 4 + 5 tier 都失败（normalizeKey
+  // 不等、剥括号后也不等），Tier 6 用 JW 0.88 兜底命中。
+  {
+    let spotifyCalls = 0;
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => {
+        spotifyCalls++;
+        return [
+          {
+            id: 's-seiya2',
+            provider: 'spotify',
+            title: '聖夜☆',
+            artist: 'あるぱか',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 200,
+            liked: false,
+          },
+        ];
+      },
+    };
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      const t = await (svc as any).searchEquivalent(
+        session,
+        'spotify',
+        { title: '聖夜', artist: 'あるぱか', duration: 200 },
+      );
+      assert.ok(t, 'JW fuzzy title match 应能命中「聖夜☆」vs「聖夜」');
+      assert.strictEqual(t.id, 's-seiya2');
+      assert.ok(spotifyCalls >= 1, '至少跑过 1 次搜索');
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 12. JW fuzzy title match 兑底：单字符差');
+  }
+
+  // ── 13. 标题撞名不同歌手：花田错 王力宏 vs 花田错 王馨卓 → 不得误命 ─
+  // 修「标题相同但歌手不同」被 Tier 3（title-exact, artist ignored）拉走、
+  // 进 fanOut 后导致用户库被污染的回归。Tier 3 / 5 / 6 都需艺人宽松命中。
+  // 正确同曲不同拼写（Spotify Leohom Wang）仍能命中（跨脚本）。
+  {
+    const wrappedNetease = {
+      ...netease,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 'n-wrong-artist',
+          provider: 'netease',
+          title: '花田错',
+          artist: '王馨卓',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 249,
+          liked: false,
+        },
+      ],
+    };
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 's-leehom',
+          provider: 'spotify',
+          title: '花田错',
+          artist: 'Leohom Wang',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 249,
+          liked: false,
+        },
+      ],
+    };
+    const origNe = (svc as any).netease;
+    const origSp = (svc as any).spotify;
+    (svc as any).netease = wrappedNetease;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      netease: { musicU: 'u' },
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      // 同一 seed 测两个平台：netease 必须拒（艺人是王馨卓 ≠王力宏）、spotify
+      // 必须收（Leohom Wang 是王力宏拼音，跨脚本）。分别调用，避免互相污染。
+      const tNe = await (svc as any).searchEquivalent(
+        session,
+        'netease',
+        { title: '花田错', artist: '王力宏', duration: 249 },
+      );
+      assert.strictEqual(
+        tNe,
+        null,
+        'netease 搜到王馨卓是不同名曲 → 必须返回 null，不写 fanOut',
+      );
+      const tSp = await (svc as any).searchEquivalent(
+        session,
+        'spotify',
+        { title: '花田错', artist: '王力宏', duration: 249 },
+      );
+      assert.ok(tSp, 'spotify 搜到 Leohom Wang（王力宏拼音）应能命中');
+      assert.strictEqual(tSp.id, 's-leehom');
+    } finally {
+      (svc as any).netease = origNe;
+      (svc as any).spotify = origSp;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 13. 标题撞名不同歌手：花田错 王力宏 vs 王馨卓 不误命');
+  }
+
+  // ── 14. りりあ。+ ねえ、ちゃんと聞いてる？：跨形态跨标识符容错 ──
+  // 用户场景：搜索「ねえ、ちゃんと聞いてる？ りりあ。」找不到歌。Spotify 实际
+  // 有这首歌，但返回的 5 个候选都是别的歌（同名其他歌手或同名变体）。这条测试
+  // 验证当 Spotify 确实返回「正确」候选时（不同字形态 / 标点 / 拼写差异），
+  // 匹配应能命中——确保匹配规则本身没漏，而不是曲目确实不在平台。
+  {
+    // 同一首歌多个常见 Spotify/Netease 候选形态。
+    const variants = [
+      { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ。', dur: 258, tag: 'exact' },
+      { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ', dur: 258, tag: 'no-period' },
+      { title: 'ねえ、ちゃんと聞いてる？', artist: 'Riria', dur: 258, tag: 'cross-script' },
+      { title: 'ねえちゃんと聞いてる？', artist: 'りりあ。', dur: 258, tag: 'no-cmm' },
+      { title: 'ねえ、ちゃんと聞いてる？ (Acoustic)', artist: 'りりあ。', dur: 258, tag: 'extra-parens' },
+    ];
+    for (const v of variants) {
+      const wrappedSpotify = {
+        ...spotify,
+        search: async (_ps: unknown, _kw: string, _limit: number) => [
+          {
+            id: 's-ria',
+            provider: 'spotify',
+            title: v.title,
+            artist: v.artist,
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: v.dur,
+            liked: false,
+          },
+        ],
+      };
+      const origSpotify = (svc as any).spotify;
+      (svc as any).spotify = wrappedSpotify;
+      const origSessionProviders = session.providers;
+      (session as any).providers = {
+        ...session.providers,
+        spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+      };
+      try {
+        const t = await (svc as any).searchEquivalent(
+          session,
+          'spotify',
+          { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ。', duration: 258 },
+        );
+        assert.ok(t, `变体 ${v.tag} (="${v.title} - ${v.artist}") 应能命中`);
+        assert.strictEqual(t.id, 's-ria', `变体 ${v.tag} 命中同一首`);
+      } finally {
+        (svc as any).spotify = origSpotify;
+        (session as any).providers = origSessionProviders;
+      }
+    }
+    console.log('✅ 14. りりあ。+ ねえ、ちゃんと聞いてる？ 跨形态容错命中');
+  }
+
+  // ── 15. 跨版本 duration 差 15s：QQ 源 258s vs Spotify 源 243s ──
+  // 修「ねえ、ちゃんと聞いてる？ りりあ。」QQ 源 dur=258、Spotify/Netease 源
+  // dur=243——同歌不同版本（带 intro/outro 的专辑版 vs 短版 single）。3s 严苛
+  // 容差根本搜不到，让 Tier 3（title-exact + artist 宽松）用跨版本 30s 容差
+  // 找回。Tier 1/2/4/6 仍走 3s（防"恰好时长相同但不同歌"的误命中）。
+  {
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 's-ria-243',
+          provider: 'spotify',
+          title: 'ねえ、ちゃんと聞いてる？',
+          artist: 'りりあ。',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 243, // 比 seed 短 15s
+          liked: false,
+        },
+      ],
+    };
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      // 清 cache：test 14 同 session 同 kw 写过命中，cache 里已是 's-ria'。
+      // 实际 test 15 候选 ID 是 's-ria-243'，必须绕过 cache。
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(
+        session,
+        'spotify',
+        { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ。', duration: 258 },
+      );
+      assert.ok(t, '跨版本 15s 差命中');
+      assert.strictEqual(t.id, 's-ria-243');
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 15. 跨版本 duration 容差：QQ 258s vs Spotify 243s 命中');
+  }
 }
 
 main().catch((err) => {

@@ -14,6 +14,7 @@ const {
   normalizeKey,
   stripFeatTags,
   stripFuriganaParens,
+  stripParensContent,
   cjkUnify,
   CJK_UNIFIER,
   dedupTracks,
@@ -297,6 +298,53 @@ function makeTrack(
   assert.strictEqual(ja_track, cn_track,
     '時間 / 时间、个體 / 个体 都对成一组');
   console.log(`✅ 3m. 阶段 E2: 多 pair 合并（時間/时间 + 个體/个体）`);
+}
+
+// ── 3n. 阶段 F: stripParensContent 单独测 ──────────────────
+// 兜底搜索专用：把括号内容整段剥（不限假名），让 Spotify 等严格 API 也能命中。
+{
+  // 用户场景：title 带版本标签 → 剥
+  assert.strictEqual(stripParensContent('TO BE (存在)'), 'TO BE',
+    '半角圆括号 + 中文内容');
+  assert.strictEqual(stripParensContent('TO BE（存在）'), 'TO BE',
+    '全角圆括号 + 中文内容');
+  assert.strictEqual(stripParensContent('Song [Live]'), 'Song',
+    '半角方括号 + 英文 Live');
+  assert.strictEqual(stripParensContent('Song【现场版】'), 'Song',
+    '方头括号 + 中文版本');
+  assert.strictEqual(stripParensContent('Song〈Live〉'), 'Song',
+    '书名号 + 英文');
+
+  // 艺人别名括号 → 剥
+  assert.strictEqual(
+    stripParensContent('滨崎步 (浜崎あゆみ)'),
+    '滨崎步',
+    '艺人中/日别名括号',
+  );
+  assert.strictEqual(
+    stripParensContent('Beyoncé (碧昂丝)'),
+    'Beyoncé',
+    '艺人英文 + 中文别名',
+  );
+
+  // 不动括号外的内容
+  assert.strictEqual(stripParensContent('Song'), 'Song', '无括号');
+  assert.strictEqual(stripParensContent(''), '', '空串');
+  // 空括号 → 整段剥
+  assert.strictEqual(stripParensContent('Song ()'), 'Song', '空括号');
+  // 多个括号
+  assert.strictEqual(
+    stripParensContent('TO BE (存在) (2024 Remaster)'),
+    'TO BE',
+    '多个括号串',
+  );
+  // 括号前后空格 trim
+  assert.strictEqual(
+    stripParensContent('TO BE  (存在)'),
+    'TO BE',
+    '多余空格归一',
+  );
+  console.log('✅ 3n. 阶段 F: stripParensContent 11 case 全过');
 }
 
 

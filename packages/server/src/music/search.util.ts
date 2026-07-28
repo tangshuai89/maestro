@@ -54,6 +54,32 @@ export function stripFeatTags(s: string): string {
 }
 
 /**
+ * 阶段 F：剥掉括号内的全部内容（保留括号外的部分）。
+ *
+ * 用途：`searchEquivalent` 在原 kw 0 候选时做兜底，把搜索词放宽一层再试一次。
+ * 用户场景：「TO BE (存在) 滨崎步 (浜崎あゆみ)」→ Spotify 0 候选，因为
+ *  - 「TO BE (存在)」里 "(存在)" 是版本标签，Spotify 上只有原版「TO BE」
+ *  - 「滨崎步 (浜崎あゆみ)」里 "(浜崎あゆみ)" 是艺人别名括号，Spotify 用
+ *    「Ayumi Hamasaki」，但即使去掉括号也仍然对不上（中文简体 vs 拉丁）
+ * 剥掉括号内容后搜「TO BE 滨崎步」→ 候选列表，匹配阶段仍按 normalizeKey
+ * 严格匹配（title 包含 + artist 跨脚本走 isCrossScript）→ 命中。
+ *
+ * 区别于 `stripFuriganaParens`：
+ *  - 那里只剥纯假名括号（保留含汉字/Latin 的版本标签，是 normalizeKey 流水线）
+ *  - 这里**所有括号内容**都剥（兜底专用，匹配阶段不靠它）
+ *
+ * 覆盖的括号类型：半角/全角圆括号、方括号、方头括号、书名号。
+ * 边界：嵌套 paren（极少见）；空括号 "" → 整段剥。
+ */
+export function stripParensContent(s: string): string {
+  if (!s) return s;
+  return s
+    .replace(/[(（\[【〔〈《][^)）\]】〕〉》]*[)）\]】〕〉》]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * 阶段 E1：剥掉"纯假名括号"——读音注释（furigana），不是版本标签。
  *
  * 日文里 artist 字段经常这样：「藤井风 (ふじいかぜ)」——半角括号里全是
@@ -199,8 +225,13 @@ export function normalizeKey(title: string, artist: string): string {
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[「」『』]/g, '"')
-    // 5) 噪声字符合并：空白 + 标点 + 半角括号 + 直引号 + dash
-    .replace(/[\s\-_,.()\[\]<>'"′″·&+\/!?！？:：;；]+/g, '');
+    // 5) 噪声字符合并：空白 + 标点 + 半角括号 + 直引号 + dash + CJK 标点
+    //    CJK 标点「。」（U+3002，日本惯用全角句号）「、」（U+3001，顿号）
+    //    「・」（U+30FB，日文中点）必须 strip——否则「ずっと真夜中でいいのに。」
+    //    与「ずっと真夜中でいいのに」normalizeKey 差一个「。」，跨平台匹配 Tier 2
+    //    includes 仍能命中（长的包含短的），但后续 strict 永远不撞。保险起见
+    //    全部 strip 掉，让两侧都进同一个干净的归一 key。
+    .replace(/[\s\-_,.()\[\]<>'"′″·&+\/!?！？:：;；。、・]+/g, '');
   // 5.5) CJK 跨语言形态合并（OpenCC 繁→简 + 日文独有形兜底）
   raw = cjkUnify(raw);
   // 6) 全小写
@@ -267,6 +298,13 @@ export function selectBestSource(sources: SourceInfo[]): MusicProvider | null {
 /** 同 normalizeKey 的两首视为"同一版本"的最大 duration 差（秒）。与
  *  match.service 的 DURATION_TOLERANCE_SEC 保持一致。 */
 export const VERSION_DURATION_TOLERANCE_SEC = 3;
+
+/** 跨版本容差：title-exact 或剥括号后 substring 类的强信号匹配，即使
+ *  duration 差 30s 也应接受。修「ねえ、ちゃんと聞いてる？ りりあ。」（QQ 源
+ *  dur=258 vs Spotify/Netease 源 dur=243）— 同歌不同版本（带 intro/outro
+ *  的专辑版 vs 短版 single）。30s 足以覆盖常见的 intro/桥段/尾奏差异；
+ *  30s 以上的差异基本可认为是不同歌（同歌 remix 一般 ≥30s）。 */
+export const DIFFERENT_VERSION_DURATION_TOLERANCE_SEC = 30;
 
 /**
  * 在同一个 normalizeKey 组内，按 duration 就近聚类成「版本」。
