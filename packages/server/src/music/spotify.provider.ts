@@ -36,6 +36,13 @@ const SPOTIFY_SCOPES = [
   'user-library-modify',   // 写 liked
   'user-read-playback-state',  // WPS device / playback state
   'user-modify-playback-state', // WPS 的 transfer/resume/seek
+  // Spotify 官方说 Web Playback SDK 不需要 streaming scope，但实测 2024+ 改版
+  // 后 WPS 在建立 WebSocket 时仍会校验该 scope——缺失会立刻触发
+  // authentication_error 事件（log 里 [spotify-wps] authentication_error）。
+  // Spotify 自己标 streaming 为 deprecated 但没移除服务端校验，所以保险起见
+  // 保留：拿它换「WPS 跑得起来 + search/like 写权限 + Premium 校验」。多给
+  // 一个 scope 不影响已有授权。
+  'streaming',
 ].join(' ');
 
 /** Spotify product tier from /v1/me's `product` field. Drives the renderer's
@@ -592,7 +599,18 @@ export class SpotifyMusicProvider {
     return out;
   }
 
-  /** 字段映射：Web API → Track。 */
+  /**
+   * 字段映射：Web API → Track。
+   *
+   * Spotify 公开 API **永远只给 30s `preview_url`**（Free 给 30s mp3；Premium
+   * 走 WPS 解全曲另有路径，不经此入口）。`preview_url` 缺失/null 则是区域受限
+   * （CN Spotify 不服务）或专辑未启用预览——更糟，**没有可播音频**。
+   *
+   * 两种情况都标 `vipLocked=true`——30s 预览同样"听不完"（同 Deezer 限制），
+   * 跟 VIP 锁等价处理。selectBestSource 避开后由完整曲流平台（QQ/网易云）
+   * 先播；它们锁了再退回 30s 预览（Deezer）。Premium 用户走 WPS 路径不会触达
+   * 这里，vipLocked 标什么都跟它无关。
+   */
   private toTrack(t: SpotifyTrack): Track {
     return {
       id: t.id,
@@ -604,6 +622,7 @@ export class SpotifyMusicProvider {
       audioUrl: t.preview_url ?? '', // search 阶段没拿到时为空，播放时再 fetch
       duration: Math.round((t.duration_ms ?? 0) / 1000),
       liked: false,
+      vipLocked: true,
     };
   }
 }

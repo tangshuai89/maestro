@@ -14,6 +14,7 @@ const {
   normalizeKey,
   stripFeatTags,
   stripFuriganaParens,
+  stripParensContent,
   cjkUnify,
   CJK_UNIFIER,
   dedupTracks,
@@ -299,6 +300,53 @@ function makeTrack(
   console.log(`✅ 3m. 阶段 E2: 多 pair 合并（時間/时间 + 个體/个体）`);
 }
 
+// ── 3n. 阶段 F: stripParensContent 单独测 ──────────────────
+// 兜底搜索专用：把括号内容整段剥（不限假名），让 Spotify 等严格 API 也能命中。
+{
+  // 用户场景：title 带版本标签 → 剥
+  assert.strictEqual(stripParensContent('TO BE (存在)'), 'TO BE',
+    '半角圆括号 + 中文内容');
+  assert.strictEqual(stripParensContent('TO BE（存在）'), 'TO BE',
+    '全角圆括号 + 中文内容');
+  assert.strictEqual(stripParensContent('Song [Live]'), 'Song',
+    '半角方括号 + 英文 Live');
+  assert.strictEqual(stripParensContent('Song【现场版】'), 'Song',
+    '方头括号 + 中文版本');
+  assert.strictEqual(stripParensContent('Song〈Live〉'), 'Song',
+    '书名号 + 英文');
+
+  // 艺人别名括号 → 剥
+  assert.strictEqual(
+    stripParensContent('滨崎步 (浜崎あゆみ)'),
+    '滨崎步',
+    '艺人中/日别名括号',
+  );
+  assert.strictEqual(
+    stripParensContent('Beyoncé (碧昂丝)'),
+    'Beyoncé',
+    '艺人英文 + 中文别名',
+  );
+
+  // 不动括号外的内容
+  assert.strictEqual(stripParensContent('Song'), 'Song', '无括号');
+  assert.strictEqual(stripParensContent(''), '', '空串');
+  // 空括号 → 整段剥
+  assert.strictEqual(stripParensContent('Song ()'), 'Song', '空括号');
+  // 多个括号
+  assert.strictEqual(
+    stripParensContent('TO BE (存在) (2024 Remaster)'),
+    'TO BE',
+    '多个括号串',
+  );
+  // 括号前后空格 trim
+  assert.strictEqual(
+    stripParensContent('TO BE  (存在)'),
+    'TO BE',
+    '多余空格归一',
+  );
+  console.log('✅ 3n. 阶段 F: stripParensContent 11 case 全过');
+}
+
 
 // ── 4. 不同歌 → 各自保留 ─────────────────────────────────────
 {
@@ -555,9 +603,11 @@ function makeTrack(
   console.log('✅ 14. 全 VIP 锁 → 退回平台优先级');
 }
 
-// ── 15. VIP 锁的 QQ + Deezer 预览 → 仍选 QQ（不被 Deezer 预览顶掉）─────
-// 回归：tier-1「非锁」只在完整曲流平台(qq/netease)间挑；Deezer 匿名是 30s
-// 预览，不能仅因未标 VIP 锁就盖过 QQ 源（否则 QQ-only 用户会被切到更差的预览）。
+// ── 15. VIP 锁的 QQ + Deezer 预览 → 选 Deezer 预览（不硬选锁的 QQ）─────
+// 产品意图已变：tier-1「完整曲流平台 + 非锁」失败时，tier-2「所有平台非锁」
+// 会接管，避开 VIP 锁的源。Deezer 30s 预览优于 QQ 30s 试听（试听可能被切
+// 到更短片段 + 体验更差），且选非锁源能省掉前端 handleTrialDetected 的切源
+// 闪烁。兑现 `types.ts:17` 注释承诺："全部源都锁时才退回"。
 {
   const all = [
     {
@@ -575,10 +625,35 @@ function makeTrack(
   const items = buildUnifiedItems(deduped, all);
   assert.strictEqual(
     items[0].bestSource,
-    'qq',
-    'QQ 锁 + Deezer 预览 → 仍退回 QQ（Deezer 预览不算全曲源，不能顶掉）',
+    'deezer',
+    'QQ 锁 + Deezer 预览 → 选 Deezer 30s 预览（避开 VIP 锁）',
   );
-  console.log('✅ 15. VIP 锁 QQ + Deezer 预览 → 不被预览顶掉');
+  console.log('✅ 15. VIP 锁 QQ + Deezer 预览 → 选 Deezer 预览');
 }
 
-console.log('\n🎉 全部 16 个测试通过');
+// ── 16. 全部平台都锁（QQ + Deezer 都标锁）→ tier-3 退回平台优先级 ───
+// 上线前提：search 阶段 spotify.toTrack 永远标 vipLocked=true（公开 API 只
+// 给 30s 预览），所以「所有源都锁」的真实场景是"deezer/spotify 区域受限 +
+// qq/netease 全 VIP 独占"。Deezer 锁时（极罕见）就退回 QQ 试听。
+{
+  const all = [
+    {
+      track: makeTrack('qq', 'qq-w', '夜曲', '周杰伦', { vipLocked: true }),
+      platform: 'qq',
+    },
+    {
+      track: makeTrack('deezer', 'de-w', '夜曲', '周杰伦', { vipLocked: true }),
+      platform: 'deezer',
+    },
+  ];
+  const deduped = dedupTracks(all);
+  const items = buildUnifiedItems(deduped, all);
+  assert.strictEqual(
+    items[0].bestSource,
+    'qq',
+    '全部平台都锁 → 退回平台优先级（best-effort 播试听）',
+  );
+  console.log('✅ 16. 全部平台都锁 → 退回平台优先级（QQ 试听 best-effort）');
+}
+
+console.log('\n🎉 全部 17 个测试通过');

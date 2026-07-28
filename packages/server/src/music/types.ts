@@ -30,6 +30,19 @@ export interface UnifiedSearchItem {
   sources: SourceInfo[];
   /** 推荐播放平台（按优先级 + hasCopyright 选出）。 */
   bestSource: MusicProvider | null;
+  /**
+   * UI 角标显示用：用户在哪些平台 ❤ 了这首歌（来自 sources.import + 运行时 fanOut）。
+   * 与 `sources` 的区别：sources = 这首歌在哪些平台有可播放版本（catalog 维
+   * 度，由搜索/import 决定），likedPlatforms = 用户实际 ❤ 的平台（user
+   * 维度，由 import + 运行时跨平台同步决定）。两者在 import 时一致——拉的就
+   * 是 ❤ 列表——但运行时 detect → fanOutLike 把 ❤ 同步到其他平台后，sources
+   * 不会更新，likedPlatforms 会。库 badge 必须用 likedPlatforms 否则会
+   * 漏掉运行时新增的 ❤ 平台（用户场景：Lydia 库里只显示 QQ 角标，但播放后
+   * 通过 detect 已 ❤ 三端，badge 却看不到）。
+   *
+   * `undefined` / 缺失 = 视为 sources 平台列表（搜索结果里兼容老路径）。
+   * 库（library）总是显式填好。 */
+  likedPlatforms?: MusicProvider[];
 }
 
 export interface UnifiedSearchResult {

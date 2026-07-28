@@ -287,6 +287,13 @@ export class NeteaseMusicProvider {
    * 批量取封面 + 权限（search/get/web 两者都不含）。失败不影响搜索结果。
    * `vipLocked` 来自 `privilege.pl`：`pl<=0` = 当前账号放不了全曲（无版权 / VIP
    * 独占 / 只给试听）——这是**用户维度**的判断，比 QQ 的歌级 pay_play 更准。
+   *
+   * 兜底：网易云 song/detail 偶尔会漏 `privileges` 数组里的 id（API 行为变化
+   * / 网关层裁剪），songs 数组里有但 privileges 没有 → 没法判 pl 状态。按
+   * 「未知 = 不能播」处理：非 VIP 用户 → 一律标 vipLocked=true（保守，错过
+   * 几首免费歌的成本远低于播成 30s 试听）。VIP 用户 → 不锁（黑胶确实能放
+   * 绝大多数歌）。`session.neteaseVip` 登录时由 netease-auth.strategy
+   * 拉一次 `vip_info` 缓存。
    */
   private async fetchEnrichment(
     session: ProviderSession,
@@ -311,6 +318,17 @@ export class NeteaseMusicProvider {
         const entry = map.get(String(p.id)) ?? {};
         entry.vipLocked = !(typeof p.pl === 'number' && p.pl > 0);
         map.set(String(p.id), entry);
+      }
+      // 兜底：privileges 数组漏了某些 id（songs 数组有但 privileges 没有）。
+      // 非 VIP 用户 → 标 vipLocked=true（保守：未知按不能播处理）。
+      // VIP 用户 → 不锁（黑胶基本能放绝大多数歌）。
+      // undefined 视为非 VIP（与 session.neteaseVip 文档口径一致）。
+      const isVip = session.neteaseVip === true;
+      for (const id of ids) {
+        const entry = map.get(id);
+        if (entry && entry.vipLocked === undefined && !isVip) {
+          entry.vipLocked = true;
+        }
       }
     } catch (err) {
       this.logger.warn(`netease enrich fetch failed: ${(err as Error).message}`);

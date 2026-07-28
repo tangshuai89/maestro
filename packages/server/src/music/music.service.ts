@@ -22,9 +22,12 @@ import {
   buildUnifiedItems,
   dedupTracks,
   normalizeKey,
+  stripParensContent,
   VERSION_DURATION_TOLERANCE_SEC,
+  DIFFERENT_VERSION_DURATION_TOLERANCE_SEC,
 } from './search.util';
 import { MatchService } from '../match/match.service';
+import { jaroWinkler } from '../match/fuzzy';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
@@ -44,6 +47,12 @@ const LYRICS_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
 /** 歌词结果（含 miss）的内存缓存 TTL / 容量上限。 */
 const LYRICS_CACHE_TTL_MS = 10 * 60 * 1000;
 const LYRICS_CACHE_MAX = 2_000;
+
+/** 跨平台等价曲搜索（同 (session, platform, title+artist kw)）的内存缓存 TTL。
+ *  比歌词缓存短得多——只用于「同一次事件窗口内的并发去重」，放过几分钟用户
+ *  重新点这首歌就当新鲜搜。 */
+const EQUIV_SEARCH_CACHE_TTL_MS = 30_000;
+const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
 
 /** 有任何一行 time>0 才算 synced——lyrics.ovh / Deezer 纯文本歌词全部
  *  time=0，前端据此关掉滚动高亮和点击跳转。 */
@@ -1122,71 +1131,76 @@ export class MusicService {
   ): Promise<Track | null> {
     const kw = `${meta.title} ${meta.artist}`.trim();
     if (!kw) return null;
+    // 短 TTL 缓存：同一 session 在 ≤30s 内对同一 (platform, kw) 的等价曲搜索
+    // 返回同样结果——like sync 的 resolveEquivalents 与 renderer 的
+    // tryUpgradeFromTrial 都会调 searchEquivalent，二者经常并发（VIP 试听
+    // 检测触发降级的同时用户也在点 ❤ 触发 discover），不去重会把 QQ 后端
+    // 当成并行批量搜索来打。两层 log 也跟着刷。30s 足够覆盖这两个事件窗口。
+    // key 用 sessionId 隔离多用户；null 结果也缓存（避免被打挂的 platform
+    // 反复探）。每个 session 上限 256 条，超出时按时间淘汰最早的。
+    const cacheKey = `${session.id}|${platform}|${kw}`;
+    const cached = this.equivSearchCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < EQUIV_SEARCH_CACHE_TTL_MS) {
+      return cached.track;
+    }
+
+    const result = await this.searchEquivalentUncached(session, platform, meta, kw);
+    this.equivSearchCache.set(cacheKey, { at: Date.now(), track: result });
+    this.pruneEquivSearchCache();
+    return result;
+  }
+
+  private async searchEquivalentUncached(
+    session: Session,
+    platform: MusicProvider,
+    meta: LikeMeta,
+    kw: string,
+  ): Promise<Track | null> {
     try {
-      let tracks: Track[] = [];
-      if (platform === 'qq') {
-        tracks = await this.qq.search(session.providers.qq ?? {}, kw, 5);
-      } else if (platform === 'netease') {
-        const ps = session.providers.netease;
-        if (!ps?.musicU) return null;
-        tracks = await this.netease.search(ps, kw, 5);
-      } else if (platform === 'spotify') {
-        const ps = session.providers.spotify;
-        if (!ps?.spotify) return null;
-        tracks = await this.spotify.search(ps, kw, 5);
-      } else {
-        return null; // deezer 匿名无收藏，不参与
+      // 准备 N 组搜索变体 + 各自的 limit。对每个变体跑「搜索 → 4 tier 匹配」，
+      // 任意一组命中即返回。修两类回归：
+      //  1) 原 kw 0 候选（Spotify 对"盛夏的灰姑娘"这类中译括号命中率为 0）→
+      //     剥括号重搜。
+      //  2) 原 kw 非 0 但候选全是无关歌（Spotify 把"サマータイムシンデレラ (盛夏的灰姑娘)
+      //     緑黄色社会"匹配成 おつかれSUMMER / summertime / Remember Summer Days）
+      //     → 4 tier 匹配失败，再用 title-only/author-only 收紧搜。
+      // 匹配阶段仍按 normalizeKey 严格判等 + 时长门限，只把搜索词放宽。
+      const cleanedTitle = stripParensContent(meta.title);
+      const cleanedArtist = stripParensContent(meta.artist);
+      const cleanedKw = `${cleanedTitle} ${cleanedArtist}`.trim();
+      const variants: Array<{ kw: string; limit: number; tag: string }> = [];
+      variants.push({ kw, limit: 5, tag: 'original' });
+      if (cleanedKw && cleanedKw !== kw) {
+        variants.push({ kw: cleanedKw, limit: 5, tag: 'strip-parens' });
       }
-      const wantKey = this.normalizeKey(meta.title, meta.artist);
-      const wantTitleKey = this.normalizeKey(meta.title, '');
-      const wantArtistKey = this.normalizeKey(meta.artist, '');
+      if (cleanedTitle && cleanedTitle !== kw && cleanedTitle !== cleanedKw) {
+        // title-only 兜底：Spotify 等严格 API 对「<title> <artist>」格式
+        // 把含中译假名/括号的 artist 解析偏，最后再 title-only 强调一遍。
+        variants.push({ kw: cleanedTitle, limit: 10, tag: 'title-only' });
+      }
 
-      // 第一遍：精确 normalizeKey 匹配。
-      for (const t of tracks) {
-        const tk = this.normalizeKey(t.title, t.artist);
-        if (tk !== wantKey) continue;
-        if (this.durationMismatch(meta.duration, t.duration)) continue;
-        this.logger.debug?.(
-          `searchEquivalent ${platform} exact match: "${t.title} - ${t.artist}"`,
+      const tried: string[] = [];
+      for (const v of variants) {
+        const tracks = await this.runPlatformSearch(session, platform, v.kw, v.limit);
+        // 把 top 3 候选挂在 tried 上：no-match 时一眼能看出"Spotify 实际返回了什么",
+        // 区分"歌曲不在该平台"vs"匹配规则漏过"。诊断比"kw→count"信息密度高得多。
+        const samples = tracks.slice(0, 3).map(
+          (t) => `"${t.title} - ${t.artist}" dur=${t.duration}`,
         );
-        return t;
-      }
-
-      // 第二遍：宽松匹配（歌名+歌手双向包含）。修复"QQ 歌手名带日文读法括号
-      // → normalizeKey('手嶌葵(てしまあおい)') ≠ 网易云 normalizeKey('手嶌葵')"。
-      // 再加上跨文字系统兜底：歌名对上 + 时长接近 + 双方艺人名一个 CJK 一个
-      // 拉丁字母（如 Spotify 用 "Fujii Kaze" 而 QQ 用 "藤井风"），放宽艺人名约束。
-      for (const t of tracks) {
-        const tt = this.normalizeKey(t.title, '');
-        const ta = this.normalizeKey(t.artist, '');
-        const titleOk =
-          tt && wantTitleKey && (tt.includes(wantTitleKey) || wantTitleKey.includes(tt));
-        if (!titleOk) continue;
-        const artistOk =
-          !ta || !wantArtistKey ||
-          ta.includes(wantArtistKey) || wantArtistKey.includes(ta) ||
-          (ta && wantArtistKey && this.isCrossScript(ta, wantArtistKey));
-        if (!artistOk) continue;
-        if (this.durationMismatch(meta.duration, t.duration)) continue;
-        this.logger.log(
-          `searchEquivalent ${platform} loose match: ` +
-            `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
-            ` (exact key mismatch: want="${wantKey}" got="${this.normalizeKey(t.title, t.artist)}")`,
+        tried.push(
+          `${v.tag}=${v.kw}→${tracks.length}` +
+            (samples.length ? ` [${samples.join(', ')}]` : ''),
         );
-        return t;
+        if (tracks.length === 0) continue;
+        const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag);
+        if (matched) return matched;
       }
-
-      // 匹配失败 → 记日志方便排查。
-      const samples = tracks.slice(0, 3).map(
-        (t) =>
-          `"${t.title} - ${t.artist}"` +
-          ` key="${this.normalizeKey(t.title, t.artist)}"` +
-          ` dur=${t.duration}`,
-      );
-      this.logger.log(
+      // 全部变体都跑过且没命中 → 记日志，明确告诉调用方"试过哪些变体 + 各自
+      // 候选"。diagnostics: 这种 no-match 是很常见的（该平台没有这首歌），但
+      // 排查时需要候选列表才能判断"是搜不到还是匹配不到"。
+      this.logger.debug?.(
         `searchEquivalent ${platform} no match for "${meta.title} - ${meta.artist}"` +
-          ` (wantKey="${wantKey}" dur=${meta.duration}, ` +
-          `candidates: [${samples.join(', ')}])`,
+          ` (kw="${kw}" dur=${meta.duration}, tried: [${tried.join(', ')}])`,
       );
       return null;
     } catch (err) {
@@ -1197,11 +1211,225 @@ export class MusicService {
     }
   }
 
+  /** 单平台单 kw 的搜索分发（剥掉各 provider 的 null session 守卫）。 */
+  private async runPlatformSearch(
+    session: Session,
+    platform: MusicProvider,
+    kw: string,
+    limit: number,
+  ): Promise<Track[]> {
+    if (platform === 'qq') {
+      return this.qq.search(session.providers.qq ?? {}, kw, limit);
+    }
+    if (platform === 'netease') {
+      const ps = session.providers.netease;
+      if (!ps?.musicU) return [];
+      return this.netease.search(ps, kw, limit);
+    }
+    if (platform === 'spotify') {
+      const ps = session.providers.spotify;
+      if (!ps?.spotify) return [];
+      return this.spotify.search(ps, kw, limit);
+    }
+    return []; // deezer 匿名无收藏，不参与
+  }
+
+  /** 4 tier 匹配：strict → loose → title-exact → cross-script。
+   *  任一命中即返回 + 写日志。tag 用于日志标注命中来自哪个搜索变体。 */
+  private matchEquivalentTrack(
+    platform: MusicProvider,
+    meta: LikeMeta,
+    tracks: Track[],
+    tag: string,
+  ): Track | null {
+    const wantKey = this.normalizeKey(meta.title, meta.artist);
+    const wantTitleKey = this.normalizeKey(meta.title, '');
+    const wantArtistKey = this.normalizeKey(meta.artist, '');
+
+    // 第一遍：精确 normalizeKey 匹配。
+    for (const t of tracks) {
+      const tk = this.normalizeKey(t.title, t.artist);
+      if (tk !== wantKey) continue;
+      if (this.durationMismatch(meta.duration, t.duration)) continue;
+      this.logger.debug?.(
+        `searchEquivalent ${platform} exact match [${tag}]: "${t.title} - ${t.artist}"`,
+      );
+      return t;
+    }
+
+    // 第二遍：宽松匹配（歌名+歌手双向包含）。修复"QQ 歌手名带日文读法括号
+    // → normalizeKey('手嶌葵(てしまあおい)') ≠ 网易云 normalizeKey('手嶌葵')"。
+    // 再加上跨文字系统兜底：歌名对上 + 时长接近 + 双方艺人名一个 CJK 一个
+    // 拉丁字母（如 Spotify 用 "Fujii Kaze" 而 QQ 用 "藤井风"），放宽艺人名约束。
+    for (const t of tracks) {
+      const tt = this.normalizeKey(t.title, '');
+      const ta = this.normalizeKey(t.artist, '');
+      const titleOk =
+        tt && wantTitleKey && (tt.includes(wantTitleKey) || wantTitleKey.includes(tt));
+      if (!titleOk) continue;
+      const artistOk =
+        !ta || !wantArtistKey ||
+        ta.includes(wantArtistKey) || wantArtistKey.includes(ta) ||
+        (ta && wantArtistKey && this.isCrossScript(ta, wantArtistKey));
+      if (!artistOk) continue;
+      if (this.durationMismatch(meta.duration, t.duration)) continue;
+      this.logger.log(
+        `searchEquivalent ${platform} loose match [${tag}]: ` +
+          `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
+          ` (exact key mismatch: want="${wantKey}" got="${this.normalizeKey(t.title, t.artist)}")`,
+      );
+      return t;
+    }
+
+    // 第三遍：歌名**完全相同**（normalizeKey 后逐字相等）+ 艺人宽松命中（双
+    // 向 includes / 跨脚本）+ duration 跨版本容差（±30s）→ 接受。
+    //
+    // 历史：本层最初是「title-exact + artist ignored」，用来处理
+    //   「浜崎あゆみ」vs「Ayumi Hamasaki」这种跨脚本同字；后来发现「artist
+    //   ignored」会误把「花田错 — 王力宏」跟「花田错 — 王馨卓」撞上（标题撞
+    //   名的不同歌手），于是收回到「艺人也要宽松命中」。跨脚本 / 前后缀的
+    //   同人异名仍通过 includes / isCrossScript 命中。
+    // duration 容差放宽到 30s：title-exact + artist 通过已是强信号，常见的
+    //   跨版本（single vs album / 带 intro-outro vs 短版）会差 15-30s，3s
+    //   严苛的话同歌搜不到。仍排除 title 仅 includes 的（防 "Love" 撞
+    //   "Love Story" 这种巧合）。
+    for (const t of tracks) {
+      const tt = this.normalizeKey(t.title, '');
+      if (!tt || tt !== wantTitleKey) continue;
+      const ta = this.normalizeKey(t.artist, '');
+      if (!this.artistLooseMatch(ta, wantArtistKey)) continue;
+      if (this.durationMismatchLenient(meta.duration, t.duration)) continue;
+      this.logger.log(
+        `searchEquivalent ${platform} title-exact match [${tag}]: ` +
+          `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
+          ` (dur=${meta.duration}≈${t.duration}, lenient)`,
+      );
+      return t;
+    }
+
+    // 第四遍：full key（title+artist）跨文字系统 + 时长接近 → 接受。
+    // 第三遍要求 title 完全相同——但 "調子のっちゃって"（日文）≠ "Cho Si
+    // Noccha Te"（罗马字），normalizeKey 后一个是 CJK、一个是 Latin，看不出
+    // 等同。两者 duration 完全相同（282s）说明是同一首歌。此类情况在日音
+    // 库非常常见（Spotify 用罗马字标题，QQ/网易云用汉字/假名）。
+    for (const t of tracks) {
+      const tk = this.normalizeKey(t.title, t.artist);
+      // 跨文字系统判定：一方纯 CJK/含 CJK、另一方纯 Latin（isCrossScript
+      // 已经包含了这层）。加上 duration 门限防止误命中。
+      if (!this.isCrossScript(tk, wantKey)) continue;
+      if (this.durationMismatch(meta.duration, t.duration)) continue;
+      this.logger.log(
+        `searchEquivalent ${platform} cross-script title match [${tag}]: ` +
+          `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
+          ` (seedKey="${wantKey}", candKey="${tk}", dur=${meta.duration}≈${t.duration})`,
+      );
+      return t;
+    }
+
+    // 第五遍：relaxed title match — 先把两侧标题的"括号内容"剥掉再做 substring。
+    // 修「胸の煙 (焚心如火) vs 胸の煙 (胸の煙 胸の煙 - Single / 胸の煙 (Official MV)」
+    // 类回归：seed 和候选标题共享同一个"原版标题"，但都有 extra 内容（版本标签、
+    // 译名括号、MV 标签）。Tier 1-4 在「双向 normalizeKey includes」上都失败
+    // （双方各自有独有的尾缀），但剥掉括号内容后应当完全相等或互为子串。
+    // 长度差门限 50% 是防止「胸」撞「胸の煙」这种短名误并。
+    // 仍要求艺人宽松命中（双向 includes / 跨脚本）— 防止「花田错 王力宏」vs
+    // 「花田错 王馨卓」这种"同名曲不同歌手"在标题容错后撞上。duration 同样
+    //  用跨版本容差 30s：典型 case 是「何なんw 藤井风」QQ 源 vs Spotify 源
+    //  album vs single 版差 15-30s。
+    const wantTitleClean = stripParensContent(meta.title);
+    const wantTitleNormClean = this.normalizeKey(wantTitleClean, '');
+    if (wantTitleNormClean) {
+      for (const t of tracks) {
+        const candTitleClean = stripParensContent(t.title);
+        const candTitleNormClean = this.normalizeKey(candTitleClean, '');
+        if (!candTitleNormClean) continue;
+        const lenDiff =
+          Math.abs(candTitleNormClean.length - wantTitleNormClean.length) /
+          Math.max(candTitleNormClean.length, wantTitleNormClean.length);
+        if (lenDiff > 0.5) continue;
+        const isSub =
+          candTitleNormClean === wantTitleNormClean ||
+          candTitleNormClean.includes(wantTitleNormClean) ||
+          wantTitleNormClean.includes(candTitleNormClean);
+        if (!isSub) continue;
+        const ta = this.normalizeKey(t.artist, '');
+        if (!this.artistLooseMatch(ta, wantArtistKey)) continue;
+        if (this.durationMismatchLenient(meta.duration, t.duration)) continue;
+        this.logger.log(
+          `searchEquivalent ${platform} relaxed title match [${tag}]: ` +
+            `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
+            ` (cleanTitle cand="${candTitleNormClean}" want="${wantTitleNormClean}"` +
+            ` dur=${meta.duration}≈${t.duration}, lenient)`,
+        );
+        return t;
+      }
+    }
+
+    // 第六遍：JW fuzzy title-only。Tier 5 在「共享前缀」型（「胸の煙vs 胸の煙MV」）
+    // 已能命中。Tier 6 兜底「JW 在阈值内且长度差 ≤ 40%」的容错——典型场景
+    // 是候选标题是原版的轻微改写（如「聖夜」vs「聖夜☆」，一个字符差）。
+    // JW 阈值 0.88 + 长度门限 0.4 + 艺人宽松 + duration 三重过滤。
+    const FUZZY_TITLE_JW_THRESHOLD = 0.88;
+    const FUZZY_TITLE_LENGTH_GATE = 0.4;
+    for (const t of tracks) {
+      const tt = this.normalizeKey(t.title, '');
+      if (!tt) continue;
+      const lenDiff = Math.abs(tt.length - wantTitleKey.length) / Math.max(tt.length, wantTitleKey.length);
+      if (lenDiff > FUZZY_TITLE_LENGTH_GATE) continue;
+      const score = jaroWinkler(tt, wantTitleKey);
+      if (score < FUZZY_TITLE_JW_THRESHOLD) continue;
+      const ta = this.normalizeKey(t.artist, '');
+      if (!this.artistLooseMatch(ta, wantArtistKey)) continue;
+      if (this.durationMismatch(meta.duration, t.duration)) continue;
+      this.logger.log(
+        `searchEquivalent ${platform} fuzzy title match [${tag}]: ` +
+          `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
+          ` (score=${score.toFixed(3)} candKey="${tt}" wantKey="${wantTitleKey}")`,
+      );
+      return t;
+    }
+
+    return null;
+  }
+
+  /**
+   * 艺人宽松命中：双向 includes（前后缀 / 缩写 / 全名含半名）+ 跨脚本（CJK vs
+   * Latin 同一艺人不同拼写）。空串视为通过（避免单边缺失艺人字段时误拒）。
+   * 集中抽出来是因为 Tier 2/3/5/6 都要复用同一规则——保持"同一人 vs 不同人"的
+   * 判定口径一致，否则会出现「Tier 2 拒、Tier 3 放」这种漏匹配。
+   */
+  private artistLooseMatch(ta: string, wantArtistKey: string): boolean {
+    if (!ta || !wantArtistKey) return true;
+    return (
+      ta.includes(wantArtistKey) ||
+      wantArtistKey.includes(ta) ||
+      this.isCrossScript(ta, wantArtistKey)
+    );
+  }
+
   private durationMismatch(seedDuration: number, candDuration: number): boolean {
     return (
       seedDuration > 0 &&
       candDuration > 0 &&
       Math.abs(candDuration - seedDuration) > VERSION_DURATION_TOLERANCE_SEC
+    );
+  }
+
+  /**
+   * 跨版本 duration 容差：title-exact / 剥括号后 substring 等强信号匹配的
+   *  "同歌不同版本"情况。差 30s 以内都接受（QQ 源 258s vs Spotify 源 243s
+   *  的 15s 差、album vs single 的典型 15-30s 差）。本规则的"宽"是为了
+   *  找回用户已经在听但跨平台搜不到的歌，避免让用户手动按"重新搜索"。
+   *  仍然比"任意两首同歌"严格（remix 普遍 ≥30s，不在范围内）。
+   */
+  private durationMismatchLenient(
+    seedDuration: number,
+    candDuration: number,
+  ): boolean {
+    return (
+      seedDuration > 0 &&
+      candDuration > 0 &&
+      Math.abs(candDuration - seedDuration) > DIFFERENT_VERSION_DURATION_TOLERANCE_SEC
     );
   }
 
@@ -1763,16 +1991,31 @@ export class MusicService {
     );
 
     const importedAt = Date.now();
+    // 落地时给每个 item 填 likedPlatforms（= import 时刻的 sources 平台）。
+    // 后续运行时 fanOut 跨平台同步会用到这个字段——getLibrary 会再叠加 fanOut。
+    const enrichedItems = items.map((it) => ({
+      ...it,
+      likedPlatforms: it.sources.map((s) => s.platform),
+    }));
     this.storage.set(this.libraryKey(session.id), {
       importedAt,
-      items,
+      items: enrichedItems,
       sources: sourceResults,
     });
 
-    return { items, sources: sourceResults, importedAt };
+    return { items: enrichedItems, sources: sourceResults, importedAt };
   }
 
-  /** 读取最近一次 import 的库（无则返回 null）。 */
+  /** 读取最近一次 import 的库（无则返回 null）。
+   *
+   * **运行时叠加 fanOut 状态**：import 时刻只覆盖了 import 时的 ❤ 列表；
+   * 假设用户之后通过 detect / fanOutLike 在其他平台 ❤ 了这首歌（典型场景：
+   * 播过一次、detect 自动跨平台同步），库 badge 需要反映出来。这里把
+   * `fanOut[mergedId]` 里的平台与 `likedPlatforms`（或 sources）取并集，
+   * 保证 UI 看到的"红心来源"始终是真相。
+   *
+   * **Deezer 不参与**：fanOut 在 fanOutLike 写时已过滤，但历史持久化可能
+   * 渗入——这里再过一遍 isLikeable，双保险。 */
   getLibrary(session: Session): {
     items: UnifiedSearchItem[];
     sources: Array<{
@@ -1788,7 +2031,27 @@ export class MusicService {
       sources: Array<{ provider: MusicProvider; count: number; error?: string }>;
     }>(this.libraryKey(session.id));
     if (!stored) return null;
-    return stored;
+    const state = this.loadState(session);
+    const items = stored.items.map((item) => {
+      // 老 storage 迁移路径：旧 import 没写 likedPlatforms → fallback sources 平台。
+      // 老 storage 里 sources 仍是真实 ❤ 列表（import 来源），所以 fallback 准确。
+      const basePlatforms = item.likedPlatforms ?? item.sources.map((s) => s.platform);
+      const hadLikedPlatforms = item.likedPlatforms !== undefined;
+      const fanOutEntries = state.fanOut[item.id] ?? [];
+      const set = new Set<MusicProvider>(basePlatforms);
+      for (const e of fanOutEntries) {
+        if (this.isLikeable(e.platform)) set.add(e.platform);
+      }
+      const likedPlatforms = Array.from(set);
+      // 复用原对象：仅当 likedPlatforms 已存在且值未变（避免 React 重渲染）。
+      // 迁移路径（老 storage 无 likedPlatforms）必须显式落地，否则字段缺失。
+      const same =
+        hadLikedPlatforms &&
+        likedPlatforms.length === basePlatforms.length &&
+        likedPlatforms.every((p, i) => p === basePlatforms[i]);
+      return same ? item : { ...item, likedPlatforms };
+    });
+    return { ...stored, items };
   }
 
   /**
@@ -1858,6 +2121,26 @@ export class MusicService {
     for (const key of this.lyricsCache.keys()) {
       this.lyricsCache.delete(key);
       if (this.lyricsCache.size <= LYRICS_CACHE_MAX) break;
+    }
+  }
+
+  /** (sessionId|platform|kw) → 最近一次等价曲搜索结果。null 也缓存，避免被打挂
+   *  的 platform 在 30s 窗口内被反复探（同一个事件窗口内 like sync 的 discover
+   *  与 renderer 的 trial upgrade 会并发调 searchEquivalent）。 */
+  private readonly equivSearchCache = new Map<
+    string,
+    { at: number; track: Track | null }
+  >();
+
+  private pruneEquivSearchCache(): void {
+    if (this.equivSearchCache.size <= EQUIV_SEARCH_CACHE_MAX_PER_SESSION) {
+      return;
+    }
+    for (const key of this.equivSearchCache.keys()) {
+      this.equivSearchCache.delete(key);
+      if (this.equivSearchCache.size <= EQUIV_SEARCH_CACHE_MAX_PER_SESSION) {
+        break;
+      }
     }
   }
 

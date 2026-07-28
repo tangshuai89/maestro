@@ -30,6 +30,13 @@ export interface ProviderSession {
   // NetEase
   musicU?: string;
   csrfToken?: string;
+  /**
+   * 是否网易云 VIP（黑胶/SVIP）。登录时 best-effort 拉一次 `vip_info` 缓存。
+   * 决定 privileges 数组里**漏掉**的歌（pl 缺失）算不算 VIP 锁：黑胶/SVIP
+   * 仍可能放全曲 → 不锁；非 VIP → 锁。
+   * `undefined` = 未知（老 session / 拉取失败）→ 按非会员处理（与 QQ `qqVip`
+   * 同口径，重新登录后会填上）。见 netease-auth.strategy.fetchVipStatus。 */
+  neteaseVip?: boolean;
   // Spotify (OAuth PKCE)
   spotify?: {
     accessToken: string;
