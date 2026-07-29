@@ -157,6 +157,52 @@ function makeTrack(
   console.log('✅ 3g. 保守保留「Live」vs「现场版」版本差异');
 }
 
+// ── 3g-bis. 阶段 G: tilde 变体归一（标题分隔符）────────────
+// 用户场景：QQ/网易云标题里用 ASCII tilde `~`（U+007E）做分隔符，
+// Spotify 用 wave dash `〜`（U+301C）——同一首歌不同平台字符不同。
+// 修「Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)」
+// （seed）vs「Departures 〜あなたにおくるアイの歌〜」（Spotify 候选），
+// 之前 6 tier 全挂（`~` vs `〜` 卡在 noise-strip 之外），现在 strip 后
+// Tier 2 bidirectional includes 能命中。
+{
+  // 同歌 + 三个 tilde 变体互替 → 同 key
+  const tilde = 'Departures~あなたにおくるアイの歌~';
+  const waveDash = 'Departures\u301Cあなたにおくるアイの歌\u301C'; // 〜
+  const fullWidth = 'Departures\uFF5Eあなたにおくるアイの歌\uFF5E'; // ～ → step 1 转成 ~ 后再 strip
+  const k1 = normalizeKey(tilde, 'EGOIST');
+  const k2 = normalizeKey(waveDash, 'EGOIST');
+  const k3 = normalizeKey(fullWidth, 'EGOIST');
+  assert.strictEqual(k1, k2, '`~` (U+007E) vs `〜` (U+301C) 应归一到同 key');
+  assert.strictEqual(k1, k3, '`~` vs `～` (U+FF5E, step 1 转半角) 应归一到同 key');
+  console.log(`✅ 3g-bis. tilde 变体归一 (${k1})`);
+
+  // 用户原 case: seed 带中译括号，spotify 候选干净
+  // 之前因 `~` ≠ `〜` 完全挂；现在 Tier 2（双向 includes）应能命中。
+  const seedKey = normalizeKey(
+    'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
+    'EGOIST (エゴイスト)',
+  );
+  const candKey = normalizeKey(
+    'Departures \u301Cあなたにおくるアイの歌\u301C',
+    'EGOIST',
+  );
+  // 严格不等（cand 没有中译括号段）—— 但 cand 必须是 seed 标题的子串
+  // （Tier 2 双向 includes 的判定前提）。
+  const candTitleKey = normalizeKey(
+    'Departures \u301Cあなたにおくるアイの歌\u301C',
+    '',
+  );
+  const seedTitleKey = normalizeKey(
+    'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
+    '',
+  );
+  assert.ok(
+    seedTitleKey.includes(candTitleKey),
+    `seed 标题应包含 cand 标题（双向 includes 前提）；seed="${seedTitleKey}" cand="${candTitleKey}"`,
+  );
+  console.log(`✅ 3g-bis. Departures user case: seed 包含 cand 标题`);
+}
+
 // ── 3h. 阶段 D: stripFeatTags 单独测 ─────────────────────
 {
   // 括号形式：`(feat. X)` 全/半角括号都剥

@@ -814,6 +814,93 @@ async function main() {
     }
     console.log('✅ 15. 跨版本 duration 容差：QQ 258s vs Spotify 243s 命中');
   }
+
+  // ── 16. tilde 变体归一：seed 用 `~`，Spotify 候选用 `〜` ─────
+  // 用户场景：QQ/网易云标题里用 ASCII tilde（U+007E）做分隔符，Spotify
+  // 用 wave dash（U+301C）——同一首歌不同平台字符不同。之前 normalizeKey
+  // 的 noise-strip 不含 tilde，所有 tier 都因 `~` ≠ `〜` 挂掉。
+  // 修法：normalizeKey step 5 的 noise-strip 加入 `~〜～` 三种 tilde。
+  // 例:「Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~) - EGOIST (エゴイスト)」
+  // vs Spotify 候选「Departures 〜あなたにおくるアイの歌〜 - EGOIST」dur=255。
+  {
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        // 与生产 Spotify 实际返回顺序一致（实测日志）：[dur=256, dur=255, dur=95 TV Edit]
+        {
+          id: 's-dep-256',
+          provider: 'spotify',
+          title: 'Departures \u301Cあなたにおくるアイの歌\u301C', // 〜
+          artist: 'EGOIST',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 256,
+          liked: false,
+        },
+        {
+          id: 's-dep-255',
+          provider: 'spotify',
+          title: 'Departures \u301Cあなたにおくるアイの歌\u301C', // 〜
+          artist: 'EGOIST',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 255, // 与 seed 完全一致
+          liked: false,
+        },
+        {
+          id: 's-dep-tv',
+          provider: 'spotify',
+          title: 'Departures \u301Cあなたにおくるアイの歌\u301C\uff08TV Edit\uff09', // 〜（TV Edit）
+          artist: 'EGOIST',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 95,
+          liked: false,
+        },
+      ],
+    };
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(
+        session,
+        'spotify',
+        {
+          title:
+            'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
+          artist: 'EGOIST (エゴイスト)',
+          duration: 255,
+        },
+      );
+      assert.ok(t, '`~` vs `〜` tilde 变体应能命中（之前所有 tier 全挂）');
+      // Tier 2 (loose) 命中后即返回——按 search 返回顺序取首条。
+      // 这里不强求命中 dur=255（duration-preferring 属于另一个 PR 的优化），
+      // 只确保命中**正版本**（256/255 之一），绝不能命中 95 的 TV Edit。
+      assert.notStrictEqual(
+        t.id,
+        's-dep-tv',
+        '不得误命中 dur=95 TV Edit（与 seed 差 160s）',
+      );
+      assert.ok(
+        ['s-dep-256', 's-dep-255'].includes(t.id),
+        `命中正版本（256/255），实际 ${t.id}`,
+      );
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 16. tilde 变体归一: `~` (seed) vs `〜` (Spotify) 命中正版本（不是 TV Edit）');
+  }
 }
 
 main().catch((err) => {

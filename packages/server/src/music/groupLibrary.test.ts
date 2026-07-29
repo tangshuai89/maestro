@@ -51,14 +51,14 @@ function stripForFuzzy(s: string): string {
   return s
     .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '')
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】]+/g, '')
+    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
     .toLowerCase();
 }
 
 function normalizeNoStrip(s: string): string {
   return s
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】]+/g, '')
+    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
     .toLowerCase();
 }
 

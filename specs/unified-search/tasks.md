@@ -11,3 +11,4 @@
 - [x] 11. 写单元测试: 去重、标点/全角归一化、不同歌曲保留、空输入 — 6 tests pass
 - [x] 12. 跑全量测试 TypeScript 类型检查确认通过（`npx tsc --noEmit` OK）
 - [x] 13. 端到端验证: nest 启动后 curl `/api/music/search?q=周杰伦` → 跨平台合并返回，bestSource=qq 优先；空 q / >100 字符 q 返回 400；test #7 验证跨平台聚合 + mediaMid 透传（无需 GUI 也能验证）
+- [x] 14. 阶段 G: tilde 变体归一 — `normalizeKey` step 5 noise-strip 加入 `~` (U+007E) / `〜` (U+301C) / `～` (U+FF5E) 三种 tilde。修「Departures~歌名~ (Departures~中译~)」(QQ/网易云用 ASCII tilde) vs 「Departures 〜歌名〜」(Spotify 用 wave dash) 不同字符导致 6 tier 全挂的回归。同改动同步到 renderer `groupLibrary.ts` 的展示级 noise-strip 保持一致。test #3g-bis + cross-platform-match.e2e #16 覆盖。

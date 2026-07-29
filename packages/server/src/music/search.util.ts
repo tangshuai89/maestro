@@ -231,7 +231,10 @@ export function normalizeKey(title: string, artist: string): string {
     //    与「ずっと真夜中でいいのに」normalizeKey 差一个「。」，跨平台匹配 Tier 2
     //    includes 仍能命中（长的包含短的），但后续 strict 永远不撞。保险起见
     //    全部 strip 掉，让两侧都进同一个干净的归一 key。
-    .replace(/[\s\-_,.()\[\]<>'"′″·&+\/!?！？:：;；。、・]+/g, '');
+    //    Tilde 变体（`~` U+007E / `〜` U+301C wave dash / `～` U+FF5E 全角）
+    //    在日文歌名里常被当分隔符用（「Departures~歌名~」「Departures〜歌名〜」）
+    //    —— 同一首歌在不同平台用不同字符，strip 之后才能跨平台 strict 命中。
+    .replace(/[\s\-_,.()\[\]<>'"′″·&+\/!?！？:：;；。、・~〜～]+/g, '');
   // 5.5) CJK 跨语言形态合并（OpenCC 繁→简 + 日文独有形兜底）
   raw = cjkUnify(raw);
   // 6) 全小写
