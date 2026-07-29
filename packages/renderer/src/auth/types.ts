@@ -1,4 +1,4 @@
-import type { MusicProvider } from '../api.ts';
+import type { MusicProvider } from '../api';
 
 /**
  * Stable, machine-readable auth error codes. The server emits these in the

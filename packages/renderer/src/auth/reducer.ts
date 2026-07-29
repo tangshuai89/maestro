@@ -1,11 +1,11 @@
-import type { MusicProvider } from '../api.ts';
+import type { MusicProvider } from '../api';
 import {
   ATTEMPT_TIMEOUT_MS,
   type AuthAttempt,
   type AuthError,
   type AuthErrorCode,
   type AuthPhase,
-} from './types.ts';
+} from './types';
 
 /**
  * Reducer state. The phase describes the *login attempt*; the snapshot
