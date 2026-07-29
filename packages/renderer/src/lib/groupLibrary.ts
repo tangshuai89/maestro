@@ -53,7 +53,7 @@ function stripForFuzzy(s: string): string {
   return s
     .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '') // 去成对括号及里面的内容
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】]+/g, '')
+    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
     .toLowerCase();
 }
 
@@ -61,7 +61,7 @@ function stripForFuzzy(s: string): string {
 function normalizeNoStrip(s: string): string {
   return s
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】]+/g, '')
+    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
     .toLowerCase();
 }
 
