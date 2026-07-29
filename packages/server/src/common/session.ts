@@ -60,6 +60,9 @@ export interface ProviderSession {
 export interface Session {
   id: string;
   createdAt: number;
+  /** Last access (ms epoch) for sliding TTL. Defaults to createdAt for
+   *  legacy sessions that predate this field. */
+  lastAccessedAt: number;
   providers: Partial<Record<MusicProvider, ProviderSession>>;
   /** Per-session UI prefs (e.g. the Deezer preset). Anonymous providers
    * don't have a ProviderSession, so this is where we stash their
@@ -85,6 +88,14 @@ export class SessionService implements OnModuleDestroy {
     const persisted = this.storage.get<SessionBlob>(SESSION_KEY);
     if (persisted) {
       this.blob = persisted;
+      // Migration: legacy sessions predate lastAccessedAt → default to
+      // createdAt so they don't immediately look "stale" and so existing
+      // users don't get logged out on upgrade.
+      for (const s of Object.values(this.blob.byId)) {
+        if (typeof (s as Session).lastAccessedAt !== 'number') {
+          (s as Session).lastAccessedAt = (s as Session).createdAt;
+        }
+      }
       this.evictExpired();
     }
   }
@@ -94,10 +105,20 @@ export class SessionService implements OnModuleDestroy {
     this.storage.flushSync();
   }
 
+  onModuleInit(): void {
+    // Hourly reaper so the cookie's sliding window doesn't accumulate
+    // orphan sessions in memory. unref() lets the timer not block process
+    // exit.
+    const t = setInterval(() => this.evictExpired(), 60 * 60_000);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (t as any).unref?.();
+  }
+
   private evictExpired(): void {
     const now = Date.now();
     for (const [id, s] of Object.entries(this.blob.byId)) {
-      if (now - s.createdAt > this.cfg.sessionTtlMs) {
+      const last = s.lastAccessedAt ?? s.createdAt;
+      if (now - last > this.cfg.sessionTtlMs) {
         delete this.blob.byId[id];
       }
     }
@@ -115,7 +136,8 @@ export class SessionService implements OnModuleDestroy {
     let session = id ? this.blob.byId[id] : undefined;
     if (!session) {
       id = randomBytes(24).toString('hex');
-      session = { id, createdAt: Date.now(), providers: {} };
+      const now = Date.now();
+      session = { id, createdAt: now, lastAccessedAt: now, providers: {} };
       this.blob.byId[id] = session;
       res.cookie(COOKIE_NAME, id, {
         httpOnly: true,
@@ -129,6 +151,9 @@ export class SessionService implements OnModuleDestroy {
         signed: true,
       });
       this.persist();
+    } else {
+      // Slide TTL.
+      session.lastAccessedAt = Date.now();
     }
     return session;
   }
@@ -142,6 +167,8 @@ export class SessionService implements OnModuleDestroy {
     if (!session) {
       throw new UnauthorizedException('No active session');
     }
+    // Slide TTL on every call.
+    session.lastAccessedAt = Date.now();
     // Refresh the cookie sliding window.
     res.cookie(COOKIE_NAME, id, {
       httpOnly: true,
@@ -175,6 +202,38 @@ export class SessionService implements OnModuleDestroy {
 
   clearProvider(session: Session, provider: MusicProvider): void {
     delete session.providers[provider];
+    this.persist();
+  }
+
+  /**
+   * Persist a refreshed Spotify token via setProvider so the change lands
+   * in state.json (the previous implementation mutated session.spotify
+   * in place and never called persist → token refresh was lost across
+   * server restarts until the next refresh attempt).
+   */
+  persistSpotify(sessionId: string, providerSession: ProviderSession): void {
+    const s = this.blob.byId[sessionId];
+    if (!s) return;
+    s.providers.spotify = providerSession.spotify
+      ? { ...s.providers.spotify, ...providerSession }
+      : providerSession;
+    this.persist();
+  }
+
+  /** Last successful server-side validation for a provider's credentials
+   *  (ms epoch). null = never validated. */
+  getLastValidatedAt(session: Session, provider: MusicProvider): number | null {
+    const v = (session.prefs ?? {})[`lastValidatedAt:${provider}`];
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  setLastValidatedAt(
+    session: Session,
+    provider: MusicProvider,
+    ts: number,
+  ): void {
+    session.prefs = { ...(session.prefs ?? {}), [`lastValidatedAt:${provider}`]: String(ts) };
     this.persist();
   }
 

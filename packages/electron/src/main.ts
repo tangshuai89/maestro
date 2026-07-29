@@ -12,6 +12,8 @@ import {
 } from 'electron';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'node:child_process';
+import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
+import { oauthBuffer } from './auth/oauth-buffer';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
 // BOTH dev and packaged mode (~/Library/Application Support/Maestro). Without
@@ -193,8 +195,15 @@ function createTray(): void {
 }
 
 /** The QQ Music login window (kept alive hidden after success so we could
- * proxy through its Chromium session later if QQ ever tightens anti-bot). */
+ *  proxy through its Chromium session later if QQ ever tightens anti-bot). */
 let activeQqLoginWindow: BrowserWindow | null = null;
+
+/** Stash the last captured login result on the BrowserWindow so a re-
+ *  invoke from the renderer (login window already open + user clicks
+ *  "login" again) resolves immediately without re-capturing. */
+interface MaestroWindowExtras {
+  __maestroLastResult?: unknown;
+}
 
 /** IPC response channel for cookie-based login (QQ Music). */
 const QQ_LOGIN_CHANNEL = 'qq-login-result';
@@ -372,106 +381,66 @@ async function readQqCookies(win: BrowserWindow): Promise<{
  * we just capture the browser's own login cookies.
  */
 function openQqLoginWindow(): Promise<QqLoginResult> {
-  return new Promise((resolve, reject) => {
-    if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
-      activeQqLoginWindow.show();
-      activeQqLoginWindow.focus();
-      return;
-    }
+  if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
+    activeQqLoginWindow.show();
+    activeQqLoginWindow.focus();
+    const cached = (activeQqLoginWindow as BrowserWindow & MaestroWindowExtras)
+      .__maestroLastResult as QqLoginResult | undefined;
+    if (cached) return Promise.resolve(cached);
+  }
 
-    const loginWin = new BrowserWindow({
-      width: 1000,
-      height: 760,
-      minWidth: 720,
-      minHeight: 540,
-      title: '登录 QQ 音乐',
-      parent: mainWindow ?? undefined,
-      modal: false,
-      backgroundColor: '#ffffff',
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-    activeQqLoginWindow = loginWin;
-
-    // QQ's login panel sometimes opens a popup (ptlogin / graph). Allow child
-    // windows so the flow can complete inside Electron rather than the OS
-    // browser. They share this window's session, so cookies land on it.
-    loginWin.webContents.setWindowOpenHandler(() => ({ action: 'allow' }));
-
-    loginWin.loadURL('https://y.qq.com/');
-
-    let resolved = false;
-    let pollTimer: NodeJS.Timeout | null = null;
-
-    const stop = (): void => {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-    };
-
-    const finish = (result: QqLoginResult): void => {
-      if (resolved) return;
-      resolved = true;
-      stop();
+  let created: BrowserWindow | null = null;
+  return runLoginWindow<QqLoginResult>({
+    url: 'https://y.qq.com/',
+    title: '登录 QQ 音乐',
+    width: 1000,
+    height: 760,
+    minWidth: 720,
+    minHeight: 540,
+    domains: QQ_DOMAINS,
+    markerNames: QQ_LOGIN_MARKERS,
+    keepAliveAfterSuccess: true,
+    createWindow: () => {
+      const win = new BrowserWindow({
+        width: 1000,
+        height: 760,
+        minWidth: 720,
+        minHeight: 540,
+        title: '登录 QQ 音乐',
+        parent: mainWindow ?? undefined,
+        modal: false,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+      created = win;
+      activeQqLoginWindow = win;
+      win.loadURL('https://y.qq.com/');
+      return win as unknown as MinimalBrowserWindow;
+    },
+    capture: async (win) => {
+      const realWin = win as unknown as BrowserWindow;
+      const { cookie, uin, all, hasMarker } = await readQqCookies(realWin);
+      if (!hasMarker) return null;
+      const result: QqLoginResult = { cookie, uin, extraCookies: all };
       console.log(
-        `[qq-login] captured ${
-          Object.keys(result.extraCookies ?? {}).length
-        } cookies, uin=${result.uin ?? '?'}, keys=[${Object.keys(
-          result.extraCookies ?? {},
-        ).join(',')}]`,
+        `[qq-login] captured ${Object.keys(all).length} cookies, ` +
+          `uin=${uin ?? '?'}, keys=[${Object.keys(all).join(',')}]`,
       );
-      if (!loginWin.isDestroyed()) loginWin.hide();
+      (realWin as BrowserWindow & MaestroWindowExtras).__maestroLastResult = result;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(QQ_LOGIN_CHANNEL, result);
       }
-      resolve(result);
-    };
-
-    const fail = (err: Error): void => {
-      if (resolved) return;
-      resolved = true;
-      stop();
-      if (!loginWin.isDestroyed()) loginWin.close();
-      if (activeQqLoginWindow === loginWin) activeQqLoginWindow = null;
-      reject(err);
-    };
-
-    const tryCapture = async (): Promise<void> => {
-      if (resolved || loginWin.isDestroyed()) return;
-      try {
-        const { cookie, uin, all, hasMarker } = await readQqCookies(loginWin);
-        if (hasMarker) {
-          finish({ cookie, uin, extraCookies: all });
-        }
-      } catch {
-        // ignore — next tick retries
-      }
-    };
-
-    const cookieListener = (
-      _event: unknown,
-      cookie: Electron.Cookie,
-      _cause: string,
-      removed: boolean,
-    ): void => {
-      if (removed) return;
-      if (!(cookie.domain ?? '').includes('qq.com')) return;
-      if (QQ_LOGIN_MARKERS.includes(cookie.name) && cookie.value) {
-        void tryCapture();
-      }
-    };
-    loginWin.webContents.session.cookies.on('changed', cookieListener);
-
-    // Polling fallback — cookie 'changed' can miss updates after redirects.
-    pollTimer = setInterval(() => void tryCapture(), POLL_INTERVAL_MS);
-
-    loginWin.on('closed', () => {
-      if (activeQqLoginWindow === loginWin) activeQqLoginWindow = null;
-      if (!resolved) fail(new Error('login_cancelled'));
-    });
+      return result;
+    },
+  }).finally(() => {
+    if (created) {
+      created.on('closed', () => {
+        if (activeQqLoginWindow === created) activeQqLoginWindow = null;
+      });
+    }
   });
 }
 
@@ -533,98 +502,70 @@ async function readNeteaseCookies(win: BrowserWindow): Promise<{
  * trusts), and resolve once MUSIC_U appears in the window's session cookies.
  */
 function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
-  return new Promise((resolve, reject) => {
-    if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
-      activeNeteaseLoginWindow.show();
-      activeNeteaseLoginWindow.focus();
-      return;
-    }
+  if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
+    activeNeteaseLoginWindow.show();
+    activeNeteaseLoginWindow.focus();
+    const cached = (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras)
+      .__maestroLastResult as NeteaseLoginResult | undefined;
+    if (cached) return Promise.resolve(cached);
+  }
 
-    const loginWin = new BrowserWindow({
-      width: 1000,
-      height: 760,
-      minWidth: 720,
-      minHeight: 540,
-      title: '登录网易云音乐',
-      parent: mainWindow ?? undefined,
-      modal: false,
-      backgroundColor: '#ffffff',
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-    activeNeteaseLoginWindow = loginWin;
-
-    loginWin.webContents.setWindowOpenHandler(() => ({ action: 'allow' }));
-    loginWin.loadURL('https://music.163.com/login');
-
-    let resolved = false;
-    let pollTimer: NodeJS.Timeout | null = null;
-
-    const stop = (): void => {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-    };
-
-    const finish = (result: NeteaseLoginResult): void => {
-      if (resolved) return;
-      resolved = true;
-      stop();
+  let created: BrowserWindow | null = null;
+  return runLoginWindow<NeteaseLoginResult>({
+    url: 'https://music.163.com/login',
+    title: '登录网易云音乐',
+    width: 1000,
+    height: 760,
+    minWidth: 720,
+    minHeight: 540,
+    domains: NETEASE_DOMAINS,
+    markerNames: ['MUSIC_U'],
+    keepAliveAfterSuccess: true,
+    createWindow: () => {
+      const win = new BrowserWindow({
+        width: 1000,
+        height: 760,
+        minWidth: 720,
+        minHeight: 540,
+        title: '登录网易云音乐',
+        parent: mainWindow ?? undefined,
+        modal: false,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+      created = win;
+      activeNeteaseLoginWindow = win;
+      win.loadURL('https://music.163.com/login');
+      return win as unknown as MinimalBrowserWindow;
+    },
+    capture: async (win) => {
+      const realWin = win as unknown as BrowserWindow;
+      const { musicU, csrf, all } = await readNeteaseCookies(realWin);
+      if (!musicU) return null;
+      const result: NeteaseLoginResult = {
+        musicU,
+        csrfToken: csrf,
+        extraCookies: all,
+      };
       console.log(
-        `[netease-login] captured MUSIC_U (len=${result.musicU.length}), ${
-          Object.keys(result.extraCookies ?? {}).length
-        } cookies`,
+        `[netease-login] captured MUSIC_U (len=${musicU.length}), ` +
+          `${Object.keys(all).length} cookies`,
       );
-      if (!loginWin.isDestroyed()) loginWin.hide();
+      (realWin as BrowserWindow & MaestroWindowExtras).__maestroLastResult = result;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(NETEASE_LOGIN_CHANNEL, result);
       }
-      resolve(result);
-    };
-
-    const fail = (err: Error): void => {
-      if (resolved) return;
-      resolved = true;
-      stop();
-      if (!loginWin.isDestroyed()) loginWin.close();
-      if (activeNeteaseLoginWindow === loginWin) activeNeteaseLoginWindow = null;
-      reject(err);
-    };
-
-    const tryCapture = async (): Promise<void> => {
-      if (resolved || loginWin.isDestroyed()) return;
-      try {
-        const { musicU, csrf, all } = await readNeteaseCookies(loginWin);
-        if (musicU) finish({ musicU, csrfToken: csrf, extraCookies: all });
-      } catch {
-        // ignore — next tick retries
-      }
-    };
-
-    const cookieListener = (
-      _event: unknown,
-      cookie: Electron.Cookie,
-      _cause: string,
-      removed: boolean,
-    ): void => {
-      if (removed) return;
-      if (!(cookie.domain ?? '').includes('163.com')) return;
-      if (cookie.name === 'MUSIC_U' && cookie.value.length >= MIN_MUSIC_U_LENGTH) {
-        void tryCapture();
-      }
-    };
-    loginWin.webContents.session.cookies.on('changed', cookieListener);
-
-    // Polling fallback — cookie 'changed' can miss updates after redirects.
-    pollTimer = setInterval(() => void tryCapture(), POLL_INTERVAL_MS);
-
-    loginWin.on('closed', () => {
-      if (activeNeteaseLoginWindow === loginWin) activeNeteaseLoginWindow = null;
-      if (!resolved) fail(new Error('login_cancelled'));
-    });
+      return result;
+    },
+  }).finally(() => {
+    if (created) {
+      created.on('closed', () => {
+        if (activeNeteaseLoginWindow === created) activeNeteaseLoginWindow = null;
+      });
+    }
   });
 }
 
@@ -647,6 +588,14 @@ ipcMain.handle('netease:login', async () => {
     return { success: false, error: (err as Error).message };
   }
 });
+
+/**
+ * Renderer pulls the latest buffered Spotify OAuth callback. Returns
+ * `null` if nothing buffered or the buffered entry has aged out (10 min).
+ * Renderer calls this on mount; if the main process hasn't received a
+ * callback yet, the call hangs until one arrives (or the TTL elapses).
+ */
+ipcMain.handle('consume-oauth-callback', () => oauthBuffer.consume());
 
 /**
  * Open URL in the OS default browser (Spotify OAuth authorizeUrl, etc.).
@@ -690,35 +639,22 @@ if (process.defaultApp) {
 }
 
 // 协议 URL 回调：OS 把 maestro://spotify-callback?code=...&state=... 递进来
+// 走 oauthBuffer：renderer 端通过 consumeOAuthCallback() IPC 拉取；这样即使
+// main 窗口未就绪（或正被 recreate）也不会丢回调。10 min TTL 与 PKCE flow 一致。
 app.on('open-url', (event, url) => {
   event.preventDefault();
   console.log('[main] open-url:', url);
   try {
-    // Spotify 回跳的 redirect_uri 常常带一个尾斜杠：
-    //   maestro://spotify-callback/?code=...   （有 /）
-    // 而 Dashboard 里注册的是  maestro://spotify-callback （无 /）
-    // → URL 解析不受影响（searchParams 不受路径影响），但 log 要精准
     const normalized = url.replace(/\/\?/, '?');
     const parsed = new URL(normalized);
     const code = parsed.searchParams.get('code');
     const state = parsed.searchParams.get('state');
-    console.log('[main] parsed code:', code, 'state:', state);
     if (!code || !state) {
       console.error('[main] open-url 缺 code 或 state，忽略');
       return;
     }
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      console.error('[main] mainWindow 尚未就绪，延迟 1s 再试');
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          console.log('[main] 延迟推送 spotify:oauth-protocol');
-          mainWindow.webContents.send('spotify:oauth-protocol', { code, state });
-        }
-      }, 1000);
-      return;
-    }
-    console.log('[main] IPC send spotify:oauth-protocol');
-    mainWindow.webContents.send('spotify:oauth-protocol', { code, state });
+    oauthBuffer.push(code, state);
+    console.log('[main] oauth-buffer: pushed callback');
   } catch (err) {
     console.error('[main] open-url parse failed:', err);
   }

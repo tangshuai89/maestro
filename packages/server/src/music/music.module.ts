@@ -23,6 +23,6 @@ import { LikeSyncQueue } from './like-sync.queue';
     SpotifyMusicProvider,
     LyricsOvhProvider,
   ],
-  exports: [MusicService, MatchService, SpotifyMusicProvider],
+  exports: [MusicService, MatchService, SpotifyMusicProvider, LikeSyncQueue],
 })
 export class MusicModule {}

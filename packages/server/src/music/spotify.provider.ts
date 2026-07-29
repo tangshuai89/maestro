@@ -2,6 +2,8 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Track } from './music.service';
 import { ProviderSession } from '../common/session';
 import { StorageService } from '../common/storage';
+import { SessionService } from '../common/session';
+import { RefreshCoordinator } from '../auth/refresh-coordinator';
 
 /** storage key where AuthController persists the user's Spotify client_id.
  *  Must stay in sync with auth.controller.ts SPOTIFY_CLIENT_ID_KEY. */
@@ -91,19 +93,25 @@ interface SpotifySavedTracksResponse {
 export class SpotifyMusicProvider {
   private readonly logger = new Logger(SpotifyMusicProvider.name);
 
-  // PKCE 临时态：state → { codeVerifier, codeChallenge, createdAt, clientId }
+  // PKCE 临时态：state → { codeVerifier, codeChallenge, createdAt, sessionId }
   // 不持久化（重启清空，反正用户在浏览器侧手点确认也得重走）。
   // 实际 v1 用 Map<state, {codeVerifier, createdAt}>，clientId 不存（callback 时再读）
+  // v_resilience: 加上 sessionId 用于防止跨 session 回调重放（一个 session 拿到
+  // 另一个 session 启动的 code+state 时 exchangeCode 拒绝）。
   private readonly pendingFlows = new Map<
     string,
-    { codeVerifier: string; createdAt: number }
+    { codeVerifier: string; createdAt: number; sessionId: string }
   >();
 
   /** PKCE flow TTL：10 分钟。超过这个时间视为过期，exchangeCode 拒绝。
    *  同时用于 lazy GC——startAuth 时清掉所有 >TTL 的 orphan。 */
   private static readonly PKCE_TTL_MS = 10 * 60_000;
 
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly refreshCoordinator: RefreshCoordinator,
+    private readonly sessions: SessionService,
+  ) {}
 
   // ── 配置 / 鉴权基础 ─────────────────────────────────────
 
@@ -133,7 +141,7 @@ export class SpotifyMusicProvider {
     const tok = this.readToken(session);
     if (!tok) return null;
     if (tok.expiresAt > Date.now() + 30_000) return tok.accessToken;
-    // 过期了 → refresh
+    // 过期了 → refresh（单飞：同 session 并发 refresh 共享一个 Promise）
     return this.refreshAccessToken(session, tok.refreshToken);
   }
 
@@ -155,6 +163,35 @@ export class SpotifyMusicProvider {
   }
 
   private async refreshAccessToken(
+    session: ProviderSession,
+    refreshToken: string,
+  ): Promise<string | null> {
+    const sessionId = this.sessionIdFor(session);
+    if (!sessionId) {
+      // 没有 sessionId（开发/单测）就直接跑，不走单飞。
+      return this.doRefreshAccessToken(session, refreshToken);
+    }
+    return this.refreshCoordinator.run<string | null>(sessionId, () =>
+      this.doRefreshAccessToken(session, refreshToken),
+    );
+  }
+
+  /**
+   * Track the session this ProviderSession belongs to. Sessions are
+   * 1:1 with the cookie, but ProviderSession doesn't carry a sessionId.
+   * We keep a side map so the refresh coordinator can dedupe.
+   */
+  private readonly sessionIdByToken = new WeakMap<ProviderSession, string>();
+  private sessionIdFor(session: ProviderSession): string | null {
+    return this.sessionIdByToken.get(session) ?? null;
+  }
+  /** Called by the auth controller when constructing a ProviderSession
+   *  wrapper for a known request session. */
+  bindSessionId(session: ProviderSession, sessionId: string): void {
+    this.sessionIdByToken.set(session, sessionId);
+  }
+
+  private async doRefreshAccessToken(
     session: ProviderSession,
     refreshToken: string,
   ): Promise<string | null> {
@@ -194,7 +231,16 @@ export class SpotifyMusicProvider {
         refreshToken: data.refresh_token ?? refreshToken,
         expiresAt: Date.now() + data.expires_in * 1000,
       };
-      session.spotify = newTok;
+      // 保留旧 token 的 tier / id / displayName（refresh 不会回这些）
+      // 然后通过 setProvider 触发 persist，让 state.json 也保留新 token。
+      const sessionId = this.sessionIdFor(session);
+      session.spotify = {
+        ...session.spotify,
+        ...newTok,
+      };
+      if (sessionId) {
+        this.sessions.persistSpotify(sessionId, session);
+      }
       return newTok.accessToken;
     } catch (err) {
       this.logger.warn(`spotify refresh exception: ${(err as Error).message}`);
@@ -209,13 +255,13 @@ export class SpotifyMusicProvider {
    * 实际不直接调 accounts.spotify.com，由调用方（controller）拿 authorizeUrl
    * 去 redirect 用户浏览器。
    */
-  startAuth(clientId: string, redirectUri: string): {
+  startAuth(clientId: string, redirectUri: string, sessionId: string): {
     authorizeUrl: string;
     state: string;
   } {
     // Lazy GC：每次 start 都清掉过期的 orphan，避免用户多次开启又不回调
     // 时 Map 无限增长。检查 200ms 内开销可忽略。
-    this.evictExpiredFlows();
+    this.evictExpiredFlows(sessionId);
     const codeVerifier = base64UrlEncode(randomBytes(32));
     const codeChallenge = base64UrlEncode(
       sha256(Buffer.from(codeVerifier)),
@@ -224,6 +270,7 @@ export class SpotifyMusicProvider {
     this.pendingFlows.set(state, {
       codeVerifier,
       createdAt: Date.now(),
+      sessionId,
     });
     const url = new URL(`${SPOTIFY_ACCOUNTS}/authorize`);
     url.searchParams.set('client_id', clientId);
@@ -240,14 +287,32 @@ export class SpotifyMusicProvider {
     return { authorizeUrl: url.toString(), state };
   }
 
-  /** 删掉 >TTL 的 flow entries。startAuth 入口 lazy 调用。 */
-  private evictExpiredFlows(): void {
+  /** 删掉 >TTL 的 flow entries。startAuth 入口 lazy 调用。
+   *  `forSessionId`：传入时只清该 session 的 entries（cancelSpotifyAuth 用）；
+   *  不传时清全部过期 orphan。 */
+  private evictExpiredFlows(forSessionId?: string): void {
     const cutoff = Date.now() - SpotifyMusicProvider.PKCE_TTL_MS;
     for (const [state, flow] of this.pendingFlows) {
-      if (flow.createdAt < cutoff) {
+      const expired = flow.createdAt < cutoff;
+      const wrongSession =
+        forSessionId !== undefined && flow.sessionId === forSessionId;
+      if (expired || wrongSession) {
         this.pendingFlows.delete(state);
       }
     }
+  }
+
+  /** Cancel all in-flight PKCE flows tied to a given session. Used by
+   *  the auth cancel endpoint; safe to call when no flows are pending. */
+  cancelPendingFlows(sessionId: string): number {
+    let removed = 0;
+    for (const [state, flow] of this.pendingFlows) {
+      if (flow.sessionId === sessionId) {
+        this.pendingFlows.delete(state);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   /**
@@ -260,6 +325,7 @@ export class SpotifyMusicProvider {
     code: string,
     state: string,
     redirectUri: string,
+    sessionId: string,
   ): Promise<{ token: SpotifyAccessToken; profile: { id: string; displayName: string } }> {
     const flow = this.pendingFlows.get(state);
     if (!flow) {
@@ -269,6 +335,14 @@ export class SpotifyMusicProvider {
     // PKCE flow TTL: 10 分钟
     if (Date.now() - flow.createdAt > SpotifyMusicProvider.PKCE_TTL_MS) {
       throw new BadRequestException('expired_state：请重新登录');
+    }
+    // 防跨 session 重放：A 启动的 PKCE flow 不能被 B 的 callback 兑现。
+    if (flow.sessionId !== sessionId) {
+      this.logger.warn(
+        `spotify exchangeCode: state belongs to a different session ` +
+          `(flow.sessionId=${flow.sessionId}, current=${sessionId})`,
+      );
+      throw new BadRequestException('invalid_state：state 跨 session 重放被拒');
     }
     const clientId = this.resolveClientId();
     if (!clientId) {
@@ -488,6 +562,7 @@ export class SpotifyMusicProvider {
    * （时钟漂移 / 别处刷新过 / token 撤销），此时 `expiresAt` 还显示有效 →
    * 拿旧 token 直接打 → 401。这是「Spotify 基本标不上红心」最可能的成因。
    * 修法：碰到 401 就**强制** refresh 一次（绕过 expiresAt 判断）再重打一次。
+   * refresh 走 RefreshCoordinator 单飞，避免与并发请求重复 POST /api/token。
    *
    * 失败语义（对齐 LikeSyncQueue 的重试口径）：
    *  - 未登录（无 token / refresh 也失败）→ throw BadRequestException（队列视为

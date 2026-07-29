@@ -12,11 +12,18 @@ const { SpotifyMusicProvider } = require('./spotify.provider');
 // stub StorageService：resolveClientId 回退读它，这里恒返回 undefined，
 // 所以"无 client_id → refresh 返 null"（测试 5）仍然成立。
 const fakeStorage = { get: () => undefined, set: () => {} };
-const svc = new SpotifyMusicProvider(fakeStorage);
+// stub RefreshCoordinator + SessionService for the new ctor signature.
+const fakeCoordinator = { run: (_sid: string, fn: () => Promise<unknown>) => fn() };
+const fakeSessions = { persistSpotify: () => undefined };
+const svc = new SpotifyMusicProvider(
+  fakeStorage as any,
+  fakeCoordinator as any,
+  fakeSessions as any,
+);
 
 // ── 1. PKCE start：authorizeUrl 包含所有 OAuth 参数 ────
 {
-  const r = svc.startAuth('test-client-id-123', 'http://localhost:3200/cb');
+  const r = svc.startAuth('test-client-id-123', 'http://localhost:3200/cb', 'sess-1');
   assert.ok(r.authorizeUrl.startsWith('https://accounts.spotify.com/authorize'));
   assert.ok(r.state.length > 16, 'state 应够随机');
   const u = new URL(r.authorizeUrl);
@@ -33,7 +40,7 @@ const svc = new SpotifyMusicProvider(fakeStorage);
 void (async () => {
 {
   try {
-    await svc.exchangeCode({}, 'code', 'never-issued', 'http://cb');
+    await svc.exchangeCode({}, 'code', 'never-issued', 'http://cb', 'sess-1');
     assert.fail('应该抛错');
   } catch (e: any) {
     assert.ok(/invalid_state/.test(e.message), '应抛 invalid_state');

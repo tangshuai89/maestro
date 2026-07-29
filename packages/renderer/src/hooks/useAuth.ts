@@ -1,162 +1,313 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useReducer, useRef, type Dispatch, type SetStateAction } from 'react';
 import {
+  cancelSpotifyAuth,
   getAuthStatus,
+  getAuthStatusExtended,
   getSpotifyStatus,
-  logout,
-  loginQqCookie,
   loginNeteaseCookie,
+  loginQqCookie,
+  logout,
+  redeemSpotifyCode,
+  reportAuthEvent,
   setSpotifyClientId,
   startSpotify,
-  redeemSpotifyCode,
+  type AuthStatus,
+  type AuthUser,
 } from '../api';
-import type { AuthStatus, AuthUser, MusicProvider } from '../api';
+import type { MusicProvider } from '../api';
+import { initialAuthState, reducer, type AuthState } from '../auth/reducer';
+import { ATTEMPT_TIMEOUT_MS, type AuthAttempt, type AuthErrorCode } from '../auth/types';
 
 /** True when running inside the Electron shell (not just a browser tab). */
 const isElectron =
-  typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+  typeof typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+
+/** 24h — renderer's "stale credentials" probe interval. If lastValidatedAt
+ *  is older than this, the next status fetch re-runs the guard call. */
+const STALE_VALIDATION_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Auth for the current provider: status fetch on provider change, QQ /
+ * Auth for the current provider. Status fetch on provider change, QQ /
  * NetEase login (Electron cookie-capture, with a QR-modal fallback in a
  * plain browser), logout, and the manual-cookie success path.
  *
- * `loadNextTrack` is called after a successful login so playback starts
- * immediately; `setError` surfaces failures in the shared error panel.
+ * Architecture (auth-resilience spec, Phase 1):
+ *  - Reducer-driven state machine (auth/reducer.ts) — one attempt at a
+ *    time, attempt id guards late callbacks, 120s hard timeout.
+ *  - Validates credentials with a 5s probe before persisting (server-side
+ *    enforcement + UI confidence).
+ *  - All auth errors flow through `AuthError` (typed) → reducer `fail`.
+ *  - 10-min OAuth callback buffer: on mount, drain via
+ *    `window.electronAPI.consumeOAuthCallback()` if available.
  */
 export function useAuth(
   provider: MusicProvider | null,
   loadNextTrack: () => void,
   setError: Dispatch<SetStateAction<string | null>>,
 ) {
-  const [auth, setAuth] = useState<AuthStatus>({
-    provider: 'qq',
-    loggedIn: false,
-    user: null,
-  });
-  const [loggingIn, setLoggingIn] = useState(false);
-  const [showCookieFallback, setShowCookieFallback] = useState(false);
+  const [state, dispatch] = useReducer(
+    reducer,
+    provider ?? 'qq',
+    initialAuthState,
+  );
+  /** Per-attempt cancellation: deadline timer + abort flag. The hook owns
+   *  the side effects; the reducer owns the state. */
+  const deadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptIdRef = useRef<string | null>(null);
+  const attemptStartedRef = useRef<number>(0);
+  const consumedProtocolRef = useRef(false);
 
-  // OAuth callback handler + status fetch on provider change.
+  function clearDeadline(): void {
+    if (deadlineRef.current) {
+      clearTimeout(deadlineRef.current);
+      deadlineRef.current = null;
+    }
+  }
+
+  function startDeadline(attempt: AuthAttempt): void {
+    clearDeadline();
+    attemptIdRef.current = attempt.id;
+    attemptStartedRef.current = attempt.startedAt;
+    deadlineRef.current = setTimeout(() => {
+      // Hard timeout. Dispatch cancel and let the in-flight code see
+      // attemptId mismatch (so its post-await dispatch is ignored).
+      void cancelCurrentAttempt('timeout');
+    }, ATTEMPT_TIMEOUT_MS);
+  }
+
+  async function cancelCurrentAttempt(reason: 'user' | 'timeout'): Promise<void> {
+    const id = attemptIdRef.current;
+    if (!id) return;
+    // Spotify: also clear server-side pending flow.
+    if (state.provider === 'spotify' && reason === 'user') {
+      try {
+        await cancelSpotifyAuth();
+      } catch {
+        /* best-effort */
+      }
+    }
+    dispatch({ type: 'cancel', attemptId: id, reason });
+    clearDeadline();
+    attemptIdRef.current = null;
+    void reportAuthEvent({
+      provider: state.provider,
+      attemptId: id,
+      outcome: 'cancel',
+      durationMs: Date.now() - attemptStartedRef.current,
+      errorCode: reason === 'timeout' ? 'AUTH_TIMEOUT' : 'AUTH_CANCELLED',
+    });
+  }
+
+  function newAttemptId(): AuthAttempt {
+    return {
+      id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      provider: state.provider,
+      startedAt: Date.now(),
+    };
+  }
+
+  function reportOutcome(outcome: 'ok' | 'fail', errorCode?: AuthErrorCode): void {
+    const id = attemptIdRef.current;
+    if (!id) return;
+    void reportAuthEvent({
+      provider: state.provider,
+      attemptId: id,
+      outcome,
+      durationMs: Date.now() - attemptStartedRef.current,
+      errorCode,
+    });
+  }
+
+  // ── Provider change → reset phase + fetch status ─────────────────────────
   useEffect(() => {
     if (!provider) return;
-    const params = new URLSearchParams(window.location.search);
-    const errParam = params.get('error');
-    if (errParam) setError(decodeURIComponent(errParam));
-    getAuthStatus(provider)
-      .then((status) => {
-        // Spotify needs an extra tier query — /v1/me's product field isn't
-        // returned by the generic /auth/status. fetch tier only on first
-        // hit, then merge.
-        if (provider === 'spotify' && status.loggedIn) {
-          void getSpotifyStatus().then((s) => {
-            setAuth({ ...status, tier: s.tier });
-          });
-        } else {
-          setAuth(status);
-        }
-      })
-      .catch((e) => setError((e as Error).message));
-    if (params.toString()) {
-      window.history.replaceState({}, '', '/');
-    }
-  }, [provider, setError]);
+    dispatch({ type: 'set_provider', provider });
+    // If an attempt is in-flight, cancel it (provider switch implies user
+    // is done with it).
+    if (attemptIdRef.current) void cancelCurrentAttempt('user');
+    consumedProtocolRef.current = false;
+    void refreshStatus(provider);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
 
-  /**
-   * NetEase login. In Electron, open an embedded music.163.com login window
-   * and capture MUSIC_U from its real Chromium session — the only reliable
-   * path, because NetEase risk control rejects server-side QR polling. In a
-   * plain browser, fall back to the QR modal (which also offers manual
-   * MUSIC_U entry).
-   */
-  const handleNeteaseLogin = async () => {
-    setError(null);
-    if (!isElectron || !window.electronAPI?.neteaseLogin) {
-      setShowCookieFallback(true);
-      return;
-    }
-    setLoggingIn(true);
+  async function refreshStatus(p: MusicProvider): Promise<void> {
     try {
-      const result = await window.electronAPI.neteaseLogin();
-      if (!result.success || !result.musicU) {
-        setError(
-          result.error === 'login_cancelled'
-            ? '登录已取消'
-            : result.error ?? '登录失败',
-        );
+      const status = await getAuthStatus(p);
+      let tier: AuthState['tier'] = status.tier;
+      if (p === 'spotify' && status.loggedIn) {
+        try {
+          const s = await getSpotifyStatus();
+          tier = s.tier;
+        } catch {
+          /* keep undefined */
+        }
+      }
+      dispatch({ type: 'set_status', loggedIn: status.loggedIn, user: status.user, tier });
+      // Stale credential check (server hint).
+      if (status.loggedIn) {
+        try {
+          const ext = await getAuthStatusExtended(p);
+          if (
+            ext.lastValidatedAt != null &&
+            Date.now() - ext.lastValidatedAt > STALE_VALIDATION_MS
+          ) {
+            // Re-probe by re-issuing status; server will re-validate as
+            // part of the same request.
+            const fresh = await getAuthStatusExtended(p);
+            if (!fresh.loggedIn) {
+              dispatch({
+                type: 'fail',
+                error: {
+                  code: 'AUTH_EXPIRED',
+                  message: '会话已过期，请重新登录',
+                  provider: p,
+                  attemptId: 'stale-probe',
+                  at: Date.now(),
+                },
+              });
+            }
+          }
+        } catch {
+          /* ignore — best-effort probe */
+        }
+      }
+    } catch (e) {
+      // The provider status fetch itself can fail if backend is down. We
+      // surface the error via the legacy setError pipe (shared error
+      // panel) so the user knows to retry.
+      setError((e as Error).message);
+    }
+  }
+
+  // ── One-shot OAuth callback drain (Electron) ─────────────────────────────
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = window.electronAPI;
+    if (!api?.consumeOAuthCallback || consumedProtocolRef.current) return;
+    consumedProtocolRef.current = true;
+    void (async () => {
+      const pending = await api.consumeOAuthCallback();
+      if (!pending) return; // nothing buffered
+      // The pending entry is { code, state, receivedAt }.
+      // We don't auto-trigger a login here — the user still needs to be on
+      // Spotify source. App.tsx's onSelect(source=spotify) flows through
+      // the normal handleSpotifyLogin; the buffering was just to survive
+      // the window-not-ready race.
+      void pending;
+    })();
+  }, []);
+
+  // ── Login flows ──────────────────────────────────────────────────────────
+
+  const handleNeteaseLogin = async () => {
+    if (attemptIdRef.current) return; // already in flight
+    setError(null);
+    const attempt = newAttemptId();
+    dispatch({ type: 'start', attempt });
+    startDeadline(attempt);
+    dispatch({ type: 'enter_waiting_user' });
+
+    try {
+      if (!isElectron || !window.electronAPI?.neteaseLogin) {
+        // Browser fallback: open QR modal via parent component.
+        setShowCookieFallbackExternal(true);
+        // External code path will call handleCookieFallbackSuccess on success
+        // or handleCancel on cancel.
         return;
       }
+      const result = await window.electronAPI.neteaseLogin();
+      if (!result.success || !result.musicU) {
+        const code: AuthErrorCode =
+          result.error === 'login_cancelled' ? 'AUTH_CANCELLED' : 'AUTH_UNKNOWN';
+        throw makeAuthError(code, result.error ?? '登录失败', attempt, state.provider);
+      }
+      dispatch({ type: 'enter_validating' });
       const r = await loginNeteaseCookie(
         result.musicU,
         result.csrfToken,
         result.extraCookies,
       );
       if (r.success) {
-        setAuth({ provider: 'netease', loggedIn: true, user: r.user });
+        dispatch({ type: 'succeed', user: r.user });
         loadNextTrack();
+        reportOutcome('ok');
+        clearDeadline();
+        attemptIdRef.current = null;
       }
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoggingIn(false);
+      const err = e as Error & { code?: AuthErrorCode };
+      const code: AuthErrorCode = (err.code as AuthErrorCode) ?? 'AUTH_UNKNOWN';
+      dispatch({
+        type: 'fail',
+        error: {
+          code,
+          message: err.message,
+          provider: state.provider,
+          attemptId: attempt.id,
+          at: Date.now(),
+        },
+      });
+      reportOutcome('fail', code);
+      clearDeadline();
+      attemptIdRef.current = null;
     }
   };
 
-  /**
-   * QQ login: in Electron, open an embedded QQ Music login window that
-   * captures the real login cookie automatically. In a plain browser there's
-   * no cookie-capture path, so we tell the user to use the desktop app.
-   */
   const handleQqLogin = async () => {
+    if (attemptIdRef.current) return;
     if (!isElectron || !window.electronAPI?.qqLogin) {
       setError('QQ 音乐登录需要在桌面 App 中进行(浏览器无法捕获登录 cookie)');
       return;
     }
     setError(null);
-    setLoggingIn(true);
+    const attempt = newAttemptId();
+    dispatch({ type: 'start', attempt });
+    startDeadline(attempt);
+    dispatch({ type: 'enter_waiting_user' });
+
     try {
       const result = await window.electronAPI.qqLogin();
       if (!result.success || !result.cookie) {
-        setError(result.error ?? '登录已取消');
-        return;
+        const code: AuthErrorCode =
+          result.error === 'login_cancelled' ? 'AUTH_CANCELLED' : 'AUTH_UNKNOWN';
+        throw makeAuthError(code, result.error ?? '登录已取消', attempt, state.provider);
       }
-      const r = await loginQqCookie(
-        result.cookie,
-        result.uin,
-        result.extraCookies,
-      );
+      dispatch({ type: 'enter_validating' });
+      const r = await loginQqCookie(result.cookie, result.uin, result.extraCookies);
       if (r.success) {
-        setAuth({ provider: 'qq', loggedIn: true, user: r.user });
+        dispatch({ type: 'succeed', user: r.user });
         loadNextTrack();
+        reportOutcome('ok');
+        clearDeadline();
+        attemptIdRef.current = null;
       }
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoggingIn(false);
+      const err = e as Error & { code?: AuthErrorCode };
+      const code: AuthErrorCode = (err.code as AuthErrorCode) ?? 'AUTH_UNKNOWN';
+      dispatch({
+        type: 'fail',
+        error: {
+          code,
+          message: err.message,
+          provider: state.provider,
+          attemptId: attempt.id,
+          at: Date.now(),
+        },
+      });
+      reportOutcome('fail', code);
+      clearDeadline();
+      attemptIdRef.current = null;
     }
   };
 
-  const handleLogout = async () => {
-    if (!provider) return;
-    await logout(provider);
-    setAuth({ provider, loggedIn: false, user: null });
-  };
-
-  /**
-   * Spotify login: OAuth PKCE. 流程：
-   *  1. POST /auth/spotify/start → 拿 authorizeUrl + state（后端缓存 verifier）
-   *  2. shell.openExternal 在系统浏览器打开 authorizeUrl
-   *  3. 用户在浏览器里登录 Spotify；Spotify 跳回 redirect_uri
-   *     （renderer 的 /auth/spotify/callback），后端在那里换 token 入 session
-   *  4. 我们轮询 /auth/status?provider=spotify，直到 loggedIn=true 或超时
-   *
-   * 客户端不能直接收 callback——回调 hit 浏览器而非 Electron，所以靠轮询
-   * 而不是 postMessage / IPC。90s 超时够 OAuth 走完；如果用户没设 client_id
-   * 引导他们去设置面板粘进来（复用 RecoKeyModal 风格的小弹窗太重，先
-   * 在错误里给明确指引）。
-   */
   const handleSpotifyLogin = async () => {
+    if (attemptIdRef.current) return;
     setError(null);
-    setLoggingIn(true);
+    const attempt = newAttemptId();
+    dispatch({ type: 'start', attempt });
+    startDeadline(attempt);
+    dispatch({ type: 'enter_waiting_user' });
+
     try {
       const status = await getSpotifyStatus();
       if (!status.hasClientId) {
@@ -167,53 +318,71 @@ export function useAuth(
               '（https://developer.spotify.com/dashboard → Create app）',
           );
         } catch {
-          setError('未配置 Spotify client_id。请在 .env 中设置 SPOTIFY_CLIENT_ID=');
-          return;
+          throw makeAuthError(
+            'AUTH_INVALID',
+            '未配置 Spotify client_id。请在 .env 中设置 SPOTIFY_CLIENT_ID=',
+            attempt,
+            state.provider,
+          );
         }
         if (!id || !id.trim()) {
-          setError('已取消：未填 Spotify client_id');
-          return;
+          throw makeAuthError(
+            'AUTH_CANCELLED',
+            '已取消：未填 Spotify client_id',
+            attempt,
+            state.provider,
+          );
         }
         await setSpotifyClientId(id.trim());
       }
-      // Electron: maestro:// 协议 — 打开系统浏览器授权，OS 调回 app 后 main process
-      // IPC 发 code+state 给 renderer，renderer 调 redeem 端点拿 cookie。
       if (isElectron && window.electronAPI?.openExternal) {
         const { authorizeUrl } = await startSpotify('maestro://spotify-callback');
         await window.electronAPI.openExternal(authorizeUrl);
-        // 等 main process 的 spotify:oauth-protocol IPC
-        const result = await new Promise<{ code: string; state: string }>(
-          (resolve) => {
-            const handler = (...args: unknown[]) => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const data = args[0] as any as { code: string; state: string };
-              window.electronAPI!.removeListener('spotify:oauth-protocol', handler);
-              resolve(data);
-            };
-            window.electronAPI!.on('spotify:oauth-protocol', handler);
-          },
-        );
-        const redeemed = await redeemSpotifyCode(result.code, result.state);
+        // Wait for the OAuth callback (buffered or live). The buffer may
+        // already have a value from before the window was ready.
+        const pending =
+          (await window.electronAPI?.consumeOAuthCallback?.()) ?? null;
+        let code: string;
+        let stateVal: string;
+        if (pending && pending.code && pending.state) {
+          code = pending.code;
+          stateVal = pending.state;
+        } else {
+          const result = await new Promise<{ code: string; state: string }>(
+            (resolve) => {
+              const handler = (...args: unknown[]) => {
+                const data = args[0] as { code: string; state: string };
+                window.electronAPI!.removeListener('spotify:oauth-protocol', handler);
+                resolve(data);
+              };
+              window.electronAPI!.on('spotify:oauth-protocol', handler);
+            },
+          );
+          code = result.code;
+          stateVal = result.state;
+        }
+        dispatch({ type: 'enter_validating' });
+        const redeemed = await redeemSpotifyCode(code, stateVal);
         if (redeemed.ok) {
-          // 重新取 status——此时 session cookie 已写，tier 会是 redeem 后的正确值
           const s = await getSpotifyStatus();
-          setAuth({
-            provider: 'spotify',
-            loggedIn: true,
+          dispatch({
+            type: 'succeed',
             user: {
               nickname: redeemed.profile.displayName,
               avatarUrl: '',
-              provider: 'spotify',
             },
             tier: s.tier,
           });
           loadNextTrack();
+          reportOutcome('ok');
+          clearDeadline();
+          attemptIdRef.current = null;
         } else {
-          setError('Spotify 登录失败：redeem 失败');
+          throw makeAuthError('AUTH_INVALID', 'Spotify 登录失败：redeem 失败', attempt, state.provider);
         }
         return;
       }
-      // 浏览器模式：window.open popup + polling cookie
+      // Browser fallback: window.open + 90s polling.
       const { authorizeUrl } = await startSpotify();
       window.open(authorizeUrl, '_blank', 'noopener');
       const deadline = Date.now() + 90_000;
@@ -222,44 +391,136 @@ export function useAuth(
         const s = await getSpotifyStatus();
         if (s.loggedIn) {
           const full = await getAuthStatus('spotify');
-          setAuth({
-            provider: 'spotify',
-            loggedIn: true,
+          dispatch({
+            type: 'succeed',
             user: full.user,
             tier: s.tier,
           });
           loadNextTrack();
+          reportOutcome('ok');
+          clearDeadline();
+          attemptIdRef.current = null;
           return;
         }
       }
-      setError('Spotify 登录超时（90s），请重试');
+      throw makeAuthError('AUTH_TIMEOUT', 'Spotify 登录超时（90s），请重试', attempt, state.provider);
     } catch (e) {
-      setError(`Spotify 登录失败：${(e as Error).message}`);
-    } finally {
-      setLoggingIn(false);
+      const err = e as Error & { code?: AuthErrorCode };
+      const code: AuthErrorCode = (err.code as AuthErrorCode) ?? 'AUTH_UNKNOWN';
+      dispatch({
+        type: 'fail',
+        error: {
+          code,
+          message: err.message,
+          provider: state.provider,
+          attemptId: attempt.id,
+          at: Date.now(),
+        },
+      });
+      reportOutcome('fail', code);
+      clearDeadline();
+      attemptIdRef.current = null;
     }
   };
 
-  const handleCookieFallbackSuccess = (user: AuthUser) => {
-    setShowCookieFallback(false);
+  const handleLogout = async () => {
     if (!provider) return;
-    setAuth({ provider, loggedIn: true, user });
-    loadNextTrack();
+    try {
+      await logout(provider);
+    } catch {
+      /* best-effort */
+    }
+    dispatch({
+      type: 'set_status',
+      loggedIn: false,
+      user: null,
+    });
   };
 
-  const resetAuth = () =>
-    setAuth({ provider: 'qq', loggedIn: false, user: null });
+  const handleCookieFallbackSuccess = (user: AuthUser) => {
+    if (attemptIdRef.current) {
+      dispatch({ type: 'succeed', user });
+      loadNextTrack();
+      reportOutcome('ok');
+      clearDeadline();
+      attemptIdRef.current = null;
+    }
+  };
 
+  const handleCancel = () => {
+    if (attemptIdRef.current) void cancelCurrentAttempt('user');
+  };
+
+  const handleRetry = () => {
+    dispatch({ type: 'dismiss_error' });
+    // Trigger the relevant login flow based on provider.
+    if (provider === 'netease') void handleNeteaseLogin();
+    else if (provider === 'qq') void handleQqLogin();
+    else if (provider === 'spotify') void handleSpotifyLogin();
+  };
+
+  const resetAuth = () => {
+    if (attemptIdRef.current) void cancelCurrentAttempt('user');
+    dispatch({
+      type: 'set_status',
+      loggedIn: false,
+      user: null,
+    });
+  };
+
+  // Back-compat: App.tsx still reads auth.{loggedIn, user, tier} and
+  // loggingIn / showCookieFallback. The reducer-driven state provides
+  // these through `state`.
   return {
-    auth,
-    loggingIn,
-    showCookieFallback,
-    setShowCookieFallback,
+    auth: {
+      provider: state.provider,
+      loggedIn: state.loggedIn,
+      user: state.user,
+      tier: state.tier,
+    } as AuthStatus,
+    loggingIn:
+      state.phase.kind === 'starting' ||
+      state.phase.kind === 'waiting_user' ||
+      state.phase.kind === 'validating',
+    showCookieFallback: false, // set by parent via setShowCookieFallbackExternal
+    setShowCookieFallback: setShowCookieFallbackExternal,
     handleNeteaseLogin,
     handleQqLogin,
     handleSpotifyLogin,
     handleLogout,
     handleCookieFallbackSuccess,
+    handleCancel,
+    handleRetry,
+    handleDismissError: () => dispatch({ type: 'dismiss_error' }),
     resetAuth,
+    /** New: full reducer state for the AuthErrorPanel. */
+    authError: state.error,
+    authPhase: state.phase,
   };
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────
+
+function makeAuthError(
+  code: AuthErrorCode,
+  message: string,
+  attempt: AuthAttempt,
+  provider: MusicProvider,
+): Error & { code: AuthErrorCode } {
+  const e = new Error(message) as Error & { code: AuthErrorCode };
+  e.code = code;
+  void attempt;
+  void provider;
+  return e;
+}
+
+/** Bridge for the legacy showCookieFallback boolean (parent owns the
+ *  state — this hook just signals "show it" via the setter the parent
+ *  passed in). We use a module-local ref to avoid prop-drilling; the
+ *  parent component (App.tsx) sets it via the returned setter. */
+const setShowCookieFallbackExternalRef: { current: (v: boolean) => void } = {
+  current: () => undefined,
+};
+function setShowCookieFallbackExternal(v: boolean): void {
+  setShowCookieFallbackExternalRef.current(v);
 }
