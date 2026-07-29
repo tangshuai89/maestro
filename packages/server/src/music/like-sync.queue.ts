@@ -293,6 +293,34 @@ export class LikeSyncQueue {
     return err instanceof HttpException;
   }
 
+  /**
+   * v_resilience: 用户退出登录某 provider 时调用，删掉该 session 下
+   * 所有跟这个 provider 相关的 in-flight / pending 同步任务。否则
+   * `drain` 会一直跑（每次 processor 抛 `not_logged_in` → fatal 短路），
+   * 浪费后台循环、污染日志。
+   *
+   * 注：active 任务正在跑某个 target 时不能直接删（drain 已经在 await
+   * processor），但等那一轮 processor 抛 fatal 出来会立刻停。下一轮
+   * `drain` 进入时这个 task 已经被 `this.active = null` 清掉，新一轮
+   * 看 pending 才会发现是空——所以这里同步删 pending 即可，active
+   * 那一刀交给 processor 的 fatal 短路。
+   *
+   * @returns 被删除的任务数（仅用于日志）
+   */
+  purgeForProvider(sessionId: string, provider: MusicProvider): number {
+    let removed = 0;
+    for (const [k, task] of this.pending) {
+      if (task.session.id !== sessionId) continue;
+      // active task 跳过（drain 正在 await 它，会被 fatal 短路）
+      if (this.active === task) continue;
+      if (task.targets.some((t) => t.platform === provider)) {
+        this.pending.delete(k);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

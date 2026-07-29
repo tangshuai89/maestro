@@ -17,6 +17,8 @@ import { NeteaseAuthStrategy } from './netease-auth.strategy';
 import { SessionService } from '../common/session';
 import { SpotifyMusicProvider } from '../music/spotify.provider';
 import { StorageService } from '../common/storage';
+import { withTimeout } from '../common/timeout';
+import { LikeSyncQueue } from '../music/like-sync.queue';
 
 const SPOTIFY_CLIENT_ID_KEY = 'secrets:spotify-client-id';
 
@@ -30,6 +32,7 @@ export class AuthController {
     private readonly sessionService: SessionService,
     private readonly spotify: SpotifyMusicProvider,
     private readonly storage: StorageService,
+    private readonly likeSync: LikeSyncQueue,
   ) {}
 
   // ── QQ 音乐（cookie 登录，非 QQ 互联 OAuth）────────────────────────────────
@@ -50,7 +53,10 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     if (!body?.cookie) {
-      throw new BadRequestException('Missing QQ cookie');
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: 'Missing QQ cookie',
+      });
     }
     const session = this.sessionService.resolve(req, res);
     const profile = await this.qq.loginWithCookie(
@@ -59,6 +65,7 @@ export class AuthController {
       body.extraCookies,
     );
     this.sessionService.setProvider(session, 'qq', profile);
+    this.sessionService.setLastValidatedAt(session, 'qq', Date.now());
     return {
       success: true,
       user: {
@@ -91,12 +98,16 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     if (!key) {
-      throw new BadRequestException('Missing key');
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: 'Missing key',
+      });
     }
     const result = await this.netease.qrCheck(key);
     if (result.code === 803 && result.session) {
       const session = this.sessionService.resolve(req, res);
       this.sessionService.setProvider(session, 'netease', result.session);
+      this.sessionService.setLastValidatedAt(session, 'netease', Date.now());
       this.logger.log(
         `netease login OK → session=${session.id.slice(0, 8)}… nickname=${result.session.nickname}`,
       );
@@ -130,7 +141,10 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     if (!body?.musicU) {
-      throw new BadRequestException('Missing MUSIC_U');
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: 'Missing MUSIC_U',
+      });
     }
     const session = this.sessionService.resolve(req, res);
     const profile = await this.netease.loginWithCookie(
@@ -138,6 +152,7 @@ export class AuthController {
       body.csrfToken,
     );
     this.sessionService.setProvider(session, 'netease', profile);
+    this.sessionService.setLastValidatedAt(session, 'netease', Date.now());
     return {
       success: true,
       user: {
@@ -153,6 +168,7 @@ export class AuthController {
   @Get('status')
   status(
     @Query('provider') provider: string,
+    @Query('extended') extended: string | undefined,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -167,6 +183,7 @@ export class AuthController {
           avatarUrl: '',
           provider: 'deezer',
         },
+        lastValidatedAt: null,
       };
     }
     const session = this.sessionService.resolve(req, res);
@@ -182,7 +199,7 @@ export class AuthController {
           : p === 'spotify'
             ? Boolean(ps?.spotify?.accessToken)
             : false;
-    return {
+    const out: Record<string, unknown> = {
       provider: p,
       loggedIn,
       user: ps
@@ -193,6 +210,10 @@ export class AuthController {
           }
         : null,
     };
+    if (extended === '1') {
+      out['lastValidatedAt'] = this.sessionService.getLastValidatedAt(session, p);
+    }
+    return out;
   }
 
   @Get('logout')
@@ -209,7 +230,17 @@ export class AuthController {
     }
     const session = this.sessionService.resolve(req, res);
     this.sessionService.clearProvider(session, p);
-    return { success: true };
+    // v_resilience: 同步队列里可能有这个 provider 的在途 / 等待任务，
+    // 用户退出登录后留着它们只会在下一轮 processor 调用时拿一个无效
+    // session 抛 fatal —— 浪费日志 + 后台循环。purge 掉。
+    const purged = this.likeSync.purgeForProvider(session.id, p);
+    if (purged > 0) {
+      this.logger.log(
+        `logout: purged ${purged} like-sync task(s) for ${p} ` +
+          `(session=${session.id.slice(0, 8)}…)`,
+      );
+    }
+    return { success: true, purged };
   }
 
   // ── Spotify（OAuth PKCE） ─────────────────────────────────
@@ -304,16 +335,21 @@ export class AuthController {
    * http://localhost:3200/auth/spotify/callback）。
    */
   @Post('spotify/start')
-  startSpotify(@Body() body: { redirectUri?: string }) {
+  startSpotify(
+    @Body() body: { redirectUri?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const stored = this.storage.get<{ clientId?: string }>(SPOTIFY_CLIENT_ID_KEY);
     const clientId = stored?.clientId ?? process.env.SPOTIFY_CLIENT_ID;
     if (!clientId) {
       throw new BadRequestException('spotify_client_id_not_set：先去 /auth/spotify/client-id 设置');
     }
+    const session = this.sessionService.resolve(req, res);
     const redirectUri =
       body?.redirectUri ??
       `${process.env.RENDERER_BASE ?? 'http://localhost:5173'}/auth/spotify/callback`;
-    return this.spotify.startAuth(clientId, redirectUri);
+    return this.spotify.startAuth(clientId, redirectUri, session.id);
   }
 
   /**
@@ -338,12 +374,14 @@ export class AuthController {
       code,
       state,
       redirectUri,
+      session.id,
     );
     this.sessionService.setProvider(session, 'spotify', {
       ...session.providers.spotify,
       spotify: result.token,
       nickname: result.profile.displayName,
     });
+    this.sessionService.setLastValidatedAt(session, 'spotify', Date.now());
     // 返一个自关闭 HTML 页——回调是在 Electron 的 window.open 子窗口里打开的，
     // session cookie 已在这条 response header 里写回。子窗口关掉即可，主窗口
     // 的 polling 下次就能读到 loggedIn=true。
@@ -378,12 +416,60 @@ export class AuthController {
       code,
       state,
       redirectUri,
+      session.id,
     );
     this.sessionService.setProvider(session, 'spotify', {
       ...session.providers.spotify,
       spotify: result.token,
       nickname: result.profile.displayName,
     });
+    this.sessionService.setLastValidatedAt(session, 'spotify', Date.now());
     return { ok: true, profile: result.profile };
+  }
+
+  /**
+   * Cancel any in-flight PKCE flow tied to this session. Used by the
+   * renderer when the user backs out of a login attempt. Also useful for
+   * the 10-min protocol-callback buffer: the renderer can confirm a cancel
+   * so the next startAuth doesn't pick up a stale verifier.
+   */
+  @Post('spotify/cancel')
+  cancelSpotify(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const session = this.sessionService.resolve(req, res);
+    const removed = this.spotify.cancelPendingFlows(session.id);
+    return { ok: true, removed };
+  }
+
+  /**
+   * One-shot auth telemetry. The renderer posts once per login attempt's
+   * terminal state (ok / fail / cancel). We log at info / warn — never
+   * log the cookie, token, or any secret. Body is shaped so future
+   * dashboards can chart p50 / p95 latency by provider.
+   */
+  @Post('event')
+  authEvent(
+    @Body()
+    body: {
+      provider: string;
+      attemptId: string;
+      outcome: 'ok' | 'fail' | 'cancel';
+      durationMs: number;
+      errorCode?: string;
+    },
+  ) {
+    const p = normalizeProvider(body?.provider);
+    const outcome = body?.outcome;
+    if (!['ok', 'fail', 'cancel'].includes(outcome)) {
+      throw new BadRequestException('outcome must be ok|fail|cancel');
+    }
+    if (typeof body?.durationMs !== 'number' || body.durationMs < 0) {
+      throw new BadRequestException('durationMs must be a non-negative number');
+    }
+    this.logger.log(
+      `auth-event provider=${p} outcome=${outcome} durationMs=${body.durationMs}` +
+        (body.errorCode ? ` errorCode=${body.errorCode}` : '') +
+        (body.attemptId ? ` attemptId=${body.attemptId}` : ''),
+    );
+    return { ok: true };
   }
 }

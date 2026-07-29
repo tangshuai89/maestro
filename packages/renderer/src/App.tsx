@@ -22,6 +22,7 @@ import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
 import RecoKeyModal from './components/modals/RecoKeyModal';
 import LikedLibraryModal from './components/modals/LikedLibraryModal';
 import SettingsModal from './components/modals/SettingsModal';
+import AuthErrorPanel from './components/common/AuthErrorPanel';
 
 /**
  * Composition layer. All logic lives in hooks/ (usePlayer owns the audio
@@ -319,6 +320,27 @@ export default function App() {
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+
+      {auth.authError && (
+        <AuthErrorPanel
+          provider={player.provider ?? 'qq'}
+          error={auth.authError}
+          onRetry={() => auth.handleRetry()}
+          onReLogin={() => {
+            auth.handleDismissError?.();
+            if (player.provider === 'netease') void auth.handleNeteaseLogin();
+            else if (player.provider === 'qq') void auth.handleQqLogin();
+            else if (player.provider === 'spotify') void auth.handleSpotifyLogin();
+          }}
+          onSwitch={handleSwitchSource}
+          onPasteCookie={
+            player.provider === 'netease' || player.provider === 'qq'
+              ? () => auth.setShowCookieFallback(true)
+              : undefined
+          }
+          onDismiss={() => auth.handleDismissError?.()}
+        />
+      )}
     </div>
   );
 }

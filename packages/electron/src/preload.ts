@@ -111,6 +111,18 @@ const electronAPI = {
   removeListener: (event: string, cb: (...args: unknown[]) => void): void => {
     ipcRenderer.removeListener(event, cb);
   },
+
+  /**
+   * Pull the most recent (or pending) Spotify OAuth callback. Returns
+   * `null` if no callback is buffered AND none arrives within 10 minutes.
+   * Used by `useAuth` to survive the "OS hands the URL before main window
+   * is ready" race.
+   */
+  consumeOAuthCallback: (): Promise<{
+    code: string;
+    state: string;
+    receivedAt: number;
+  } | null> => ipcRenderer.invoke('consume-oauth-callback'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ProviderSession } from '../common/session';
+import { withTimeout } from '../common/timeout';
 
 /**
  * QQ 音乐登录策略（cookie 版）。
@@ -24,6 +25,11 @@ export class QqAuthStrategy {
   /**
    * 接受内嵌登录窗口捕获的 QQ 音乐 cookie，存入 session。
    *
+   * v_resilience: 写 session 前先以 withTimeout(5s) 调一次
+   * `get_user_baseinfo_v2` 验证 cookie 真能拿到自己的资料。失败 → 抛
+   * `AUTH_INVALID`，不写 session。best-effort 阶段改名为 guarded：必须
+   * 通过才入 session。
+   *
    * @param cookie      完整的 "k=v; k=v" cookie header
    * @param uin         归一化后的纯数字 uin（musicu.fcg 用）
    * @param extraCookies 全部 cookie map（调试用）
@@ -34,7 +40,10 @@ export class QqAuthStrategy {
     extraCookies?: Record<string, string>,
   ): Promise<ProviderSession> {
     if (!cookie || cookie.length < 8) {
-      throw new BadRequestException('QQ cookie 看起来无效');
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: 'QQ cookie 看起来无效',
+      });
     }
 
     const hasKey = /qm_keyst=|qqmusic_key=/.test(cookie);
@@ -50,27 +59,23 @@ export class QqAuthStrategy {
       );
     }
 
-    // best-effort 拉昵称/头像 + 绿钻状态；失败只用默认，不影响登录
-    let nickname = 'QQ 音乐用户';
-    let avatarUrl = '';
-    let qqVip: boolean | undefined;
-    try {
-      const profile = await this.fetchProfileBestEffort(cookie, uin);
-      if (profile) {
-        nickname = profile.nickname || nickname;
-        avatarUrl = profile.avatarUrl || '';
-        qqVip = profile.vip;
-      }
-    } catch (err) {
-      this.logger.warn(
-        `qq best-effort profile failed: ${(err as Error).message}`,
-      );
+    // Guarded profile fetch (5s timeout). 不再做 best-effort：拿不到
+    // 自己的 profile → 视为 cookie 失效，不写 session。
+    const profile = await withTimeout(
+      () => this.fetchProfile(cookie, uin),
+      5_000,
+      () => this.logger.warn('qq login: profile fetch timed out (5s)'),
+    );
+    if (!profile) {
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: 'QQ cookie 无法验证（profile 拉取失败 / 5s 超时）',
+      });
     }
+    const nickname = profile.nickname || 'QQ 音乐用户';
+    const avatarUrl = profile.avatarUrl || '';
+    const qqVip = profile.vip;
 
-    // extraCookies 是 Electron 登录窗口解析后的完整 cookie map（qqmusic_key
-    // / qm_keyst / skey / p_skey / p_uin / uin / …）。把它落进 session，
-    // QQ provider 需要按名取 skey 算 g_tk、做 favorites 鉴权时直接读。
-    // 老 session 没这个字段 → provider 那边用 '5381' 兜底，不阻塞。
     return {
       qqCookie: cookie,
       qqUin: uin,
@@ -116,10 +121,11 @@ export class QqAuthStrategy {
   }
 
   /**
-   * 尽力拉一次用户资料（昵称/头像 + 绿钻状态）。用 QQ 音乐 get_user_baseinfo_v2。
-   * 失败返回 null，让上层用默认昵称、VIP 未知。
+   * 拉一次用户资料（昵称/头像 + 绿钻状态）。用 QQ 音乐 get_user_baseinfo_v2。
+   * 失败 / 解析失败返回 null。调用方在写 session 前 guard（auth-resilience
+   * spec 验收项「凭据校验后再持久化」）。
    */
-  private async fetchProfileBestEffort(
+  private async fetchProfile(
     cookie: string,
     uin?: string,
   ): Promise<{ nickname: string; avatarUrl: string; vip?: boolean } | null> {

@@ -91,10 +91,56 @@ export interface NeteaseQrCheck {
   user?: AuthUser;
 }
 
+/** A typed auth error thrown by the api layer. Backed by the server's
+ *  `{ error: AuthErrorCode, message }` body shape; the raw fetch error is
+ *  preserved as `cause` for logging. */
+export class AuthError extends Error {
+  readonly code: import('./auth/types').AuthErrorCode;
+  readonly status: number;
+  readonly raw: string;
+  constructor(
+    code: import('./auth/types').AuthErrorCode,
+    message: string,
+    status: number,
+    raw: string,
+  ) {
+    super(message);
+    this.name = 'AuthError';
+    this.code = code;
+    this.status = status;
+    this.raw = raw;
+  }
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
+    // Try to lift a server-emitted AuthErrorCode out of the body so the
+    // renderer hook can branch on typed codes instead of string-matching
+    // status / messages. Body shape: { error: 'AUTH_*', message? }.
+    let code: import('./auth/types').AuthErrorCode = 'AUTH_UNKNOWN';
+    let msg = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+      if (typeof parsed?.error === 'string') {
+        const known: import('./auth/types').AuthErrorCode[] = [
+          'AUTH_CANCELLED',
+          'AUTH_TIMEOUT',
+          'AUTH_INVALID',
+          'AUTH_EXPIRED',
+          'AUTH_PROTOCOL_MISSING',
+          'AUTH_BACKEND_DOWN',
+          'AUTH_UNKNOWN',
+        ];
+        if ((known as string[]).includes(parsed.error)) {
+          code = parsed.error as import('./auth/types').AuthErrorCode;
+        }
+      }
+      if (typeof parsed?.message === 'string') msg = parsed.message;
+    } catch {
+      /* body wasn't JSON — keep code=AUTH_UNKNOWN, message=raw text */
+    }
+    throw new AuthError(code, msg || `${res.status} ${res.statusText}`, res.status, text.slice(0, 400));
   }
   return res.json() as Promise<T>;
 }
@@ -225,6 +271,55 @@ export async function getAuthStatus(
   return json<AuthStatus>(
     await fetch(`${API_BASE}/auth/status?provider=${provider}`, {
       credentials: 'include',
+    }),
+  );
+}
+
+/** Extended status payload (only on QQ / Netease / Spotify paths). Includes
+ *  the server-side lastValidatedAt hint so the renderer can probe when
+ *  a logged-in session hasn't been validated for >24h. */
+export interface AuthStatusExtended extends AuthStatus {
+  lastValidatedAt: number | null;
+}
+
+export async function getAuthStatusExtended(
+  provider: MusicProvider,
+): Promise<AuthStatusExtended> {
+  return json<AuthStatusExtended>(
+    await fetch(`${API_BASE}/auth/status?provider=${provider}&extended=1`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/** Cancel any in-flight Spotify PKCE flow tied to the current session.
+ *  Used when the renderer detects a stuck login or the user backs out
+ *  of the OAuth browser tab. */
+export async function cancelSpotifyAuth(): Promise<{ ok: boolean }> {
+  return json(
+    await fetch(`${API_BASE}/auth/spotify/cancel`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
+  );
+}
+
+/** One-shot auth telemetry. Sent once per attempt's terminal state
+ *  (ok / fail / cancel). Server logs at info / warn level; nothing
+ *  user-visible. */
+export async function reportAuthEvent(evt: {
+  provider: MusicProvider;
+  attemptId: string;
+  outcome: 'ok' | 'fail' | 'cancel';
+  durationMs: number;
+  errorCode?: string;
+}): Promise<{ ok: boolean }> {
+  return json(
+    await fetch(`${API_BASE}/auth/event`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(evt),
     }),
   );
 }

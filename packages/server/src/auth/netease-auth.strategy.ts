@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import * as QRCode from 'qrcode';
 import { ConfigService } from '../common/config';
 import { ProviderSession } from '../common/session';
+import { withTimeout } from '../common/timeout';
 
 /**
  * 网易云身份认证策略 —— 真·扫码登录。
@@ -122,11 +123,25 @@ export class NeteaseAuthStrategy {
       this.logger.error(
         `netease qr 803 but no MUSIC_U in set-cookie (got: ${Object.keys(cookies).join(',') || '<none>'})`,
       );
-      throw new BadRequestException('登录成功但未取到 MUSIC_U，请重试');
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: '登录成功但未取到 MUSIC_U，请重试',
+      });
     }
     this.logger.log(`netease qr 803: captured MUSIC_U (len=${musicU.length})`);
 
-    const profile = await this.fetchProfile(musicU, csrfToken);
+    // Guard: 5s 内必须能拿到 profile，否则视为 cookie 无效，不入 session。
+    const profile = await withTimeout(
+      () => this.fetchProfile(musicU, csrfToken),
+      5_000,
+      () => this.logger.warn('netease qr: profile fetch timed out (5s)'),
+    );
+    if (!profile) {
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: '网易云 MUSIC_U 无法验证（profile 拉取失败 / 5s 超时）',
+      });
+    }
     const neteaseVip = await this.fetchVipStatus(musicU, csrfToken);
     return {
       code: 803,
@@ -134,8 +149,8 @@ export class NeteaseAuthStrategy {
       session: {
         musicU,
         csrfToken,
-        nickname: profile?.nickname ?? '网易云用户',
-        avatarUrl: profile?.avatarUrl ?? '',
+        nickname: profile.nickname,
+        avatarUrl: profile.avatarUrl,
         neteaseVip: neteaseVip ?? undefined,
       },
     };
@@ -147,20 +162,37 @@ export class NeteaseAuthStrategy {
     csrfToken?: string,
   ): Promise<ProviderSession> {
     if (!musicU || musicU.length < 8) {
-      throw new BadRequestException('MUSIC_U 看起来无效');
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: 'MUSIC_U 看起来无效',
+      });
     }
-    const profile = await this.fetchProfile(musicU, csrfToken ?? '');
+    // Guard: 5s 内 profile 必须能拉到，否则不写 session。
+    const profile = await withTimeout(
+      () => this.fetchProfile(musicU, csrfToken ?? ''),
+      5_000,
+      () => this.logger.warn('netease loginWithCookie: profile fetch timed out (5s)'),
+    );
+    if (!profile) {
+      throw new BadRequestException({
+        error: 'AUTH_INVALID',
+        message: '网易云 MUSIC_U 无法验证（profile 拉取失败 / 5s 超时）',
+      });
+    }
     const neteaseVip = await this.fetchVipStatus(musicU, csrfToken ?? '');
     return {
       musicU,
       csrfToken: csrfToken ?? '',
-      nickname: profile?.nickname ?? '网易云用户',
-      avatarUrl: profile?.avatarUrl ?? '',
+      nickname: profile.nickname,
+      avatarUrl: profile.avatarUrl,
       neteaseVip: neteaseVip ?? undefined,
     };
   }
 
-  /** 用明文 /api 端点拉账号信息（服务端直连可用，无需 weapi 加密）。 */
+  /** 用明文 /api 端点拉账号信息（服务端直连可用，无需 weapi 加密）。
+   *  强制返回 `{ nickname, avatarUrl }`（不再 nullable 调用方）— v_resilience
+   *  把 nullable 提到调用方做 guard；fetchProfile 内部失败/超时返回 null，
+   *  调用方决定是否写 session。 */
   private async fetchProfile(
     musicU: string,
     csrfToken: string,
@@ -179,6 +211,10 @@ export class NeteaseAuthStrategy {
           nickname: data.profile.nickname ?? data.account?.userName ?? '网易云用户',
           avatarUrl: data.profile.avatarUrl ?? '',
         };
+      }
+      // 301 = cookie 过期（code 含义见 NetEase 接口定义）。
+      if (data.code === 301) {
+        return null;
       }
       this.logger.warn(
         `netease account/get code=${data.code}, profile=${data.profile ? 'yes' : 'null'}`,
