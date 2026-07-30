@@ -6,6 +6,20 @@ import { contextBridge, ipcRenderer } from 'electron';
  * else (API calls, audio state) stays in the renderer.
  */
 
+/** Allowlist of IPC channels the renderer can subscribe to.
+ *  Anything not in this list is rejected — see B2 in docs/audit-2026-07-30.md
+ *  for why a wildcard was a security hole (any renderer XSS could listen
+ *  to future oauth/deeplink/secrets channels). Add new channels here
+ *  explicitly when adding new IPC subscriptions. */
+const SUBSCRIBABLE_CHANNELS = new Set([
+  'sidecar-ready',
+  'qq-login-result',
+  'netease-login-result',
+  'tray:command',
+  'spotify:oauth-protocol',
+  'console-message', // forwarded to main for debugging
+]);
+
 export interface QqLoginResult {
   /** Full "k=v; k=v" QQ Music login cookie header. */
   cookie: string;
@@ -52,13 +66,24 @@ const electronAPI = {
   apiBase: '' as string,
 
   /**
-   * 订阅 sidecar ready 事件。payload: { apiBase: string }。
-   * renderer 端拿到后写到 electronAPI.apiBase。
+   * X-Maestro-Token 共享密钥：Electron main 每次启动生成一个随机 token，
+   * 通过 sidecar-ready 事件推到 renderer。RequireInternalTokenGuard 在
+   * server 侧验证 X-Maestro-Token header。dev 模式（无 Electron）下为空
+   * 字符串，server 进入"宽松模式 + 警告日志"。
    */
-  onSidecarReady: (cb: (info: { apiBase: string }) => void): (() => void) => {
-    const handler = (_e: unknown, payload: { apiBase: string }): void => {
-      // 主进程发过来后写回 apiBase，让所有 fetch 直接读到
-      (electronAPI as { apiBase: string }).apiBase = payload.apiBase;
+  internalToken: '' as string,
+
+  /**
+   * 订阅 sidecar ready 事件。payload: { apiBase, internalToken }。
+   * renderer 端拿到后写到 electronAPI.apiBase + internalToken，api.ts 的
+   * fetch wrapper 会读 internalToken 注入到 X-Maestro-Token header。
+   */
+  onSidecarReady: (cb: (info: { apiBase: string; internalToken: string }) => void): (() => void) => {
+    const handler = (_e: unknown, payload: { apiBase: string; internalToken: string }): void => {
+      // 主进程发过来后写回 apiBase + internalToken，让所有 fetch 直接读到
+      const apis = electronAPI as { apiBase: string; internalToken: string };
+      apis.apiBase = payload.apiBase;
+      apis.internalToken = payload.internalToken;
       cb(payload);
     };
     ipcRenderer.on('sidecar-ready', handler);
@@ -104,12 +129,25 @@ const electronAPI = {
   /** Tell main we're in Electron so the renderer can branch its behaviour. */
   isElectron: true as const,
 
-  /** Generic IPC listener (e.g. spotify:oauth-protocol). */
-  on: (event: string, cb: (...args: unknown[]) => void): void => {
-    ipcRenderer.on(event, (_e, ...args) => cb(...args));
-  },
-  removeListener: (event: string, cb: (...args: unknown[]) => void): void => {
-    ipcRenderer.removeListener(event, cb);
+  /**
+   * Whitelisted IPC subscription (B2 hardening — replaces the previous
+   * `on(event, cb)` wildcard which let any channel be listened to).
+   *
+   * Channels NOT in SUBSCRIBABLE_CHANNELS are silently dropped. Add a new
+   * channel there explicitly when introducing new IPC events.
+   *
+   * Callback receives `(payload)` — the IPC `event` arg is stripped, since
+   * exposing the underlying Electron event object back to the renderer
+   * would re-introduce a sandbox-escape surface.
+   */
+  onIpc: <T = unknown>(channel: string, cb: (payload: T) => void): (() => void) => {
+    if (!SUBSCRIBABLE_CHANNELS.has(channel)) {
+      console.warn(`[preload] refused to subscribe to non-allowlisted channel "${channel}"`);
+      return () => undefined;
+    }
+    const handler = (_e: unknown, payload: T): void => cb(payload);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
   },
 
   /**

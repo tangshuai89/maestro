@@ -9,6 +9,7 @@ import {
   Res,
   BadRequestException,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { MusicService, type LikeMeta } from './music.service';
@@ -20,6 +21,7 @@ import {
 import { SessionService } from '../common/session';
 import { DeezerMusicProvider } from './deezer.provider';
 import { QqQuality } from './qq.provider';
+import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 import type { FanOutLikeResponse, SourceInfo } from './types';
 
 /** 从请求体里宽松解析跨平台匹配元数据。缺字段 / 类型不对 → undefined，
@@ -56,6 +58,11 @@ function parseSourcesParam(
   return out;
 }
 
+/**
+ * All routes here are CSRF-gated by RequireInternalTokenGuard — see
+ * common/guards/require-internal-token.guard.ts for the rationale.
+ */
+@UseGuards(RequireInternalTokenGuard)
 @Controller('music')
 export class MusicController {
   private readonly logger = new Logger(MusicController.name);

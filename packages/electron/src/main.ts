@@ -12,6 +12,7 @@ import {
 } from 'electron';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
 import { oauthBuffer } from './auth/oauth-buffer';
 
@@ -21,6 +22,31 @@ import { oauthBuffer } from './auth/oauth-buffer';
 app.setName('Maestro');
 
 const isDev = !app.isPackaged;
+
+/**
+ * Internal-token guard shared secret (Audit B1).
+ *
+ * Generated once per Electron launch (random 32 bytes hex). Passed to the
+ * NestJS sidecar via the MAESTRO_INTERNAL_TOKEN env var so the server's
+ * RequireInternalTokenGuard can verify `X-Maestro-Token` headers from the
+ * renderer; also exposed to the renderer through preload's contextBridge
+ * (window.electronAPI.internalToken) so api.ts can inject it on every
+ * state-changing request.
+ *
+ * Why per-launch: tokens that persist across launches are an attractive
+ * exfiltration target — anything that reads the user's profile dir gets
+ * them. Per-launch means a token leak window is bounded to one app run.
+ *
+ * In dev mode (isDev === true) the renderer is served by Vite, not by
+ * this Electron process — the sidecar still gets the token, but the
+ * Vite-served renderer can't easily read it from preload (no preload
+ * injected by Vite). Dev users can still hit the server: the guard
+ * falls back to "permissive + warn" when MAESTRO_INTERNAL_TOKEN is empty
+ * (i.e. when the sidecar is started outside Electron), so a manually-run
+ * `npm run dev:server` still works. The token mechanism only arms when
+ * Electron main is the sidecar's parent — production only.
+ */
+const maestroInternalToken = randomBytes(32).toString('hex');
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -91,6 +117,7 @@ function startSidecar(): Promise<void> {
         PORT: String(SIDECAR_PORT),
         STORAGE_DIR: path.join(userData, '.storage'),
         STORAGE_BACKUP_DIR: path.join(userData, 'backups'),
+        MAESTRO_INTERNAL_TOKEN: maestroInternalToken,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -275,12 +302,15 @@ function createWindow(): void {
     mainWindow.loadFile(rendererPath);
   }
 
-  // 一旦 renderer 加载完，把 sidecar URL 告诉它。renderer 用这个替换 hardcode
-  // 的 localhost:3200，确保 prod 模式下 fetch 走对地方。
+  // 一旦 renderer 加载完，把 sidecar URL + internal token 告诉它。renderer 用
+  // 这个替换 hardcode 的 localhost:3200，确保 prod 模式下 fetch 走对地方；
+  // 同时 api.ts 会把 token 注入到所有 state-changing 请求的 X-Maestro-Token
+  // header 里，让 RequireInternalTokenGuard 放行。
   if (!isDev) {
     mainWindow.webContents.once('did-finish-load', () => {
       mainWindow?.webContents.send('sidecar-ready', {
         apiBase: `http://127.0.0.1:${SIDECAR_PORT}`,
+        internalToken: maestroInternalToken,
       });
     });
   }
