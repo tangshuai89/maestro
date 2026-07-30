@@ -1246,16 +1246,22 @@ export class MusicService {
     // → normalizeKey('手嶌葵(てしまあおい)') ≠ 网易云 normalizeKey('手嶌葵')"。
     // 再加上跨文字系统兜底：歌名对上 + 时长接近 + 双方艺人名一个 CJK 一个
     // 拉丁字母（如 Spotify 用 "Fujii Kaze" 而 QQ 用 "藤井风"），放宽艺人名约束。
+    //
+    // ⚠️ 2026-07-30 hardening: 旧代码的 `!ta || !wantArtistKey` 会在任意一
+    //    方艺人名为空时**直接放行**（不做艺人校验）。这会让 NetEase/Spotify
+    //    返回的封面/伴奏（ar 字段缺失或不匹配）在 title+duration 对得上的
+    //    情况下被自动 ❤，导致"周杰伦的歌被 star 到一个翻唱版本"这类数据
+    //    污染。现在改为：任意一方艺人缺失 → 拒绝（不做匹配），杜绝此路径。
     for (const t of tracks) {
       const tt = this.normalizeKey(t.title, '');
       const ta = this.normalizeKey(t.artist, '');
       const titleOk =
         tt && wantTitleKey && (tt.includes(wantTitleKey) || wantTitleKey.includes(tt));
       if (!titleOk) continue;
+      if (!ta || !wantArtistKey) continue; // reject empty-artist bypass
       const artistOk =
-        !ta || !wantArtistKey ||
         ta.includes(wantArtistKey) || wantArtistKey.includes(ta) ||
-        (ta && wantArtistKey && this.isCrossScript(ta, wantArtistKey));
+        this.isCrossScript(ta, wantArtistKey);
       if (!artistOk) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
       this.logger.log(
@@ -1379,12 +1385,15 @@ export class MusicService {
 
   /**
    * 艺人宽松命中：双向 includes（前后缀 / 缩写 / 全名含半名）+ 跨脚本（CJK vs
-   * Latin 同一艺人不同拼写）。空串视为通过（避免单边缺失艺人字段时误拒）。
-   * 集中抽出来是因为 Tier 2/3/5/6 都要复用同一规则——保持"同一人 vs 不同人"的
-   * 判定口径一致，否则会出现「Tier 2 拒、Tier 3 放」这种漏匹配。
+   * Latin 同一艺人不同拼写）。
+   *
+   * ⚠️ 2026-07-30 hardening: 旧代码的 `!ta || !wantArtistKey → true` 会在
+   *    任意一方艺人名为空时直接放行——这会让平台返回的 UGC / 封面 / 伴奏
+   *    （ar 字段缺失或不匹配的条目）在 title+duration 对得上的情况下被自动
+   *    ❤。已改为：任意一方缺失 → 拒绝（false），不做匹配。
    */
   private artistLooseMatch(ta: string, wantArtistKey: string): boolean {
-    if (!ta || !wantArtistKey) return true;
+    if (!ta || !wantArtistKey) return false;
     return (
       ta.includes(wantArtistKey) ||
       wantArtistKey.includes(ta) ||
