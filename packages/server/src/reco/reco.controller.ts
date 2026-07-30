@@ -6,11 +6,15 @@ import {
   Req,
   Res,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { RecoService } from './reco.service';
 import { SessionService } from '../common/session';
+import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 
+/** All routes here are CSRF-gated by RequireInternalTokenGuard. */
+@UseGuards(RequireInternalTokenGuard)
 @Controller('reco')
 export class RecoController {
   constructor(

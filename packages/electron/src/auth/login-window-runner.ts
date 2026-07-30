@@ -199,7 +199,23 @@ export async function runLoginWindow<T>(
       if (resolved) return;
       if (removed) return;
       const domain = cookie.domain ?? '';
-      if (!cfg.domains.some((d) => domain.includes(d.replace(/^\./, '')))) return;
+      // Domain match must be suffix-based, NOT substring. Old code did
+      // `domain.includes(d.replace(/^\./, ''))` which accepted lookalike
+      // hosts like 'attacker-y.qq.com' (substring contains 'y.qq.com')
+      // and would try to capture cookies set on those domains — the
+      // cookie capture runs on every page load, so a redirect to a
+      // lookalike would have leaked the user's session into the wrong
+      // session blob. Now: exact match OR suffix match (cookie belongs to
+      // the registered domain or one of its subdomains).
+      //
+      // Electron's Cookie.domain has a leading dot ('.y.qq.com'). Strip
+      // both sides before comparing so the match is purely suffix-based.
+      const matchesDomain = cfg.domains.some((d) => {
+        const want = d.replace(/^\./, ''); // strip leading dot from cfg
+        const got = domain.replace(/^\./, ''); // and from cookie
+        return got === want || got.endsWith('.' + want);
+      });
+      if (!matchesDomain) return;
       if (markerNames.length > 0 && !markerNames.includes(cookie.name)) return;
       void tryCapture();
     };

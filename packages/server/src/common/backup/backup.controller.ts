@@ -9,6 +9,7 @@ import {
   OnModuleDestroy,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as fs from 'fs';
@@ -16,6 +17,7 @@ import * as path from 'path';
 import { StorageService } from '../storage';
 import { ConfigService } from '../config';
 import { SessionService } from '../session';
+import { RequireInternalTokenGuard } from '../guards/require-internal-token.guard';
 
 /**
  * 会话快照导出 / 导入 + 每日本地自动备份。
@@ -34,6 +36,8 @@ import { SessionService } from '../session';
  */
 const DAY_MS = 24 * 3600 * 1000;
 
+/** All routes here are CSRF-gated by RequireInternalTokenGuard. */
+@UseGuards(RequireInternalTokenGuard)
 @Controller('storage')
 export class BackupController implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BackupController.name);

@@ -362,14 +362,16 @@ export function useAuth(
           code = pending.code;
           stateVal = pending.state;
         } else {
+          // The wildcard electronAPI.on was removed in audit B2; only
+          // whitelisted channels (spotify:oauth-protocol is one) can be
+          // subscribed via onIpc. The returned unsubscribe fn removes the
+          // listener — no manual removeListener needed.
           const result = await new Promise<{ code: string; state: string }>(
             (resolve) => {
-              const handler = (...args: unknown[]) => {
-                const data = args[0] as { code: string; state: string };
-                window.electronAPI!.removeListener('spotify:oauth-protocol', handler);
-                resolve(data);
-              };
-              window.electronAPI!.on('spotify:oauth-protocol', handler);
+              window.electronAPI!.onIpc<{ code: string; state: string }>(
+                'spotify:oauth-protocol',
+                (data) => resolve(data),
+              );
             },
           );
           code = result.code;

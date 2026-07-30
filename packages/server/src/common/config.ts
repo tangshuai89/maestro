@@ -45,6 +45,12 @@ export class ConfigService {
   // DeepSeek（AI 推荐引擎，用户自带 Key，仅本地使用，不上传）
   readonly deepSeekApiKey = process.env.DEEPSEEK_API_KEY ?? '';
 
+  // 内部 token：Electron main 每次启动生成一个随机 token，通过
+  // MAESTRO_INTERNAL_TOKEN 环境变量传给 NestJS sidecar。RequireInternalTokenGuard
+  // 用它验证来自 renderer 的 state-changing 请求。dev 模式（没传 env）→ 空字符串
+  // → guard 进入"宽松模式"+ 警告日志，便于本地不依赖 Electron 跑 server。
+  readonly internalToken = process.env.MASTERO_INTERNAL_TOKEN ?? '';
+
   constructor() {
     fs.mkdirSync(this.storageDir, { recursive: true });
   }

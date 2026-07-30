@@ -9,6 +9,7 @@ import {
   Logger,
   BadRequestException,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { normalizeProvider } from '../common/provider';
 import { Request, Response } from 'express';
@@ -19,9 +20,18 @@ import { SpotifyMusicProvider } from '../music/spotify.provider';
 import { StorageService } from '../common/storage';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue } from '../music/like-sync.queue';
+import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 
 const SPOTIFY_CLIENT_ID_KEY = 'secrets:spotify-client-id';
 
+/**
+ * All routes here are gated by RequireInternalTokenGuard — the guard
+ * only fires on POST/PUT/DELETE, so GETs (status, logout, spotify
+ * callbacks, etc) are still open. POSTs without a valid
+ * `X-Maestro-Token` (Electron main → sidecar, generated per launch)
+ * are rejected as a CSRF mitigation for any other localhost process.
+ */
+@UseGuards(RequireInternalTokenGuard)
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);

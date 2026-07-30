@@ -112,6 +112,39 @@ export class AuthError extends Error {
   }
 }
 
+/** X-Maestro-Token injected into every state-changing request by
+ *  fetchWithToken below. Read lazily from electronAPI (only set once
+ *  main process fires 'sidecar-ready'). Empty string in dev mode → server
+ *  guard falls back to permissive + warn.
+ *
+ *  Returns '' when no token is configured so callers (and tests) don't
+ *  have to special-case undefined. */
+function maestroToken(): string {
+  if (typeof window === 'undefined') return '';
+  const api = (window as { electronAPI?: { internalToken?: string } }).electronAPI;
+  return api?.internalToken ?? '';
+}
+
+/** Single fetch wrapper that:
+ *   1) injects `credentials: 'include'` so the session cookie travels
+ *   2) injects `X-Maestro-Token` so RequireInternalTokenGuard lets the
+ *      request through (B1)
+ *   3) lets callers override or extend via the optional init.headers
+ *
+ *  Use this in place of bare `fetch(...)` for any call into the sidecar.
+ *  GETs still get the token because the guard runs on all methods; this
+ *  is intentional — some GETs mutate (e.g. /auth/spotify/redeem,
+ *  /auth/logout) and we want one uniform header. */
+export function fetchWithToken(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  const tok = maestroToken();
+  if (tok) headers.set('X-Maestro-Token', tok);
+  return fetch(url, { ...init, headers, credentials: 'include' });
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -151,7 +184,7 @@ export async function fetchNextTrack(
 ): Promise<Track> {
   const qs = preset ? `&preset=${encodeURIComponent(preset)}` : '';
   return json<Track>(
-    await fetch(`${API_BASE}/music/next?provider=${provider}${qs}`, {
+    await fetchWithToken(`${API_BASE}/music/next?provider=${provider}${qs}`, {
       credentials: 'include',
     }),
   );
@@ -171,7 +204,7 @@ export async function toggleLike(
   meta?: LikeMeta,
 ): Promise<{ success: boolean; liked: boolean }> {
   return json(
-    await fetch(
+    await fetchWithToken(
       `${API_BASE}/music/like/${encodeURIComponent(trackId)}?provider=${provider}`,
       {
         method: 'POST',
@@ -198,7 +231,7 @@ export async function fanOutLike(
   meta?: LikeMeta,
 ): Promise<{ success: boolean; liked: boolean; fannedOutTo: MusicProvider[] }> {
   return json(
-    await fetch(`${API_BASE}/music/like/merged`, {
+    await fetchWithToken(`${API_BASE}/music/like/merged`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -218,7 +251,7 @@ export async function detectLiked(
   meta?: LikeMeta,
 ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
   return json(
-    await fetch(`${API_BASE}/music/like/detect`, {
+    await fetchWithToken(`${API_BASE}/music/like/detect`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -232,7 +265,7 @@ export async function dislike(
   trackId: string,
 ): Promise<{ success: boolean }> {
   return json(
-    await fetch(
+    await fetchWithToken(
       `${API_BASE}/music/dislike/${encodeURIComponent(trackId)}?provider=${provider}`,
       { method: 'POST', credentials: 'include' },
     ),
@@ -248,7 +281,7 @@ export async function dislikeMerged(
   sources: Array<{ platform: MusicProvider; trackId: string }>,
 ): Promise<{ success: boolean }> {
   return json(
-    await fetch(`${API_BASE}/music/dislike/merged`, {
+    await fetchWithToken(`${API_BASE}/music/dislike/merged`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -259,7 +292,7 @@ export async function dislikeMerged(
 
 export async function getLiked(provider: MusicProvider): Promise<Track[]> {
   return json<Track[]>(
-    await fetch(`${API_BASE}/music/liked?provider=${provider}`, {
+    await fetchWithToken(`${API_BASE}/music/liked?provider=${provider}`, {
       credentials: 'include',
     }),
   );
@@ -269,7 +302,7 @@ export async function getAuthStatus(
   provider: MusicProvider,
 ): Promise<AuthStatus> {
   return json<AuthStatus>(
-    await fetch(`${API_BASE}/auth/status?provider=${provider}`, {
+    await fetchWithToken(`${API_BASE}/auth/status?provider=${provider}`, {
       credentials: 'include',
     }),
   );
@@ -286,7 +319,7 @@ export async function getAuthStatusExtended(
   provider: MusicProvider,
 ): Promise<AuthStatusExtended> {
   return json<AuthStatusExtended>(
-    await fetch(`${API_BASE}/auth/status?provider=${provider}&extended=1`, {
+    await fetchWithToken(`${API_BASE}/auth/status?provider=${provider}&extended=1`, {
       credentials: 'include',
     }),
   );
@@ -297,7 +330,7 @@ export async function getAuthStatusExtended(
  *  of the OAuth browser tab. */
 export async function cancelSpotifyAuth(): Promise<{ ok: boolean }> {
   return json(
-    await fetch(`${API_BASE}/auth/spotify/cancel`, {
+    await fetchWithToken(`${API_BASE}/auth/spotify/cancel`, {
       method: 'POST',
       credentials: 'include',
     }),
@@ -315,7 +348,7 @@ export async function reportAuthEvent(evt: {
   errorCode?: string;
 }): Promise<{ ok: boolean }> {
   return json(
-    await fetch(`${API_BASE}/auth/event`, {
+    await fetchWithToken(`${API_BASE}/auth/event`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -339,7 +372,7 @@ export async function startSpotify(redirectUri?: string): Promise<{
   state: string;
 }> {
   return json(
-    await fetch(`${API_BASE}/auth/spotify/start`, {
+    await fetchWithToken(`${API_BASE}/auth/spotify/start`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -356,7 +389,7 @@ export async function redeemSpotifyCode(
   state: string,
 ): Promise<{ ok: boolean; profile: { id: string; displayName: string } }> {
   return json(
-    await fetch(
+    await fetchWithToken(
       `${API_BASE}/auth/spotify/redeem?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
       { credentials: 'include' },
     ),
@@ -373,7 +406,7 @@ export async function getSpotifyStatus(): Promise<{
   tier: 'premium' | 'free' | 'open' | null;
 }> {
   return json(
-    await fetch(`${API_BASE}/auth/spotify/status`, {
+    await fetchWithToken(`${API_BASE}/auth/spotify/status`, {
       credentials: 'include',
     }),
   );
@@ -386,7 +419,7 @@ export async function getSpotifyToken(): Promise<{
   tier: 'premium' | 'free' | 'open' | null;
 }> {
   return json(
-    await fetch(`${API_BASE}/auth/spotify/token`, {
+    await fetchWithToken(`${API_BASE}/auth/spotify/token`, {
       credentials: 'include',
     }),
   );
@@ -399,7 +432,7 @@ export async function getSpotifyMe(): Promise<{
   tier: 'premium' | 'free' | 'open';
 }> {
   return json(
-    await fetch(`${API_BASE}/auth/spotify/me`, {
+    await fetchWithToken(`${API_BASE}/auth/spotify/me`, {
       credentials: 'include',
     }),
   );
@@ -410,7 +443,7 @@ export async function setSpotifyClientId(
   clientId: string,
 ): Promise<{ ok: true; tail: string }> {
   return json(
-    await fetch(`${API_BASE}/auth/spotify/client-id`, {
+    await fetchWithToken(`${API_BASE}/auth/spotify/client-id`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -429,7 +462,7 @@ export async function loginQqCookie(
   extraCookies?: Record<string, string>,
 ): Promise<{ success: boolean; user: AuthUser }> {
   return json(
-    await fetch(`${API_BASE}/auth/qq/cookie`, {
+    await fetchWithToken(`${API_BASE}/auth/qq/cookie`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -444,7 +477,7 @@ export async function searchTracks(
   q: string,
 ): Promise<Track[]> {
   const res = await json<{ items: Track[] }>(
-    await fetch(
+    await fetchWithToken(
       `${API_BASE}/music/search?provider=${provider}&q=${encodeURIComponent(q)}`,
       { credentials: 'include' },
     ),
@@ -507,7 +540,7 @@ export async function searchUnified(
     pageSize: String(pageSize),
   });
   return json<UnifiedSearchResult>(
-    await fetch(`${API_BASE}/music/search?${params.toString()}`, {
+    await fetchWithToken(`${API_BASE}/music/search?${params.toString()}`, {
       credentials: 'include',
       signal,
     }),
@@ -527,7 +560,7 @@ export async function searchOne(
 ): Promise<UnifiedSearchItem[]> {
   const params = new URLSearchParams({ provider, q });
   const res = await json<{ items: Track[] }>(
-    await fetch(`${API_BASE}/music/search?${params.toString()}`, {
+    await fetchWithToken(`${API_BASE}/music/search?${params.toString()}`, {
       credentials: 'include',
       signal,
     }),
@@ -568,7 +601,7 @@ export async function findEquivalentSource(
     duration: String(meta.duration),
   });
   const res = await json<{ source: UnifiedSourceInfo | null }>(
-    await fetch(`${API_BASE}/music/equivalents?${params.toString()}`, {
+    await fetchWithToken(`${API_BASE}/music/equivalents?${params.toString()}`, {
       credentials: 'include',
     }),
   );
@@ -608,7 +641,7 @@ export interface DeezerEditorial {
 }
 
 export async function fetchDeezerEditorials(): Promise<DeezerEditorial[]> {
-  const res = await fetch(`${API_BASE}/music/deezer/editorials`, {
+  const res = await fetchWithToken(`${API_BASE}/music/deezer/editorials`, {
     credentials: 'include',
   });
   const json_ = (await res.json()) as { items: DeezerEditorial[] };
@@ -616,7 +649,7 @@ export async function fetchDeezerEditorials(): Promise<DeezerEditorial[]> {
 }
 
 export async function logout(provider: MusicProvider): Promise<void> {
-  await fetch(`${API_BASE}/auth/logout?provider=${provider}`, {
+  await fetchWithToken(`${API_BASE}/auth/logout?provider=${provider}`, {
     credentials: 'include',
   });
 }
@@ -648,13 +681,13 @@ export interface RecoRunResult {
 
 export async function fetchRecoStatus(): Promise<RecoStatus> {
   return json(
-    await fetch(`${API_BASE}/reco/status`, { credentials: 'include' }),
+    await fetchWithToken(`${API_BASE}/reco/status`, { credentials: 'include' }),
   );
 }
 
 export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
   return json(
-    await fetch(`${API_BASE}/reco/run`, {
+    await fetchWithToken(`${API_BASE}/reco/run`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -665,7 +698,7 @@ export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
 
 export async function saveRecoKey(apiKey: string): Promise<{ ok: true; tail: string }> {
   return json(
-    await fetch(`${API_BASE}/reco/key`, {
+    await fetchWithToken(`${API_BASE}/reco/key`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -693,7 +726,7 @@ export interface LibraryImportResult {
  */
 export async function importLibrary(): Promise<LibraryImportResult> {
   return json<LibraryImportResult>(
-    await fetch(`${API_BASE}/music/library/import`, {
+    await fetchWithToken(`${API_BASE}/music/library/import`, {
       method: 'POST',
       credentials: 'include',
     }),
@@ -702,7 +735,7 @@ export async function importLibrary(): Promise<LibraryImportResult> {
 
 /** 读最近一次导入的库；未导入过返回 null（后端 404）。 */
 export async function getLibrary(): Promise<LibraryImportResult | null> {
-  const res = await fetch(`${API_BASE}/music/library`, {
+  const res = await fetchWithToken(`${API_BASE}/music/library`, {
     credentials: 'include',
   });
   if (res.status === 404) return null;
@@ -712,7 +745,7 @@ export async function getLibrary(): Promise<LibraryImportResult | null> {
 /** 真·扫码登录第一步：拿二维码（key + dataURL 图片）。 */
 export async function startNeteaseQr(): Promise<NeteaseQrStart> {
   return json<NeteaseQrStart>(
-    await fetch(`${API_BASE}/auth/netease/qr/start`, {
+    await fetchWithToken(`${API_BASE}/auth/netease/qr/start`, {
       method: 'POST',
       credentials: 'include',
     }),
@@ -722,7 +755,7 @@ export async function startNeteaseQr(): Promise<NeteaseQrStart> {
 /** 真·扫码登录第二步：轮询扫码状态，803 时服务端已入 session。 */
 export async function checkNeteaseQr(key: string): Promise<NeteaseQrCheck> {
   return json<NeteaseQrCheck>(
-    await fetch(
+    await fetchWithToken(
       `${API_BASE}/auth/netease/qr/check?key=${encodeURIComponent(key)}`,
       { credentials: 'include' },
     ),
@@ -741,7 +774,7 @@ export async function loginNeteaseCookie(
   extraCookies?: Record<string, string>,
 ): Promise<{ success: boolean; user: AuthUser }> {
   return json(
-    await fetch(`${API_BASE}/auth/netease/cookie`, {
+    await fetchWithToken(`${API_BASE}/auth/netease/cookie`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -790,7 +823,7 @@ export async function fetchLyrics(
   if (opts?.sources && opts.sources.length > 0) {
     params.set('sources', sourcesParam(opts.sources));
   }
-  const res = await fetch(`${API_BASE}/music/lyrics?${params.toString()}`, {
+  const res = await fetchWithToken(`${API_BASE}/music/lyrics?${params.toString()}`, {
     credentials: 'include',
   });
   if (!res.ok) return null;
@@ -813,7 +846,7 @@ export async function fetchLyricsAvailability(
   signal?: AbortSignal,
 ): Promise<boolean> {
   if (sources.length === 0) return false;
-  const res = await fetch(
+  const res = await fetchWithToken(
     `${API_BASE}/music/lyrics/availability?sources=${encodeURIComponent(sourcesParam(sources))}`,
     { credentials: 'include', signal },
   );
@@ -834,7 +867,7 @@ export async function fetchLyricsByName(
   if (!title || !artist) return null;
   const params = new URLSearchParams({ title, artist });
   if (duration > 0) params.set('duration', String(duration));
-  const res = await fetch(
+  const res = await fetchWithToken(
     `${API_BASE}/music/lyrics/search?${params.toString()}`,
     { credentials: 'include' },
   );
@@ -859,7 +892,7 @@ export async function getStateSnapshot(): Promise<{
   stateJson: Record<string, unknown>;
 }> {
   return json(
-    await fetch(`${API_BASE}/storage/state`, { credentials: 'include' }),
+    await fetchWithToken(`${API_BASE}/storage/state`, { credentials: 'include' }),
   );
 }
 
@@ -868,7 +901,7 @@ export async function importState(
   stateJson: Record<string, unknown>,
 ): Promise<{ merged: string[] }> {
   return json(
-    await fetch(`${API_BASE}/storage/import`, {
+    await fetchWithToken(`${API_BASE}/storage/import`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -880,7 +913,7 @@ export async function importState(
 /** 立即触发一次本地备份。 */
 export async function triggerBackup(): Promise<{ path: string; count: number }> {
   return json(
-    await fetch(`${API_BASE}/storage/backup`, {
+    await fetchWithToken(`${API_BASE}/storage/backup`, {
       method: 'POST',
       credentials: 'include',
     }),
@@ -893,6 +926,6 @@ export async function getBackupInfo(): Promise<{
   backupCount: number;
 }> {
   return json(
-    await fetch(`${API_BASE}/storage/info`, { credentials: 'include' }),
+    await fetchWithToken(`${API_BASE}/storage/info`, { credentials: 'include' }),
   );
 }
