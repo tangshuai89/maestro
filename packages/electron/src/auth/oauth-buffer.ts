@@ -34,47 +34,67 @@ function isErrorEntry(e: BufferedOAuthEntry | null): e is BufferedError {
   return !!e && typeof (e as BufferedError).error === 'string';
 }
 
+type Waiter = {
+  resolve: (cb: BufferedOAuthEntry | null) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 export class OAuthCallbackBuffer {
+  // Single slot for "callback already buffered, no consumer yet".
+  // When set, the next consume() returns it immediately.
   private pending: BufferedOAuthEntry | null = null;
-  private consumer: ((cb: BufferedOAuthEntry | null) => void) | null = null;
+  // FIFO queue of consumers awaiting a push. Drained in order on push()
+  // /pushError(). Replaces the previous single-consumer field — that one
+  // overwrote concurrent callers (e.g. React Strict Mode would mount
+  // twice; the first mount's Promise leaked forever, never resolving).
+  // With a queue every concurrent consume() gets the same entry, all
+  // Promises settle, none leak.
+  private readonly waiters: Waiter[] = [];
 
   /**
-   * Called from main process's `app.on('open-url', ...)` handler. If a
-   * consumer is already registered, flushes immediately; otherwise
-   * buffers (within TTL). Replaces any older pending entry — Spotify
-   * starts a single OAuth flow at a time, so the newest callback wins.
+   * Called from main process's `app.on('open-url', ...)` handler. If
+   * there are any queued consumers, drain the queue by resolving every
+   * one with the new entry (FIFO). Otherwise buffer (within TTL).
+   * Replaces any older pending entry — Spotify starts a single OAuth
+   * flow at a time, so the newest callback wins for subsequent
+   * consumers.
    */
   push(code: string, state: string): void {
     const cb: BufferedCallback = { code, state, receivedAt: Date.now() };
-    if (this.consumer) {
-      const c = this.consumer;
-      this.consumer = null;
-      this.pending = null;
-      c(cb);
-      return;
-    }
-    this.pending = cb;
+    this.deliver(cb);
   }
 
   /** Push an OAuth error (user denied / provider rejection). */
   pushError(error: string, state: string | undefined, _url: string): void {
     const e: BufferedError = { error, state, receivedAt: Date.now() };
-    if (this.consumer) {
-      const c = this.consumer;
-      this.consumer = null;
-      this.pending = null;
-      c(e);
+    this.deliver(e);
+  }
+
+  /** Drain the FIFO waiters with `entry`, else buffer `entry` for the
+   *  next consume(). pending is cleared by consume() itself on the
+   *  capture path; deliver() doesn't touch it. */
+  private deliver(entry: BufferedOAuthEntry): void {
+    if (this.waiters.length > 0) {
+      const drained = this.waiters.splice(0, this.waiters.length);
+      for (const w of drained) {
+        clearTimeout(w.timer);
+        w.resolve(entry);
+      }
       return;
     }
-    this.pending = e;
+    this.pending = entry;
   }
 
   /**
    * Called from preload's `consumeOAuthCallback()` IPC. If a buffered
-   * callback exists and is still within TTL, returns it and clears the
-   * buffer. Otherwise returns null. Registers a one-shot consumer that
-   * will receive the next push (useful when the renderer starts before
-   * the OS hands the URL).
+   * callback exists and is still within TTL, returns it AND clears the
+   * slot — concurrent callers that arrive after the synchronous return
+   * will block on the next push (so OAuth codes are not double-used).
+   *
+   * When concurrent callers race (e.g. React Strict Mode double-mount),
+   * all callers that arrive while pending is set get the entry. The first
+   * one in clears the slot; subsequent synchronous ones see pending=null
+   * and enqueue instead.
    */
   consume(): Promise<BufferedOAuthEntry | null> {
     if (this.pending) {
@@ -82,31 +102,40 @@ export class OAuthCallbackBuffer {
         this.pending = null;
         return Promise.resolve(null);
       }
+      // Capture-and-clear so follow-up consume()s block on the next
+      // push (one-shot OAuth code semantics). Race note: if a second
+      // consume() runs in the same microtask and also sees pending, both
+      // return the same entry. In practice the renderer code path only
+      // has one consume() per login flow, so this is fine.
       const out = this.pending;
       this.pending = null;
       return Promise.resolve(out);
     }
-    return new Promise((resolve) => {
-      // Auto-expire the consumer after TTL so a renderer that registered
-      // a consumer too late doesn't sit waiting forever.
-      this.consumer = (cb) => {
-        if (!cb) {
-          resolve(null);
-          return;
-        }
-        if (Date.now() - cb.receivedAt > TTL_MS) {
-          resolve(null);
-          return;
-        }
-        resolve(cb);
-      };
-      // Set a TTL fallback in case no push ever arrives.
-      setTimeout(() => {
-        if (this.consumer) {
-          this.consumer(null);
-          this.consumer = null;
-        }
-      }, TTL_MS).unref?.();
+    return new Promise<BufferedOAuthEntry | null>((resolve) => {
+      // Per-waiter TTL fallback so a renderer that registered too late
+      // doesn't sit waiting forever. unref so it doesn't block exit.
+      const timer = setTimeout(() => {
+        const idx = this.waiters.findIndex((w) => w.resolve === resolve);
+        if (idx >= 0) this.waiters.splice(idx, 1);
+        resolve(null);
+      }, TTL_MS);
+      if (typeof (timer as { unref?: () => void }).unref === 'function') {
+        (timer as { unref?: () => void }).unref?.();
+      }
+      this.waiters.push({
+        resolve: (cb) => {
+          if (!cb) {
+            resolve(null);
+            return;
+          }
+          if (Date.now() - cb.receivedAt > TTL_MS) {
+            resolve(null);
+            return;
+          }
+          resolve(cb);
+        },
+        timer,
+      });
     });
   }
 
