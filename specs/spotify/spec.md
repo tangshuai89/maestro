@@ -149,8 +149,9 @@ electron-builder 会重组包 + macOS codesign，把 castLabs 原始 VMP 签名�
 
 ### 可在本环境自动验证
 
-- [x] `like()` → `PUT /v1/me/tracks`，body 含 `ids:[trackId]`，header 带 Bearer
-- [x] `unlike()` → `DELETE /v1/me/tracks` 同上
+- [x] `like()` → `PUT /v1/me/library?uris=spotify:track:{id}`，header 带 Bearer
+  （旧 `PUT /v1/me/tracks` body `{ids:[trackId]}` 已 deprecate；spec 已更新到新端点）
+- [x] `unlike()` → `DELETE /v1/me/library?uris=spotify:track:{id}` 同上
 - [x] `like()` 遇非 2xx（401 等）→ `success:false` 不抛
 - [x] `getValidTokenForRenderer`：无 session → null；有效 → 透传 accessToken + tier
 - [x] `SPOTIFY_SCOPES` 含 `user-read-email` + `streaming` + `user-modify-playback-state`

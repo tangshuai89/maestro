@@ -6,22 +6,23 @@
 
 ## 验收标准
 
-- [ ] 输入"周杰伦" → 三个平台各返回搜索结果，合并展示（去重按 ISRC 或"歌名+歌手"）
-- [ ] 同一首歌在多个平台都有 → 合并成一条，展开可看到各平台的版本
-- [ ] 搜索结果中每条显示: 歌名、歌手、专辑、时长、平台标签、是否有版权
-- [ ] 点击播放 → 自动选有版权的平台，如果多个平台有版权，优先 QQ > 网易云 > Deezer
-- [ ] 如果所有平台都无版权 → 显示灰色不可播放状态
-- [ ] 输入为空时不发起搜索
-- [ ] 输入过程中 debounce 300ms
-- [ ] 搜索结果分页，每页 20 条
-- [ ] 搜索 3 秒无结果 → 显示"暂无结果"
+- [x] 输入"周杰伦" → 三个平台各返回搜索结果，合并展示（去重按"歌名+歌手"标准化键）
+- [x] 同一首歌在多个平台都有 → 合并成一条，展开可看到各平台的版本
+- [x] 搜索结果中每条显示: 歌名、歌手、专辑、时长、平台标签、是否有版权
+- [x] 点击播放 → 自动选有版权的平台，VIP 锁源被规避（Free 用户避开付费歌，落到可全曲播放的源）
+- [x] 如果所有平台都无版权 → 显示灰色不可播放状态
+- [x] 输入为空时不发起搜索
+- [x] 输入过程中 debounce 300ms
+- [x] 搜索结果分页，每页 20 条
+- [x] 搜索 3 秒无结果 → 显示"暂无结果"
+- [x] 单平台 search throw → 不阻塞其他平台，返回 200 + 失败的平台标记为 unavailable
 
 ## 接口规格
 
 ### NestJS 后端
 
 ```
-GET /api/search?q=<关键词>&page=1&pageSize=20
+GET /music/search?q=<关键词>&page=1&pageSize=20
 
 Request:
   q: string (必填, 1-100 字符)
@@ -46,37 +47,38 @@ Response:
         {"platform": "qq",      "trackId": "yyy", "hasCopyright": true, "url": "..."},
         {"platform": "deezer",  "trackId": "zzz", "hasCopyright": false}
       ],
-      "bestSource": "netease"       // 推荐播放平台
+      "bestSource": "netease"       // 推荐播放平台（已规避 vipLocked）
     }
   ]
 }
 
 Error:
   400: q 参数无效
-  502: 某个上游平台挂了（部分结果仍然返回，失败的平台标记为 unavailable）
+  注：单平台失败 → 200 + sources[].error；不会 502（partial results 设计）。
 ```
 
 ### 去重规则
 
-1. 优先按 ISRC（国际标准录音编码）去重
-2. 无 ISRC 时，用"歌名 + 歌手"标准化后匹配: 全角转半角、去空格、去标点、全小写
+1. 主键：normalizeKey(title, artist)（全角→半角、去空格、去标点、全小写；CJK 跨写法归一）
+2. duration gate：同 normalizeKey 但 duration 差 >3s → 不合并（remix/live）
+3. ISRC：未接入（接口没暴露），保留 hook 待将来扩展
 
 ### 播放优先级
 
-`qq > netease > deezer`，且必须 `hasCopyright = true`。
-
-IPC 通道: `search:execute`(renderer → main → server) / `search:result`(server → main → renderer)
+`qq > netease > deezer`（基础优先级），但 `bestSource` 进一步规避 vipLocked=true 的源——
+Free 用户不会被分配到仅 VIP 可播的源（见 search.util.selectBestSource）。
 
 ## 不做什么(Out of Scope)
 
-- 不支持 Spotify 搜索（Spotify 的搜索/播放/红心单独做，这次不碰）
+- ~~不支持 Spotify 搜索~~ → 已支持（v2 起）。`MUSIC_PROVIDERS` 含 spotify，统一搜索一并 fan-out；
+  token 缺失的 session 只跳过 spotify，其他平台不受影响。
 - 不做搜索建议/自动补全（二期）
 - 不做搜索历史记录（二期）
-- 不做歌词搜索
+- 不做歌词搜索（走 lyrics 模块）
 
 ## 技术约束(来自 CLAUDE.md)
 
-- 所有外部 API 调用走 `axios`，带 5 秒超时
+- 外部 API 调用走**内置 fetch**（不是 axios），单平台 5s 超时（`common/timeout.ts: withTimeout`）
 - provider 接口叫 `MusicProvider`，每个平台实现 `search(query, page, pageSize): SearchResult[]`
 - 去重逻辑放 `music.service.ts` 里，不要在 controller 里做
-- 类型定义放 `music/types.ts`
+- 类型定义放 `music/types.ts`（Track 已在 P7 audit 后挪到此文件）

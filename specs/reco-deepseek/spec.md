@@ -8,10 +8,10 @@
 
 ## 验收标准
 
-- [ ] 用户在 UI 设置页填入 DeepSeek API key，存到本地（.env 或 storage）
-- [ ] 没设 key 时调推荐 → 友好提示"请先在设置里填入 DeepSeek API key"
-- [ ] 推荐请求带统一库（最多前 200 首）+ 想要的语言 / 风格 prompt
-- [ ] 响应解析：JSON 数组，每项 { title, artist }；解析失败 → 报错并保留 raw 给 debug
+- [x] 用户在 UI 设置页填入 DeepSeek API key，存到本地（.env 或 storage）
+- [x] 没设 key 时调推荐 → 友好提示"请先在设置里填入 DeepSeek API key"
+- [x] 推荐请求带统一库（最多前 200 首）+ 想要的语言 / 风格 prompt
+- [x] 响应解析：JSON 数组，每项 { title, artist }；解析失败 → 报错并保留 raw 给 debug
 - [x] 推荐结果去重：和已 ❤ 库 + 上一批推荐去重（normalizeKey）
   > `run(opts.exclude)`：auto-continue 时前端把队列里已推荐的歌回传，服务端
   > 并进 dedup seen 集合 + prompt 的「请勿再推荐」清单（reco.test #13）。
@@ -20,8 +20,8 @@
   > 播到最后一首 → `usePlayer.loadNextTrack` 用 `queueRef.loadMore`（reco 队列
   > 专属）取下一批 append 续播，而非循环回第一首；`useReco` 提供 loadMore
   > 并带上 exclude。空批/失败兜底回退到循环。
-- [ ] rate-limit 429：暂停重试 + UI 显示"推荐暂缓，请稍候"
-- [ ] 网络错误：fail loud，不静默吞
+- [x] rate-limit 429：暂停重试 + UI 显示"推荐暂缓，请稍候"
+- [x] 网络错误：fail loud，不静默吞
 
 ## 接口规格
 
@@ -44,7 +44,7 @@ Response:
   }
 Error:
   400: 还没 import 库
-  412: 没设 DeepSeek key
+  428: 没设 DeepSeek key（NestJS `PRECONDITION_REQUIRED`）
   429: 上游 rate-limit
   502: 上游 5xx
 
