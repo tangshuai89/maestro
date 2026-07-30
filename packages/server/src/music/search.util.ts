@@ -404,3 +404,72 @@ export function buildUnifiedItems(
   }
   return items;
 }
+
+/**
+ * 两个 key（歌名 / 艺人）是否属于不同文字系统：一方纯 CJK（无拉丁字母）、
+ * 另一方纯拉丁字母（无 CJK）。用来在 library 合并阶段把「横顔」和「Yokogao」
+ * 这类 Spotify 罗马音与 QQ/网易云日语原文的对齐处理掉。
+ *
+ * 注意：不对内容做翻译/映射——只判定"是同一首歌的两个不同写法，应该合"。
+ */
+export function isCrossScript(a: string, b: string): boolean {
+  const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+  const hasLatin = (s: string) => /[a-z]/.test(s);
+  const aCjk = hasCjk(a);
+  const bCjk = hasCjk(b);
+  if (aCjk && !bCjk && hasLatin(b)) return true;
+  if (bCjk && !aCjk && hasLatin(a)) return true;
+  return false;
+}
+
+/**
+ * 在已 merge 的 UnifiedSearchItem 上再做一遍 cross-script 合并。
+ * 把标题跨文字（Spotify 罗马音 vs QQ 汉字）但艺人+时长相同且文字系统不同的
+ * 条目合并成一个——"横顔" + "Yokogao" → 含 qq/netease/spotify 三个 sources。
+ *
+ * 仅用于 library import 路径（不做在线搜索合并，那个用严格 normalizeKey）。
+ */
+export function mergeCrossScript(items: UnifiedSearchItem[]): UnifiedSearchItem[] {
+  const n = items.length;
+  const dead = new Set<number>();
+  for (let i = 0; i < n; i++) {
+    if (dead.has(i)) continue;
+    const a = items[i];
+    const aArtist = normalizeKey(a.artist, '');
+    for (let j = i + 1; j < n; j++) {
+      if (dead.has(j)) continue;
+      const b = items[j];
+      // Artist must match (same normalizeKey — not loose, because cross-script
+      // merging is only safe when the artist is exactly the same)
+      const bArtist = normalizeKey(b.artist, '');
+      if (aArtist !== bArtist) continue;
+      // Titles must be cross-script
+      const aTitle = normalizeKey(a.title, '');
+      const bTitle = normalizeKey(b.title, '');
+      if (!isCrossScript(aTitle, bTitle)) continue;
+      // Duration within 12 s (generous — cross-script already guarantees
+      // same-artist same-song, duration variation is version difference)
+      if (a.duration > 0 && b.duration > 0 && Math.abs(a.duration - b.duration) > 12) continue;
+      // Merge: sources + likedPlatforms
+      for (const s of b.sources) {
+        if (!a.sources.some((x) => x.platform === s.platform && x.trackId === s.trackId)) {
+          a.sources.push(s);
+        }
+      }
+      if (b.likedPlatforms) {
+        a.likedPlatforms = [...new Set([...(a.likedPlatforms ?? []), ...b.likedPlatforms])];
+      }
+      // Keep the shorter title (usually the CJK/canonical form wins)
+      if (b.title.length < a.title.length) a.title = b.title;
+      dead.add(j);
+    }
+  }
+  // Recompute bestSource for every item that absorbed new sources
+  return items
+    .filter((_, i) => !dead.has(i))
+    .map((it) => {
+      // bestSource is a function of sources — after cross-script merge the
+      // item has more platforms, so re-run the selector.
+      return { ...it, bestSource: selectBestSource(it.sources) };
+    });
+}

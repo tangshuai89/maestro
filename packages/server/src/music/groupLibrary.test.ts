@@ -50,6 +50,8 @@ function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
 function stripForFuzzy(s: string): string {
   return s
     .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '')
+    // 去掉 feat./ft./featuring + 后缀名（与 renderer 同步——PR #46 的 merge 修复）
+    .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+.+$/ig, '')
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
     .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
     .toLowerCase();
@@ -64,7 +66,18 @@ function normalizeNoStrip(s: string): string {
 
 function fuzzyKey(title: string, artist: string): string {
   const t = stripForFuzzy(title) || normalizeNoStrip(title);
-  return `${t}|${stripForFuzzy(artist)}`;
+  return `${t}|${sortedArtistKey(artist)}`;
+}
+
+/** 把 artist 名按分隔符拆 token，每个 token 归一到 fuzzy 形式，排序后拼接。 */
+function sortedArtistKey(artist: string): string {
+  const tokens = artist.split(/\s*[/&、,]\s*/);
+  if (tokens.length <= 1) return stripForFuzzy(artist);
+  const normalized = tokens
+    .map((tok) => stripForFuzzy(tok))
+    .filter(Boolean)
+    .sort();
+  return normalized.join('');
 }
 
 function artistPrefixMatch(a: string, b: string): boolean {
@@ -326,7 +339,32 @@ function main() {
     console.log('✅ 10. 时长差超容差不合并（防版本误并）');
   }
 
-  console.log('\n🎉 groupLibrary.test 全部 10 项通过');
+  // ── 11. feat. 后缀标题合并（无括号 inline feat.） ───────
+  // "Promise in Love" vs "Promise in Love feat. Jose James"
+  // → stripForFuzzy 应剥离 "feat. Jose James" 让两者同 key
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'a', title: 'Promise in Love', artist: 'DJ MITSU THE BEATS', duration: 242, sources: [{ platform: 'netease', trackId: 'ne1' }] }),
+      item({ id: 'b', title: 'Promise in Love feat. Jose James', artist: 'DJ MITSU THE BEATS', duration: 242, sources: [{ platform: 'qq', trackId: 'qq1' }] }),
+    ]);
+    assert.strictEqual(groups.length, 1, 'feat. 后缀去掉后标题同 key → 合并');
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq']);
+    console.log('✅ 11. feat. suffix stripped → title keys match');
+  }
+
+  // ── 12. feat. in parens + artist prefix match (Promise in Love full case) ─
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'a', title: 'Promise in Love', artist: 'José James / DJ MITSU THE BEATS', duration: 242, sources: [{ platform: 'netease', trackId: 'ne1' }] }),
+      item({ id: 'b', title: 'Promise in Love feat. Jose James', artist: 'DJ MITSU THE BEATS', duration: 242, sources: [{ platform: 'qq', trackId: 'qq1' }] }),
+      item({ id: 'c', title: 'Promise in Love (feat. Jose James)', artist: 'DJ Mitsu The Beats / José James', duration: 240, sources: [{ platform: 'spotify', trackId: 'sp1' }] }),
+    ]);
+    assert.strictEqual(groups.length, 1, 'all 3 Promise in Love variants merge');
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify']);
+    console.log('✅ 12. Promise in Love 3-way merge (feat. + artist prefix)');
+  }
+
+  console.log('\n🎉 groupLibrary.test 全部 12 项通过');
 }
 
 main();

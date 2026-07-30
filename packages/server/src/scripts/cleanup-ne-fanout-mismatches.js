@@ -46,6 +46,39 @@ var KNOWN_ALIASES = {
   '天炫男孩': ['tension'],
 };
 
+/**
+ * Strip cover/original-singer/feat annotations from titles before normalizing,
+ * so a song labeled "Attention（Cover：NewJeans）" can match QQ's plain
+ * "Attention". Annotations to strip:
+ *  - (Cover: X) / (cover by X)  / （翻唱：X）
+ *  - (原唱：X) / (Originally: X)
+ *  - (feat. X) / (ft. X) / (featuring X)  ← WITHOUT parens, just inline feat.
+ *  - [cover] / 【cover】
+ */
+function stripTitleAnnotations(t) {
+  return t
+    // (Cover: X) / (cover by X) / （翻唱：X）
+    .replace(/\s*[\(（][^()）]*?(?:cover[:：]|翻唱|cover\s*by)[^()）]*?[\)）]/gi, '')
+    // (原唱：X) / (Originally: X)
+    .replace(/\s*[\(（][^()）]*?(?:原唱[:：]|originally|原曲)[\s\S]*?[\)）]/gi, '')
+    // Bare "feat. X" / "ft. X" / "featuring X" until end of string (no parens)
+    .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+[^\(\[\{]+$/i, '')
+    // [cover] / 【cover】 brackets
+    .replace(/\s*[\[【]\s*cover\s*[\]】]/gi, '');
+}
+
+// Normalize artist for comparison (strip whitespace, lower, remove separators)
+function norm(s) {
+  return (s || '').replace(/\s+/g, '').replace(/[（）【】《》]/g, function(ch) {
+    return ch==='（'?'(' : ch==='）'?')' : ch==='【'?'[' : ch==='】'?']' : ch==='《'?'<' : '>';
+  }).toLowerCase().replace(/[\/&,、・]/g, '');
+}
+
+// Title norm that also strips feat./cover annotations first.
+function normTitle(t) {
+  return norm(stripTitleAnnotations(t));
+}
+
 function artistsOverlap(neNorm, qqNorm) {
   if (!neNorm || !qqNorm) return false;
   // Direct match
@@ -60,13 +93,15 @@ function artistsOverlap(neNorm, qqNorm) {
   return false;
 }
 
-// Build title→QQ-artists index from QQ sources
+// Build title→QQ-artists index from QQ sources. Use `normTitle` (strips
+// Cover:/原唱：/feat./ft. annotations before normalizing) so a NE entry
+// like "Attention（Cover：NewJeans）" maps to QQ's plain "Attention".
 var qqByTitle = {}; // title norm → [{artist norm, original artist}]
 for (var id in libById) {
   var item = libById[id];
   var qqSrc = (item.sources || []).find(function(s) { return s.platform === 'qq'; });
   if (!qqSrc) continue;
-  var tn = norm(item.title);
+  var tn = normTitle(item.title);
   if (!tn) continue;
   if (!qqByTitle[tn]) qqByTitle[tn] = [];
   qqByTitle[tn].push({ n: norm(item.artist), orig: item.artist });
@@ -84,29 +119,33 @@ for (var id in libById) {
   var neSrc = (item.sources || []).find(function(s) { return s.platform === 'netease'; });
   if (!neSrc || !neSrc.trackId) continue;
 
-  var tn = norm(item.title);
+  var tn = normTitle(item.title);
   var qqCandidates = qqByTitle[tn] || [];
 
-  // Heuristic: if there's a QQ song with the SAME title norm and the NE artist
-  // has NO overlap with any QQ artist for that title → fake match (cover version)
+  // Heuristic: if there's a QQ song with the SAME title norm (after stripping
+  // Cover/原唱/feat. annotations) and the NE artist has NO overlap with any
+  // QQ artist for that title → fake match (cover version).
   var neArtistNorm = norm(item.artist);
   var hasOverlap = qqCandidates.some(function(q) {
     return artistsOverlap(neArtistNorm, q.n);
   });
 
   if (qqCandidates.length > 0 && !hasOverlap) {
+    var hasCoverMarker = /Cover[:：]|原唱[:：]|翻唱|cover\s*by/i.test(item.title);
     toUnlike.push({
       neTitle: item.title,
       neArtist: item.artist,
       qqArtists: qqCandidates.map(function(q) { return q.orig; }),
       neTrackId: neSrc.trackId,
+      coverMarker: hasCoverMarker,
     });
   }
 }
 
 console.log('Found ' + toUnlike.length + ' fake cross-platform matches to unlike:\n');
 toUnlike.forEach(function(m, i) {
-  console.log('  ' + (i + 1) + '. "' + m.neTitle + '"  NE:' + m.neArtist + '  →  QQ:' + m.qqArtists.join(', ') + '  [trackId=' + m.neTrackId + ']');
+  var tag = m.coverMarker ? ' [Cover/原唱 marker]' : '';
+  console.log('  ' + (i + 1) + '. "' + m.neTitle + '"  NE:' + m.neArtist + '  →  QQ:' + m.qqArtists.join(', ') + '  [trackId=' + m.neTrackId + ']' + tag);
 });
 
 if (!fixMode) {

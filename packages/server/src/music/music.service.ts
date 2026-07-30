@@ -26,6 +26,7 @@ import {
   stripParensContent,
   VERSION_DURATION_TOLERANCE_SEC,
   DIFFERENT_VERSION_DURATION_TOLERANCE_SEC,
+  mergeCrossScript,
 } from './search.util';
 import { MatchService } from '../match/match.service';
 import { jaroWinkler } from '../match/fuzzy';
@@ -1997,11 +1998,15 @@ export class MusicService {
     const items = this.match.mergeLibrary(
       allTracks.map((t) => this.toPlayableTrack(t)),
     );
+    // Cross-script merge: "横顔" (QQ kanji) + "Yokogao" (Spotify romaji)
+    // → 相同的 normalizeKey(artist) + cross-script title + same duration →
+    // one entry with all three platform sources.
+    const merged = mergeCrossScript(items);
 
     const importedAt = Date.now();
     // 落地时给每个 item 填 likedPlatforms（= import 时刻的 sources 平台）。
     // 后续运行时 fanOut 跨平台同步会用到这个字段——getLibrary 会再叠加 fanOut。
-    const enrichedItems = items.map((it) => ({
+    const enrichedItems = merged.map((it) => ({
       ...it,
       likedPlatforms: it.sources.map((s) => s.platform),
     }));
