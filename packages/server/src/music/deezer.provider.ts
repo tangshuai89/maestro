@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Track } from './music.service';
+import { Track } from './types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
 

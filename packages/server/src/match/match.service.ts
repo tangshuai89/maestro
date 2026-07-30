@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { QqMusicProvider } from '../music/qq.provider';
 import { NeteaseMusicProvider } from '../music/netease.provider';
 import { DeezerMusicProvider } from '../music/deezer.provider';
-import type { Track } from '../music/music.service';
-import type { UnifiedSearchItem } from '../music/types';
+import type { Track, UnifiedSearchItem } from '../music/types';
 import type { MusicProvider } from '../common/provider';
 import { withTimeout } from '../common/timeout';
 import { buildUnifiedItems, dedupTracks, normalizeKey } from '../music/search.util';
@@ -333,7 +332,7 @@ export class MatchService {
           if (provider === 'netease') {
             try {
               return await this.netease.search(
-                {} as never,
+                {},
                 query,
                 limit,
               );

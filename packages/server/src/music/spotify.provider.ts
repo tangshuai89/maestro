@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { Track } from './music.service';
+import { Track } from './types';
 import { ProviderSession } from '../common/session';
 import { StorageService } from '../common/storage';
 import { SessionService } from '../common/session';

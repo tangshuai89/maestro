@@ -20,13 +20,17 @@ import { Injectable, Logger } from '@nestjs/common';
 @Injectable()
 export class RefreshCoordinator {
   private readonly logger = new Logger(RefreshCoordinator.name);
-  private readonly inflight = new Map<string, Promise<string | null>>();
+  private readonly inflight = new Map<string, Promise<unknown>>();
 
   /**
    * Run `doRefresh` with single-flight per sessionId. `doRefresh` is the
    * platform-specific network call + token mutation. The returned Promise
    * resolves to whatever `doRefresh` resolves to (typically a new
    * accessToken, or null on failure).
+   *
+   * Map is typed `Promise<unknown>` (not the generic `T`) so we don't have
+   * to cast back when reading the in-flight entry — both the inserter and
+   * the reader agree on `unknown`, and `T` is only on the return signature.
    */
   run<T>(sessionId: string, doRefresh: () => Promise<T>): Promise<T> {
     const existing = this.inflight.get(sessionId) as Promise<T> | undefined;
@@ -34,10 +38,10 @@ export class RefreshCoordinator {
       this.logger.log(`refresh: sharing in-flight promise for session=${sessionId.slice(0, 8)}…`);
       return existing;
     }
-    const p = doRefresh().finally(() => {
+    const p: Promise<T> = doRefresh().finally(() => {
       this.inflight.delete(sessionId);
     });
-    this.inflight.set(sessionId, p as Promise<string | null>);
+    this.inflight.set(sessionId, p);
     return p;
   }
 
