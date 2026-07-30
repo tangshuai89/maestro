@@ -13,6 +13,7 @@ import { DeezerMusicProvider } from './deezer.provider';
 import { SpotifyMusicProvider } from './spotify.provider';
 import { type LyricLine } from '../common/lyrics';
 import type {
+  Track,
   UnifiedSearchResult,
   UnifiedSearchItem,
   ProviderSearchRaw,
@@ -58,22 +59,6 @@ const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
  *  time=0，前端据此关掉滚动高亮和点击跳转。 */
 function isSynced(lines: LyricLine[]): boolean {
   return lines.some((l) => l.time > 0);
-}
-
-export interface Track {
-  id: string;
-  provider: MusicProvider;
-  title: string;
-  artist: string;
-  album: string;
-  coverUrl: string;
-  audioUrl: string; // 这里是 /music/stream/{provider}/{id} 相对路径，不是真实 URL
-  duration: number;
-  liked: boolean;
-  /** QQ 取流用的 media_mid（可能 ≠ songmid），高音质 filename 需要它。 */
-  mediaMid?: string;
-  /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。见 SourceInfo.vipLocked。 */
-  vipLocked?: boolean;
 }
 
 /** 跨平台匹配用的曲目元数据。点 ❤ / 检测已红心时随请求带上，用来去其余已登录
@@ -1508,6 +1493,20 @@ export class MusicService {
     if (!this.isLikeable(provider)) return;
     const state = this.loadState(session);
     const local = state.providers[provider].liked;
+
+    // CONSERVATIVE GUARD: 各 provider 的 fetchLiked 在「找不到对应歌单」
+    // （NetEase 缺 specialType=5 / QQ 缺 dirid=201 / Spotify 接口 shape 变
+    // 化）等场景下都会返回空 Set——这不是「用户真的没有 ❤」而是「拉不到数据」。
+    // 当前空远端 + 非空本地 → 跳过 reconcile，避免一次性抹掉用户多年的
+    // ❤ 列表。下次成功的拉取会自然收敛。代价：用户真在官方 App 取消全部
+    // ❤ 后，本地角标要等下一次 fetch 才同步；这是更小的代价。
+    if (remote.size === 0 && local.size > 0) {
+      this.logger.warn(
+        `reconcileLiked(${provider}): remote=0 but local=${local.size}, ` +
+          'treating as transient fetch miss; skipping reconcile to avoid clobber',
+      );
+      return;
+    }
 
     const next = new Set(remote);
     for (const t of this.likeSync.pendingTargets(session.id)) {

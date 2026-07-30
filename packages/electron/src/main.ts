@@ -198,6 +198,12 @@ function createTray(): void {
  *  proxy through its Chromium session later if QQ ever tightens anti-bot). */
 let activeQqLoginWindow: BrowserWindow | null = null;
 
+/** In-flight QQ login promise — shared by concurrent callers so we don't
+ *  spawn two windows (race fix: between A's runLoginWindow start and the
+ *  cached-result being set on the window, B's click could otherwise spawn
+ *  a second BrowserWindow, orphaning A). */
+let qqLoginInFlight: Promise<QqLoginResult> | null = null;
+
 /** Stash the last captured login result on the BrowserWindow so a re-
  *  invoke from the renderer (login window already open + user clicks
  *  "login" again) resolves immediately without re-capturing. */
@@ -210,6 +216,9 @@ const QQ_LOGIN_CHANNEL = 'qq-login-result';
 
 /** The NetEase login window (embedded-browser cookie capture). */
 let activeNeteaseLoginWindow: BrowserWindow | null = null;
+
+/** In-flight NetEase login promise (same race fix as QQ). */
+let neteaseLoginInFlight: Promise<NeteaseLoginResult> | null = null;
 
 /** IPC response channel for cookie-based login (NetEase). */
 const NETEASE_LOGIN_CHANNEL = 'netease-login-result';
@@ -381,6 +390,7 @@ async function readQqCookies(win: BrowserWindow): Promise<{
  * we just capture the browser's own login cookies.
  */
 function openQqLoginWindow(): Promise<QqLoginResult> {
+  // Already-running window with a captured result → reuse.
   if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
     activeQqLoginWindow.show();
     activeQqLoginWindow.focus();
@@ -388,9 +398,38 @@ function openQqLoginWindow(): Promise<QqLoginResult> {
       .__maestroLastResult as QqLoginResult | undefined;
     if (cached) return Promise.resolve(cached);
   }
+  // Already-running window, no cached result yet → share the in-flight
+  // promise so concurrent callers don't spawn a second BrowserWindow.
+  if (qqLoginInFlight) return qqLoginInFlight;
 
-  let created: BrowserWindow | null = null;
-  return runLoginWindow<QqLoginResult>({
+  const created: BrowserWindow = new BrowserWindow({
+    width: 1000,
+    height: 760,
+    minWidth: 720,
+    minHeight: 540,
+    title: '登录 QQ 音乐',
+    parent: mainWindow ?? undefined,
+    modal: false,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  activeQqLoginWindow = created;
+  // Attach the 'closed' listener BEFORE returning so even an immediate
+  // close (e.g. user dismisses the window) doesn't leak the reference.
+  created.on('closed', () => {
+    if (activeQqLoginWindow === created) activeQqLoginWindow = null;
+  });
+  // Trigger the initial navigation. runLoginWindow's documented contract is
+  // that the caller-provided createWindow is responsible for triggering the
+  // load (see login-window-runner.ts:226). Our createWindow just returns
+  // the pre-built window, so we must loadURL() here — otherwise the user
+  // sees a blank window with no QQ login page.
+  created.loadURL('https://y.qq.com/');
+
+  qqLoginInFlight = runLoginWindow<QqLoginResult>({
     url: 'https://y.qq.com/',
     title: '登录 QQ 音乐',
     width: 1000,
@@ -400,26 +439,7 @@ function openQqLoginWindow(): Promise<QqLoginResult> {
     domains: QQ_DOMAINS,
     markerNames: QQ_LOGIN_MARKERS,
     keepAliveAfterSuccess: true,
-    createWindow: () => {
-      const win = new BrowserWindow({
-        width: 1000,
-        height: 760,
-        minWidth: 720,
-        minHeight: 540,
-        title: '登录 QQ 音乐',
-        parent: mainWindow ?? undefined,
-        modal: false,
-        backgroundColor: '#ffffff',
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        },
-      });
-      created = win;
-      activeQqLoginWindow = win;
-      win.loadURL('https://y.qq.com/');
-      return win as unknown as MinimalBrowserWindow;
-    },
+    createWindow: () => created as unknown as MinimalBrowserWindow,
     capture: async (win) => {
       const realWin = win as unknown as BrowserWindow;
       const { cookie, uin, all, hasMarker } = await readQqCookies(realWin);
@@ -436,12 +456,9 @@ function openQqLoginWindow(): Promise<QqLoginResult> {
       return result;
     },
   }).finally(() => {
-    if (created) {
-      created.on('closed', () => {
-        if (activeQqLoginWindow === created) activeQqLoginWindow = null;
-      });
-    }
+    qqLoginInFlight = null;
   });
+  return qqLoginInFlight;
 }
 
 // ── NetEase login via embedded browser ─────────────────────────────────────
@@ -509,9 +526,32 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
       .__maestroLastResult as NeteaseLoginResult | undefined;
     if (cached) return Promise.resolve(cached);
   }
+  if (neteaseLoginInFlight) return neteaseLoginInFlight;
 
-  let created: BrowserWindow | null = null;
-  return runLoginWindow<NeteaseLoginResult>({
+  const created: BrowserWindow = new BrowserWindow({
+    width: 1000,
+    height: 760,
+    minWidth: 720,
+    minHeight: 540,
+    title: '登录网易云音乐',
+    parent: mainWindow ?? undefined,
+    modal: false,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  activeNeteaseLoginWindow = created;
+  created.on('closed', () => {
+    if (activeNeteaseLoginWindow === created) activeNeteaseLoginWindow = null;
+  });
+  // See QQ flow — same contract: createWindow returns the pre-built window,
+  // so we trigger loadURL() here. Without this, the window opens to a blank
+  // page and the user can never reach the NetEase login form.
+  created.loadURL('https://music.163.com/login');
+
+  neteaseLoginInFlight = runLoginWindow<NeteaseLoginResult>({
     url: 'https://music.163.com/login',
     title: '登录网易云音乐',
     width: 1000,
@@ -521,26 +561,7 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
     domains: NETEASE_DOMAINS,
     markerNames: ['MUSIC_U'],
     keepAliveAfterSuccess: true,
-    createWindow: () => {
-      const win = new BrowserWindow({
-        width: 1000,
-        height: 760,
-        minWidth: 720,
-        minHeight: 540,
-        title: '登录网易云音乐',
-        parent: mainWindow ?? undefined,
-        modal: false,
-        backgroundColor: '#ffffff',
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        },
-      });
-      created = win;
-      activeNeteaseLoginWindow = win;
-      win.loadURL('https://music.163.com/login');
-      return win as unknown as MinimalBrowserWindow;
-    },
+    createWindow: () => created as unknown as MinimalBrowserWindow,
     capture: async (win) => {
       const realWin = win as unknown as BrowserWindow;
       const { musicU, csrf, all } = await readNeteaseCookies(realWin);
@@ -561,12 +582,9 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
       return result;
     },
   }).finally(() => {
-    if (created) {
-      created.on('closed', () => {
-        if (activeNeteaseLoginWindow === created) activeNeteaseLoginWindow = null;
-      });
-    }
+    neteaseLoginInFlight = null;
   });
+  return neteaseLoginInFlight;
 }
 
 // ── IPC wiring ──────────────────────────────────────────────────────────────
@@ -638,26 +656,58 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('maestro');
 }
 
-// 协议 URL 回调：OS 把 maestro://spotify-callback?code=...&state=... 递进来
-// 走 oauthBuffer：renderer 端通过 consumeOAuthCallback() IPC 拉取；这样即使
-// main 窗口未就绪（或正被 recreate）也不会丢回调。10 min TTL 与 PKCE flow 一致。
-app.on('open-url', (event, url) => {
-  event.preventDefault();
-  console.log('[main] open-url:', url);
+// Single-instance lock: 如果用户再点一次 dock / .app 触发第二次进程（macOS
+// 在主进程刚启动还没就绪时偶发；或在已经有实例的情况下启动第二个 .app），
+// 第二次启动会拿到 false，直接退出。第二次启动收到的 open-url / argv 也
+// 会通过 'second-instance' 事件路由到第一个进程，由它接管回调处理。
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv /*, cwd */) => {
+    // 把第二个实例的 argv 里可能夹带的 maestro:// URL 也喂给 oauthBuffer，
+    // 防止 macOS 把 deep-link 发给了"那个我们刚 quit 的"第二进程。
+    const incomingUrl = argv.find((a) => a.startsWith('maestro://'));
+    if (incomingUrl) handleDeepLink(incomingUrl);
+    showMainWindow();
+  });
+}
+
+/** Parse a maestro:// deep link and route to oauthBuffer or log an error.
+ *  Extracted so 'open-url' (macOS) and 'second-instance' argv (Win/Linux)
+ *  share one implementation. */
+function handleDeepLink(url: string): void {
+  console.log('[main] deep link:', url);
   try {
-    const normalized = url.replace(/\/\?/, '?');
-    const parsed = new URL(normalized);
-    const code = parsed.searchParams.get('code');
+    const parsed = new URL(url.replace(/\/\?/, '?'));
+    // OAuth error: Spotify may redirect with ?error=access_denied&state=...
+    // instead of code+state. Surface to the renderer so it doesn't hang
+    // on consumeOAuthCallback() forever.
+    const error = parsed.searchParams.get('error');
     const state = parsed.searchParams.get('state');
+    if (error) {
+      oauthBuffer.pushError(error, state ?? undefined, url);
+      console.log(`[main] oauth-buffer: pushed error=${error}`);
+      return;
+    }
+    const code = parsed.searchParams.get('code');
     if (!code || !state) {
-      console.error('[main] open-url 缺 code 或 state，忽略');
+      console.error('[main] deep link 缺 code 或 state，忽略:', url);
       return;
     }
     oauthBuffer.push(code, state);
     console.log('[main] oauth-buffer: pushed callback');
   } catch (err) {
-    console.error('[main] open-url parse failed:', err);
+    console.error('[main] deep link parse failed:', err);
   }
+}
+
+// 协议 URL 回调：OS 把 maestro://spotify-callback?code=...&state=... 递进来
+// 走 oauthBuffer：renderer 端通过 consumeOAuthCallback() IPC 拉取；这样即使
+// main 窗口未就绪（或正被 recreate）也不会丢回调。10 min TTL 与 PKCE flow 一致。
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
 });
 
 app.whenReady().then(async () => {

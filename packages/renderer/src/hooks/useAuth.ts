@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useReducer, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   cancelSpotifyAuth,
   getAuthStatus,
@@ -20,7 +20,7 @@ import { ATTEMPT_TIMEOUT_MS, type AuthAttempt, type AuthErrorCode } from '../aut
 
 /** True when running inside the Electron shell (not just a browser tab). */
 const isElectron =
-  typeof typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+  typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
 
 /** 24h — renderer's "stale credentials" probe interval. If lastValidatedAt
  *  is older than this, the next status fetch re-runs the guard call. */
@@ -50,6 +50,10 @@ export function useAuth(
     provider ?? 'qq',
     initialAuthState,
   );
+  /** Browser-fallback flag: when running outside Electron (or without the
+   *  native cookie-capture IPC), NetEase login can't capture MUSIC_U from a
+   *  child Chromium window. We surface the QR/modal flow instead. */
+  const [showCookieFallback, setShowCookieFallback] = useState(false);
   /** Per-attempt cancellation: deadline timer + abort flag. The hook owns
    *  the side effects; the reducer owns the state. */
   const deadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -210,7 +214,7 @@ export function useAuth(
     try {
       if (!isElectron || !window.electronAPI?.neteaseLogin) {
         // Browser fallback: open QR modal via parent component.
-        setShowCookieFallbackExternal(true);
+        setShowCookieFallback(true);
         // External code path will call handleCookieFallbackSuccess on success
         // or handleCancel on cancel.
         return;
@@ -342,9 +346,19 @@ export function useAuth(
         // already have a value from before the window was ready.
         const pending =
           (await window.electronAPI?.consumeOAuthCallback?.()) ?? null;
+        // OAuth error variant (user denied / provider rejection): bail
+        // immediately rather than waiting the full 10 min.
+        if (pending && 'error' in pending) {
+          throw makeAuthError(
+            'AUTH_CANCELLED',
+            `Spotify 登录被拒绝：${pending.error}`,
+            attempt,
+            state.provider,
+          );
+        }
         let code: string;
         let stateVal: string;
-        if (pending && pending.code && pending.state) {
+        if (pending && 'code' in pending && pending.code && pending.state) {
           code = pending.code;
           stateVal = pending.state;
         } else {
@@ -482,8 +496,8 @@ export function useAuth(
       state.phase.kind === 'starting' ||
       state.phase.kind === 'waiting_user' ||
       state.phase.kind === 'validating',
-    showCookieFallback: false, // set by parent via setShowCookieFallbackExternal
-    setShowCookieFallback: setShowCookieFallbackExternal,
+    showCookieFallback,
+    setShowCookieFallback,
     handleNeteaseLogin,
     handleQqLogin,
     handleSpotifyLogin,
@@ -512,15 +526,4 @@ function makeAuthError(
   void attempt;
   void provider;
   return e;
-}
-
-/** Bridge for the legacy showCookieFallback boolean (parent owns the
- *  state — this hook just signals "show it" via the setter the parent
- *  passed in). We use a module-local ref to avoid prop-drilling; the
- *  parent component (App.tsx) sets it via the returned setter. */
-const setShowCookieFallbackExternalRef: { current: (v: boolean) => void } = {
-  current: () => undefined,
-};
-function setShowCookieFallbackExternal(v: boolean): void {
-  setShowCookieFallbackExternalRef.current(v);
 }

@@ -19,9 +19,24 @@ export interface BufferedCallback {
   receivedAt: number;
 }
 
+/** Error variant when the OAuth provider rejected the user (e.g.
+ *  `?error=access_denied`). The renderer can use `error` to surface a
+ *  friendly message and bail out of the 10-min wait. */
+export interface BufferedError {
+  error: string;
+  state?: string;
+  receivedAt: number;
+}
+
+export type BufferedOAuthEntry = BufferedCallback | BufferedError;
+
+function isErrorEntry(e: BufferedOAuthEntry | null): e is BufferedError {
+  return !!e && typeof (e as BufferedError).error === 'string';
+}
+
 export class OAuthCallbackBuffer {
-  private pending: BufferedCallback | null = null;
-  private consumer: ((cb: BufferedCallback | null) => void) | null = null;
+  private pending: BufferedOAuthEntry | null = null;
+  private consumer: ((cb: BufferedOAuthEntry | null) => void) | null = null;
 
   /**
    * Called from main process's `app.on('open-url', ...)` handler. If a
@@ -41,6 +56,19 @@ export class OAuthCallbackBuffer {
     this.pending = cb;
   }
 
+  /** Push an OAuth error (user denied / provider rejection). */
+  pushError(error: string, state: string | undefined, _url: string): void {
+    const e: BufferedError = { error, state, receivedAt: Date.now() };
+    if (this.consumer) {
+      const c = this.consumer;
+      this.consumer = null;
+      this.pending = null;
+      c(e);
+      return;
+    }
+    this.pending = e;
+  }
+
   /**
    * Called from preload's `consumeOAuthCallback()` IPC. If a buffered
    * callback exists and is still within TTL, returns it and clears the
@@ -48,7 +76,7 @@ export class OAuthCallbackBuffer {
    * will receive the next push (useful when the renderer starts before
    * the OS hands the URL).
    */
-  consume(): Promise<BufferedCallback | null> {
+  consume(): Promise<BufferedOAuthEntry | null> {
     if (this.pending) {
       if (Date.now() - this.pending.receivedAt > TTL_MS) {
         this.pending = null;
@@ -83,13 +111,18 @@ export class OAuthCallbackBuffer {
   }
 
   /** Test / diagnostics: peek without consuming. */
-  peek(): BufferedCallback | null {
+  peek(): BufferedOAuthEntry | null {
     if (!this.pending) return null;
     if (Date.now() - this.pending.receivedAt > TTL_MS) {
       this.pending = null;
       return null;
     }
     return this.pending;
+  }
+
+  /** True if the current pending entry is an error (vs. a success code). */
+  hasError(): boolean {
+    return isErrorEntry(this.pending);
   }
 }
 

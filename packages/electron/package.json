@@ -25,6 +25,12 @@
     "productName": "Maestro",
     "afterPack": "afterPack-vmp.cjs",
     "electronDist": "../../node_modules/electron/dist",
+    "protocols": [
+      {
+        "name": "Spotify OAuth Callback",
+        "schemes": ["maestro"]
+      }
+    ],
     "mac": {
       "category": "public.app-category.music",
       "target": "dmg",
@@ -34,7 +40,10 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "!dist/**/*.map",
+      "!dist/**/*.d.ts",
+      "!dist/**/*.d.ts.map"
     ],
     "extraResources": [
       {

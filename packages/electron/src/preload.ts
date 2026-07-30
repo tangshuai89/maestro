@@ -115,14 +115,18 @@ const electronAPI = {
   /**
    * Pull the most recent (or pending) Spotify OAuth callback. Returns
    * `null` if no callback is buffered AND none arrives within 10 minutes.
+   * The result can be either a successful {code, state, receivedAt} or an
+   * error variant {error, state?, receivedAt} when the OAuth provider
+   * redirected with ?error=... — used by `useAuth` to bail instead of
+   * waiting the full 10 min on a denied authorization.
    * Used by `useAuth` to survive the "OS hands the URL before main window
    * is ready" race.
    */
-  consumeOAuthCallback: (): Promise<{
-    code: string;
-    state: string;
-    receivedAt: number;
-  } | null> => ipcRenderer.invoke('consume-oauth-callback'),
+  consumeOAuthCallback: (): Promise<
+    | { code: string; state: string; receivedAt: number }
+    | { error: string; state?: string; receivedAt: number }
+    | null
+  > => ipcRenderer.invoke('consume-oauth-callback'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

@@ -9,6 +9,7 @@ export {};
 const assert = require('node:assert');
 
 import { OAuthCallbackBuffer, OAUTH_BUFFER_TTL_MS } from './oauth-buffer';
+import type { BufferedCallback, BufferedError, BufferedOAuthEntry } from './oauth-buffer';
 
 const realNow = Date.now;
 
@@ -38,7 +39,7 @@ void (async () => {
 await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   b.push('code1', 'state1');
-  const peeked = b.peek();
+  const peeked = b.peek() as BufferedCallback | null;
   assert.ok(peeked);
   assert.strictEqual(peeked!.code, 'code1');
   console.log('✅ 1. push without consumer: buffered');
@@ -48,7 +49,7 @@ await withFakeTime(async () => {
 await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   b.push('code2', 'state2');
-  const got = await b.consume();
+  const got = (await b.consume()) as BufferedCallback | null;
   assert.ok(got);
   assert.strictEqual(got!.code, 'code2');
   assert.strictEqual(got!.state, 'state2');
@@ -61,7 +62,7 @@ await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   const p = b.consume();
   b.push('code3', 'state3');
-  const got = await p;
+  const got = (await p) as BufferedCallback | null;
   assert.ok(got);
   assert.strictEqual(got!.code, 'code3');
   console.log('✅ 3. consumer first: push flushes to waiting consumer');
@@ -89,7 +90,7 @@ await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   b.push('old', 's1');
   b.push('new', 's2');
-  const got = await b.consume();
+  const got = (await b.consume()) as BufferedCallback | null;
   assert.strictEqual(got!.code, 'new', 'newer push wins');
   console.log('✅ 6. newer push replaces older');
 });
@@ -98,16 +99,42 @@ await withFakeTime(async () => {
 await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   b.push('first', 's1');
-  const r1 = await b.consume();
+  const r1 = (await b.consume()) as BufferedCallback | null;
   assert.strictEqual(r1!.code, 'first');
   const p = b.consume();
   b.push('second', 's2');
-  const r2 = await p;
+  const r2 = (await p) as BufferedCallback | null;
   assert.strictEqual(r2!.code, 'second');
   console.log('✅ 7. push after consume: registers new consumer, flushes');
 });
 
+// ── 8. pushError: error entry surfaces to consumer ──────────────────────
+await withFakeTime(async () => {
+  const b = new OAuthCallbackBuffer();
+  const p = b.consume();
+  b.pushError('access_denied', 's9', 'maestro://x?error=access_denied');
+  const got = (await p) as BufferedError | null;
+  assert.ok(got);
+  assert.strictEqual((got as BufferedError).error, 'access_denied');
+  assert.strictEqual(got!.state, 's9');
+  console.log('✅ 8. pushError: OAuth error surfaces to waiting consumer');
+});
+
+// ── 9. hasError / peek: distinguishes error vs success ──────────────────
+await withFakeTime(async () => {
+  const b = new OAuthCallbackBuffer();
+  b.push('c', 's');
+  assert.strictEqual(b.hasError(), false);
+  const peeked = b.peek() as BufferedCallback | null;
+  assert.strictEqual(peeked!.code, 'c');
+  // New buffer → error
+  const b2 = new OAuthCallbackBuffer();
+  b2.pushError('access_denied', undefined, 'maestro://x?error=access_denied');
+  assert.strictEqual(b2.hasError(), true);
+  console.log('✅ 9. hasError distinguishes success vs error');
+});
+
 void tick;
 
-console.log('\n🎉 oauth-buffer.test.ts: all 7 cases passed');
+console.log('\n🎉 oauth-buffer.test.ts: all 9 cases passed');
 })();
