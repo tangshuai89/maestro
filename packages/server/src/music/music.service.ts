@@ -1304,11 +1304,20 @@ export class MusicService {
     // Noccha Te"（罗马字），normalizeKey 后一个是 CJK、一个是 Latin，看不出
     // 等同。两者 duration 完全相同（282s）说明是同一首歌。此类情况在日音
     // 库非常常见（Spotify 用罗马字标题，QQ/网易云用汉字/假名）。
+    //
+    // ⚠️ 2026-07-30 hardening: 只对 full key 做 cross-script 是不够的——
+    //    当两个 title 完全不同、仅是碰巧艺人相同（如 ぬゆり 的 ロウワー vs
+    //    青く青く光る），full key 仍会被判 cross-script（种子有汉字、候选
+    //    混了拉丁字符）。改成：title + artist 都必须各自通过 cross-script
+    //    判定（或至少 title 也要 cross-script → 同一首歌的可能性才够高）。
     for (const t of tracks) {
       const tk = this.normalizeKey(t.title, t.artist);
-      // 跨文字系统判定：一方纯 CJK/含 CJK、另一方纯 Latin（isCrossScript
-      // 已经包含了这层）。加上 duration 门限防止误命中。
       if (!this.isCrossScript(tk, wantKey)) continue;
+      // Title-level gate: reject if titles are in the same script.
+      // Prevents "same artist, entirely different song" false matches.
+      const tcand = this.normalizeKey(t.title, '');
+      const tseed = this.normalizeKey(meta.title, '');
+      if (!this.isCrossScript(tcand, tseed)) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
       this.logger.log(
         `searchEquivalent ${platform} cross-script title match [${tag}]: ` +
@@ -1434,7 +1443,14 @@ export class MusicService {
    * 网易云用汉字（"藤井风"）——歌名+时长已对上时，不应因艺人脚本不同而拒绝。
    */
   private isCrossScript(a: string, b: string): boolean {
-    const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+    // Hiragana (U+3040-U+309F) + Katakana (U+30A0-U+30FF) + CJK Unified
+    // Ideographs (U+4E00-U+9FFF) + CJK Extension A (U+3400-U+4DBF).
+    // Without the kana ranges, pure-kana strings like ロウワー or ぬゆり
+    // are detected as "neither CJK nor Latin", making isCrossScript
+    // falsely reject legitimate kanji↔kana+titles or falsely accept
+    // same-artist-different-song cases that only differ by kana occurrence.
+    const hasCjk = (s: string) =>
+      /[\u3040-\u30FF\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
     const hasLatin = (s: string) => /[a-z]/.test(s);
     const aCjk = hasCjk(a);
     const bCjk = hasCjk(b);

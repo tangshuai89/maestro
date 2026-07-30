@@ -413,7 +413,8 @@ export function buildUnifiedItems(
  * 注意：不对内容做翻译/映射——只判定"是同一首歌的两个不同写法，应该合"。
  */
 export function isCrossScript(a: string, b: string): boolean {
-  const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+  const hasCjk = (s: string) =>
+    /[\u3040-\u30FF\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
   const hasLatin = (s: string) => /[a-z]/.test(s);
   const aCjk = hasCjk(a);
   const bCjk = hasCjk(b);
