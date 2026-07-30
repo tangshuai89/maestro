@@ -48,10 +48,18 @@ export function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
   return BADGE_ORDER.filter((p) => set.has(p));
 }
 
-/** 归一：去成对括号及内容 → 全角转半角 → 去空格标点 → 小写。 */
+/** 归一：去成对括号及内容 → 全角转半角 → 去空格标点 → 小写。
+ *
+ *  还额外去掉 feat./ft./featuring 后缀（含括号和无括号两种形式），
+ *  让「Promise in Love feat. Jose James」与「Promise in Love」收敛到
+ *  同一 fuzzy key。Cover/原唱/翻唱 等标注同理。修订依据：
+ *  PR #45 的跨平台 ❤ 错配排查（"Promise in Love" 被拆成 3 条，无法合并）。 */
 function stripForFuzzy(s: string): string {
   return s
     .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '') // 去成对括号及里面的内容
+    // 去掉 feat./ft./featuring + 后缀名（括号已剥，这一遍只打无括号的 inline
+    // feat.。`+` 而非 `[^-...]+` 因为 feat 后面的名字可能有空格如 "Jose James"）
+    .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+.+$/ig, '')
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
     .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
     .toLowerCase();
@@ -65,10 +73,26 @@ function normalizeNoStrip(s: string): string {
     .toLowerCase();
 }
 
-/** 分组用的模糊 key：去括号归一的「歌名|歌手」。 */
+/** 分组用的模糊 key：去括号归一的「歌名|歌手」。
+ *  歌手侧先按 `/` / `&` / `、` / `,` 拆 token，归一后**排序**再拼回——
+ *  这样「José James / DJ MITSU THE BEATS」和「DJ Mitsu The Beats / José James」
+ *  收敛到同一个 key，不受名字顺序影响。 */
 export function fuzzyKey(title: string, artist: string): string {
   const t = stripForFuzzy(title) || normalizeNoStrip(title);
-  return `${t}|${stripForFuzzy(artist)}`;
+  return `${t}|${sortedArtistKey(artist)}`;
+}
+
+/** 把 artist 名按分隔符拆 token，每个 token 归一到 fuzzy 形式，排序后拼接。
+ *  分隔符目前识别 `/` `&` `、` `,`（中文顿号、日文中点已被 stripForFuzzy 的
+ *  第 4 步去掉，不在此处处理）。 */
+function sortedArtistKey(artist: string): string {
+  const tokens = artist.split(/\s*[/&、,]\s*/);
+  if (tokens.length <= 1) return stripForFuzzy(artist);
+  const normalized = tokens
+    .map((tok) => stripForFuzzy(tok))
+    .filter(Boolean)
+    .sort();
+  return normalized.join('');
 }
 
 /**
