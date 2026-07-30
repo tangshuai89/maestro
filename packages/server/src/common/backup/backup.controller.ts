@@ -7,11 +7,15 @@ import {
   BadRequestException,
   OnModuleInit,
   OnModuleDestroy,
+  Req,
+  Res,
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { StorageService } from '../storage';
 import { ConfigService } from '../config';
+import { SessionService } from '../session';
 
 /**
  * 会话快照导出 / 导入 + 每日本地自动备份。
@@ -23,6 +27,10 @@ import { ConfigService } from '../config';
  * 自动备份：进程起来后每 24h 把 state.json 拷一份到 backupDir，保留最近 N 份。
  * 备份是**明文**（跑在用户自己机器的固定目录里）；加密只在用户主动"导出"到
  * 外部文件那条路径上做（backup-crypto.ts）。
+ *
+ * 所有 state-mutating endpoint 必须先经 SessionService.resolve() 拿到合法
+ * session（基于签名 cookie）。这是为了：同一台机器上的其他进程 / 任何能在
+ * :3200 发起 HTTP 请求的代码都不能直接 GET 全量 state 或 POST 注入快照。
  */
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -34,6 +42,7 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly storage: StorageService,
     private readonly cfg: ConfigService,
+    private readonly sessionService: SessionService,
   ) {}
 
   onModuleInit(): void {
@@ -52,13 +61,23 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
 
   /** 整个 store 的快照（renderer 端和 localStorage 一起加密后导出）。 */
   @Get('state')
-  getState(): { stateJson: Record<string, unknown> } {
+  getState(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): { stateJson: Record<string, unknown> } {
+    // Require an existing session — otherwise any localhost request could
+    // dump the entire cookie/token store (see Audit #0.4).
+    this.sessionService.resolve(req, res);
     return { stateJson: this.storage.getAll() };
   }
 
   /** 备份目录 + 现有份数，给 Settings UI 显示。 */
   @Get('info')
-  info(): { backupDir: string; backupCount: number } {
+  info(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): { backupDir: string; backupCount: number } {
+    this.sessionService.resolve(req, res);
     return {
       backupDir: this.cfg.backupDir,
       backupCount: this.listBackups().length,
@@ -72,7 +91,10 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
   @Post('import')
   importState(
     @Body() body: { stateJson?: Record<string, unknown> },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): { merged: string[] } {
+    this.sessionService.resolve(req, res);
     const snapshot = body?.stateJson;
     if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
       throw new BadRequestException('stateJson 必须是对象');
@@ -86,7 +108,11 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
 
   /** 手动触发一次本地备份。返回落盘路径 + 当前备份目录里的份数。 */
   @Post('backup')
-  backupNow(): { path: string; count: number } {
+  backupNow(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): { path: string; count: number } {
+    this.sessionService.resolve(req, res);
     const p = this.runBackup('manual');
     if (!p) throw new BadRequestException('备份失败，见服务端日志');
     const count = this.listBackups().length;

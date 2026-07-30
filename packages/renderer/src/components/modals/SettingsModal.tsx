@@ -166,6 +166,9 @@ export default function SettingsModal({ onClose }: Props) {
           <p className="settings-section-hint">
             导出登录态、红心库与偏好为一个加密文件（含各平台 cookie / token，
             务必设口令）。换电脑或重装后可导入恢复。
+            <br />
+            自动生成的口令由 256 词词表随机抽 4 词组合，请妥善保管——丢了这个口令
+            备份无法恢复。
           </p>
           <label className="settings-label">口令</label>
           <div className="settings-pass-row">

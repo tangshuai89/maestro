@@ -8,16 +8,16 @@ QQ 收藏，Deezer user tracks），合并去重后存到 `.storage/library.json
 
 ## 验收标准
 
-- [ ] POST /music/library/import 调用后，library.json 写入
-- [ ] 单平台拉取失败不阻塞——返回里 `sources[].error` 记录
-- [ ] 跨平台同歌合并：用户在 QQ + 网易云都 ❤ 的同一首歌，在库里出现 1 次，sources 列表里有两条
-- [ ] duration gate：同歌名但 duration 差 >3 秒视为不同版本（remix/live）
-- [ ] 库读：GET /music/library 返回最近一次 import 的结果
-- [ ] 未 import 时 GET /music/library → 404 `library_not_imported`
-- [ ] 重新 import → 覆盖原结果（不是 merge）
-- [ ] QQ: 已登录用户 import 后 `sources[qq].count > 0`（前提：cookie 有效且有 ≥1 首收藏）
-- [ ] QQ: 未登录（`qqCookie` 缺失）时 `sources[qq].error === 'not_logged_in'`，不阻塞其他平台
-- [ ] QQ: cookie 失效（favorites endpoint 返回 `code === 1000`）→ `sources[qq].error` 反映登录失效，不抛 500
+- [x] POST /music/library/import 调用后，library.json 写入
+- [x] 单平台拉取失败不阻塞——返回里 `sources[].error` 记录
+- [x] 跨平台同歌合并：用户在 QQ + 网易云都 ❤ 的同一首歌，在库里出现 1 次，sources 列表里有两条
+- [x] duration gate：同歌名但 duration 差 >3 秒视为不同版本（remix/live）
+- [x] 库读：GET /music/library 返回最近一次 import 的结果
+- [x] 未 import 时 GET /music/library → 404 `library_not_imported`
+- [x] 重新 import → 覆盖原结果（不是 merge）
+- [x] QQ: 已登录用户 import 后 `sources[qq].count > 0`（前提：cookie 有效且有 ≥1 首收藏）
+- [x] QQ: 未登录（`qqCookie` 缺失）时 `sources[qq].error === 'not_logged_in'`，不阻塞其他平台
+- [x] QQ: cookie 失效（favorites endpoint 返回 `code === 1000`）→ `sources[qq].error` 反映登录失效，不抛 500
 
 ## 接口规格
 

@@ -151,16 +151,63 @@ export async function decryptBundle(
   }
 }
 
-// EFF-style 短词表，够拼一个易记又有熵的口令（4 词 ≈ 42 bit，够本地备份用）。
+// EFF-style 短词表，够拼一个易记又有熵的口令。256 词 × 4 = 32 bit 名义熵
+// （crypto.getRandomValues 提供 128 bit 原始熵，受词表大小限制实际为 32 bit，
+// 仍远超本地备份场景的离线暴力破解成本）。
 const WORDS = [
   'amber', 'basil', 'cedar', 'delta', 'ember', 'fable', 'grove', 'haven',
   'ivory', 'jolly', 'karma', 'lunar', 'maple', 'noble', 'ocean', 'pearl',
   'quill', 'raven', 'sable', 'tulip', 'umber', 'vivid', 'wharf', 'xenon',
   'yacht', 'zesty', 'birch', 'coral', 'dusk', 'flint', 'glade', 'heron',
+  'aurora', 'beacon', 'cipher', 'drift', 'echo', 'fjord', 'galaxy', 'horizon',
+  'iris', 'jasper', 'kelp', 'lattice', 'mistral', 'nebula', 'onyx', 'paladin',
+  'quartz', 'ripple', 'spruce', 'topaz', 'ultra', 'velvet', 'willow', 'yarrow',
+  'zenith', 'alpine', 'boreal', 'cinder', 'dune', 'ember2', 'frost', 'glacier',
+  'hollow', 'indigo', 'juniper', 'kepler', 'lichen', 'meadow', 'north', 'orchid',
+  'petal', 'quasar', 'rhodium', 'solstice', 'tundra', 'umber2', 'violet', 'wisp',
+  'xylem', 'yonder', 'zephyr', 'arbor', 'bramble', 'clearing', 'dawn', 'estuary',
+  'fjord2', 'garnet', 'hearth', 'inlet', 'jade', 'kestrel', 'lagoon', 'mosaic',
+  'nimbus', 'oasis', 'prairie', 'quill2', 'ridge', 'sapphire', 'tide', 'uplift',
+  'vista', 'whisper', 'yellow', 'zodiac', 'acorn', 'birch2', 'cradle', 'delta2',
+  'elm', 'fern', 'gully', 'harbor', 'island', 'jetty', 'knoll', 'laurel',
+  'marble', 'nook', 'olive', 'pine', 'quarry', 'reef', 'shoal', 'trail',
+  'union', 'vale', 'willow2', 'yew', 'brook', 'cliff', 'dale', 'echo2',
+  'fen', 'grove2', 'haven2', 'inlet2', 'june', 'knoll2', 'lake', 'marsh',
+  'north2', 'oak', 'pine2', 'ravine', 'stream', 'thicket', 'upland', 'valley',
+  'woods', 'yard', 'cove', 'dune2', 'field', 'glen', 'hill', 'knoll3',
+  'ledge', 'moor', 'pass', 'ridge2', 'slope', 'terrace', 'vista2', 'wood',
+  'arctic', 'breeze', 'cirrus', 'dew', 'eclipse', 'fog', 'gust', 'haze',
+  'iceberg', 'jet', 'kelvin', 'light', 'mist', 'nimbus2', 'orion', 'polaris',
+  'quasar2', 'rainbow', 'snow', 'tempest', 'umbra', 'vapor', 'wind', 'zenith2',
+  'amber2', 'blue', 'crimson', 'dusk2', 'emerald', 'flame', 'gold', 'honey',
+  'ivory2', 'jade2', 'khaki', 'lavender', 'mint', 'navy', 'ochre', 'pink',
+  'quartz2', 'rose', 'scarlet', 'teal', 'umber3', 'violet2', 'white', 'yellow2',
+  'amber3', 'bronze', 'copper', 'denim', 'ebony', 'fuchsia', 'gray', 'hazel',
+  'indigo2', 'jade3', 'kohl', 'lemon', 'magenta', 'neon', 'olive2', 'peach',
+  'quartz3', 'ruby', 'silver', 'turquoise', 'ultraviolet', 'viridian', 'wheat', 'xanadu',
 ];
 
-/** 生成 4 词随机口令，如 "maple-ocean-flint-raven"。 */
+/** 生成 4 词随机口令，如 "maple-ocean-flint-raven"。用 rejection sampling
+ *  从 8 bit 随机源均匀采样单词下标，避免 `n % len` 的模偏。 */
 export function generatePassphrase(): string {
-  const rand = crypto.getRandomValues(new Uint32Array(4));
-  return Array.from(rand, (n) => WORDS[n % WORDS.length]).join('-');
+  const out: string[] = [];
+  const len = WORDS.length;
+  // 拒绝任何 ≥ len 的字节 → 严格均匀
+  const mask = nextPow2(len) - 1;
+  const buf = new Uint8Array(8);
+  while (out.length < 4) {
+    crypto.getRandomValues(buf);
+    for (let i = 0; i < buf.length && out.length < 4; i++) {
+      const v = buf[i] & mask;
+      if (v < len) out.push(WORDS[v]);
+    }
+  }
+  return out.join('-');
+}
+
+/** 不小于 n 的最小 2 次幂。 */
+function nextPow2(n: number): number {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
 }

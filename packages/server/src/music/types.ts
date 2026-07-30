@@ -1,5 +1,26 @@
 import { MusicProvider } from '../common/provider';
-import { Track } from './music.service';
+
+/**
+ * 单条 track 元数据。统一各 provider search / fetchLiked / radio 返回形状，
+ * 放 `types.ts` 而不是 `music.service.ts`（CLAUDE.md 要求类型定义放各自模块的
+ * types.ts；service 文件不应被 providers 单纯为了拿 Track 类型而 import）。
+ */
+export interface Track {
+  id: string;
+  provider: MusicProvider;
+  title: string;
+  artist: string;
+  album: string;
+  coverUrl: string;
+  /** `/music/stream/{provider}/{id}` 相对路径，不是真实 URL —— 真实 URL 走服务端代理。 */
+  audioUrl: string;
+  duration: number;
+  liked: boolean;
+  /** QQ 取流用的 media_mid（可能 ≠ songmid），高音质 filename 需要它。 */
+  mediaMid?: string;
+  /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。见 SourceInfo.vipLocked。 */
+  vipLocked?: boolean;
+}
 
 /** 单个平台上的搜索结果条目。 */
 export interface SourceInfo {

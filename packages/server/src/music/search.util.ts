@@ -5,7 +5,7 @@
  * MusicService 内部也复用同一份实现。
  */
 import { Converter } from 'opencc-js';
-import type { Track } from './music.service';
+import type { Track } from './types';
 import type {
   SourceInfo,
   UnifiedSearchItem,
