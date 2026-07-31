@@ -13,3 +13,16 @@
 - [x] 13. 单测：qq.provider.test.ts 验证 computeGtk DJB2 实现
 - [x] 14. 根 package.json test 脚本加入 qq.provider.test.ts
 - [x] 15. spec.md 验收标准 + 范围段更新；tasks.md 7 → 15 项
+- [ ] 16. LikedLibraryModal: sessionStorage SWR（packages/renderer/src/lib/likedCache.ts）— 二次打开首帧渲染旧库
+- [ ] 17. LikedLibraryModal: 首次打开 skeleton 占位（6 行瀑布错开）
+- [ ] 18. LikedLibraryModal: 「重新导入」中顶部渐变同步条 + 中央心形脉动 overlay + 列表降亮度
+- [ ] 19. LikedLibraryModal: 「现在导入」/「重新导入」按钮内嵌 spinner，文案换为「…中」
+- [ ] 20. App.tsx 注入 onImportSettled → reloadLikedCount 刷新 ❤ 角标
+- [ ] 21. _liked-modal.scss 加 skeleton-pulse / syncbar-slide / heart-pulse / btn-spin 动画 + overlay 模糊背景
+- [ ] 22. spec.md 增加「UI / 体验（LikedLibraryModal）」节，验收标准覆盖以上
+- [ ] 23. 修 bug：modal 关闭前 fetch 未 resolve → 关闭后 cache 未更新 → 下次打开看老数据。把 writeCachedLibrary 提到 cancelled 检查之前；后台拉新时标题右侧绿色脉动小点指示
+- [ ] 24. 修 bug：fanOut key (QQ main) 与 library item.id (netease main) 不一致时 getLibrary 漏算 → 弹窗 badge 只显示 1 平台。加 (platform, trackId) → fanOut key 反向索引，命中后**取整组 entries** 而不是只加匹配的那一条。**二次兜底**：healLibraryItem 异步后台用 searchEquivalent（4-tier：normalizeKey / 双向 includes / 跨脚本 / JW fuzzy）搜索补全缺失平台 source + 写 fanOut。新增 library-badge-merge.e2e #7（反向索引）和 #8（healLibraryItem + 日音罗马字漂移）用例
+- [x] 25. 修事故：跨平台等价匹配用**裸 isCrossScript**判艺人（只看「一边 CJK、一边拉丁」就判同一人）→ 同名不同艺人的翻唱链（wacci 原唱 / 铃木爱理 / Lefty Hand Cream 翻唱「別の人の彼女になったよ」）被 CJK 名当桥传递性并入同一 fanOut 组，badge 虚报 3❤ + 平台计数虚高 + 错误红心被同步远端。修复：① 新增 `music/translit.ts`（pinyin-pro + wanakana）`artistTransliterationMatch`——跨脚本艺人必须**音译对得上**才认；② `artistLooseMatch` + Tier 2 内联 + `patchLibraryWithSources` 的裸 isCrossScript 全部换成音译佐证；③ 删掉忽略艺人的旧 Tier 4（full-key 跨脚本），改为「跨脚本**标题** + 艺人 artistLooseMatch + 时长 ±3s」；④ 新增 Tier 3b：纯汉字日文名（藤井风↔Fujii Kaze，拼音≠日文读音）走「标题完全相等 + 时长 ±3s 严格 + 艺人跨脚本」强佐证通道兜底。新增 cross-platform-match.e2e #17（翻唱链拒绝，含同时长）+ #18（藤井风 Tier 3b 命中）
+- [x] 26. 修问题3：简繁跨平台被拆开。前端 `lib/groupLibrary.ts` 的 `stripForFuzzy`/`normalizeNoStrip` 补 OpenCC 繁→简（cjkUnify，与后端 search.util 同口径）——后端因时长差拆成两条的简繁版本，前端分组 key 收敛后合并。同步更新 whitebox 副本 `music/groupLibrary.test.ts` + 新增 #13（龍捲風↔龙卷风）
+- [x] 27. 重建本地 fanOut：`importLiked` 全量导入后清空 session fanOut（import 已是各平台真实红心的 artist-strict 快照），让收紧后的 detect 逻辑重新积累，冲掉历史误并组；远端红心不动
+- [x] 28. 上 kuromoji 重字典提升跨脚本日文**汉字**名召回：`translit.ts` 加 kuromoji（IPADIC）日文形态素读音，喂词典前先 OpenCC 简→繁（cn2t）还原「铃木爱理→鈴木愛理」；`artistTransliterationMatch` 用「拼音 + kuromoji(cn2t) 读音」多候选、**严格包含**判等。安全取舍：**只用 cn2t 预处理后的读音**（直读简体会丢字 → 「藤井风」剩裸姓「fujii」→ 会把任意「Fujii XX」翻唱误并，重开事故门），故弃直读。`MusicService` 构造时 `warmupJa()` 后台预热（~1s），未就绪优雅降级回拼音。新增 ambient 类型 `kuromoji.d.ts` + `translit.test.ts`（接受 Suzuki Airi/Utada Hikaru/Hatsune Miku/Shiina Ringo；拒绝翻唱链 + 同姓不同人；标注顺序颠倒/艺名不规则读音的已知局限）+ cross-platform-match #19（端到端：铃木爱理↔Suzuki Airi 15s 差经 kuromoji 命中 Tier 3）。局限：姓名顺序颠倒（Ayumi Hamasaki）、艺名不规则读音（Kenshi Yonezu、藤井风的風=かぜ）仍桥不了，靠 Tier 3b 同录音 ±3s 兜底——真解需 JMnedict 人名读音库 + 词边界集合匹配，成本远超收益

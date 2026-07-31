@@ -30,6 +30,7 @@ import {
 } from './search.util';
 import { MatchService } from '../match/match.service';
 import { jaroWinkler } from '../match/fuzzy';
+import { artistTransliterationMatch, warmupJa } from './translit';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
@@ -127,6 +128,10 @@ export class MusicService {
     this.likeSync.registerDiscoverResolver((task) =>
       this.resolveEquivalents(task),
     );
+    // 后台预热 kuromoji 日文形态素词典（跨脚本艺人音译佐证用）。fire-and-forget：
+    // 加载 ~15 个词典分片需几百 ms，趁启动到用户第一次切歌之间完成；没就绪时
+    // artistTransliterationMatch 优雅降级到纯拼音/假名路线，不阻塞、不抛。
+    void warmupJa();
   }
 
   private stateKey(sessionId: string): string {
@@ -1067,12 +1072,14 @@ export class MusicService {
           (!tt.includes(wantTitleKey) && !wantTitleKey.includes(tt))
         )
           return false;
+        // 艺人跨脚本这里也走**音译佐证**（与 artistLooseMatch 同口径），不再
+        // 裸 isCrossScript——否则会把补进来的 source 挂到同名不同艺人的库条目上。
         if (
           ta &&
           wantArtistKey &&
           !ta.includes(wantArtistKey) &&
           !wantArtistKey.includes(ta) &&
-          !this.isCrossScript(ta, wantArtistKey)
+          !artistTransliterationMatch(ta, wantArtistKey)
         )
           return false;
         return !this.durationMismatch(meta.duration, it.duration);
@@ -1102,6 +1109,95 @@ export class MusicService {
     this.logger.log(
       `library patched: "${item.title} - ${item.artist}" += ` +
         newSources.map((s) => s.platform).join(', '),
+    );
+  }
+
+  /**
+   * 后台「自愈」library item：对只有 1 个 source 的 item，用 library 自身的
+   * title+artist+duration 当种子，去「尚未 source 的平台」跑 searchEquivalent
+   * （复用 fan-out discover 那套 4-tier 匹配：normalizeKey 严格 / 双向 includes
+   * / 跨脚本 / JW fuzzy），命中就 patchLibraryWithSources 补 source。
+   *
+   * 触发场景：library item.id 是用 netease 作 main 拼出来的（merged-netease-XXX），
+   * 但用户其实在 QQ/Spotify 上也已 ❤——只是 importLiked 时 QQ/Spotify 没有返
+   * 回这条（搜索超时 / API 没收录该 cover / 用户当时没在那俩平台登录）。
+   * 之后用户播放这首歌，detectLikedAndSync 把 QQ/Spotify 写进 fanOut（key 是
+   * merged-qq-YYY），但因为 skip-enqueue 短路，resolveEquivalents + patchLibrary
+   * 链没机会跑。结果：library item 永远只有 netease 一条 source，likedPlatforms
+   * 也只有 [netease]，badge 漏。
+   *
+   * 这个自愈任务等价于「手动对单首 library item 跑一遍 detect+resolveEquivalents」
+   * ——只是入口换成 library item 的 title/artist/duration，而不是搜索结果。
+   * 异步后台跑（fire-and-forget），不阻塞 getLibrary。
+   *
+   * 去重：session 级 Set 记录正在自愈的 item.id，同一会话内不会并发触发同一首。
+   * 跨会话去重靠 storage 的 sources 数变化（修好后 likedPlatforms 满 3，下次
+   * getLibrary 看到 < 3 不再触发）。
+   */
+  private readonly healingInFlight = new Set<string>();
+
+  private healLibraryItem(session: Session, item: UnifiedSearchItem): void {
+    if (!item.title || !item.artist) return;
+    if (this.healingInFlight.has(item.id)) return;
+    this.healingInFlight.add(item.id);
+    void this.runHealLibraryItem(session, item).finally(() => {
+      this.healingInFlight.delete(item.id);
+    });
+  }
+
+  private async runHealLibraryItem(
+    session: Session,
+    item: UnifiedSearchItem,
+  ): Promise<void> {
+    const have = new Set(item.sources.map((s) => s.platform));
+    // Deezer 匿名无收藏，skip；其余 likeable 平台逐一搜。
+    const candidates: MusicProvider[] = (
+      ['qq', 'netease', 'spotify'] as MusicProvider[]
+    ).filter((p) => !have.has(p) && this.canSyncLike(session, p));
+    if (!candidates.length) return;
+    const meta: LikeMeta = {
+      title: item.title,
+      artist: item.artist,
+      duration: item.duration,
+    };
+    const matches: Track[] = [];
+    for (const platform of candidates) {
+      try {
+        const t = await this.searchEquivalent(session, platform, meta);
+        if (t) matches.push(t);
+      } catch {
+        /* 单平台失败不阻塞其他 */
+      }
+    }
+    if (!matches.length) {
+      this.logger.debug?.(
+        `healLibrary: no matches for "${item.title} - ${item.artist}"`,
+      );
+      return;
+    }
+    // 走 patchLibraryWithSources（已存在的增量合并路径，会按 normalizeKey 找
+    // 这条 library item 并把 QQ/Spotify source 补进去；同时把 likedPlatforms
+    // 落进 storage）。同步再写一遍 fanOut，让 getLibrary 的反向索引也能命中。
+    this.patchLibraryWithSources(
+      session,
+      meta,
+      matches.map((m) => this.toSourceInfo(m)),
+    );
+    // fanOut: 用 library item.id 作 key（resolveEquivalents 用 canonicalId，
+    // 这里直接用 item.id 更稳——item.id 在 storage 里是稳定的）。
+    const state = this.loadState(session);
+    const fresh: FanOutEntry[] = matches.map((m) => ({
+      platform: m.provider,
+      trackId: m.id,
+    }));
+    state.fanOut[item.id] = this.mergeFanOutEntries(
+      state.fanOut[item.id] ?? [],
+      fresh,
+    );
+    this.saveState(session, state);
+    this.logger.log(
+      `healLibrary: "${item.title} - ${item.artist}" += ` +
+        matches.map((m) => `${m.provider}/${m.id}`).join(', '),
     );
   }
 
@@ -1260,10 +1356,12 @@ export class MusicService {
         tt && wantTitleKey && (tt.includes(wantTitleKey) || wantTitleKey.includes(tt));
       if (!titleOk) continue;
       if (!ta || !wantArtistKey) continue; // reject empty-artist bypass
-      const artistOk =
-        ta.includes(wantArtistKey) || wantArtistKey.includes(ta) ||
-        this.isCrossScript(ta, wantArtistKey);
-      if (!artistOk) continue;
+      // 跨脚本艺人走**音译佐证**（artistLooseMatch），不再裸 isCrossScript——
+      // 否则 title 只要双向 includes（QQ 常带译名后缀），CJK 艺人就会 cross-script
+      // 命中任意拉丁艺人（铃木爱理 ≈ Lefty Hand Cream / wacci）。纯汉字日文/
+      // 罗马化艺名（藤井风↔Fujii Kaze、王力宏↔Leohom Wang）音译对不上的，由
+      // 下方 Tier 3b「标题完全相等 + 时长 ±3s 严格」强佐证通道兜底。
+      if (!this.artistLooseMatch(ta, wantArtistKey)) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
       this.logger.log(
         `searchEquivalent ${platform} loose match [${tag}]: ` +
@@ -1299,21 +1397,57 @@ export class MusicService {
       return t;
     }
 
-    // 第四遍：full key（title+artist）跨文字系统 + 时长接近 → 接受。
-    // 第三遍要求 title 完全相同——但 "調子のっちゃって"（日文）≠ "Cho Si
-    // Noccha Te"（罗马字），normalizeKey 后一个是 CJK、一个是 Latin，看不出
-    // 等同。两者 duration 完全相同（282s）说明是同一首歌。此类情况在日音
-    // 库非常常见（Spotify 用罗马字标题，QQ/网易云用汉字/假名）。
+    // 第三遍-b：纯汉字日文名的「强佐证」跨脚本通道。
+    //
+    // 「藤井风」(QQ/网易云汉字) ↔ 「Fujii Kaze」(Spotify 罗马字) 是真·同一艺人，
+    // 但拼音("tengjingfeng") 给的是**中文**读音、对不上日文读音("fujiikaze")，
+    // 所以 artistLooseMatch 的音译佐证会拒它（第三遍走不通）。这里给这类名字
+    // 留一条窄通道：**标题 normalizeKey 完全相等** + 艺人**跨脚本**（裸
+    // isCrossScript）+ **时长 ±3s 严格**（双方都已知）。三重强佐证同时满足才认。
+    //
+    // 为什么安全（不会再放翻唱链进来）：同名不同艺人的翻唱（wacci / 铃木爱理 /
+    // Lefty Hand Cream 版）时长普遍差 >3s（本例 305/298/310），严格时长门直接
+    // 拒；即便偶有巧合同长，也已比旧代码（宽松 30s + 剥括号 substring）窄得多。
+    // 代价：跨脚本 + 大版本时长差（album vs single 差 15-30s）会退化成两条——
+    // 安全侧取舍。
     for (const t of tracks) {
-      const tk = this.normalizeKey(t.title, t.artist);
-      // 跨文字系统判定：一方纯 CJK/含 CJK、另一方纯 Latin（isCrossScript
-      // 已经包含了这层）。加上 duration 门限防止误命中。
-      if (!this.isCrossScript(tk, wantKey)) continue;
+      const tt = this.normalizeKey(t.title, '');
+      if (!tt || tt !== wantTitleKey) continue;
+      const ta = this.normalizeKey(t.artist, '');
+      // 已被上一遍的 artistLooseMatch 命中的（includes/音译）不会走到这里；
+      // 这里专收「跨脚本但音译对不上」的纯汉字日文名，且必须严格时长。
+      if (!this.isCrossScript(ta, wantArtistKey)) continue;
+      if (meta.duration <= 0 || t.duration <= 0) continue; // 强佐证要求双方时长已知
+      if (this.durationMismatch(meta.duration, t.duration)) continue; // ±3s 严格
+      this.logger.log(
+        `searchEquivalent ${platform} cross-script strong match [${tag}]: ` +
+          `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
+          ` (title-exact + xscript-artist + dur=${meta.duration}≈${t.duration} ±3s)`,
+      );
+      return t;
+    }
+
+    // 第四遍：跨文字系统**标题** + 艺人宽松命中 + 时长接近 → 接受。
+    // "調子のっちゃって"（日文）≠ "Cho Si Noccha Te"（罗马字），normalizeKey 后
+    // 一个是 CJK、一个是 Latin，标题看不出等同；两者 duration 相同说明是同一首。
+    // 此类在日音库常见（Spotify 罗马字标题，QQ/网易云汉字/假名）。
+    //
+    // ⚠️ 2026-07-31 hardening: 旧代码这里比的是 **full key**（title+artist 拼一起）
+    //    的 isCrossScript，**完全不校验艺人**——只要 seed 全 CJK、候选含拉丁
+    //    （或反之）+ 时长对上就接受。这会把「同名不同艺人」的翻唱误并。改为：
+    //    (1) 只在**标题**层判跨脚本，(2) 艺人仍要 artistLooseMatch（includes/
+    //    音译）命中，(3) 时长 ±3s 严格。防「花田错 王力宏 vs 王馨卓」跨脚本变体。
+    for (const t of tracks) {
+      const candTitleKey = this.normalizeKey(t.title, '');
+      if (!candTitleKey || !wantTitleKey) continue;
+      if (!this.isCrossScript(candTitleKey, wantTitleKey)) continue;
+      const ta = this.normalizeKey(t.artist, '');
+      if (!this.artistLooseMatch(ta, wantArtistKey)) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
       this.logger.log(
         `searchEquivalent ${platform} cross-script title match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
-          ` (seedKey="${wantKey}", candKey="${tk}", dur=${meta.duration}≈${t.duration})`,
+          ` (xscript-title candTitle="${candTitleKey}" wantTitle="${wantTitleKey}", dur=${meta.duration}≈${t.duration})`,
       );
       return t;
     }
@@ -1385,20 +1519,28 @@ export class MusicService {
   }
 
   /**
-   * 艺人宽松命中：双向 includes（前后缀 / 缩写 / 全名含半名）+ 跨脚本（CJK vs
-   * Latin 同一艺人不同拼写）。
+   * 艺人宽松命中：双向 includes（前后缀 / 缩写 / 全名含半名）+ 跨脚本**音译佐证**
+   * （CJK vs Latin：把 CJK 侧罗马化后与拉丁侧比对，对得上才算同一艺人）。
    *
    * ⚠️ 2026-07-30 hardening: 旧代码的 `!ta || !wantArtistKey → true` 会在
    *    任意一方艺人名为空时直接放行——这会让平台返回的 UGC / 封面 / 伴奏
    *    （ar 字段缺失或不匹配的条目）在 title+duration 对得上的情况下被自动
    *    ❤。已改为：任意一方缺失 → 拒绝（false），不做匹配。
+   *
+   * ⚠️ 2026-07-31 hardening: 旧代码这里用**裸** `isCrossScript`——只看「一边
+   *    CJK、一边拉丁」就判同一艺人。这会把「铃木爱理」和「Lefty Hand Cream」
+   *    在歌名撞上时判成同一人（同名翻唱链被 CJK 名当桥传递性合并，红心被错误
+   *    跨平台同步）。改为 `artistTransliterationMatch`：跨脚本必须**音译对得上**
+   *    才认。纯汉字日文名（藤井风→拼音≠日文读音）音译对不上——那类由
+   *    matchEquivalentTrack 的「标题完全相等 + 时长 ±3s 严格」强佐证通道兜底
+   *    （Tier 3b），不走这里。
    */
   private artistLooseMatch(ta: string, wantArtistKey: string): boolean {
     if (!ta || !wantArtistKey) return false;
     return (
       ta.includes(wantArtistKey) ||
       wantArtistKey.includes(ta) ||
-      this.isCrossScript(ta, wantArtistKey)
+      artistTransliterationMatch(ta, wantArtistKey)
     );
   }
 
@@ -2016,6 +2158,23 @@ export class MusicService {
       sources: sourceResults,
     });
 
+    // 重建本地 fanOut：import 是「各平台真实红心」的全量快照——已按 artist-strict
+    // + 音译佐证合并，当前跨平台真值都落进了每个 item 的 sources。运行时 fanOut
+    // 只是叠加其上的「运行中新发现的跨平台链」，而历史 fanOut 里可能残留旧匹配
+    // 逻辑（裸 isCrossScript）误并的**同名不同艺人**组（wacci/铃木爱理/Lefty 那种），
+    // 导致 badge 与平台计数虚高。全量 import 时清空 fanOut，让它按收紧后的 detect
+    // 逻辑重新积累——避免污染跟着走。远端红心不动（用户此前的决定）。
+    const musicState = this.loadState(session);
+    const hadFanOut = Object.keys(musicState.fanOut).length;
+    if (hadFanOut) {
+      musicState.fanOut = {};
+      this.saveState(session, musicState);
+      this.logger.log(
+        `importLiked: cleared ${hadFanOut} fanOut group(s) for rebuild ` +
+          `(session=${session.id.slice(0, 8)}…)`,
+      );
+    }
+
     return { items: enrichedItems, sources: sourceResults, importedAt };
   }
 
@@ -2045,24 +2204,79 @@ export class MusicService {
     }>(this.libraryKey(session.id));
     if (!stored) return null;
     const state = this.loadState(session);
+    // 反向索引：(platform, trackId) → 它所在 fanOut key 列表。一次构建、对
+    // 所有 item 复用——O(fanOut 总条目) 一次摊销，避免每个 item 都扫整张 fanOut
+    // 表（FANOUT_MAX=5000，1690 首库 × 5000 扫一遍会很慢）。
+    //
+    // 关键：索引到 **fanOut key**，不是到单条 FanOutEntry。匹配上一个 (platform,
+    // trackId) 后，要把那条 trackId 所在 fanOut 组里**所有平台**并进
+    // likedPlatforms——否则漏算 QQ/Spotify。
+    const trackIdToFanOutKeys = new Map<string, string[]>();
+    for (const [key, entries] of Object.entries(state.fanOut)) {
+      for (const e of entries) {
+        if (!e.trackId) continue;
+        const k = `${e.platform}:${e.trackId}`;
+        const arr = trackIdToFanOutKeys.get(k);
+        if (arr) {
+          if (!arr.includes(key)) arr.push(key);
+        } else {
+          trackIdToFanOutKeys.set(k, [key]);
+        }
+      }
+    }
     const items = stored.items.map((item) => {
       // 老 storage 迁移路径：旧 import 没写 likedPlatforms → fallback sources 平台。
       // 老 storage 里 sources 仍是真实 ❤ 列表（import 来源），所以 fallback 准确。
       const basePlatforms = item.likedPlatforms ?? item.sources.map((s) => s.platform);
       const hadLikedPlatforms = item.likedPlatforms !== undefined;
-      const fanOutEntries = state.fanOut[item.id] ?? [];
       const set = new Set<MusicProvider>(basePlatforms);
-      for (const e of fanOutEntries) {
-        if (this.isLikeable(e.platform)) set.add(e.platform);
+      // fanOut 查找两层：
+      //   1) 直查 `state.fanOut[item.id]`——库 item 与 fanOut 同 key 时（典型：
+      //      import 时刻就用 QQ 跑 main，play 时刻 search 也以 QQ 跑 main）。
+      //   2) 反向索引兜底——library item 的 id 可能和 fanOut key 不同：
+      //      - import 时这首歌只在 netease ❤ 过 → library item.id = merged-netease-XXX
+      //      - 之后从 search 播放 → search item.id = merged-qq-XXX（QQ 是 main）
+      //      - fanOut 写在 merged-qq-XXX 下 → 直接 lookup 漏掉
+      //      兜底：item 的任一 source (platform, trackId) 若命中反向索引 →
+      //      取出该 trackId 所在 fanOut **整个组**的 platforms（不只是匹配的
+      //      那一条）。否则只加 netease，QQ/Spotify 仍漏。
+      const direct = state.fanOut[item.id];
+      if (direct) {
+        for (const e of direct) {
+          if (this.isLikeable(e.platform)) set.add(e.platform);
+        }
+      }
+      const seenFanOutKeys = new Set<string>();
+      for (const src of item.sources) {
+        const keys = trackIdToFanOutKeys.get(`${src.platform}:${src.trackId}`);
+        if (!keys) continue;
+        for (const k of keys) seenFanOutKeys.add(k);
+      }
+      for (const k of seenFanOutKeys) {
+        for (const e of state.fanOut[k] ?? []) {
+          if (this.isLikeable(e.platform)) set.add(e.platform);
+        }
       }
       const likedPlatforms = Array.from(set);
+
       // 复用原对象：仅当 likedPlatforms 已存在且值未变（避免 React 重渲染）。
       // 迁移路径（老 storage 无 likedPlatforms）必须显式落地，否则字段缺失。
       const same =
         hadLikedPlatforms &&
         likedPlatforms.length === basePlatforms.length &&
         likedPlatforms.every((p, i) => p === basePlatforms[i]);
-      return same ? item : { ...item, likedPlatforms };
+      const out = same ? item : { ...item, likedPlatforms };
+
+      // 后台自愈：library item 还 < 3 个 platform source 时，触发
+      // healLibraryItem 异步用 title+artist+duration 去搜其他平台补 source。
+      // 这处理 trackId 漂移场景——library item 用 netease trackId 作 id，fanOut
+      // 里写的是 QQ trackId，反向索引失效，靠搜索等价匹配把 QQ/Spotify 补回来。
+      // 自愈任务幂等且有 healingInFlight 去重，不会爆。
+      if (item.title && item.artist && item.sources.length < 3) {
+        this.healLibraryItem(session, item);
+      }
+
+      return out;
     });
     return { ...stored, items };
   }

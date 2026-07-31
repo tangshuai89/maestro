@@ -18,6 +18,7 @@ QQ 收藏，Deezer user tracks），合并去重后存到 `.storage/library.json
 - [x] QQ: 已登录用户 import 后 `sources[qq].count > 0`（前提：cookie 有效且有 ≥1 首收藏）
 - [x] QQ: 未登录（`qqCookie` 缺失）时 `sources[qq].error === 'not_logged_in'`，不阻塞其他平台
 - [x] QQ: cookie 失效（favorites endpoint 返回 `code === 1000`）→ `sources[qq].error` 反映登录失效，不抛 500
+- [ ] 弹窗 UX：见下方「UI / 体验（LikedLibraryModal）」节
 
 ## 接口规格
 
@@ -74,4 +75,23 @@ favorites 接口在 `qqCookies` 缺失时直接用字面 `g_tk=5381`。
 
 - 不做"增量同步"——每次 import 是全量覆盖
 - 不做"导入后自动 ❤ 到其他平台"——用户可以手动点 fan-out ❤（P1 路径）
-- 不做 UI 集成——本轮只做后端 + endpoint，UI 是下一轮
+
+## UI / 体验（LikedLibraryModal）
+
+本轮把「不做 UI 集成」补上。`packages/renderer/src/components/modals/LikedLibraryModal.tsx`
+是这一组需求的承载点。
+
+### 验收标准
+
+- [ ] 第二次及以后打开弹窗：先从 sessionStorage 读上次拿到的库，**首帧即渲染列表**，随后后台静默刷新（stale-while-revalidate）。视觉上不出现「加载中…」白屏。
+- [ ] 后台拉新时标题右侧有一颗绿色脉动小点指示「正在同步」——避免 sessionStorage 里的旧数据被误认作当前真值（典型场景：上次关闭弹窗前 fanOut 还没补齐，下次打开看到的是落后一拍的角标）。
+- [ ] 关闭弹窗**不取消**后台 getLibrary 请求；fetch resolve 时无论 modal 是否还挂载都写入 sessionStorage，保证下一次打开首帧就是最新数据（修「上一首歌刚 fan-out 完但 library 还显示老 badge」）。
+- [ ] **fanOut key 与 library item.id 不一致 + library 只有 1 个 source 时**，badge 仍能反映完整 ❤ 平台列表。二层兜底：① getLibrary 的 (platform, trackId) → fanOut key 反向索引取整组；② `healLibraryItem` 异步后台用 `searchEquivalent` 的 4-tier 匹配（normalizeKey / 双向 includes / 跨脚本 / JW fuzzy）搜索补全缺失平台，写入 fanOut + 增量 patch library 的 sources。修「Lefty Hand Cream 翻唱歌曲三个平台都 ❤ 但弹窗只显示云」。
+- [ ] 第一次打开（无 sessionStorage 缓存）：渲染 6 个 skeleton 行占位（封面方块 + 两行灰条），保持和真实行等高，避免布局抖动。
+- [ ] 后台静默刷新失败：保留旧数据，不弹错误（用户继续看的就是上次的库，新拉失败不打扰）。
+- [ ] sessionStorage 写入失败（隐私模式 / 配额）：降级到「首次打开」路径——只展示 skeleton，正常走网络。**不抛错**。
+- [ ] 「重新导入」点击后：列表整体变暗（半透明遮罩 + 模糊），正中显示 ❤ 心形脉动 spinner + 「正在从 QQ / 网易云 / Spotify 重新导入…」。底部按钮文案换为「重新导入中…」并禁用。
+- [ ] 「重新导入」中顶部有一条渐变条从左到右循环滚动（YouTube Music 风格的「正在同步」条）。
+- [ ] 重新导入完成：遮罩渐隐 200ms，列表回到正常亮度；如果新数据项数变了，头部计数也平滑切换。
+- [ ] 空态点「现在导入」：保留原空态文案与按钮，按钮内嵌一个旋转 spinner，文字换成「导入中…」。
+- [ ] 关闭弹窗时不取消正在进行的「重新导入」请求（让后台继续跑完，下次打开自动拿到新数据）。导入完通过 `likedVersion` signal 通知 App 顶部 ❤ 角标刷新。
