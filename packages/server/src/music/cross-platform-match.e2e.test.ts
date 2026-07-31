@@ -21,6 +21,7 @@ const assert = require('node:assert');
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { MusicService } = require('./music.service');
 const { LikeSyncQueue } = require('./like-sync.queue');
+const { warmupJa } = require('./translit');
 
 // 真·内存 storage：loadState/saveState 要能 round-trip（断言靠 getLikedTracks 读回）。
 const store: Record<string, unknown> = {};
@@ -430,8 +431,6 @@ async function main() {
     }
     console.log('✅ 9. 兜底搜索：原 kw 0 候选 → 剥括号内容再搜');
   }
-
-  console.log('\n🎉 cross-platform-match.e2e 全部 15 项通过');
 
   // ── 10. 兜底：原 kw 非 0 但候选全是无关歌 → 4 tier 失败后用 title-only 收紧再搜 ──
   // 修 "サマータイムシンデレラ (盛夏的灰姑娘) 緑黄色社会"：
@@ -901,6 +900,187 @@ async function main() {
     }
     console.log('✅ 16. tilde 变体归一: `~` (seed) vs `〜` (Spotify) 命中正版本（不是 TV Edit）');
   }
+
+  // ── 17. 同名不同艺人的翻唱链：跨脚本艺人不得靠「裸 isCrossScript」误并 ──
+  // 真实线上事故（2026-07-31）：「別の人の彼女になったよ」这首歌在用户三个平台
+  // 的红心里其实是**三个不同艺人**的录音：
+  //   netease = Lefty Hand Cream(翻唱, 310s) / QQ = 铃木爱理(298s) / Spotify = wacci(原唱, 305s)
+  // 旧 matchEquivalentTrack 的 artistLooseMatch 用裸 isCrossScript——只要「一边
+  // CJK、一边拉丁」就判同一艺人。于是 CJK 的「铃木爱理」同时 cross-script-匹配
+  // 拉丁的「Lefty Hand Cream」和「wacci」，把三条不相干录音传递性并成一个 fanOut
+  // 组（badge 虚报 3❤ + 计数虚高 + 错误红心被同步到远端）。
+  //
+  // 修复：跨脚本艺人必须**音译佐证**（拼音/假名罗马字对得上）才认。铃木爱理→
+  // "lingmuaili"、Lefty→"leftyhandcream"、wacci→"wacci" 两两零重叠 → 全部拒绝。
+  {
+    // seed = Lefty Hand Cream 版（netease），去 QQ / Spotify 搜。
+    // QQ 只返回铃木爱理版、Spotify 只返回 wacci 版（用户库里的真实情况）。
+    const seed = {
+      title: '別の人の彼女になったよ',
+      artist: 'Lefty Hand Cream',
+      duration: 310,
+    };
+    const wrappedQq = {
+      ...qq,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 'qq-suzuki',
+          provider: 'qq',
+          title: '別の人の彼女になったよ (成为了别人的女朋友)',
+          artist: '铃木爱理 (すずき あいり)',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 298,
+          liked: false,
+        },
+      ],
+    };
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 'sp-wacci',
+          provider: 'spotify',
+          title: '別の人の彼女になったよ',
+          artist: 'wacci',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          // 关键：故意用与 seed **完全相同**的时长（310s）——这样时长 gate
+          // 帮不上忙，唯一能拒绝这条 wacci 原唱的就是「艺人音译对不上」。锁死
+          // 「別の人の彼女になったよ」标题相等 + 时长相等仍不得跨艺人误并。
+          duration: 310,
+          liked: false,
+        },
+      ],
+    };
+    const origQq = (svc as any).qq;
+    const origSp = (svc as any).spotify;
+    (svc as any).qq = wrappedQq;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      qq: { qqCookie: 'c' },
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      (svc as any).equivSearchCache.clear();
+      const tQq = await (svc as any).searchEquivalent(session, 'qq', seed);
+      assert.strictEqual(
+        tQq,
+        null,
+        `QQ 铃木爱理 ≠ Lefty Hand Cream（音译对不上）→ 必须拒，实际命中 ${tQq && tQq.id}`,
+      );
+      (svc as any).equivSearchCache.clear();
+      const tSp = await (svc as any).searchEquivalent(session, 'spotify', seed);
+      assert.strictEqual(
+        tSp,
+        null,
+        `Spotify wacci ≠ Lefty Hand Cream → 必须拒，实际命中 ${tSp && tSp.id}`,
+      );
+    } finally {
+      (svc as any).qq = origQq;
+      (svc as any).spotify = origSp;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 17. 同名不同艺人翻唱链：跨脚本艺人音译对不上 → 拒绝误并（修 Lefty/铃木爱理/wacci 事故）');
+  }
+
+  // ── 18. 纯汉字日文名的合法跨脚本：藤井风 ↔ Fujii Kaze 仍能命中（Tier 3b）──
+  // 音译（拼音）给的是中文读音「tengjingfeng」≠ 日文「fujiikaze」，artistLooseMatch
+  // 会拒。但这是真·同一艺人，靠「标题 normalizeKey 完全相等 + 时长 ±3s 严格 +
+  // 艺人跨脚本」的强佐证通道（Tier 3b）兜底。验证 17 收紧后没误伤这个合法场景。
+  {
+    const seed = { title: '何なんw', artist: '藤井风', duration: 240 };
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 'sp-fujii',
+          provider: 'spotify',
+          title: '何なんw',
+          artist: 'Fujii Kaze',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 240, // 同录音，±3s 内
+          liked: false,
+        },
+      ],
+    };
+    const origSp = (svc as any).spotify;
+    (svc as any).spotify = wrappedSpotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(session, 'spotify', seed);
+      assert.ok(
+        t && t.id === 'sp-fujii',
+        `藤井风 ↔ Fujii Kaze 同录音应经 Tier 3b 命中，实际 ${t && t.id}`,
+      );
+    } finally {
+      (svc as any).spotify = origSp;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 18. 合法跨脚本日文汉字名：藤井风 ↔ Fujii Kaze（Tier 3b 强佐证）命中');
+  }
+
+  // ── 19. kuromoji 端到端：简体日文名 ↔ 罗马字，且时长差 >3s（Tier 3b 够不着）──
+  // 证明 kuromoji 音译佐证真的接进了匹配链：seed「铃木爱理」(简体) 去 QQ 搜到
+  // 「Suzuki Airi」(罗马字)，标题相同但时长差 15s——Tier 1/2/3b 都要 ±3s 严格
+  // 够不着，只有 Tier 3（标题完全相等 + artistLooseMatch + 跨版本 30s 容差）能中，
+  // 而 artistLooseMatch 命中**只能靠 kuromoji**（拼音 lingmuaili ≠ suzukiairi）。
+  // 需先 await warmupJa() 让词典就绪（放在最后，不影响前面测 pinyin 降级路径的用例）。
+  {
+    await warmupJa();
+    const wrappedQq = {
+      ...qq,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id: 'qq-suzuki-airi',
+          provider: 'qq',
+          title: '微風',
+          artist: 'Suzuki Airi',
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 215, // 比 seed 差 15s：>3s(Tier 3b 出局) 但 ≤30s(Tier 3 容差内)
+          liked: false,
+        },
+      ],
+    };
+    const origQq = (svc as any).qq;
+    (svc as any).qq = wrappedQq;
+    const origSessionProviders = session.providers;
+    (session as any).providers = { ...session.providers, qq: { qqCookie: 'c' } };
+    try {
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(session, 'qq', {
+        title: '微風',
+        artist: '铃木爱理', // 简体；cn2t→鈴木愛理→kuromoji→suzukiairi
+        duration: 200,
+      });
+      assert.ok(
+        t && t.id === 'qq-suzuki-airi',
+        `kuromoji 音译（铃木爱理→suzukiairi）应让 15s 差的 Suzuki Airi 命中 Tier 3，实际 ${t && t.id}`,
+      );
+    } finally {
+      (svc as any).qq = origQq;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 19. kuromoji 端到端：铃木爱理 ↔ Suzuki Airi（拼音够不着，音译命中 Tier 3）');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 19 项通过');
 }
 
 main().catch((err) => {

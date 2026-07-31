@@ -45,6 +45,9 @@
       "!dist/**/*.d.ts",
       "!dist/**/*.d.ts.map"
     ],
+    "asarUnpack": [
+      "**/node_modules/kuromoji/dict/**"
+    ],
     "extraResources": [
       {
         "from": "../renderer/dist",

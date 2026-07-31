@@ -1,4 +1,37 @@
+// 只引 t2cn 子路径（繁→简），不是 full——full 含双向词典 ~1.18MB，t2cn ~103KB。
+// 我们只需要 tw→cn（把 Spotify 繁体折向 QQ/网易云的简体），10x 更小的包体。
+import { Converter } from 'opencc-js/t2cn';
 import type { UnifiedSearchItem, MusicProvider } from '../api';
+
+/**
+ * 繁→简折叠（OpenCC tw→cn），和后端 `search.util.ts` 的 `cjkUnify` 同口径。
+ *
+ * 为什么前端也要做：后端 `normalizeKey` 已经 tw→cn，但 `buildUnifiedItems` 会
+ * 先按 normalizeKey 分组、再按时长 ±3s 聚类成「版本」。Spotify 的繁体版和
+ * QQ/网易云的简体版若时长差 >3s，会被拆成两个 UnifiedSearchItem 送到前端。
+ * 前端 `stripForFuzzy` 若不做繁→简，就用「龍捲風」vs「龙卷风」两个不同 key，
+ * 永远并不回来——展示层就把简繁拆开了。这里补上，让分组 key 与后端一致。
+ *
+ * 懒初始化 + 兜底：OpenCC 构造偶发抛错时降级成恒等函数（不至于整列表崩）。
+ */
+let _tw2cn: ((t: string) => string) | null = null;
+function tw2cn(s: string): string {
+  if (!s) return s;
+  if (!_tw2cn) {
+    try {
+      _tw2cn = Converter({ from: 'tw', to: 'cn' });
+    } catch {
+      _tw2cn = (t: string) => t;
+    }
+  }
+  const conv = _tw2cn ?? ((t: string) => t);
+  return conv(s);
+}
+/** 日文独有形体（OpenCC tw→cn 不覆盖）——与后端 search.util 的 JP_KANJI 对齐。 */
+const JP_KANJI: Record<string, string> = { 気: '气', 黒: '黑' };
+function cjkUnify(s: string): string {
+  return tw2cn(s).replace(/[気黒]/g, (ch) => JP_KANJI[ch] || ch);
+}
 
 /**
  * 红心库的「展示级」跨平台分组。
@@ -55,22 +88,24 @@ export function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
  *  同一 fuzzy key。Cover/原唱/翻唱 等标注同理。修订依据：
  *  PR #45 的跨平台 ❤ 错配排查（"Promise in Love" 被拆成 3 条，无法合并）。 */
 function stripForFuzzy(s: string): string {
-  return s
-    .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '') // 去成对括号及里面的内容
-    // 去掉 feat./ft./featuring + 后缀名（括号已剥，这一遍只打无括号的 inline
-    // feat.。`+` 而非 `[^-...]+` 因为 feat 后面的名字可能有空格如 "Jose James"）
-    .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+.+$/ig, '')
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
-    .toLowerCase();
+  return cjkUnify(
+    s
+      .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '') // 去成对括号及里面的内容
+      // 去掉 feat./ft./featuring + 后缀名（括号已剥，这一遍只打无括号的 inline
+      // feat.。`+` 而非 `[^-...]+` 因为 feat 后面的名字可能有空格如 "Jose James"）
+      .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+.+$/ig, '')
+      .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+      .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, ''),
+  ).toLowerCase();
 }
 
 /** 不去括号的归一——去括号后整段为空时兜底用（罕见：标题整个在括号里）。 */
 function normalizeNoStrip(s: string): string {
-  return s
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
-    .toLowerCase();
+  return cjkUnify(
+    s
+      .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+      .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, ''),
+  ).toLowerCase();
 }
 
 /** 分组用的模糊 key：去括号归一的「歌名|歌手」。

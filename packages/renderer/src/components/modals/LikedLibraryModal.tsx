@@ -4,6 +4,10 @@ import { getLibrary, importLibrary } from '../../api';
 import type { LibraryImportResult, UnifiedSearchItem, MusicProvider } from '../../api';
 import { groupLibraryItems, itemPlatforms } from '../../lib/groupLibrary';
 import { placeholderCover } from '../../lib/placeholderCover';
+import {
+  readCachedLibrary,
+  writeCachedLibrary,
+} from '../../lib/likedCache';
 
 interface Props {
   onClose: () => void;
@@ -11,6 +15,9 @@ interface Props {
   onPlay: (items: UnifiedSearchItem[], index: number) => void;
   /** 递增计数：外部（播到红心歌、跨平台补齐后）触发一次静默刷新。 */
   refreshSignal?: number;
+  /** 重新导入完成（成功或失败）后回调。App 用来同步刷顶部 ❤ 角标；
+   *  传入新库的 items 数（成功时）或 undefined（失败时）。 */
+  onImportSettled?: (newCount: number | undefined) => void;
 }
 
 /** 平台徽章：一个平台一个色块。QQ=Q / 网易云=云 / Spotify=S / Deezer=D。 */
@@ -37,24 +44,75 @@ function PlatformBadges({ platforms }: { platforms: MusicProvider[] }) {
 }
 
 /**
+ * 首次打开、无 sessionStorage 缓存时的骨架行。和真实行等高（封面 40px +
+ * 两行 meta），避免真数据到达时整个列表突然下沉。Pulse 动画见 scss。
+ */
+function SkeletonRow({ delayMs }: { delayMs: number }) {
+  return (
+    <li className="liked-modal-row liked-modal-skeleton" style={{ animationDelay: `${delayMs}ms` }}>
+      <div className="liked-modal-cover liked-modal-skeleton-block" />
+      <div className="liked-modal-meta">
+        <div className="liked-modal-skeleton-line liked-modal-skeleton-line-track" />
+        <div className="liked-modal-skeleton-line liked-modal-skeleton-line-artist" />
+      </div>
+    </li>
+  );
+}
+
+/**
+ * 「重新导入」中悬在列表上的中央卡片。❤ 心形脉动 + 文字。
+ * 不用 SVG，纯 CSS keyframes（已用全局 search-spin 风格的心形符号做缩放）。
+ */
+function RefreshingOverlay() {
+  return (
+    <div className="liked-modal-refresh-overlay" aria-live="polite">
+      <div className="liked-modal-refresh-card">
+        <div className="liked-modal-refresh-heart" aria-hidden>
+          ♥
+        </div>
+        <div className="liked-modal-refresh-title">正在重新导入喜欢的歌曲…</div>
+        <div className="liked-modal-refresh-sub">从 QQ / 网易云 / Spotify 同步</div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * "我的喜欢" 总览弹窗：展示所有平台已 ❤ 合并后的库（QQ / 网易云 /
  * Spotify / Deezer），支持滚动浏览千级条目；底部"重新导入"
  * 按钮触发一次全量 importLibrary 刷新库。
  *
  * 数据来源：服务端 /music/library 返回的 UnifiedSearchItem[]，本身已经
  * 跨平台去重合并，所以一首歌不会因为 QQ + 网易云都 ❤ 而出现两次。
+ *
+ * UX：
+ *  - 二次打开时从 sessionStorage 读上次结果首帧渲染（无白屏），后台静默
+ *    拉新数据覆盖（stale-while-revalidate）。
+ *  - 首次打开用 6 行 skeleton 占位，避免布局抖动。
+ *  - 重新导入：列表上方一条渐变「同步条」+ 中央心形脉动 + 模糊遮罩。
+ *  - 关闭弹窗不取消正在进行的重新导入；完成后通过 onImportSettled 通知
+ *    App 刷角标。
  */
 export default function LikedLibraryModal({
   onClose,
   onPlay,
   refreshSignal,
+  onImportSettled,
 }: Props) {
-  const [loading, setLoading] = useState(true);
+  // 拿过的库数据。首次打开：先看 sessionStorage，没有再走 loading。
+  const [data, setData] = useState<LibraryImportResult | null>(() =>
+    readCachedLibrary(),
+  );
+  // 首次打开且无缓存时为 true（显示 skeleton）；拿到数据（无论来自缓存还是网络）后置 false。
+  const [loading, setLoading] = useState<boolean>(data == null);
   const [refreshing, setRefreshing] = useState(false);
-  const [data, setData] = useState<LibraryImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 后台拉新中（即便有缓存也置 true，让用户看到「正在同步」指示——避免误以为
+  // sessionStorage 里的旧数据就是当前真值，常见于「上一首歌刚 fan-out 完但还没
+  // 在 library view 里看到新 badge」的时差）。
+  const [syncing, setSyncing] = useState(false);
 
-  // refreshSignal 触发的静默刷新：只换数据、不闪"加载中"。首个值跳过（挂载
+  // refreshSignal 触发的静默刷新：只换数据、不闪 loading。首个值跳过（挂载
   // 时下面的 effect 已经拉过一次），避免打开就双拉。
   const firstSignal = useRef(true);
   useEffect(() => {
@@ -63,50 +121,75 @@ export default function LikedLibraryModal({
       return;
     }
     let cancelled = false;
+    setSyncing(true);
     getLibrary()
       .then((res) => {
-        if (!cancelled) setData(res);
+        // 关键：cache 写入**不受** cancelled 影响——关闭弹窗也要让后台请求把
+        // 最新数据落进 sessionStorage，下次打开首帧就是新鲜数据，不会再看到
+        // 旧的 1-badged 列表。React 的 setState 必须在 cancelled 时跳过，否则
+        // 会触发 "setState on unmounted" 警告并被忽略。
+        if (res) writeCachedLibrary(res);
+        if (cancelled) return;
+        if (res) setData(res);
       })
       .catch(() => {
         // 静默刷新失败不打扰用户（列表保持现状）。
+      })
+      .finally(() => {
+        if (!cancelled) setSyncing(false);
       });
     return () => {
       cancelled = true;
     };
   }, [refreshSignal]);
 
-  // 打开弹窗时拉一次缓存（不强制 import；如果从未导入过就是空态）。
+  // 打开弹窗时拉一次（不强制 import；如果从未导入过就是空态）。
+  // 有缓存时仍是「后台刷新」语义——不闪 loading、不显示 skeleton，只是拉到了就覆盖。
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setError(null);
+    setSyncing(true);
     getLibrary()
       .then((res) => {
+        // cache 写入先于 cancelled 检查——同 refreshSignal effect，关闭弹窗也要
+        // 让最新数据落到 sessionStorage。
+        if (res) writeCachedLibrary(res);
         if (cancelled) return;
-        setData(res);
+        if (res) setData(res);
+        // null = 从未导入过；保留缓存（如果有）或空态占位。
       })
       .catch((e) => {
         if (cancelled) return;
+        // 只有在确实没有数据可看时才报错；老用户只是新拉失败，保留旧数据继续看。
         setError((e as Error).message);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setSyncing(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // 重新导入：不传 cancelled flag——关闭弹窗也要让请求跑完，下次打开直接是新数据。
+  // 通过 onImportSettled 通知 App 刷 ❤ 角标，避免 App 再发起一次 getLibrary。
   const handleRefresh = async () => {
     setRefreshing(true);
     setError(null);
+    let newCount: number | undefined;
     try {
       const res = await importLibrary();
       setData(res);
+      writeCachedLibrary(res);
+      newCount = res.items.length;
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setRefreshing(false);
+      onImportSettled?.(newCount);
     }
   };
 
@@ -129,10 +212,22 @@ export default function LikedLibraryModal({
   const spCount = groups.filter((g) => g.platforms.includes('spotify')).length;
   const dzCount = groups.filter((g) => g.platforms.includes('deezer')).length;
 
+  const showList = !loading && groups.length > 0;
+  const showEmpty = !loading && !error && groups.length === 0;
+
   return (
     <Modal onClose={onClose} panelClassName="liked-modal-panel">
       <div className="liked-modal-header">
-        <span className="liked-modal-title">❤ 我的喜欢</span>
+        <span className="liked-modal-title">
+          ❤ 我的喜欢
+          {syncing && (
+            <span
+              className="liked-modal-syncing-dot"
+              aria-label="正在同步新数据"
+              title="正在同步新数据…"
+            />
+          )}
+        </span>
         <span className="liked-modal-count">
           共 {groups.length} 首
           {qqCount + neCount + spCount + dzCount > 0 && (
@@ -153,12 +248,26 @@ export default function LikedLibraryModal({
         </button>
       </div>
 
+      {/* 「正在同步」条：refreshing 时显示。position:absolute 浮在 header 下边缘。 */}
+      {refreshing && <div className="liked-modal-syncbar" aria-hidden />}
+
       <div className="liked-modal-body">
-        {loading && <div className="liked-modal-loading">加载中…</div>}
+        {loading && (
+          <ul className="liked-modal-list liked-modal-skeleton-list" aria-busy="true">
+            <SkeletonRow delayMs={0} />
+            <SkeletonRow delayMs={60} />
+            <SkeletonRow delayMs={120} />
+            <SkeletonRow delayMs={180} />
+            <SkeletonRow delayMs={240} />
+            <SkeletonRow delayMs={300} />
+          </ul>
+        )}
 
-        {error && <div className="liked-modal-error">⚠ {error}</div>}
+        {error && !loading && groups.length === 0 && (
+          <div className="liked-modal-error">⚠ {error}</div>
+        )}
 
-        {!loading && !error && items.length === 0 && (
+        {showEmpty && (
           <div className="liked-modal-empty">
             <div className="liked-modal-empty-icon">♡</div>
             <div className="liked-modal-empty-text">
@@ -169,12 +278,13 @@ export default function LikedLibraryModal({
               onClick={handleRefresh}
               disabled={refreshing}
             >
+              {refreshing && <span className="liked-modal-btn-spinner" aria-hidden />}
               {refreshing ? '导入中…' : '现在导入'}
             </button>
           </div>
         )}
 
-        {!loading && groups.length > 0 && (
+        {showList && (
           <ul className="liked-modal-list">
             {groups.map((g) => {
               const rep = g.representative;
@@ -275,15 +385,18 @@ export default function LikedLibraryModal({
             })}
           </ul>
         )}
+
+        {refreshing && showList && <RefreshingOverlay />}
       </div>
 
-      {items.length > 0 && (
+      {showList && (
         <div className="liked-modal-footer">
           <button
             className="liked-modal-refresh"
             onClick={handleRefresh}
             disabled={refreshing}
           >
+            {refreshing && <span className="liked-modal-btn-spinner" aria-hidden />}
             {refreshing ? '重新导入中…' : '🔄 重新导入'}
           </button>
           <span className="liked-modal-hint">点击曲目直接播放</span>

@@ -316,6 +316,12 @@ export default function App() {
             setLikedOpen(false);
             player.playSearch(items, idx);
           }}
+          onImportSettled={(newCount) => {
+            // 成功时复用 modal 已拿到的 items 数，免去一次额外的 getLibrary
+            // 网络往返；失败时（newCount 为 undefined）回到兜底路径再拉一次。
+            if (typeof newCount === 'number') setLikedCount(newCount);
+            else void reloadLikedCount();
+          }}
         />
       )}
 

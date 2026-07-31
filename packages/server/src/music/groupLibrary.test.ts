@@ -15,9 +15,32 @@
  */
 export {};
 const assert = require('node:assert');
+/* eslint-disable @typescript-eslint/no-var-requires */
+// t2cn 子路径（繁→简），与 renderer/src/lib/groupLibrary.ts 的 import 同源。
+const { Converter } = require('opencc-js/t2cn');
 
 // ── 复制的实现（与 packages/renderer/src/lib/groupLibrary.ts 同步） ──────
 type MusicProvider = 'qq' | 'netease' | 'spotify' | 'deezer';
+
+// 繁→简折叠（OpenCC tw→cn）+ 日文独有形体兜底——与 renderer/src/lib/groupLibrary.ts
+// 的 cjkUnify 同步。让 Spotify 繁体条目与 QQ/网易云简体条目分组 key 一致。
+let _tw2cn: ((t: string) => string) | null = null;
+function tw2cn(s: string): string {
+  if (!s) return s;
+  if (!_tw2cn) {
+    try {
+      _tw2cn = Converter({ from: 'tw', to: 'cn' });
+    } catch {
+      _tw2cn = (t: string) => t;
+    }
+  }
+  const conv = _tw2cn ?? ((t: string) => t);
+  return conv(s);
+}
+const JP_KANJI: Record<string, string> = { 気: '气', 黒: '黑' };
+function cjkUnify(s: string): string {
+  return tw2cn(s).replace(/[気黒]/g, (ch) => JP_KANJI[ch] || ch);
+}
 
 interface UnifiedSearchItem {
   id: string;
@@ -48,20 +71,22 @@ function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
 }
 
 function stripForFuzzy(s: string): string {
-  return s
-    .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '')
-    // 去掉 feat./ft./featuring + 后缀名（与 renderer 同步——PR #46 的 merge 修复）
-    .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+.+$/ig, '')
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
-    .toLowerCase();
+  return cjkUnify(
+    s
+      .replace(/[（(【[][^)）\]】]*[)）\]】]/g, '')
+      // 去掉 feat./ft./featuring + 后缀名（与 renderer 同步——PR #46 的 merge 修复）
+      .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+.+$/ig, '')
+      .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+      .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, ''),
+  ).toLowerCase();
 }
 
 function normalizeNoStrip(s: string): string {
-  return s
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, '')
-    .toLowerCase();
+  return cjkUnify(
+    s
+      .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+      .replace(/[\s\-_,.·&+/!?！？:：;；'"’”‘“()（）[\]【】~〜～]+/g, ''),
+  ).toLowerCase();
 }
 
 function fuzzyKey(title: string, artist: string): string {
@@ -364,7 +389,27 @@ function main() {
     console.log('✅ 12. Promise in Love 3-way merge (feat. + artist prefix)');
   }
 
-  console.log('\n🎉 groupLibrary.test 全部 12 项通过');
+  // ── 13. 简繁跨平台合并：Spotify 繁体 vs QQ/网易云简体（问题 3）─────
+  // 用户场景：Spotify 很多歌用繁体展示（龍捲風/周杰倫），QQ/网易云用简体
+  // （龙卷风/周杰伦）。后端 normalizeKey 虽有 OpenCC，但若时长差 >3s 会被
+  // clusterByDuration 拆成两个 UnifiedSearchItem 送到前端；前端 fuzzyKey 不做
+  // 繁→简就永远并不回来。加了 cjkUnify 后简繁收敛到同一 key → 合并成一条、
+  // 徽章合并。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'sp', title: '龍捲風', artist: '周杰倫', duration: 270, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+      item({ id: 'qq', title: '龙卷风', artist: '周杰伦', duration: 272, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '繁体龍捲風 + 简体龙卷风应合并为一条');
+    assert.deepStrictEqual(
+      groups[0].platforms.sort(),
+      ['qq', 'spotify'],
+      '简繁合并后徽章 = 两平台并集',
+    );
+    console.log('✅ 13. 简繁跨平台合并（Spotify 繁体 ↔ QQ 简体）');
+  }
+
+  console.log('\n🎉 groupLibrary.test 全部 13 项通过');
 }
 
 main();
