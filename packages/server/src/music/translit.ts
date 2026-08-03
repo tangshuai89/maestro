@@ -138,21 +138,190 @@ function romanizeJa(s: string): string {
   return out.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** 一个字符串的所有候选罗马化（拼音路线 + kuromoji(简→繁)读）。去重、去空。
+/** 用 kuromoji 把日文文本罗马化成 **token 数组**（每 token 一个读音）。
+ *
+ * 与 `romanizeJa`（连续串）的区别：保留词边界。供 `artistTransliterationMatch`
+ * 的顺序无关集合匹配用——「浜崎あゆみ」→ [hamasaki, ayumi]、「德永英明」→
+ * [tokunaga, hideaki]，跟 Spotify 的 "Ayumi Hamasaki" / "Hideaki Tokunaga"
+ * （名前颠倒的拉丁写法）做「每个 token 都在对方串里子串命中」的匹配。
+ */
+function romanizeJaTokens(s: string): string[] {
+  if (!s) return [];
+  if (!_jaTokenizer) {
+    void warmupJa();
+    return [];
+  }
+  const tokens: string[] = [];
+  for (const t of _jaTokenizer.tokenize(s)) {
+    const reading =
+      t.reading && t.reading !== '*' ? t.reading : t.surface_form;
+    const rom = toRomaji(reading)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+    if (rom) tokens.push(rom);
+  }
+  return tokens;
+}
+
+/** 一个字符串的所有候选罗马化（拼音路线 + kuromoji(简→繁)读 + 假名括号直读）。
+ * 去重、去空。
  *
  * ⚠️ **只用 cn2t 预处理后的 kuromoji 读音，不用直读**：简体写法的日文名直读时
  * kuromoji 认不出简体字会**丢字**——「藤井风」直读丢掉「风」只剩「fujii」（姓），
  * 而「fujii」是「fujiikaze」的子串 → 会把任意「Fujii XX」的同名翻唱误并（正是
  * 本次事故的同姓误并类型）。cn2t 先把「风→風」还原，kuromoji 读出完整「fujiifuu」，
  * 不再产生裸姓子串。代价：藤井风↔Fujii Kaze 因「風=ふう(通用)≠かぜ(艺名)」在此
- * 对不上，退回 matchEquivalentTrack 的 Tier 3b（同录音 ±3s）兜底——安全侧取舍。 */
+ * 对不上，退回 matchEquivalentTrack 的 Tier 3b（同录音 ±3s）兜底——安全侧取舍。
+ *
+ * **假名括号直读（2026-08-03 新增）**：QQ/网易云常在艺人名后附读音注释，如
+ * 「德永英明 (とくなが ひであき)」。这正是**发音真相**——kuromoji 拆不对
+ * 「德永英明」（IPADIC 无此人名，拆成 德/永/英明），但括号里的假名直接给对
+ * 「tokunaga hideaki」。提取纯假名括号内容 → wanakana 罗马化 → 加入候选。
+ * 修「德永英明 ↔ Hideaki Tokunaga」这类「Spotify 拉丁名 vs 中文平台汉字名」。
+ *
+ * ⚠️ 提取的假名必须**纯假名**（平/片假名 + 空白），避免把 `(Live)` / `(feat. X)`
+ * 等版本标签误当读音。 */
 function romanizeVariants(s: string): string[] {
   const set = new Set<string>();
   const py = romanize(s);
   if (py) set.add(py);
   const jaTw = romanizeJa(cn2t(s));
   if (jaTw) set.add(jaTw);
+  // 假名括号直读：`(とくなが ひであき)` → 罗马化后保留 token 边界（空格）
+  // → 顺序无关匹配可用。
+  const furigana = s.match(/[（(]([\u3040-\u309F\u30A0-\u30FF\s]+)[)）]/);
+  if (furigana) {
+    const kana = furigana[1].trim();
+    if (kana) {
+      const rom = kana
+        .split(/\s+/)
+        .map((w) => toRomaji(w))
+        .join(' ')
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (rom) set.add(rom);
+    }
+  }
   return [...set];
+}
+
+// ── 英文艺名别名表（2026-08-03）────────────────────────────────────────
+// 中文平台（QQ/网易云）用汉字名，Spotify 常用**非音译的英文艺名**（Jay Chou /
+// JJ Lin / G.E.M.）。拼音路线只能桥「孙燕姿→sunyanzi」这类音译名，艺名与读音
+// 完全无关——周杰伦拼音 zhoujielun ≠ Jay Chou，任何罗马化算法都桥不了。
+// 日语侧同理：ZUTOMAYO（ずっと真夜中でいいのに。）是造词型拉丁艺名，kuromoji
+// 只给「zutto mayonaka de ii noni」，对不上。这里用**精确整串匹配**的策展表
+// 做最后一公里（与 kuromoji 同哲学：只桥明确名单，不上算法猜测）：
+//   - key = 剥括号注释 + 简繁统一（cn2t）后的全名（汉字/假名皆可）——
+//     「ずっと真夜中でいいのに」和「周杰倫」都是合法 key；括号里的读音/译名
+//     注释（如 (永远是深夜有多好｡)）不参与 key
+//   - 只认整串相等，「小周杰伦」≠「周杰伦」
+//   - 值 = 该艺人在 Spotify 等平台的拉丁艺名（可多个：邓紫棋 = G.E.M./Gloria Tang）
+// 表外名字永远走不到这里（表内无铃木爱理），「铃木爱理 vs Lefty Hand Cream」
+// 式翻唱链防线不受影响。
+const STAGE_NAME_ALIASES: Record<string, string[]> = {
+  周杰倫: ['Jay Chou'],
+  蔡依林: ['Jolin Tsai'],
+  林俊傑: ['JJ Lin'],
+  王力宏: ['Wang Leehom', 'Leehom Wang'],
+  鄧紫棋: ['G.E.M.', 'Gloria Tang'],
+  羅志祥: ['Show Luo'],
+  蕭敬騰: ['Jam Hsiao'],
+  楊丞琳: ['Rainie Yang'],
+  張韶涵: ['Angela Chang'],
+  潘瑋柏: ['Wilber Pan'],
+  方大同: ['Khalil Fong'],
+  陳奕迅: ['Eason Chan'],
+  薛之謙: ['Joker Xue'],
+  吳青峰: ['Greeny Wu'],
+  張惠妹: ['A-Mei'],
+  許嵩: ['Vae'],
+  汪蘇瀧: ['Silence Wong'],
+  徐佳瑩: ['Lala Hsu'],
+  吳克群: ['Kenji Wu'],
+  陶喆: ['David Tao'],
+  王菲: ['Faye Wong'],
+  鄭秀文: ['Sammi Cheng'],
+  張信哲: ['Jeff Chang'],
+  梁靜茹: ['Fish Leong'],
+  范曉萱: ['Mavis Fan'],
+  庾澄慶: ['Harlem Yu'],
+  周華健: ['Wakin Chau', 'Emil Chau'],
+  王心凌: ['Cyndi Wang'],
+  蔡健雅: ['Tanya Chua'],
+  戴佩妮: ['Penny Tai'],
+  辛曉琪: ['Winnie Hsin'],
+  蘇慧倫: ['Tarcy Su'],
+  蕭亞軒: ['Elva Hsiao'],
+  張靚穎: ['Jane Zhang'],
+  劉德華: ['Andy Lau'],
+  張學友: ['Jacky Cheung'],
+  郭富城: ['Aaron Kwok'],
+  黎明: ['Leon Lai'],
+  譚詠麟: ['Alan Tam'],
+  陳慧琳: ['Kelly Chen'],
+  梁詠琪: ['Gigi Leung'],
+  莫文蔚: ['Karen Mok'],
+  容祖兒: ['Joey Yung'],
+  謝霆鋒: ['Nicholas Tse'],
+  古巨基: ['Leo Ku'],
+  蔡卓妍: ['Charlene Choi'],
+  鍾欣潼: ['Gillian Chung'],
+  楊千嬅: ['Miriam Yeung'],
+  鄭伊健: ['Ekin Cheng'],
+  鄧麗君: ['Teresa Teng'],
+  林憶蓮: ['Sandy Lam'],
+  葉倩文: ['Sally Yeh'],
+  王傑: ['Dave Wang'],
+  張宇: ['Phil Chang'],
+  任賢齊: ['Richie Jen'],
+  陳小春: ['Jordan Chan'],
+  陳冠希: ['Edison Chen'],
+  周渝民: ['Vic Chou'],
+  言承旭: ['Jerry Yan'],
+  吳建豪: ['Vanness Wu'],
+  朱孝天: ['Ken Chu'],
+  五月天: ['Mayday'],
+  蘇打綠: ['Sodagreen'],
+  飛兒樂團: ['F.I.R.'],
+  八三夭: ['831'],
+  動力火車: ['Power Station'],
+  草蜢: ['Grasshopper'],
+  // 日语侧：拉丁艺名与读音无关的（造词型/缩写型/外来语非读音化写法）。
+  ずっと真夜中でいいのに: ['ZUTOMAYO', 'ZTMY'],
+  サカナクション: ['Sakanaction'],
+  スピッツ: ['Spitz'],
+  スキマスイッチ: ['Sukima Switch'],
+  バンプオブチキン: ['BUMP OF CHICKEN'],
+  ワンオクロック: ['ONE OK ROCK'],
+  オフィシャルヒゲダンディズム: ['Official HIGE DANDISM'],
+  ミセスグリーンアップル: ['Mrs. GREEN APPLE'],
+  米津玄師: ['Kenshi Yonezu'],
+  藤井風: ['Fujii Kaze'],
+  ミレイ: ['milet'],
+  キタニタツヤ: ['Tatsuya Kitani'],
+};
+
+/**
+ * 艺人名 → 别名表 key：剥掉括号注释（读音/译名）后只取汉字+假名，
+ * 再 cn2t 统一为繁体（表 key 用繁体）。纯拉丁名 → null，表示「这一侧
+ * 不是日/中文名，走不了别名通道」。
+ */
+function stageNameKey(s: string): string | null {
+  const stripped = s.replace(/[(（\[【][^)）\]】]*[)）\]】]/g, '');
+  let out = '';
+  for (const ch of stripped) {
+    if (HAN.test(ch) || KANA.test(ch)) out += ch;
+  }
+  if (!out) return null;
+  return cn2t(out);
+}
+
+/** 英文艺名归一：小写 + 去标点（"G.E.M."→"gem"、"JJ Lin"→"jjlin"）。 */
+function normStageName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /** 音译重叠判定的最短长度——太短（≤3）的罗马化串靠 includes 容易撞巧合。 */
@@ -165,11 +334,34 @@ const MIN_ROMAJI_OVERLAP_LEN = 4;
  * includes/前后缀逻辑。把两侧各自算出多条候选罗马化（拼音 + kuromoji），
  * 跨候选比对：相等或一方完整包含另一方（带最短长度门）才算命中。
  *
+ * 顺序无关兜底（2026-08-03 新增）：西方艺人名常「名前颠倒」——Spotify 写
+ * "Hideaki Tokunaga"，日文是「德永英明」（读作 Tokunaga Hideaki）。完整包含
+ * 判定对不上。用 kuromoji 的 token 级读音做**集合匹配**：CJK 侧拆成 token
+ * 数组（[tokunaga, hideaki]），拉丁侧只要**每个 token 都是其子串**（不要求
+ * 顺序）即命中。修「浜崎あゆみ ↔ Ayumi Hamasaki」「德永英明 ↔ Hideaki
+ * Tokunaga」这类 case。
+ *
  * 正确拒绝：铃木爱理("suzukiairi"/"lingmuaili") vs Lefty("leftyhandcream") / wacci
- * 正确接受：鈴木愛理↔Suzuki Airi、宇多田ヒカル↔Utada Hikaru、初音ミク↔Hatsune Miku
+ * 正确接受：鈴木愛理↔Suzuki Airi、宇多田ヒカル↔Utada Hikaru、初音ミク↔Hatsune Miku、
+ *           浜崎あゆみ↔Ayumi Hamasaki（顺序无关）
+ *
+ * 英文艺名别名（2026-08-03）：周杰伦 ↔ Jay Chou 这类**非音译**艺名，罗马化
+ * 路线（拼音/kuromoji/假名括号）永远桥不了，走 STAGE_NAME_ALIASES 策展表——
+ * 精确整串匹配（汉字侧 key 全名相等、拉丁侧归一后与表值相等），不做子串。
+ * 表内是手工确认的同人，故不经 MIN_ROMAJI_OVERLAP_LEN 长度门限（G.E.M. 等
+ * 3 字符艺名也能过）。
  */
 export function artistTransliterationMatch(a: string, b: string): boolean {
   if (!a || !b) return false;
+  // 英文艺名别名通道（先于罗马化：表内名不需要经过长度门限）。
+  const ka = stageNameKey(a);
+  const kb = stageNameKey(b);
+  const aliasHit = (key: string | null, other: string): boolean =>
+    !!key &&
+    !!STAGE_NAME_ALIASES[key] &&
+    STAGE_NAME_ALIASES[key].some((st) => normStageName(st) === normStageName(other));
+  if (aliasHit(ka, b)) return true;
+  if (aliasHit(kb, a)) return true;
   const va = romanizeVariants(a);
   const vb = romanizeVariants(b);
   for (const ra of va) {
@@ -179,5 +371,29 @@ export function artistTransliterationMatch(a: string, b: string): boolean {
       if (ra === rb || ra.includes(rb) || rb.includes(ra)) return true;
     }
   }
+  // 顺序无关集合匹配：CJK 侧拆成 token（kuromoji token / 假名括号 token），
+  // 拉丁侧只需每个 token 子串命中即可（不要求顺序）。双向都试。
+  // token 太短（< MIN_ROMAJI_OVERLAP_LEN）不参与，防止「すず」撞「すずき」。
+  const splitTokens = (s: string): string[] =>
+    s.split(' ').filter(Boolean);
+  const tryTokenMatch = (cjk: string, latinVariants: string[]): boolean => {
+    // 1) kuromoji token 级读音（识别规则日文名）
+    let tokens = romanizeJaTokens(cn2t(cjk));
+    // 2) 假名括号直读（带空格 → 拆词）。「德永英明 (とくなが ひであき)」的
+    //    kuromoji 拆不对，但括号读音直接给对。
+    for (const v of romanizeVariants(cjk)) {
+      if (v.includes(' ')) tokens = tokens.concat(splitTokens(v));
+    }
+    if (tokens.length < 2) return false;
+    for (const latin of latinVariants) {
+      if (!latin || latin.length < MIN_ROMAJI_OVERLAP_LEN) continue;
+      if (tokens.every((tok) => tok.length >= MIN_ROMAJI_OVERLAP_LEN && latin.includes(tok))) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (tryTokenMatch(a, vb)) return true;
+  if (tryTokenMatch(b, va)) return true;
   return false;
 }
