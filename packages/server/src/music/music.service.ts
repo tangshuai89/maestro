@@ -1529,6 +1529,51 @@ export class MusicService {
             `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
             ` (cleanTitle cand="${candTitleNormClean}" want="${wantTitleNormClean}"` +
             ` dur=${meta.duration}≈${t.duration}, lenient)`,
+);
+         return t;
+       }
+     }
+
+    // 第五遍-b：Spotify-style「title + co-author suffix」识别。修
+    // 「PLACEBO (安慰剂) - 米津玄師 / 野田洋次郎」↔「PLACEBO ＋ 野田洋次郎 - 
+    // Kenshi Yonezu / Yojiro Noda」：seed 标题剥括号 = PLACEBO，候选标题 
+    // = PLACEBO ＋ 野田洋次郎——后者多了一段「野田洋次郎」恰好是候选的另一位
+    // 协作者。Tier 5 的 50% 长度门把这种「短 seed + 拼了协作者名的 cand」挡掉
+    // （15 vs 7 = 53% > 50%），JW 0.857 也卡在 0.88 门外。这里走「longer 是 
+    // shorter 的严格前缀 + 剥首部分隔符后命中某侧艺人别名」的兜底。
+    {
+      const wantBase = wantTitleNormClean;
+      for (const t of tracks) {
+        const candTitleClean = stripParensContent(t.title);
+        const candBase = this.normalizeKey(candTitleClean, '');
+        if (!candBase || !wantBase) continue;
+        // 判 longer/shorter：只处理「cand 是 want 的真前缀」或反之。
+        let base = '';
+        let extra = '';
+        if (candBase.length > wantBase.length && candBase.startsWith(wantBase)) {
+          base = wantBase;
+          extra = candBase.slice(wantBase.length);
+        } else if (
+          wantBase.length > candBase.length &&
+          wantBase.startsWith(candBase)
+        ) {
+          base = candBase;
+          extra = wantBase.slice(candBase.length);
+        }
+        if (!extra) continue;
+        // 剥掉前缀里的分隔符（＋/+/&/·/空白）后再做艺人匹配。
+        const extraNorm = extra.replace(/^[+＋&/／·・\s]+/, '');
+        if (!extraNorm) continue;
+        // 「extra 是某侧艺人的别名/罗马化」才放过——纯版本标签/无关字符不能蒙混。
+        const extraMatches =
+          this.artistAppearsInField(extraNorm, t.artist) ||
+          this.artistAppearsInField(extraNorm, meta.artist);
+        if (!extraMatches) continue;
+        if (this.durationMismatch(meta.duration, t.duration)) continue;
+        this.logger.log(
+          `searchEquivalent ${platform} co-author-suffix match [${tag}]: ` +
+            `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}" ` +
+            `(want="${wantBase}" cand="${candBase}", extra="${extraNorm}" matched artist)`,
         );
         return t;
       }
@@ -1584,17 +1629,84 @@ export class MusicService {
    *    不对「德永英明」这个姓名（IPADIC 无此人名），导致 Spotify 的
    *    "Hideaki Tokunaga"（名前颠倒）匹配不上。传原始串让 artistTransliterationMatch
    *    能提取假名括号读音。includes 仍用 normalizeKey 后比较（一致口径）。
+   *
+   * 2026-08-03 多艺人兜底：collab 场景（QQ 给「米津玄師 (よねづ けんし) / 
+   *    野田洋次郎」，Spotify 给「Kenshi Yonezu / Yojiro Noda」），单艺人
+   *    blob 不在别名表/罗马化命中。拆 /／,&; 后做配对别名/罗马化匹配，命中
+   *    多数（ceil(n/2)）即过。仍然只信任别名表 + kuromoji + romanize 三条
+   *    现有桥——不引入新模糊度，仅在「双方都 ≥2 协作者」时才走这条路，避免
+   *    单艺人场景下走火入魔。
    */
   private artistLooseMatch(rawA: string, rawB: string): boolean {
     if (!rawA || !rawB) return false;
     const a = this.normalizeKey(rawA, '');
     const b = this.normalizeKey(rawB, '');
     if (!a || !b) return false;
-    return (
+    if (
       a.includes(b) ||
       b.includes(a) ||
       artistTransliterationMatch(rawA, rawB)
-    );
+    ) {
+      return true;
+    }
+    // 多艺人兜底：双方都 ≥2 协作者时按配对别名/罗马化匹配。
+    const partsA = this.splitArtists(rawA);
+    const partsB = this.splitArtists(rawB);
+    if (partsA.length >= 2 && partsB.length >= 2) {
+      let matched = 0;
+      for (const pa of partsA) {
+        const normPa = this.normalizeKey(pa, '');
+        if (!normPa) continue;
+        for (const pb of partsB) {
+          const normPb = this.normalizeKey(pb, '');
+          if (!normPb) continue;
+          if (
+            normPa.includes(normPb) ||
+            normPb.includes(normPa) ||
+            artistTransliterationMatch(pa, pb)
+          ) {
+            matched++;
+            break;
+          }
+        }
+      }
+      return matched >= Math.ceil(partsA.length / 2);
+    }
+    return false;
+  }
+
+  /**
+   * 把多艺人字符串按常见分隔符切分。collab 场景：「米津玄師 / 野田洋次郎」
+   * → ['米津玄師', '野田洋次郎']；「A, B & C」→ ['A', 'B', 'C']。
+   * 只切显式分隔符（/／,&;），不切括号内容里的连字符——括号注释交给
+   * stripFuriganaParens/stripFeatTags 在 normalizeKey 里剥。
+   */
+  private splitArtists(raw: string): string[] {
+    return raw
+      .split(/\s*[\/／,;&]\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * 「给定的 rawArtist 是不是某 artist 字段（可能多艺人）里的某位艺人的
+   * 别名/罗马化」。用于 Tier 5b：判断 cand 标题末尾追加的 co-author 段是否
+   * 真匹配某侧艺人。配对走与 artistLooseMatch 相同的别名 + kuromoji + 
+   * romanize 三条桥，但不要求双方都 ≥2 人（单艺人对单段 extra 也行）。
+   */
+  private artistAppearsInField(rawArtist: string, field: string): boolean {
+    if (!rawArtist || !field) return false;
+    // 先直接整串桥（单艺人场景）。
+    if (artistTransliterationMatch(rawArtist, field)) return true;
+    // 拆字段按位桥。
+    const parts = this.splitArtists(field);
+    for (const p of parts) {
+      if (artistTransliterationMatch(rawArtist, p)) return true;
+      const np = this.normalizeKey(p, '');
+      const ne = this.normalizeKey(rawArtist, '');
+      if (np && ne && (np.includes(ne) || ne.includes(np))) return true;
+    }
+    return false;
   }
 
   private durationMismatch(seedDuration: number, candDuration: number): boolean {

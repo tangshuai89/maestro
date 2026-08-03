@@ -1280,7 +1280,66 @@ async function main() {
     console.log('✅ 22. detect 等 discover 落定 + 兄弟版本并账：❤ 角标按歌算');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 22 项通过');
+  // ── 23. 多艺人 collab + Spotify 「title + co-author 后缀」识别 ──
+  // 用户实测回归：「PLACEBO (安慰剂) - 米津玄師 (よねづ けんし) / 野田洋次郎 
+  // (のだようじろう)」(QQ/netease, dur=240) 在 Spotify 是「PLACEBO ＋ 野田洋次郎 - 
+  // Kenshi Yonezu / Yojiro Noda」(dur=240)。两个拦路虎：
+  //   a) 艺人字段多艺人用「/」拼——别名表/罗马化按 blob 查不到。
+  //      修：artistLooseMatch 多艺人兜底，按 /／,&; 拆后配对别名/罗马化，命中
+  //      ≥ ceil(n/2) 过。本例米津玄師↔Kenshi Yonezu 命中（1/2 过）。
+  //   b) Spotify 标题「PLACEBO ＋ 野田洋次郎」= seed 标题剥括号「PLACEBO」+
+  //      协作者后缀。Tier 5 长度门 50% 把它挡掉（15 vs 7 = 53%），JW 0.857 也
+  //      差 0.023。修：Tier 5b「cand 是 want 的严格前缀 + extra 段命中某侧
+  //      艺人别名/罗马化」豁免长度门。本例 extra「野田洋次郎」命中 seed.artist。
+  {
+    let spotifyCalls: string[] = [];
+    const wrappedSpotify = {
+      ...spotify,
+      search: async (_ps: unknown, kw: string, limit: number) => {
+        spotifyCalls.push(kw);
+        // 任何 kw 都返回真实歌曲（模拟 Spotify 实际只有这一首且元数据略有差异）
+        return [
+          {
+            id: 'sp-placebo',
+            provider: 'spotify',
+            title: 'PLACEBO ＋ 野田洋次郎',
+            artist: 'Kenshi Yonezu / Yojiro Noda',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 240,
+            liked: false,
+          },
+        ];
+      },
+    };
+    const origSpotify = (svc as any).spotify;
+    const origSessionProviders = session.providers;
+    (svc as any).spotify = wrappedSpotify;
+    (session as any).providers = {
+      ...origSessionProviders,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: 'PLACEBO (安慰剂)',
+        artist: '米津玄師 (よねづ けんし) / 野田洋次郎 (のだようじろう)',
+        duration: 240,
+      });
+      assert.ok(
+        t && t.id === 'sp-placebo',
+        `PLACEBO 多艺人 collab 应命中 Spotify（Tier 5b），实际 ${t && t.id}`,
+      );
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 23. 多艺人 collab + Spotify 「title + co-author 后缀」识别');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 23 项通过');
 }
 
 main().catch((err) => {
