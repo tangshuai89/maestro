@@ -26,3 +26,13 @@
 - [x] 26. 修问题3：简繁跨平台被拆开。前端 `lib/groupLibrary.ts` 的 `stripForFuzzy`/`normalizeNoStrip` 补 OpenCC 繁→简（cjkUnify，与后端 search.util 同口径）——后端因时长差拆成两条的简繁版本，前端分组 key 收敛后合并。同步更新 whitebox 副本 `music/groupLibrary.test.ts` + 新增 #13（龍捲風↔龙卷风）
 - [x] 27. 重建本地 fanOut：`importLiked` 全量导入后清空 session fanOut（import 已是各平台真实红心的 artist-strict 快照），让收紧后的 detect 逻辑重新积累，冲掉历史误并组；远端红心不动
 - [x] 28. 上 kuromoji 重字典提升跨脚本日文**汉字**名召回：`translit.ts` 加 kuromoji（IPADIC）日文形态素读音，喂词典前先 OpenCC 简→繁（cn2t）还原「铃木爱理→鈴木愛理」；`artistTransliterationMatch` 用「拼音 + kuromoji(cn2t) 读音」多候选、**严格包含**判等。安全取舍：**只用 cn2t 预处理后的读音**（直读简体会丢字 → 「藤井风」剩裸姓「fujii」→ 会把任意「Fujii XX」翻唱误并，重开事故门），故弃直读。`MusicService` 构造时 `warmupJa()` 后台预热（~1s），未就绪优雅降级回拼音。新增 ambient 类型 `kuromoji.d.ts` + `translit.test.ts`（接受 Suzuki Airi/Utada Hikaru/Hatsune Miku/Shiina Ringo；拒绝翻唱链 + 同姓不同人；标注顺序颠倒/艺名不规则读音的已知局限）+ cross-platform-match #19（端到端：铃木爱理↔Suzuki Airi 15s 差经 kuromoji 命中 Tier 3）。局限：姓名顺序颠倒（Ayumi Hamasaki）、艺名不规则读音（Kenshi Yonezu、藤井风的風=かぜ）仍桥不了，靠 Tier 3b 同录音 ±3s 兜底——真解需 JMnedict 人名读音库 + 词边界集合匹配，成本远超收益
+
+## 性能：库打开秒开（≥ 3000 首）
+
+- [ ] 29. server `getLibrary` 加内存缓存 + fanOut 增量合并：libraryCache: Map<sessionId, { result, fanOutSignature }>；fanOutSignature 用 `keys.length` + 头/尾各几个 key 拼字符串（fanOut mutate 时签名必变）；命中直接 return。增量合并：先构建 (platform, trackId) → library item indices 反向索引一次，再对受 fanOut 影响的 item 重算 likedPlatforms，未受影响的直接用 storage 值。
+- [ ] 30. server fanOut mutate 处 invalidate 缓存：fanOutLike / detectLikedAndSync / dislikeMerged / patchLibraryWithSources / importLiked（清空 fanOut 那步）→ 集中 `private invalidateLibraryCache(sessionId)`；fanOutSignature 用 fanOut 的 `keys.length` + `Object.keys(fanOut).join(',').length` + 第一条 entry 的 platform/trackId（弱但够用——fanOut 真变更时长度必然变）。
+- [ ] 31. renderer `lib/likedCache.ts`: 升 sessionStorage → localStorage，key `maestro:liked-library-cache`；readCachedLibrary 校验 importedAt ≤ 30 天；写失败（quota/隐私模式）降级为首次打开；接口签名不变。
+- [ ] 32. renderer `components/modals/LikedLibraryModal.tsx`: 装 `@tanstack/react-virtual`；用 useVirtualizer 渲染 group rows；动态行高 measureElement（展开 sublist 时整组高度变化）；expanded Set 变化触发重测；滚动 FPS 不掉。保留原有 skeleton / 重新导入 / syncing dot / fanOut 兜底 / close-不取消-fetch 等全部 UX。
+- [ ] 33. renderer `lib/groupLibrary.ts`: 第二遍扫描里 `fuzzyKey(anchor...)` / `fuzzyKey(cand...)` 提到循环外（用第一遍 enriched 的 repTitleKey/repArtistKey 直接复用）；不再每次 j 循环重算 OpenCC。3000 items 全过程 < 50ms。groupLibrary.test.ts 同步更新。
+- [ ] 34. renderer `App.tsx` `reloadLikedCount`: 先 `readCachedLibrary()` 立即 setLikedCount，后台 `getLibrary()` 拉到后覆盖。复用 likedCache.ts 不重复实现。
+- [ ] 35. spec.md 更新性能段（已完成，验收标准 / 实现 / 不做什么）；tasks.md 28 → 35 项。

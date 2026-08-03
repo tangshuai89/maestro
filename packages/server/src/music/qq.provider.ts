@@ -226,7 +226,7 @@ export class QqMusicProvider {
             artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
             album: s.albumname ?? '',
             coverUrl: s.albummid
-              ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${s.albummid}.jpg`
+              ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${s.albummid}.jpg`
               : '',
             audioUrl: '', // 由 getStreamPath 在播放时动态获取
             duration: s.interval ?? 0,
@@ -490,7 +490,7 @@ export class QqMusicProvider {
       artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
       album: s.album?.name ?? '',
       coverUrl: s.album?.mid
-        ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${s.album.mid}.jpg`
+        ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${s.album.mid}.jpg`
         : '',
       audioUrl: '', // 播放时由 getStreamPath 动态获取
       duration: s.interval ?? 0,

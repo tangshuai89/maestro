@@ -95,3 +95,34 @@ favorites 接口在 `qqCookies` 缺失时直接用字面 `g_tk=5381`。
 - [ ] 重新导入完成：遮罩渐隐 200ms，列表回到正常亮度；如果新数据项数变了，头部计数也平滑切换。
 - [ ] 空态点「现在导入」：保留原空态文案与按钮，按钮内嵌一个旋转 spinner，文字换成「导入中…」。
 - [ ] 关闭弹窗时不取消正在进行的「重新导入」请求（让后台继续跑完，下次打开自动拿到新数据）。导入完通过 `likedVersion` signal 通知 App 顶部 ❤ 角标刷新。
+
+## 性能：库打开秒开（≥ 3000 首）
+
+> 用户反馈：3000+ 首库「我的喜欢」打开太卡——重启 app 后首开要等好几秒；同 session 二次打开也要等；滚动卡；点 ❤ 之后 ❤ 计数刷新慢。下面这套覆盖整条链路。
+
+### 验收标准
+
+- [ ] **renderer 端持久化缓存**：库快照从 sessionStorage 升级到 localStorage（带 importedAt 校验），重启 app 后首次打开 modal 走 localStorage 缓存首帧，**视觉上不出现白屏或 skeleton**；后台静默 `getLibrary` 拉新拉到后平滑替换。
+- [ ] **renderer 端虚拟滚动**：3000+ 个 group row 只渲染可见 ~30 个；滚动流畅（FPS 不掉）；展开 sublist 的动态高度用 `measureElement` 处理，不破坏虚拟化。
+- [ ] **server 端 `getLibrary` 零成本**：3000+ 首库 + 5000 fanOut 条目下，缓存命中时 server 处理 < 1ms（无 fanOut 计算）。fanOut 变更时正确 invalidate 缓存。
+- [ ] **server 端增量合并**：fanOut 反向索引只对**受影响的 library item** 算 likedPlatforms，未受影响的 item 直接复用 storage 已存值；不再做 O(I × S × F) 全扫。
+- [ ] **renderer `groupLibraryItems` 性能**：二次扫描不再重复调 fuzzyKey（用第一遍的 enriched 复用），3000 items 全过程 < 50ms。
+- [ ] **App ❤ 计数秒出**：titlebar ❤ 按钮打开/刷新时，localStorage 缓存立即给数；后台拉新后用真实值覆盖（也走缓存链路）。
+- [ ] **失效兜底**：localStorage 写失败（quota / 隐私模式）→ 降级为首次打开 skeleton；读取失败（JSON 损坏 / 旧版格式）→ 同上；`importedAt` 超过 30 天仍走网络拉新（不强求秒开），但不影响后台拉新覆盖。
+- [ ] **缓存陈旧可感知**：后台拉新时标题绿色脉动小点 + ❤ 计数平滑过渡；用户感知到「旧→新」的更新。
+
+### 实现
+
+- **renderer `lib/likedCache.ts`**：key 改成 `maestro:liked-library-cache` 写到 localStorage；`readCachedLibrary` / `writeCachedLibrary` / `clearCachedLibrary` 接口不变。quota 失败吞异常降级。
+- **renderer `components/modals/LikedLibraryModal.tsx`**：用 `@tanstack/react-virtual` 的 `useVirtualizer` 渲染 group rows；每个 group 是虚拟槽位（含展开 sublist 的总高度）。`expanded` Set 触发 `measureElement` 重测。
+- **renderer `lib/groupLibrary.ts`**：把二次扫描里的 `fuzzyKey(anchor...)` / `fuzzyKey(cand...)` 提到循环外；enrich 数组中存 `repTitleKey / repArtistKey` 直接复用。预期 3000 items 下从 ~500ms 降到 < 50ms。
+- **server `music.service.ts` `getLibrary`**：加 `libraryCache: Map<sessionId, { result, fanOutKeyCount }>`；cache key 含 fanOut 总条目数 + Object.keys(fanOut).join('|') 的简化 hash（fanOut 变更时引用或长度变了就 invalidate）。命中直接 return；miss 时**反向索引 (platform, trackId) → library item indices 一次构建**，只对**受 fanOut 命中的 item** 重算 likedPlatforms，其它 item 直接用 storage 的值。
+- **server `music.service.ts` fanOut mutate 处**：fanOutLike / detectLikedAndSync / dislikeMerged / patchLibraryWithSources / importLiked（清空 fanOut 那步）→ `libraryCache.delete(session.id)`。集中成一个 `private invalidateLibraryCache(sessionId)`，每个 mutate 路径调用。
+- **renderer `App.tsx` `reloadLikedCount`**：先 `readCachedLibrary()` → 立即 `setLikedCount(cached.items.length)` → 后台 `getLibrary()` → 拉到后 `setLikedCount(res.items.length)`。
+
+### 不做什么
+
+- 不引 IndexedDB：localStorage 容量（5–10MB）足够 3000+ items 的 JSON（~200–500KB），且接口简单，复杂场景再换。
+- 不把 `groupLibraryItems` 移到 web worker：当前优化到 < 50ms 后没必要；进一步优化留待真出现卡顿再说。
+- 不持久化 server 端派生 cache 到 state.json：内存缓存够用，重启后冷启动一次 getLibrary 也只是 50ms 级（3000 items + 缓存路径）。
+- 不改 `fanOut` 数据结构：保留 `Record<mergedId, FanOutEntry[]>`；只在 getLibrary 端做反向索引。

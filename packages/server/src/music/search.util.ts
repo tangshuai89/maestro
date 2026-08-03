@@ -3,8 +3,13 @@
  *
  * 抽到独立文件是为了能直接被白盒测试覆盖（无需 DI 启动 NestJS）。
  * MusicService 内部也复用同一份实现。
+ *
+ * 归一相关函数（normalizeKey / stripFeatTags / stripParensContent /
+ * stripFuriganaParens / cjkUnify / displayKey）抽到 `@maestro/common`——
+ * 单一真值源，server 端 catalog 匹配和 renderer 端 groupLibrary 展示级
+ * 聚类都从同一条流水线走，确保两端的 key 永远对齐（弹窗徽章 = server
+ * 实际合并的平台集合）。
  */
-import { Converter } from 'opencc-js';
 import type { Track } from './types';
 import type {
   SourceInfo,
@@ -12,235 +17,20 @@ import type {
 } from './types';
 import type { MusicProvider } from '../common/provider';
 
+// Re-export 给 server 模块用——music.service.ts 等不需要改 import 路径。
+// 实际实现统一在 @maestro/common（单测在 common/src/normalizer.test.ts）。
+// 同时 import 让本文件内部也能调用（re-export 不在 in-scope 里给本文件用）。
+import { normalizeKey } from '@maestro/common';
+export {
+  stripFeatTags,
+  stripParensContent,
+  stripFuriganaParens,
+  cjkUnify,
+  normalizeKey,
+  displayKey,
+} from '@maestro/common';
+
 export type RawSearchEntry = { track: Track; platform: MusicProvider };
-
-/**
- * 剥掉字符串里的「feat./featuring/ft. <name>」标签。
- *
- * 两种形式：
- *   - 括号形式：`(feat. Name)` / `（feat. Name）` / `(Featuring Name1 & Name2)` ...
- *   - 联入形式：`Song, feat. Name` / `Song feat. Name` / `Song ft. Name` ...
- *
- * **不动**：
- *   - `(Live)` / `(Remix)` / `(伴奏)` 等版本标签——那些是 v1 保守策略要保留
- *     的差异，跟 feat 标签性质不同
- *   - `(With Strings)` / `(With Drums)` 等 —— "with" 不在 regex 里，不会误剥
- *   - 多艺人表 `"Billie Eilish, Justin Bieber"` —— 缺 "feat." 关键词，
- *     不会被当作 feat 标签；那种多艺人结构是另一种问题，留 v3 解决
- *
- * 在 `normalizeKey` 流水线之前调用，让 feat 相关字符不进 key。
- */
-export function stripFeatTags(s: string): string {
-  if (!s) return s;
-  let out = s;
-
-  // 1) 括号形式：`(feat. Name)` `（feat. Name）` `[feat. Name]` `【feat. Name】`
-  //    内含 feat / featuring / ft.(?).+，贪婪匹配到对应右括号（含全角）
-  out = out.replace(
-    /[(（\[【〔](?:feat\.?|featuring|ft\.?)\s+[^)）\]】〕]+[)）\]】〕]/gi,
-    '',
-  );
-
-  // 2) 联入形式：`Song, feat. Name` / `Song feat. Name`(EOL) /
-  //    `Song & feat. Name` / `Song / feat. Name` / `Song ft. Name`
-  //    跟着前缀可以空格 / 逗号；feat 关键词后到下一个分隔符（,/&/）
-  //    或字符串尾。
-  out = out.replace(
-    /\s*,?\s*(?:feat\.?|featuring|ft\.?)\s+[^,;&\/]+?(?=\s*(?:,|\s*&|\s*\/|$))/gi,
-    '',
-  );
-
-  return out.replace(/\s+/g, ' ').trim();
-}
-
-/**
- * 阶段 F：剥掉括号内的全部内容（保留括号外的部分）。
- *
- * 用途：`searchEquivalent` 在原 kw 0 候选时做兜底，把搜索词放宽一层再试一次。
- * 用户场景：「TO BE (存在) 滨崎步 (浜崎あゆみ)」→ Spotify 0 候选，因为
- *  - 「TO BE (存在)」里 "(存在)" 是版本标签，Spotify 上只有原版「TO BE」
- *  - 「滨崎步 (浜崎あゆみ)」里 "(浜崎あゆみ)" 是艺人别名括号，Spotify 用
- *    「Ayumi Hamasaki」，但即使去掉括号也仍然对不上（中文简体 vs 拉丁）
- * 剥掉括号内容后搜「TO BE 滨崎步」→ 候选列表，匹配阶段仍按 normalizeKey
- * 严格匹配（title 包含 + artist 跨脚本走 isCrossScript）→ 命中。
- *
- * 区别于 `stripFuriganaParens`：
- *  - 那里只剥纯假名括号（保留含汉字/Latin 的版本标签，是 normalizeKey 流水线）
- *  - 这里**所有括号内容**都剥（兜底专用，匹配阶段不靠它）
- *
- * 覆盖的括号类型：半角/全角圆括号、方括号、方头括号、书名号。
- * 边界：嵌套 paren（极少见）；空括号 "" → 整段剥。
- */
-export function stripParensContent(s: string): string {
-  if (!s) return s;
-  return s
-    .replace(/[(（\[【〔〈《][^)）\]】〕〉》]*[)）\]】〕〉》]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * 阶段 E1：剥掉"纯假名括号"——读音注释（furigana），不是版本标签。
- *
- * 日文里 artist 字段经常这样：「藤井风 (ふじいかぜ)」——半角括号里全是
- * 平假名/片假名，那是 kanji 的读音。剥掉避免它污染 key。
- *
- * **判定**：括号内容 trim 后**完全由**平假名/片假名（含中点・长音ー/空白）
- * 构成 → 整段剥；其他类型（Latin / 汉字 / 标点）→ 保留。
- *
- * 边界情况：
- *   - `(ふじいかぜ)` → 剥（用户场景）
- *   - `[エイドル]` → 剥
- *   - `（ライブ）` → 剥（用户已确认：日文里「ライブ」一般不写进 tag，
- *                       真要版本差异会用「～のライブ」直写在标题里）
- *   - `(feat. X)` → 不动（feat 走 stripFeatTags）
- *   - `(Live)` / `(现场版)` → 不动（Latin / 汉字）
- *   - `()` → 剥（空）
- *   - `(ヒューリスティック Live 2024)` → 不动（含 Latin）
- *
- * 在 `normalizeKey` 流水线 step 0 内跟在 stripFeatTags 后。
- */
-export function stripFuriganaParens(s: string): string {
-  if (!s) return s;
-  // 平假名 U+3040-U+309F  +  片假名 U+30A0-U+30FF（含 U+30FB 中点、U+30FC 长音）
-  // 空白 \s 用于分隔假名 token（如 "ふじい かぜ" 里就有半角空格）
-  const stripped = s.replace(
-    /[(（\[【〔]([\u3040-\u309F\u30A0-\u30FF\s]*)[)）\]】〕]/g,
-    (m, k: string) => {
-      const trimmed = k.trim();
-      if (!trimmed) return ''; // 空括号
-      // 严格验证 trim 完只剩"平/片假名 + 空白" (空白允许分隔假名 token)
-      if (/^[\u3040-\u309F\u30A0-\u30FF\s]+$/.test(trimmed)) return '';
-      return m; // 含其他字符（Latin、汉字、标点）→ 整段保留
-    },
-  );
-  return stripped.replace(/\s+/g, ' ').trim();
-}
-
-/**
- * 阶段 E2：CJK 跨语言形态合并。
- *
- * 核心引擎用 OpenCC（opencc-js）做繁→简转换，覆盖数千个繁/异体→简体映射
- * （龍捲風→龙卷风、永遠→永远 等），不再靠手写几十条维护不过来的 CJK_UNIFIER 表。
- *
- * 策略不变：**单方向向"中简"靠**。QQ / 网易云（CN 风格）不被改造，
- * Spotify / Deezer（经常用繁体/日文汉字）被推成简体 → 跨平台同 key。
- *
- * 在 normalizeKey 的 step 5（noise strip）之后、step 6（lowercase）之前应用。
- */
-
-/** OpenCC tw→cn 转换器（模块加载一次）。 */
-let _tw2cn: ((text: string) => string) | null = null;
-function tw2cn(): (text: string) => string {
-  if (!_tw2cn) {
-    try {
-      _tw2cn = Converter({ from: 'tw', to: 'cn' });
-    } catch {
-      _tw2cn = (s: string) => s; // 极端兜底：无 OpenCC 的降级环境
-    }
-  }
-  return _tw2cn;
-}
-
-/**
- * 日文特有形近汉字 → 中简（OpenCC tw→cn 不覆盖的日文独有形体）。
- * 例如：日文用「気」(U+6C17)，繁体中文用「氣」，简体中文用「气」——
- * tw→cn 处理「氣→气」，但「気」是日文独有形体，不走繁体中文路径。
- */
-const JP_KANJI: Record<string, string> = {
-  '気': '气',   // U+6C17 → U+6C14 (日: 気, ≠ 繁: 氣 → 简: 气)
-  '黒': '黑',   // U+9ED2 → U+9ED1 (日: 黒, ≠ 中: 黑)
-};
-
-const JP_KANJI_REGEX: RegExp = (() => {
-  const keys = Object.keys(JP_KANJI).join('');
-  return new RegExp(`[${keys}]`, 'g');
-})();
-
-/** @deprecated 保留供旧测试引用；生产走 cjkUnify()（OpenCC）。 */
-export const CJK_UNIFIER: Record<string, string> = { ...JP_KANJI };
-
-/**
- * CJK 统一化：OpenCC 繁→简 + 日文独有形体兜底。
- * 不在任何转换表里的字符原样返回。
- */
-export function cjkUnify(s: string): string {
-  if (!s) return s;
-  s = tw2cn()(s);
-  s = s.replace(JP_KANJI_REGEX, (ch) => JP_KANJI[ch] || ch);
-  return s;
-}
-
-/**
- * 歌名+歌手归一化：把 title 和 artist 拼成一个跨平台匹配键。
- *
- * 关键约束：**保守保留"版本差异"**（specs/match-engine/spec.md 的 v2 决策）。
- *   - 不剥掉括号 / 引号里的内容——(Live) / (现场版) 这类版本标签必须保留，
- *     不能把「海阔天空 (Live)」与「海阔天空」视为同一首。
- *   - 只做「同一首歌的不同写法」归一：半/全角括号、em-dash / en-dash、智能
- *     引号、中文书名号这些。如果阶段 C 的 fuzzy 兜底启用，到时候再放宽。
- *   - 阶段 D：先跑 `stripFeatTags` 把 feat/featuring/ft. + 名字 标签整个剥掉，
- *     这样跨平台 feat 写法差异（"Bad Guy (feat. X)" vs "Bad Guy"）能匹配。
- *     注意：手动剥 `(Live)` 等版本标签 *不在* 这里——那是冲突的。
- *   - 阶段 E1：再跑 `stripFuriganaParens` 把纯假名括号注释（如
- *     「藤井风 (ふじいかぜ)」）剥掉。判定严格"trim 后全是平/片假名"
- *     才剥；版本标签不动。
- *
- * 流水线：
- *   0) [阶段 D] 剥 feat 标签
- *   0.5) [阶段 E1] 剥纯假名括号（furigana）
- *   1) 全角 ASCII (U+FF01..U+FF5E) → 半角
- *   2) 全角括号 / 方头括号 / 书名号 → 半角
- *   3) 各种 dash 类（em-dash / en-dash / figure / full-width hyphen-minus /
- *      katakana 长音号）→ '-'
- *   4) 智能引号 / 中文书名号 → 直引号
- *   5) 合并连续的"空白 + 标点 + 半角括号 + 直引号 + dash"到一组噪声字符并整段压缩
- *   5.5) [阶段 E2] CJK 跨语言形态合并（OpenCC 繁→简）
- *   6) 全小写
- */
-export function normalizeKey(title: string, artist: string): string {
-  const stripped =
-    `${stripFuriganaParens(stripFeatTags(title))} ` +
-    `${stripFuriganaParens(stripFeatTags(artist))}`;
-  let raw = stripped
-    // 1) 全角 ASCII（FF01..FF5E）→ 半角
-    .replace(/[！-～]/g, (ch) =>
-      String.fromCharCode(ch.charCodeAt(0) - 0xFEE0),
-    )
-    // 2) 全角括号 / 方头括号 / 书名号 → 半角（让下游 strip 类统一处理）
-    .replace(/[（）【】《》]/g, (ch) =>
-      ch === '（' ? '(' :
-      ch === '）' ? ')' :
-      ch === '【' ? '[' :
-      ch === '】' ? ']' :
-      ch === '《' ? '<' :
-      ch === '》' ? '>' :
-      ch,
-    )
-    // 3) 各种 dash → '-'（U+2010..U+2015 = hyphen / non-breaking / figure /
-    //    en-dash / em-dash / minus-bar；U+2212 = 数学 minus；U+FF0D = 全角
-    //    hyphen-minus；U+30FC = 片假名长音号「ー」）
-    .replace(/[\u2010-\u2015\u2212\uFF0D\u30FC]/g, '-')
-    // 4) 智能引号 / 中文书名号 → 直引号
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[「」『』]/g, '"')
-    // 5) 噪声字符合并：空白 + 标点 + 半角括号 + 直引号 + dash + CJK 标点
-    //    CJK 标点「。」（U+3002，日本惯用全角句号）「、」（U+3001，顿号）
-    //    「・」（U+30FB，日文中点）必须 strip——否则「ずっと真夜中でいいのに。」
-    //    与「ずっと真夜中でいいのに」normalizeKey 差一个「。」，跨平台匹配 Tier 2
-    //    includes 仍能命中（长的包含短的），但后续 strict 永远不撞。保险起见
-    //    全部 strip 掉，让两侧都进同一个干净的归一 key。
-    //    Tilde 变体（`~` U+007E / `〜` U+301C wave dash / `～` U+FF5E 全角）
-    //    在日文歌名里常被当分隔符用（「Departures~歌名~」「Departures〜歌名〜」）
-    //    —— 同一首歌在不同平台用不同字符，strip 之后才能跨平台 strict 命中。
-    .replace(/[\s\-_,.()\[\]<>'"′″·&+\/!?！？:：;；。、・~〜～]+/g, '');
-  // 5.5) CJK 跨语言形态合并（OpenCC 繁→简 + 日文独有形兜底）
-  raw = cjkUnify(raw);
-  // 6) 全小写
-  raw = raw.toLowerCase();
-  return raw;
-}
 
 /** 去重: 相同 normalizeKey 的歌合并为一条，保留第一个出现的。 */
 export function dedupTracks(all: RawSearchEntry[]): Map<string, Track> {

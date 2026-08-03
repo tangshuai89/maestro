@@ -11,10 +11,11 @@
     "dev:renderer": "cd packages/renderer && npm run dev",
     "dev:electron": "cd packages/electron && npm run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:renderer\" \"sleep 3 && npm run dev:electron\"",
+    "build:common": "cd packages/common && npm run build",
     "build:server": "cd packages/server && npm run build",
     "build:renderer": "cd packages/renderer && npm run build",
     "build:electron": "cd packages/electron && npm run build",
-    "build": "npm run build:server && npm run build:renderer && npm run build:electron",
+    "build": "npm run build:common && npm run build:server && npm run build:renderer && npm run build:electron",
     "lint": "cd packages/renderer && npm run lint",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "bash scripts/test.sh"

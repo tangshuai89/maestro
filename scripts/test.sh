@@ -21,6 +21,7 @@ run_pkg() {
   done
 }
 
+run_pkg common    "$PWD"
 run_pkg server    "$PWD"
 run_pkg electron  "$PWD"
 run_pkg renderer  "$PWD"

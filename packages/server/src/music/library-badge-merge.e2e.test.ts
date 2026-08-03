@@ -364,13 +364,15 @@ async function main() {
     },
     fanOut: {},
   });
-  // 调用 getLibrary → 触发 healLibraryItem 后台任务
+  // 调用 getLibrary → 不再自动触发 healLibraryItem（已改为懒同步）。
+  // 显式调用 healLibraryItem 触发后台自愈。
   const libBefore = svc2.getLibrary(session2)!;
   assert.deepStrictEqual(
     libBefore.items[0].likedPlatforms,
     ['netease'],
     'getLibrary 同步返回时 likedPlatforms 仍是 netease（自愈是异步）',
   );
+  svc2.healLibraryItem(session2, libBefore.items[0]);
   // 等异步任务完成（healLibraryItem 走 searchEquivalent，search mock 立即返回）
   await new Promise((r) => setTimeout(r, 200));
   // 再读一次 storage：library 应已补 QQ/Spotify source（netease 本来就有）

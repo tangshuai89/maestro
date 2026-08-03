@@ -1080,7 +1080,207 @@ async function main() {
     console.log('✅ 19. kuromoji 端到端：铃木爱理 ↔ Suzuki Airi（拼音够不着，音译命中 Tier 3）');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 19 项通过');
+  // ── 20. 英文艺名别名表端到端：印地安老斑鳩 - Jay Chou 命中（非音译艺名）──
+  // 用户实测回归：「印第安老斑鸠 - 周杰伦」(QQ, dur=304) 在 Spotify 搜到
+  // 「印地安老斑鳩 - Jay Chou」(dur=305) 却 no match。标题差一个「的/地」
+  // （非简繁，OpenCC 救不了），JW=0.9 能过 Tier 6 的 0.88；但艺人「Jay Chou」
+  // 是非音译英文艺名（zhoujielun ≠ jaychou），拼音/kuromoji 都桥不了 →
+  // artistLooseMatch 拒 → 6 个 tier 全挂。靠 STAGE_NAME_ALIASES 策展表解锁。
+  // 对照组：把候选艺人换成表外的「Jay Zhou」，必须仍然拒绝（表内才是同人）。
+  {
+    const seed = { title: '印第安老斑鸠', artist: '周杰伦', duration: 304 };
+    const makeStub = (artist: string, id: string) => ({
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        {
+          id,
+          provider: 'spotify',
+          title: '印地安老斑鳩', // 繁 + 的/地异写：Tier 1-5 全挂，只走 Tier 6 JW
+          artist,
+          album: '',
+          coverUrl: '',
+          audioUrl: '',
+          duration: 305, // 与 seed 差 1s，±3s 内
+          liked: false,
+        },
+      ],
+    });
+    const origSp = (svc as any).spotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      (svc as any).spotify = makeStub('Jay Chou', 'sp-yin-di-an');
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(session, 'spotify', seed);
+      assert.ok(
+        t && t.id === 'sp-yin-di-an',
+        `周杰伦 ↔ Jay Chou（英文艺名表）应经 Tier 6 JW + 艺人别名命中，实际 ${t && t.id}`,
+      );
+
+      (svc as any).spotify = makeStub('Jay Zhou', 'sp-jay-zhou');
+      (svc as any).equivSearchCache.clear();
+      const t2 = await (svc as any).searchEquivalent(session, 'spotify', seed);
+      assert.strictEqual(
+        t2,
+        null,
+        `表外拉丁名「Jay Zhou」不得搭「印地安老斑鳩」误并，实际命中 ${t2 && t2.id}`,
+      );
+    } finally {
+      (svc as any).spotify = origSp;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 20. 英文艺名别名表：印地安老斑鳩 ↔ Jay Chou 命中；表外 Jay Zhou 拒绝');
+  }
+
+  // ── 21. 日语艺名别名端到端：ヒューマノイド ↔ ZUTOMAYO 命中（含译名括号）──
+  // 用户实测回归：seed「ヒューマノイド (仿生人) - ずっと真夜中でいいのに。
+  // (永远是深夜有多好｡)」(QQ, dur=258) 在 Spotify 搜到「ヒューマノイド -
+  // ZUTOMAYO」(dur=259) 却 no match。标题侧 Tier 5 剥括号后完全相等没问题；
+  // 艺人「ZUTOMAYO」是造词型拉丁艺名（kuromoji 只给 zutto mayonaka de ii
+  // noni）→ 别名表「ずっと真夜中でいいのに」解锁（key 提取自动剥掉艺人名里
+  // 的译名括号注释）。对照组：候选换「Humanoid Colic / kojika」必须拒绝。
+  {
+    const seed = {
+      title: 'ヒューマノイド (仿生人)',
+      artist: 'ずっと真夜中でいいのに。 (永远是深夜有多好｡)',
+      duration: 258,
+    };
+    const makeStub = (tracks: any[], id: string) => ({
+      ...spotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => tracks,
+    });
+    const origSp = (svc as any).spotify;
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      (svc as any).spotify = makeStub(
+        [
+          { id: 'sp-zutomayo', provider: 'spotify', title: 'ヒューマノイド', artist: 'ZUTOMAYO', album: '', coverUrl: '', audioUrl: '', duration: 259, liked: false },
+        ],
+        'sp-zutomayo',
+      );
+      (svc as any).equivSearchCache.clear();
+      const t = await (svc as any).searchEquivalent(session, 'spotify', seed);
+      assert.ok(
+        t && t.id === 'sp-zutomayo',
+        `ずっと真夜中でいいのに。 ↔ ZUTOMAYO（别名表 + 译名括号）应命中，实际 ${t && t.id}`,
+      );
+
+      (svc as any).spotify = makeStub(
+        [
+          { id: 'sp-kojika', provider: 'spotify', title: 'Humanoid Colic (feat. HATSUNE MIKU)', artist: 'kojika / Hatsune Miku', album: '', coverUrl: '', audioUrl: '', duration: 193, liked: false },
+        ],
+        'sp-kojika',
+      );
+      (svc as any).equivSearchCache.clear();
+      const t2 = await (svc as any).searchEquivalent(session, 'spotify', seed);
+      assert.strictEqual(
+        t2,
+        null,
+        `无关候选（kojika / Humanoid Colic）不得误并，实际命中 ${t2 && t2.id}`,
+      );
+    } finally {
+      (svc as any).spotify = origSp;
+      (svc as any).equivSearchCache.clear();
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 21. 日语艺名别名表：ヒューマノイド ↔ ZUTOMAYO 命中；kojika 拒绝');
+  }
+
+  // ── 22. detect 等 discover 落定 + 同曲兄弟版本并账：❤ 角标按「歌」算 ──
+  // 用户实测回归：「夜中のキスミ」播放 258s 版本时，discover 只给 275s 版本
+  // 的 fanOut 记录补了 qq+spotify（日志 "library patched += qq, spotify"），
+  // 播放 258s 版本时 ❤ 角标却只有 1。两个根因：
+  //   a) 前端 2.5s 的 refresh detect 与后台 discover 竞态——响应返回时补平台
+  //      还没写完 → 角标停在旧值。修复：detect 先 waitForSettled 再返回。
+  //   b) 兄弟版本（同 normalizeKey、时长差 >3s → 独立 item / 独立 fanOut 记录）
+  //      的已红心平台桥不到播放中的记录。修复：detect 里按库快照并账。
+  {
+    // 库快照：同一首歌两个版本（title/artist 相同、时长差 17s → 两条 item）。
+    // A 版本已被 discover 补成 3 平台；B 版本（用户正在播的）只有 netease。
+    const libraryKey = `library:${session.id}`;
+    store[libraryKey] = {
+      importedAt: Date.now(),
+      sources: [],
+      items: [
+        {
+          id: 'merged-item-a',
+          title: '夜中のキスミ',
+          artist: 'ずっと真夜中でいいのに。',
+          duration: 275,
+          bestSource: 'netease',
+          sources: [
+            { platform: 'netease', trackId: 'n-sib-275', hasCopyright: true },
+            { platform: 'qq', trackId: 'q-sib', hasCopyright: true },
+            { platform: 'spotify', trackId: 'sp-sib', hasCopyright: true },
+          ],
+        },
+        {
+          id: 'merged-item-b',
+          title: '夜中のキスミ',
+          artist: 'ずっと真夜中でいいのに。',
+          duration: 258,
+          bestSource: 'netease',
+          sources: [{ platform: 'netease', trackId: 'n-258', hasCopyright: true }],
+        },
+      ],
+    };
+    neteaseSearchResults = [];
+    qqSearchResults = [];
+    spotifySearchResults = [];
+    try {
+      // (a) settle-wait：detect 的响应应等 discover 落定，直接含新匹配的平台。
+      (svc as any).likedCache.clear(); // 清掉前面用例的 liked TTL 缓存
+      qqLikedRemote = ['q-det-settle'];
+      neteaseSearchResults = [
+        neTrack('n-det-settle', 'settle-wait 测试曲', 'Settle Artist', 200),
+      ];
+      const ra = await svc.detectLikedAndSync(
+        session,
+        'merged-settle',
+        [{ platform: 'qq', trackId: 'q-det-settle' }],
+        { title: 'settle-wait 测试曲', artist: 'Settle Artist', duration: 200 },
+      );
+      assert.deepStrictEqual(
+        ra.fannedOutTo.sort(),
+        ['netease', 'qq'],
+        `detect 响应应等 discover 落定（fannedOutTo 含 netease），实际 ${JSON.stringify(ra.fannedOutTo)}`,
+      );
+
+      // (b) 兄弟并账：播放 258s 版本（库里只有 netease source），角标应并进
+      // 275s 版本已补的 qq + spotify（+ netease 自身）→ 3 平台。
+      (svc as any).likedCache.clear();
+      neteaseSearchResults = [];
+      qqLikedRemote = ['q-258'];
+      const rb = await svc.detectLikedAndSync(
+        session,
+        'merged-qq-item-b',
+        [{ platform: 'qq', trackId: 'q-258' }],
+        { title: '夜中のキスミ', artist: 'ずっと真夜中でいいのに。', duration: 258 },
+      );
+      assert.deepStrictEqual(
+        rb.fannedOutTo.sort(),
+        ['netease', 'qq', 'spotify'],
+        `兄弟版本已红心平台应并账（角标按歌算），实际 ${JSON.stringify(rb.fannedOutTo)}`,
+      );
+      assert.ok(
+        neteaseLikes.includes('n-det-settle'),
+        'settle-wait 的 discover 命中应已同步远端 netease',
+      );
+    } finally {
+      neteaseSearchResults = [];
+    }
+    console.log('✅ 22. detect 等 discover 落定 + 兄弟版本并账：❤ 角标按歌算');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 22 项通过');
 }
 
 main().catch((err) => {

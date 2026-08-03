@@ -9,6 +9,7 @@ import { useTheme } from './hooks/useTheme';
 import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
 import type { LibraryImportResult } from './api';
+import { readCachedLibrary } from './lib/likedCache';
 import SourceSelect from './components/source-select/SourceSelect';
 import Titlebar from './components/layout/Titlebar';
 import CoverCard from './components/player/CoverCard';
@@ -96,15 +97,26 @@ export default function App() {
   // Liked library modal: 缓存的库（getLibrary 不强制 import）—— titlebar ❤
   // 按钮上展示数量，点击弹窗内自己处理 refresh。
   const [likedOpen, setLikedOpen] = useState(false);
-  const [likedCount, setLikedCount] = useState(0);
+  // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
+  // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
+  const [likedCount, setLikedCount] = useState<number>(() => {
+    try {
+      return readCachedLibrary()?.items.length ?? 0;
+    } catch {
+      return 0;
+    }
+  });
   const [likedVersion, setLikedVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const reloadLikedCount = async () => {
+    // 先用缓存秒出首帧（避免 ❤ 按钮从 0 闪到 N），后台拉到后用真值覆盖。
+    const cached = readCachedLibrary();
+    if (cached) setLikedCount(cached.items.length);
     try {
       const res: LibraryImportResult | null = await getLibrary();
       setLikedCount(res?.items.length ?? 0);
     } catch {
-      setLikedCount(0);
+      // 失败保留缓存值；用户继续看到的是上次成功拉的数。
     }
   };
   useEffect(() => {

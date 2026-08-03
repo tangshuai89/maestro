@@ -16,6 +16,12 @@ jobs:
 
       - run: npm ci
 
+      # @maestro/common 的 main/types 指向 dist（编译产物，不入库）——server
+      # 的 tsc 和 ts-node 都按 node_modules 解析它，CI 干净环境必须先构建，
+      # 否则 typecheck / npm test 报 "Cannot find module '@maestro/common'"。
+      - name: Build @maestro/common
+        run: npm run build:common
+
       - name: TypeScript type check
         run: npm run typecheck
 

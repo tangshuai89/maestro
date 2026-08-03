@@ -13,3 +13,6 @@ packages/server/.storage/
 
 # Claude Code：只提交共享配置，本地个人权限/覆盖不提交
 .claude/settings.local.json
+
+# TypeScript incremental build artifacts
+*.tsbuildinfo
