@@ -179,6 +179,31 @@ export class LikeSyncQueue {
     void this.drain();
   }
 
+  /**
+   * 等待某 (session, mergedId) 的任务落定：pending 与 active 都清空。
+   * 供 detect 用——返回 fannedOutTo 前先等后台 discover（跨平台匹配 + 补库）
+   * 写完，避免「前端 refreshLikedState 的 detect 和后台搜索竞态，角标永远
+   * 停留在补平台之前的状态」。超时直接 resolve（best-effort：队列被长退避
+   * 重试阻塞时不把 detect 卡死；下次 detect / refresh 会再等）。
+   */
+  waitForSettled(
+    sessionId: string,
+    mergedId: string,
+    timeoutMs = 6000,
+  ): Promise<void> {
+    const key = `${sessionId}:${mergedId}`;
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const poll = (): void => {
+        const activeKey = this.active ? this.key(this.active) : null;
+        if (!this.pending.has(key) && activeKey !== key) return resolve();
+        if (Date.now() - start >= timeoutMs) return resolve();
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
+  }
+
   /** 后台单飞消费循环。已在消费则直接返回（入队方只管塞，不管跑）。 */
   private async drain(): Promise<void> {
     if (this.draining || !this.processor) return;
