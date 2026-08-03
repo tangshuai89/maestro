@@ -1,0 +1,26 @@
+{
+  "name": "@maestro/common",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cross-package shared utilities for maestro (fuzzy keys, normalizers, etc.)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node dist/normalizer.test.js"
+  },
+  "dependencies": {
+    "opencc-js": "^1.4.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.5.4"
+  }
+}

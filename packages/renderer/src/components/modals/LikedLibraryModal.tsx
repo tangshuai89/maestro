@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import Modal from '../common/Modal';
 import { getLibrary, importLibrary } from '../../api';
 import type { LibraryImportResult, UnifiedSearchItem, MusicProvider } from '../../api';
@@ -207,6 +208,29 @@ export default function LikedLibraryModal({
       return next;
     });
 
+  // ── 虚拟滚动（≥3000 首库必备）───────────────────────────────────
+  // 滚动容器 = modal body（自带 overflow-y: auto + flex: 1 + min-height: 0，
+  // 高度由 modal panel 减去 header/footer 决定）。把 ref 挂到 body 上，
+  // virtualizer 用它算 visible range。estimateSize 给一个保守值；真实
+  // 行高由 measureElement 在 mounted 后测量（覆盖默认值）。
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const GROUP_ROW_H = 56; // cover 40 + padding 8*2
+  const SUB_ROW_H = 36; // ~24 内容 + padding 6*2
+  const rowVirtualizer = useVirtualizer({
+    count: groups.length,
+    getScrollElement: () => bodyRef.current,
+    estimateSize: (index) => {
+      const g = groups[index];
+      // 折叠态 = 单行 group row；展开态 = group row + N × subrow。
+      // 这里只是 initial estimate；真实行高由 measureElement 在 ref
+      // 上调用时覆盖。展开/折叠切换时 React 触发重渲染，virtualizer
+      // 会重新调用 measureElement。
+      const subN = expanded.has(g.key) ? Math.max(0, g.members.length - 1) : 0;
+      return GROUP_ROW_H + subN * SUB_ROW_H;
+    },
+    overscan: 5,
+  });
+
   const qqCount = groups.filter((g) => g.platforms.includes('qq')).length;
   const neCount = groups.filter((g) => g.platforms.includes('netease')).length;
   const spCount = groups.filter((g) => g.platforms.includes('spotify')).length;
@@ -214,6 +238,102 @@ export default function LikedLibraryModal({
 
   const showList = !loading && groups.length > 0;
   const showEmpty = !loading && !error && groups.length === 0;
+
+  // ── 渲染 helper ────────────────────────────────────────────────────
+  // 把 group row + 可选 sublist 抽成函数，在虚拟化列表和未来其他地方复用。
+  // 接收 isOpen/multi/toggle 外部传入避免闭包陷阱（虚拟化渲染里 onClick
+  // 必须从 props 取最新 state）。
+  const renderGroup = (
+    g: ReturnType<typeof groupLibraryItems>[number],
+    isOpen: boolean,
+  ) => {
+    const rep = g.representative;
+    const multi = g.members.length > 1;
+    return (
+      <>
+        <div
+          className={`liked-modal-row${isOpen ? ' is-open' : ''}`}
+          onClick={() => onPlay(items, g.representativeIndex)}
+        >
+          {rep.coverUrl ? (
+            <img
+              className="liked-modal-cover"
+              src={rep.coverUrl}
+              alt=""
+              loading="lazy"
+            />
+          ) : (
+            <div
+              className="liked-modal-cover liked-modal-cover-empty"
+              style={{
+                backgroundImage: placeholderCover(
+                  `${rep.title}·${rep.artist}`,
+                ).background,
+              }}
+            >
+              ♪
+            </div>
+          )}
+          <div className="liked-modal-meta">
+            <div className="liked-modal-track">{rep.title}</div>
+            <div className="liked-modal-artist">
+              {rep.artist}
+              {rep.album && (
+                <span className="liked-modal-album"> · {rep.album}</span>
+              )}
+            </div>
+          </div>
+          <PlatformBadges platforms={g.platforms} />
+          {multi && (
+            <button
+              className="liked-modal-toggle"
+              aria-label={isOpen ? '收起' : '展开各平台版本'}
+              aria-expanded={isOpen}
+              title={`${g.members.length} 个平台版本`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle(g.key);
+              }}
+            >
+              <span className="liked-modal-toggle-count">
+                {g.members.length}
+              </span>
+              <span className="liked-modal-toggle-chevron">
+                {isOpen ? '▾' : '▸'}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {isOpen && (
+          <ul className="liked-modal-sublist">
+            {g.members.map((m) => (
+              <li
+                key={m.item.id}
+                className="liked-modal-subrow"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlay(items, m.index);
+                }}
+              >
+                <span className="liked-modal-subrow-dot" aria-hidden />
+                <div className="liked-modal-meta">
+                  <div className="liked-modal-track">{m.item.title}</div>
+                  <div className="liked-modal-artist">
+                    {m.item.artist}
+                    {m.item.album && (
+                      <span className="liked-modal-album"> · {m.item.album}</span>
+                    )}
+                  </div>
+                </div>
+                <PlatformBadges platforms={itemPlatforms(m.item)} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  };
 
   return (
     <Modal onClose={onClose} panelClassName="liked-modal-panel">
@@ -251,7 +371,11 @@ export default function LikedLibraryModal({
       {/* 「正在同步」条：refreshing 时显示。position:absolute 浮在 header 下边缘。 */}
       {refreshing && <div className="liked-modal-syncbar" aria-hidden />}
 
-      <div className="liked-modal-body">
+      <div
+        className="liked-modal-body"
+        ref={bodyRef}
+        data-virtualized={showList ? 'true' : 'false'}
+      >
         {loading && (
           <ul className="liked-modal-list liked-modal-skeleton-list" aria-busy="true">
             <SkeletonRow delayMs={0} />
@@ -285,105 +409,39 @@ export default function LikedLibraryModal({
         )}
 
         {showList && (
-          <ul className="liked-modal-list">
-            {groups.map((g) => {
-              const rep = g.representative;
+          // 虚拟滚动：3000+ 首库只渲染可见 ~30 个 group row，滚动流畅。
+          // 外层 div 用 `liked-modal-virtual-list` 拿 position:relative 给
+          // 内层 absolute 行做坐标系；总高度 = virtualizer.getTotalSize()。
+          // 展开/折叠时 expanded Set 引用变 → React 重渲染 → estimateSize
+          // closure 取新值 → virtualizer 自动重排；不需要 force key。
+          <div
+            className="liked-modal-virtual-list"
+            style={{ height: rowVirtualizer.getTotalSize() }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const g = groups[virtualRow.index];
+              if (!g) return null;
               const multi = g.members.length > 1;
               const isOpen = multi && expanded.has(g.key);
               return (
-                <li key={g.key} className="liked-modal-group">
-                  <div
-                    className={`liked-modal-row${isOpen ? ' is-open' : ''}`}
-                    onClick={() => onPlay(items, g.representativeIndex)}
-                  >
-                    {rep.coverUrl ? (
-                      <img
-                        className="liked-modal-cover"
-                        src={rep.coverUrl}
-                        alt=""
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div
-                        className="liked-modal-cover liked-modal-cover-empty"
-                        style={{
-                          backgroundImage: placeholderCover(
-                            `${rep.title}·${rep.artist}`,
-                          ).background,
-                        }}
-                      >
-                        ♪
-                      </div>
-                    )}
-                    <div className="liked-modal-meta">
-                      <div className="liked-modal-track">{rep.title}</div>
-                      <div className="liked-modal-artist">
-                        {rep.artist}
-                        {rep.album && (
-                          <span className="liked-modal-album">
-                            {' '}
-                            · {rep.album}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <PlatformBadges platforms={g.platforms} />
-                    {multi && (
-                      <button
-                        className="liked-modal-toggle"
-                        aria-label={isOpen ? '收起' : '展开各平台版本'}
-                        aria-expanded={isOpen}
-                        title={`${g.members.length} 个平台版本`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggle(g.key);
-                        }}
-                      >
-                        <span className="liked-modal-toggle-count">
-                          {g.members.length}
-                        </span>
-                        <span className="liked-modal-toggle-chevron">
-                          {isOpen ? '▾' : '▸'}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-
-                  {isOpen && (
-                    <ul className="liked-modal-sublist">
-                      {g.members.map((m) => (
-                        <li
-                          key={m.item.id}
-                          className="liked-modal-subrow"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPlay(items, m.index);
-                          }}
-                        >
-                          <span className="liked-modal-subrow-dot" aria-hidden />
-                          <div className="liked-modal-meta">
-                            <div className="liked-modal-track">
-                              {m.item.title}
-                            </div>
-                            <div className="liked-modal-artist">
-                              {m.item.artist}
-                              {m.item.album && (
-                                <span className="liked-modal-album">
-                                  {' '}
-                                  · {m.item.album}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <PlatformBadges platforms={itemPlatforms(m.item)} />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="liked-modal-group"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {renderGroup(g, isOpen)}
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
 
         {refreshing && showList && <RefreshingOverlay />}

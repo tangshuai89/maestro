@@ -7,7 +7,7 @@
 - 桌面壳: Electron
 - 前端: React + TypeScript + Vite
 - 后端: NestJS (跑在 Electron main process 里)
-- 包管理: npm workspaces (`packages/server`, `packages/renderer`, `packages/electron`)
+- 包管理: npm workspaces (`packages/common`, `packages/server`, `packages/renderer`, `packages/electron`)
 - AI: DeepSeek API（用户自带 Key，存在本地）
 
 ## 架构约束
@@ -22,6 +22,10 @@
 - 前端状态管理用 React hooks + context，不引入 Redux
 - 所有平台凭据和 API Key 存在本地，不上传任何服务器（也没有服务器）
 - 日志用 NestJS Logger，不用 `console.log`
+- **跨包归一工具**（fuzzy key / stripFeatTags / stripParensContent / cjkUnify 等）
+  必须放 `packages/common/src/normalizer.ts`——server `mergeLibrary` 和 renderer
+  `groupLibraryItems` 共用，确保弹窗徽章 = server 实际合并结果。**禁止**在两端
+  各写一份独立实现（独立迭代会导致前后端 key 漂移）。
 
 ## Specs 规则
 

@@ -94,6 +94,25 @@
   min-height: 0;
   overflow-y: auto;
   padding: 4px 0;
+  // 虚拟滚动时 body 自身就是 scroll container——给子元素一个明确的全宽上下文。
+  position: relative;
+}
+
+// 虚拟滚动列表容器：virtualizer 用它算 visible range。高度由 .liked-modal-body
+// 的 flex: 1 + min-height: 0 决定；自己只负责内部 absolute 定位。
+.liked-modal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  // 兼容虚拟滚动（@tanstack/react-virtual）：内层行用 absolute 定位，
+  // 外层容器不需要 list-style 等——保留原 reset 即可。
+}
+
+// 虚拟化时 group 不再是 <li>，而是 absolute 定位的 div。给它和原来 <li>
+// 同样的 list-item 样式（底部无分隔线——视觉上是连续的列表）。
+.liked-modal-virtual-list {
+  position: relative;
+  width: 100%;
 }
 
 .liked-modal-loading,
@@ -555,9 +574,8 @@
 }
 
 // 列表在 refreshing 时整体降亮度（让中央 overlay 更突出）。
-// 用父容器 .liked-modal-panel 的 data attribute 控制，避免给 ul 再加一层 class。
-.liked-modal-refresh-overlay ~ ul,
-.liked-modal-body:has(.liked-modal-refresh-overlay) ul.liked-modal-list {
+// 虚拟化后 list 是 div，所以 selector 改用 class 而不是 element type。
+.liked-modal-body:has(.liked-modal-refresh-overlay) .liked-modal-virtual-list {
   opacity: 0.55;
   transition: opacity 0.2s ease-out;
   pointer-events: none;
