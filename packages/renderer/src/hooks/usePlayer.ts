@@ -845,6 +845,7 @@ export function usePlayer(
     loadNextTrack,
     ensureAudioGraph,
     audioRef,
+    wpsRef,
     tryFallbackSource,
     handleTrialDetected,
   ]);
