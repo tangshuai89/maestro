@@ -123,6 +123,102 @@ async function main() {
       ['米津玄师', 'Kenshi Yonezu', '艺名不规则读音（げんし≠けんし），别名表策展'],
       ['藤井风', 'Fujii Kaze', '風=かぜ(艺名) vs ふう(通用读)，别名表策展'],
       ['ミレイ', 'milet', '假名 key + 全小写拉丁艺名'],
+      // 2026-08-04: QQ 红心扫描补入——拼音/kuromoji 都桥不了的英文艺名。
+      // 「孫燕姿」pinyin=sunyanzi ≠ stefaniesun；「林宥嘉」pinyin=linyoujia
+      // ≠ yogalin；余同。共同点：Spotify 上是英文名而非拼音/汉字读音。
+      ['孫燕姿', 'Stefanie Sun', 'QQ 红心 24 首——拼音桥不了'],
+      ['孙燕姿', 'Stefanie Sun', '简体侧同样命中（cn2t 统一 key）'],
+      ['林宥嘉', 'Yoga Lin', 'QQ 红心 11 首——拼音桥不了'],
+      ['陳綺貞', 'Cheer Chen', 'QQ 红心 10 首——拼音桥不了'],
+      ['陈绮贞', 'Cheer Chen', '简体侧同样命中'],
+      ['盧廣仲', 'Crowd Lu', 'QQ 红心 7 首——拼音桥不了'],
+      ['楊宗緯', 'Aska Yang', 'QQ 红心 1 首——拼音桥不了'],
+      // 2026-08-04: 当前 bug 修复。三月のパンタシア の「パンタシア」=
+      // 英語 Phantasia 由来造語。kuromoji カタカナ逐字読み「pan/ta/shi/a」
+      // ≠ Spotify "Phantasia"（ph 入り）；拼音「三月=sanyue」≠「sangatsu」。
+      // romanize 路线全挂。
+      ['三月のパンタシア', 'Sangatsu no Phantasia', 'バンド名由来造語（バンド名由来——英字表記が音読みと非対応）'],
+      ['三月のパンタシア (三月的幻想)', 'Sangatsu no Phantasia', '别名注释括号注释不影响 key'],
+      // 2026-08-07: 「絶対的な関係」跨平台匹配漏。Spotify 长音塌缩 + 连字符
+      // 风格化「AKAIKO-EN」=akaikoen，kuromoji「赤い公園」=akaikouen 差一个
+      // 长音 u，includes 桥不上；拼音又给中文读音。归到别名表。
+      ['赤い公園', 'AKAIKO-EN', 'バンド名長音ロマ字化非対応（kuromoji=akaikouen ≠ akaikoen）'],
+      ['赤い公園 (赤色公园)', 'AKAIKO-EN', '艺人名带中文译名括号注释（本次事故：絶対的な関係）'],
+      // 2026-08-07: 纯汉字别名（值侧不再限于拉丁艺名）。「马赛克乐队」与
+      // 「马赛克」是同一个乐队（QQ 带「乐队」后缀 / 网易云不带）。**不能**靠
+      // 拼音 includes（masaikeyuedui ⊃ masaike 会把 Coldplay vs Cold 这种
+      // 巧合前缀也并了）——必须走策展表精确整串。
+      ['马赛克乐队', '马赛克', '同乐队带/不带「乐队」后缀（CJK↔CJK 别名）'],
+      ['馬賽克樂隊', '马赛克', '繁体 key 侧同样命中（cn2t 统一）'],
+      ['马赛克', '马赛克乐队', '双向：不带后缀侧在前'],
+      // 2026-08-07: 范逸臣三平台三写法。网易云「范逸臣」、QQ「【范逸臣 Van Fan】」
+      // （整体被【】包裹的格式标记，不是注释）、Spotify「Fan Yi Chen」。表 key
+      // 按国内习惯写简体，繁体进 values。
+      ['范逸臣', 'Fan Yi Chen', '三平台：网易云 ↔ Spotify（简体 key）'],
+      ['范逸臣', '【范逸臣 Van Fan】', '三平台：网易云 ↔ QQ（【】整体包裹，汉字名同人分支）'],
+      ['【范逸臣 Van Fan】', 'Fan Yi Chen', '三平台：QQ ↔ Spotify（混合串 vs 英文名）'],
+      ['範逸臣', 'Fan Yi Chen', '繁体输入侧同样命中（values 内繁体）'],
+      // 2026-08-07: 森山直太朗 ↔ Naotaro Moriyama（姓名颠倒罗马音）。kuromoji
+      // 读「もりやま なおたろう」= moriyama naotaro，Spotify 写「Naotaro
+      // Moriyama」姓名颠倒——token 顺序无关匹配在 warmup 未就绪 / IPADIC 拆
+      // 错人名时会失败（实测两路线都 false），归到策展表兜底。
+      ['森山直太朗', 'Naotaro Moriyama', 'Spotify 罗马音姓名颠倒（kuromoji 拆不对）'],
+      ['森山直太朗 (なおたろう もりやま)', 'Naotaro Moriyama', '带假名读音括号注释同样命中'],
+      // 2026-08-07: 小野丽莎（Fly Me To The Moon）。QQ 写「小野丽莎（Lisa Ono）」
+      // 混合串（含英文剥不掉）、Spotify 写「Lisa Ono」。表兜底 + 汉字名同人
+      // 分支桥混合串。
+      ['小野丽莎', 'Lisa Ono', 'Spotify 英文名（表兜底）'],
+      ['小野丽莎（Lisa Ono）', '小野丽莎', 'QQ 混合串（汉字名同人分支）'],
+      ['小野丽莎 (おの りさ)', 'Lisa Ono', '纯假名括号（归一剥掉）同样命中'],
+      ['小野丽莎（小野リサ）', '小野丽莎', '汉字名 + 日文名括号（汉字名同人分支）'],
+      ['小野リサ', '小野丽莎', '日文名独立出现（values 内 小野リサ 命中）'],
+      ['小野リサ', 'Lisa Ono', '日文名独立出现 ↔ 英文名（values 传递）'],
+      // 2026-08-07: 星野源 恋。kuromoji 把「源」错读成 はじめ（hajime）且
+      // 正确读音 gen 仅 3 字符低于长度门 → 括号直读 token 不再受长度门
+      // （发音真相），并与 kuromoji 判定互不拖累。表也加 Gen Hoshino 兜底。
+      ['星野源 (ほしの げん)', 'Gen Hoshino', '假名括号读音 + 姓名颠倒（真实：恋 ↔ Koi）'],
+      ['星野源', 'Gen Hoshino', '无括号（表兜底）'],
+      // 2026-08-07: 藍井エイル（ラピスラズリ）。Spotify「Eir Aoi」把
+      // エイル的罗马音 eiru 塌缩成 Eir（艺术化拼写，算法不可还原，同
+      // 赤い公園↔AKAIKO-EN），且姓名颠倒（藍井=Aoi 在尾）。表兜底。
+      ['藍井エイル (蓝井艾露)', 'Eir Aoi', 'QQ 日文名 + 汉字注释 ↔ Spotify 英文名'],
+      ['藍井エイル', 'Eir Aoi', '无注释'],
+      ['蓝井艾露', 'Eir Aoi', '网易云简体写法'],
+      ['藍井艾露', 'Eir Aoi', '繁体中文写法'],
+      ['藍井エイル', '蓝井艾露', '日文名 ↔ 简体中文（values 互桥）'],
+      ['藍井エイル', '藍井艾露', '日文名 ↔ 繁体中文（values 互桥）'],
+      // 2026-08-07: Humbert Humbert（日が落ちるまで）。网易云写纯片假名
+      // 「ハンバート ハンバート」，QQ/Spotify 写英文「Humbert Humbert」——
+      // toRomaji 给规则读法 hanbato ≠ Humbert（法语人名艺术化拼写），
+      // 音译桥不上，策展表兜底。
+      ['ハンバート ハンバート', 'Humbert Humbert', '纯片假名 ↔ 英文（艺术化拼写）'],
+      ['Humbert Humbert (ハンバート ハンバート)', 'Humbert Humbert', '带片假名括号注释 ↔ 纯英文'],
+      // 2026-08-07: 桑田佳佑（明日晴れるかな）。Spotify 用罗马音
+      // Keisuke Kuwata。音译其实能桥（kuwata keisuke token 全命中），但
+      // 弹窗分组只信策展表（renderer 不带音译）→ 表兜底。
+      ['桑田佳佑', 'Keisuke Kuwata', '简体 ↔ 罗马音（弹窗分组表兜底）'],
+      ['桑田佳祐', 'Keisuke Kuwata', '繁体 ↔ 罗马音（cjkUnify 双查命中）'],
+      // 2026-08-07: Vocaloid 组合（白い雪のプリンセスは）。stageNameKey 取
+      // 汉字+假名时 ↑ 和 P 被跳过 → のぼる↑P / のぼる 都归「のぼる」；
+      // 初音未来 / 初音ミク 互桥。
+      ['のぼる↑P', 'Noboru', 'P 后缀 + 箭头符号 → 归「のぼる」↔ 罗马音'],
+      ['のぼる↑', 'Noboru', '无 P 后缀同样命中'],
+      ['初音未来 (初音ミク)', '初音ミク', '中文名 + 假名注释 ↔ 假名（values 互桥）'],
+      ['初音未来', 'Hatsune Miku', '中文名 ↔ 英文名'],
+      ['米津玄師', 'Kenshi Yonezu', '日文 ↔ 罗马音（已存在表的回归）'],
+      ['米津玄師', 'ハチ', '现艺名 ↔ 早期 Vocaloid 艺名'],
+      // 2026-08-07: 扫荡式维护。常见 J-Pop / 华语圈 / Vocaloid 艺人 Spotify
+      // 写法无算法可桥（拼音不参与音译判定，必须表兜底）。
+      ['aiko', 'aiko', 'aiko 自循环（values 含自身）'],
+      ['ヨルシカ', 'YORUSHIKA', '日文乐队名 ↔ Spotify 大写'],
+      ['YOASOBI', ['ヨアソビ', 'YOASOBI'].includes('YOASOBI') ? 'YOASOBI' : 'x', '网易云带假名 ↔ Spotify 纯拉丁'],
+      ['李荣浩', 'Li Ronghao', '中文 ↔ 拼音（pinyin 不参与音译判定）'],
+      ['李荣浩', 'Ronghao Li', '中文 ↔ 名字前置拼音'],
+      ['华晨宇', 'Hua Chenyu', '中文 ↔ 拼音'],
+      ['米津玄师', 'Kenshi Yonezu', '简体 key 命中繁体表 key（cn2t）'],
+      ['大森元貴', 'Motoki Ohmori', 'Mrs. GREEN APPLE 主唱个人活动英文名'],
+      ['大原樱子', 'Sakurako Ohara', '姓名颠倒罗马音（さよなら，简体侧）'],
+      ['大原櫻子', 'Sakurako Ohara', '繁体侧同样命中'],
     ];
     for (const [a, b, why] of acceptAlias) {
       assert.ok(

@@ -28,9 +28,10 @@ import {
   DIFFERENT_VERSION_DURATION_TOLERANCE_SEC,
   mergeCrossScript,
 } from './search.util';
+import { extractVersionTag, type VersionTag } from '@maestro/common';
 import { MatchService } from '../match/match.service';
 import { jaroWinkler } from '../match/fuzzy';
-import { artistTransliterationMatch, warmupJa } from './translit';
+import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
@@ -1298,12 +1299,57 @@ export class MusicService {
       const variants: Array<{ kw: string; limit: number; tag: string }> = [];
       variants.push({ kw, limit: 5, tag: 'original' });
       if (cleanedKw && cleanedKw !== kw) {
-        variants.push({ kw: cleanedKw, limit: 5, tag: 'strip-parens' });
+        // 2026-08-07 recall 调优：「虹 手嶌葵」这类**通用标题 + 汉字艺名**的
+        // 场景，Spotify 按 romanized 名（Aoi Teshima）索引、按热度排序，会把
+        // 该艺人的热门曲（恋するしっぽ / 元気を出して）+ 现场版排在前面，
+        // studio 版被挤到 top-5 之外——但它确实在结果里。这是**艺人限定**
+        // 的搜索（噪声低），放宽到 15 让 rank 6-15 的正确 studio 版也进匹配。
+        // 匹配阶段仍走 4-tier 严格判等（title + 艺人桥 + 时长），多扫候选不放宽。
+        variants.push({ kw: cleanedKw, limit: 15, tag: 'strip-parens' });
       }
       if (cleanedTitle && cleanedTitle !== kw && cleanedTitle !== cleanedKw) {
         // title-only 兜底：Spotify 等严格 API 对「<title> <artist>」格式
         // 把含中译假名/括号的 artist 解析偏，最后再 title-only 强调一遍。
-        variants.push({ kw: cleanedTitle, limit: 10, tag: 'title-only' });
+        // limit 比 strip-parens 略高（无艺人约束、命中位次更深），但通用标题
+        // （「虹」）扫太多意义有限——艺人桥 + 时长门仍是防误配的硬门。
+        variants.push({ kw: cleanedTitle, limit: 15, tag: 'title-only' });
+      }
+      // 2026-08-07: 标题罗马音变体——Spotify 按罗马音索引日文歌名（「恋」→
+      // Koi），搜汉字/假名召回不到（星野源 恋 场景）。用 kuromoji 读日文读音
+      // 生成变体：先 title+artist，再 title-only。匹配阶段仍走 4-tier 严格判等
+      // （title 跨脚本 isCrossScript + 艺人桥 + ±3s），只放宽搜索词不放宽判定。
+      // 注意：只对「原文 ≠ 罗马音」的日文歌名生效——英文/罗马音歌名不变体
+      // （kuromoji 读英文会原样返回，与归一后相等 → 跳过）；中文歌名会读成
+      // 日文音（晴天→seiten）白搜一次，tier 判等兜住不会误配。
+      //
+      // ⚠️ 必须先等 kuromoji 预热完成：romanizeJa 在词典未就绪时返回空串
+      // （只静默触发后台预热）——app 启动后立即检测时会把变体吞掉、退回
+      // 老路径。warmupJa 幂等，首次多等 ~1s 词典加载，可接受。
+      await warmupJa();
+      const romajiTitle = romanizeJa(cleanedTitle);
+      const romajiArtist = romanizeJa(cleanedArtist);
+      if (
+        romajiTitle &&
+        romajiTitle !== this.normalizeKey(cleanedTitle, '')
+      ) {
+        // title-romaji + 原文 artist：Spotify 艺人名若是日文原文（星野源）
+        // 能直接召回；若是英文（Gen Hoshino）则走下方 title-romaji-only 的
+        // 宽召回 + tier 艺人桥。
+        variants.push({
+          kw: `${romajiTitle} ${cleanedArtist}`,
+          limit: 5,
+          tag: 'title-romaji',
+        });
+        // title-romaji + artist-romaji：覆盖 Spotify 艺人名也是罗马音的
+        // 情况（Gen Hoshino → genhoshino），组合 kw 召回更准。
+        if (romajiArtist && romajiArtist !== this.normalizeKey(cleanedArtist, '')) {
+          variants.push({
+            kw: `${romajiTitle} ${romajiArtist}`,
+            limit: 5,
+            tag: 'title-romaji-artist-romaji',
+          });
+        }
+        variants.push({ kw: romajiTitle, limit: 10, tag: 'title-romaji-only' });
       }
 
       const tried: string[] = [];
@@ -1329,6 +1375,18 @@ export class MusicService {
         `searchEquivalent ${platform} no match for "${meta.title} - ${meta.artist}"` +
           ` (kw="${kw}" dur=${meta.duration}, tried: [${tried.join(', ')}])`,
       );
+      // title-romaji 变体存在却仍 no-match → 升 LOG 级：日文歌名 + 跨脚本
+      // 失败罕见且难排查，把每个变体的召回数暴露在默认日志里，一眼区分
+      // 「罗马音召回 0」vs「召回但匹配拒（时长/艺人）」。
+      if (
+        variants.some((v) => v.tag.startsWith('title-romaji')) &&
+        tried.some((t) => t.startsWith('title-romaji'))
+      ) {
+        this.logger.log(
+          `searchEquivalent ${platform} romaji-miss: "${meta.title}" ` +
+            `tried=[${tried.filter((t) => t.startsWith('title-romaji')).join(' | ')}]`,
+        );
+      }
       return null;
     } catch (err) {
       this.logger.warn(
@@ -1372,9 +1430,42 @@ export class MusicService {
     const wantKey = this.normalizeKey(meta.title, meta.artist);
     const wantTitleKey = this.normalizeKey(meta.title, '');
     const wantArtistKey = this.normalizeKey(meta.artist, '');
+    const wantVersion = extractVersionTag(meta.title);
+
+    // 候选池前置过滤：任何候选是「翻唱/COVER」（标题含 (Cover by X) / (翻唱)
+    // / (COVER) / (原唱：X) / (翻自) / (翻)）一律踢出，不进入后续 6 tier。
+    // 这是 #17 防线之外的最后一道兜底——历史上 KiraCola 这类翻唱曾借 Tier 5b
+    // 的「title 含原唱名」误命中，污染红心跨平台同步。Step 1 的 stripVersionTags
+    // 已把翻唱归到 key 含「COVER」字样，但**额外**走 extractVersionTag 直接判
+    // 类别更明确，避免任何「key 巧合」（如某原创曲名撞「COVER」字面）漏过去。
+    //
+    // 重要边界：**不**只过滤 cand 是 COVER —— 若 seed 自己是 COVER（用户 ❤ 的
+    // 本就是翻唱版），cand 必须也是 COVER 才算同翻唱底版 → 双向守卫：
+    //   - 任一侧是 COVER 且另一侧不是 → 拒
+    //   - 两侧都是 COVER → 仍走后续 tier（同翻唱底版的另外翻唱匹配，照常）
+    const filtered = tracks.filter((t) => {
+      const cv = extractVersionTag(t.title);
+      if (wantVersion === 'COVER' && cv !== 'COVER') return false;
+      if (cv === 'COVER' && wantVersion !== 'COVER') return false;
+      return true;
+    });
+
+    // 2026-08-07「选错版本」修复：各 tier 是「命中即返回第一个」，同一 tier
+    // 内不挑最优——Spotify 对「告别的时代」这类曲返回多个版本（同专辑母带版
+    // + 精选集 / 现场 / 重录版），谁排搜索结果前面就 star 谁 → 选错版本。
+    // seed（QQ/网易云）与「同专辑同母带版」时长几乎完全一致（共享 master），
+    // 精选/现场/重录版时长会差。这里把候选**按与 seed 时长的接近度稳定排序**，
+    // 让每个 tier 的「第一个命中」自动是时长最接近的同母带版本。
+    // 只在 seed 时长已知时排序；时长未知（=0）的候选排最后（proximity=∞）。
+    // 稳定排序：接近度相同的保留原搜索序（热度）作 tiebreak。
+    if (meta.duration > 0) {
+      const proximity = (d: number): number =>
+        d > 0 ? Math.abs(d - meta.duration) : Number.POSITIVE_INFINITY;
+      filtered.sort((a, b) => proximity(a.duration) - proximity(b.duration));
+    }
 
     // 第一遍：精确 normalizeKey 匹配。
-    for (const t of tracks) {
+    for (const t of filtered) {
       const tk = this.normalizeKey(t.title, t.artist);
       if (tk !== wantKey) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
@@ -1394,12 +1485,18 @@ export class MusicService {
     //    返回的封面/伴奏（ar 字段缺失或不匹配）在 title+duration 对得上的
     //    情况下被自动 ❤，导致"周杰伦的歌被 star 到一个翻唱版本"这类数据
     //    污染。现在改为：任意一方艺人缺失 → 拒绝（不做匹配），杜绝此路径。
-    for (const t of tracks) {
+    for (const t of filtered) {
       const tt = this.normalizeKey(t.title, '');
       const ta = this.normalizeKey(t.artist, '');
       const titleOk =
         tt && wantTitleKey && (tt.includes(wantTitleKey) || wantTitleKey.includes(tt));
       if (!titleOk) continue;
+      // 长度门：单/双字标题双向 includes 必撞（任何 ≥2 字标题都含 `诱` / `虹` /
+      // `Love`）。只放过双方任一已 ≥3 字符的情形，否则仍走 Tier 1/3 严格。
+      if (
+        Math.min(tt.length, wantTitleKey.length) < 3 &&
+        Math.max(tt.length, wantTitleKey.length) > 3
+      ) continue;
       if (!ta || !wantArtistKey) continue; // reject empty-artist bypass
       // 跨脚本艺人走**音译佐证**（artistLooseMatch），不再裸 isCrossScript——
       // 否则 title 只要双向 includes（QQ 常带译名后缀），CJK 艺人就会 cross-script
@@ -1428,15 +1525,26 @@ export class MusicService {
     //   跨版本（single vs album / 带 intro-outro vs 短版）会差 15-30s，3s
     //   严苛的话同歌搜不到。仍排除 title 仅 includes 的（防 "Love" 撞
     //   "Love Story" 这种巧合）。
-    for (const t of tracks) {
+    for (const t of filtered) {
       const tt = this.normalizeKey(t.title, '');
       if (!tt || tt !== wantTitleKey) continue;
       if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
-      if (this.durationMismatchLenient(meta.duration, t.duration)) continue;
+      // 跨版本守卫：长时长门（30s）只在 seed 与 cand 同版本标签时启用。
+      // 任一边是 LIVE / ACOUSTIC / REMIX / INST / KARAOKE / DEMO / EDIT
+      // → 改用 ±3s 严格，不让 30s 把 live 拉进 studio ❤ 的 fan-out 圈。
+      const candVersion = extractVersionTag(t.title);
+      if (
+        this.durationMismatchVersionSafe(
+          wantVersion,
+          candVersion,
+          meta.duration,
+          t.duration,
+        )
+      ) continue;
       this.logger.log(
         `searchEquivalent ${platform} title-exact match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
-          ` (dur=${meta.duration}≈${t.duration}, lenient)`,
+          ` (dur=${meta.duration}≈${t.duration}, version=${candVersion ?? 'studio'})`,
       );
       return t;
     }
@@ -1454,7 +1562,7 @@ export class MusicService {
     // 拒；即便偶有巧合同长，也已比旧代码（宽松 30s + 剥括号 substring）窄得多。
     // 代价：跨脚本 + 大版本时长差（album vs single 差 15-30s）会退化成两条——
     // 安全侧取舍。
-    for (const t of tracks) {
+    for (const t of filtered) {
       const tt = this.normalizeKey(t.title, '');
       if (!tt || tt !== wantTitleKey) continue;
       const ta = this.normalizeKey(t.artist, '');
@@ -1481,7 +1589,7 @@ export class MusicService {
     //    （或反之）+ 时长对上就接受。这会把「同名不同艺人」的翻唱误并。改为：
     //    (1) 只在**标题**层判跨脚本，(2) 艺人仍要 artistLooseMatch（includes/
     //    音译）命中，(3) 时长 ±3s 严格。防「花田错 王力宏 vs 王馨卓」跨脚本变体。
-    for (const t of tracks) {
+    for (const t of filtered) {
       const candTitleKey = this.normalizeKey(t.title, '');
       if (!candTitleKey || !wantTitleKey) continue;
       if (!this.isCrossScript(candTitleKey, wantTitleKey)) continue;
@@ -1509,7 +1617,7 @@ export class MusicService {
     const wantTitleClean = stripParensContent(meta.title);
     const wantTitleNormClean = this.normalizeKey(wantTitleClean, '');
     if (wantTitleNormClean) {
-      for (const t of tracks) {
+      for (const t of filtered) {
         const candTitleClean = stripParensContent(t.title);
         const candTitleNormClean = this.normalizeKey(candTitleClean, '');
         if (!candTitleNormClean) continue;
@@ -1523,7 +1631,16 @@ export class MusicService {
           wantTitleNormClean.includes(candTitleNormClean);
         if (!isSub) continue;
         if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
-        if (this.durationMismatchLenient(meta.duration, t.duration)) continue;
+        // 跨版本守卫（与 Tier 3 一致）：版本标签不等 → 改用 ±3s 严格。
+        const candVersion = extractVersionTag(t.title);
+        if (
+          this.durationMismatchVersionSafe(
+            wantVersion,
+            candVersion,
+            meta.duration,
+            t.duration,
+          )
+        ) continue;
         this.logger.log(
           `searchEquivalent ${platform} relaxed title match [${tag}]: ` +
             `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -1535,15 +1652,27 @@ export class MusicService {
      }
 
     // 第五遍-b：Spotify-style「title + co-author suffix」识别。修
-    // 「PLACEBO (安慰剂) - 米津玄師 / 野田洋次郎」↔「PLACEBO ＋ 野田洋次郎 - 
-    // Kenshi Yonezu / Yojiro Noda」：seed 标题剥括号 = PLACEBO，候选标题 
+    // 「PLACEBO (安慰剂) - 米津玄師 / 野田洋次郎」↔「PLACEBO ＋ 野田洋次郎 -
+    // Kenshi Yonezu / Yojiro Noda」：seed 标题剥括号 = PLACEBO，候选标题
     // = PLACEBO ＋ 野田洋次郎——后者多了一段「野田洋次郎」恰好是候选的另一位
     // 协作者。Tier 5 的 50% 长度门把这种「短 seed + 拼了协作者名的 cand」挡掉
-    // （15 vs 7 = 53% > 50%），JW 0.857 也卡在 0.88 门外。这里走「longer 是 
+    // （15 vs 7 = 53% > 50%），JW 0.857 也卡在 0.88 门外。这里走「longer 是
     // shorter 的严格前缀 + 剥首部分隔符后命中某侧艺人别名」的兜底。
+    //
+    // ⚠️ 2026-08-07 hardening：原 `||` 第二分支
+    // `artistAppearsInField(extraNorm, meta.artist)` 把「标题里出现原唱名」
+    // 当正信号——这是**翻唱**的最强标注形式（`诱丨林宥嘉` =
+    // 「诱 + 分隔符 + 原唱 林宥嘉」）。改为：
+    //   - extra 命中 cand 自己的艺人 → 接受（PLACEBO 场景「+ 协作者名」）；
+    //   - extra 命中 seed 自己的艺人 → 拒绝（翻唱场景「+ 原唱名」是负信号）；
+    //   - 两者都命中（罕见，对称情况如 2 人对 2 人双拼）→ 拒，避免歧义。
+    // 此外命中后必须 `artistLooseMatch(t.artist, meta.artist)` 复查——Tier 5b
+    // 之前完全跳过此步，**下游推翻上游**的正确判断（如 PLACEBO 仍能过但
+    // KiraCola 那种「同 title 弱同 artist」也漏过来）。本步使 Tier 5b 与
+    // 上游 tier 在艺人语义上对齐。
     {
       const wantBase = wantTitleNormClean;
-      for (const t of tracks) {
+      for (const t of filtered) {
         const candTitleClean = stripParensContent(t.title);
         const candBase = this.normalizeKey(candTitleClean, '');
         if (!candBase || !wantBase) continue;
@@ -1564,11 +1693,30 @@ export class MusicService {
         // 剥掉前缀里的分隔符（＋/+/&/·/空白）后再做艺人匹配。
         const extraNorm = extra.replace(/^[+＋&/／·・\s]+/, '');
         if (!extraNorm) continue;
-        // 「extra 是某侧艺人的别名/罗马化」才放过——纯版本标签/无关字符不能蒙混。
-        const extraMatches =
-          this.artistAppearsInField(extraNorm, t.artist) ||
-          this.artistAppearsInField(extraNorm, meta.artist);
-        if (!extraMatches) continue;
+        // 反转「命中 seed 自己的艺人」分支（修诱丨林宥嘉 bug）：
+        // extra 命中 cand 自己的艺人 → 接受（PLACEBO「+ 协作者名」场景）；
+        // extra 命中 seed 自己的艺人 → 拒绝（「+ 原唱名」是翻唱的负信号）；
+        // 两侧都命中 → 按歧义拒，强制走 Tier 1-4 严格判。
+        const extraHitsCand = this.artistAppearsInField(extraNorm, t.artist);
+        const extraHitsSeed = this.artistAppearsInField(extraNorm, meta.artist);
+        if (!extraHitsCand) continue;
+        if (extraHitsSeed) continue;
+        // PLACEBO 修复：seed 也有「野田洋次郎」导致 extraHitsSeed=true → 反转
+        // 规则误拒这条合法 collab。discriminator：PLACEBO 的 extra **等于**
+        // cand 自己的某位艺人（精确整串 normalizeKey 相等，不是 substring），
+        // 而翻唱的 extra（如「林宥嘉」）不等于 cand 的「KiraCola」。
+        // 加一道「extra 字面命中 cand 自己艺人整串」的检查，若 extra 真是
+        // cand 的别名/罗马化整串 → 放行（PLACEBO 场景）；否则仍按翻唱拒。
+        const extraIsExactCandArtist = artistTransliterationMatch(
+          extraNorm,
+          t.artist,
+        );
+        if (!extraIsExactCandArtist) continue;
+        // 艺人语义复查：标题里说「+ 协作者」不等于本体艺人相同——PLACEBO
+        // 仍是「米津玄師 + 野田洋次郎」对「Kenshi Yonezu + Yojiro Noda」，两
+        // 人对两人，artistLooseMatch 多艺人兜底配对命中 ≥ ceil(n/2) 才过。
+        // KiraCola 那种「同 title + 完全不同艺人」在此处被拒。
+        if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
         if (this.durationMismatch(meta.duration, t.duration)) continue;
         this.logger.log(
           `searchEquivalent ${platform} co-author-suffix match [${tag}]: ` +
@@ -1585,7 +1733,7 @@ export class MusicService {
     // JW 阈值 0.88 + 长度门限 0.4 + 艺人宽松 + duration 三重过滤。
     const FUZZY_TITLE_JW_THRESHOLD = 0.88;
     const FUZZY_TITLE_LENGTH_GATE = 0.4;
-    for (const t of tracks) {
+    for (const t of filtered) {
       const tt = this.normalizeKey(t.title, '');
       if (!tt) continue;
       const lenDiff = Math.abs(tt.length - wantTitleKey.length) / Math.max(tt.length, wantTitleKey.length);
@@ -1718,6 +1866,35 @@ export class MusicService {
   }
 
   /**
+   * 「跨版本守卫」—当 seed 与 cand 的版本标签不一致时（一方 LIVE/COVER/…
+   * 另一方 studio），拒绝长时长门、放回 ±3s 严格。
+   *
+   * 设计动机：原 `durationMismatchLenient` 是「同歌跨源（QQ 258s vs Spotify
+   * 243s，差 15s）兜底」，不是「跨版本（studio 300s vs live 320s，差 20s）
+   * 兜底」——后者会污染用户 ❤ 的 studio，让 live 也被 star 上。**长时长
+   * 门只在「版本标签同 / 都是 null」时启用**；任一边是 LIVE / COVER /
+   * ACOUSTIC / REMIX / INST 等标签 → 一律用 ±3s strict。
+   *
+   * 用途：Tier 3 title-exact / Tier 5 relaxed title 跨版本场景。
+   */
+  private durationMismatchVersionSafe(
+    seedVersion: VersionTag,
+    candVersion: VersionTag,
+    seedDuration: number,
+    candDuration: number,
+  ): boolean {
+    const sameV = seedVersion === candVersion;
+    const tol = sameV
+      ? DIFFERENT_VERSION_DURATION_TOLERANCE_SEC
+      : VERSION_DURATION_TOLERANCE_SEC;
+    return (
+      seedDuration > 0 &&
+      candDuration > 0 &&
+      Math.abs(candDuration - seedDuration) > tol
+    );
+  }
+
+  /**
    * 跨版本 duration 容差：title-exact / 剥括号后 substring 等强信号匹配的
    *  "同歌不同版本"情况。差 30s 以内都接受（QQ 源 258s vs Spotify 源 243s
    *  的 15s 差、album vs single 的典型 15-30s 差）。本规则的"宽"是为了
@@ -1741,7 +1918,10 @@ export class MusicService {
    * 网易云用汉字（"藤井风"）——歌名+时长已对上时，不应因艺人脚本不同而拒绝。
    */
   private isCrossScript(a: string, b: string): boolean {
-    const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+    // \u6c49\u5b57 + \u5e73\u5047\u540d + \u7247\u5047\u540d \u90fd\u7b97\u300cCJK \u4fa7\u300d\u2014\u2014\u300c\u3082\u3063\u3068\u300d(\u5047\u540d) vs "Motto"(\u62c9\u4e01)
+    // \u4e5f\u662f\u8de8\u811a\u672c\uff08aiko \u3082\u3063\u3068 \u2194 Motto \u573a\u666f\uff09\uff0c\u53ea\u770b\u6c49\u5b57\u4f1a\u628a\u5047\u540d\u6f0f\u6389\u3002
+    const hasCjk = (s: string) =>
+      /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(s);
     const hasLatin = (s: string) => /[a-z]/.test(s);
     const aCjk = hasCjk(a);
     const bCjk = hasCjk(b);

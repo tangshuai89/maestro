@@ -96,7 +96,12 @@ export const VERSION_DURATION_TOLERANCE_SEC = 3;
  *  duration 差 30s 也应接受。修「ねえ、ちゃんと聞いてる？ りりあ。」（QQ 源
  *  dur=258 vs Spotify/Netease 源 dur=243）— 同歌不同版本（带 intro/outro
  *  的专辑版 vs 短版 single）。30s 足以覆盖常见的 intro/桥段/尾奏差异；
- *  30s 以上的差异基本可认为是不同歌（同歌 remix 一般 ≥30s）。 */
+ *  30s 以上的差异基本可认为是不同歌（同歌 remix 一般 ≥30s）。
+ *
+ *  ⚠️ 2026-08-07 曾短暂提到 60s（Humbert Humbert「日が落ちるまで」QQ 296s
+ *  vs Spotify 248s），后回退：查证 Spotify 248s 是 2021《FOLK 3》**重录版**
+ *  （不同录音、不同 ISRC），不是同录音 master 差异——重录版就该是两首歌，
+ *  不应放宽容差去捡。 */
 export const DIFFERENT_VERSION_DURATION_TOLERANCE_SEC = 30;
 
 /**

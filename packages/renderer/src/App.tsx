@@ -125,21 +125,20 @@ export default function App() {
 
   // Playing a ❤ song: usePlayer's detect already kicks off the cross-platform
   // fan-out + incremental library patch in the background. That's async (it
-  // has to search the other platforms), so wait a beat, then refresh the ❤
-  // count + any open liked-library list + re-detect current track's fanOut
-  // state so the newly-synced platform badges show up in the UI.
-  const heartSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // has to search the other platforms + drain a serial queue with backoff),
+  // so a single 2.5s timer is too eager — it reads fannedOutTo before the
+  // discover has settled, the badge gets stuck at 1 and never climbs. We poll
+  // via refreshLikedStateUntilStable, which keeps trying until (liked, count)
+  // holds for two consecutive reads (~800ms apart initially, slower later).
+  // Mid-flight, any new track or ❤↔取消 flip invalidates the in-flight poll
+  // (generation counter inside the hook) so a stale run can't clobber fresh UI.
+  //
+  // 同时刷新 ❤ 库总数 + 弹窗（likedVersion 触发 LikedLibraryModal 重拉）。
   useEffect(() => {
     if (!player.track?.liked) return;
-    if (heartSyncTimerRef.current) clearTimeout(heartSyncTimerRef.current);
-    heartSyncTimerRef.current = setTimeout(() => {
-      void reloadLikedCount();
-      setLikedVersion((v) => v + 1);
-      player.refreshLikedState();
-    }, 2500);
-    return () => {
-      if (heartSyncTimerRef.current) clearTimeout(heartSyncTimerRef.current);
-    };
+    void reloadLikedCount();
+    setLikedVersion((v) => v + 1);
+    void player.refreshLikedStateUntilStable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.track?.id, player.track?.liked]);
 

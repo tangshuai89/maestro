@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+build/
+.cache/
+*.tsbuildinfo
+.DS_Store
+package-lock.json
+
+# Claude / OpenCode config — not formatted
+.claude/
+.opencode/
+
+# Generated scripts/aliases — touched by hand, not formatted
+scripts/alias-entries.json
+scripts/qq-liked-artists.md
+scripts/alias-entries.ts-snippet

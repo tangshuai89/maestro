@@ -137,7 +137,32 @@ function qqTrack(
   };
 }
 
+/** Spot 测试用 Track（与 neTrack 同结构但 provider = 'spotify'）。 */
+function spTrack(
+  id: string,
+  title: string,
+  artist: string,
+  duration: number,
+) {
+  return {
+    id,
+    provider: 'spotify',
+    title,
+    artist,
+    album: '',
+    coverUrl: '',
+    audioUrl: '',
+    duration,
+    liked: false,
+  };
+}
+
 async function main() {
+  // 先预热 kuromoji 词典：searchEquivalentUncached 现在会 await warmupJa()
+  // （title-romaji 变体需要），首次加载 ~1-2s。若不预热，测试 #1 的 fanOutLike
+  // 后台 discover 首次搜索会把这 ~2s 算进 waitFor(2000ms) 窗口 → 边界 flaky。
+  // 放最前面让词典就绪后再跑所有 waitFor 计时用例。
+  await warmupJa();
   // ── 1. fanOutLike(qq-only) → 后台匹配到 netease 等价曲目并同步 ──────
   {
     neteaseSearchResults = [neTrack('n1', '晴天', '周杰伦', 271)]; // 时长差 1s ≤ 3
@@ -1339,7 +1364,284 @@ async function main() {
     console.log('✅ 23. 多艺人 collab + Spotify 「title + co-author 后缀」识别');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 23 项通过');
+  // ── 24. Tier 5b 翻唱拒绝：诱 - 林宥嘉 ↔ 诱丨林宥嘉（Cover by KiraCola）- KiraCola
+  // 用户场景：seed 是 QQ 平台的「诱 - 林宥嘉」原唱，cand 标题里把原唱名写在
+  // 后面「诱丨林宥嘉」+ (Cover by KiraCola)。老代码因 Tier 5b 把「命中原唱名」
+  // 当正信号而误命中，把 KiraCola 翻唱版当作林宥嘉原唱纳入 fan-out。
+  // 修：COVER 候选池前置过滤 + Tier 5b 反转 + artistLooseMatch 复查。
+  {
+    neteaseSearchResults = [neTrack('n-cover', '诱丨林宥嘉（Cover by KiraCola）', 'KiraCola', 100)];
+    const r = await svc.fanOutLike(
+      session,
+      'merged-cover',
+      [{ platform: 'qq', trackId: 'q-cover' }],
+      true,
+      { title: '诱', artist: '林宥嘉', duration: 100 },
+    );
+    // fannedOutTo 总是包含 source（这里是 qq）—— 我们关心的是**有没有被
+    // 新增 netease**。翻唱场景下 netease 必须没有进入。
+    assert.strictEqual(
+      r.fannedOutTo.includes('netease'),
+      false,
+      `翻唱（Coby KiraCola）绝不能被 fan-out 到 netease，实际 fannedOutTo=${JSON.stringify(r.fannedOutTo)}`,
+    );
+    assert.ok(
+      !(await likedIds('netease')).includes('n-cover'),
+      '翻唱不能被写进本地 liked',
+    );
+    console.log('✅ 24. Tier 5b 翻唱拒绝：Coby KiraCola 不被 fan-out');
+  }
+
+  // ── 25. Tier 2 长度门：单字标题 seed + 长候选（虹/诱/Love）不可任意 includes
+  // 用户场景：seed 「诱」(1字) + cand 「诱惑的街」是不同歌，老代码 Tier 2 includes
+  // 命中。修：minLen=3 + max>3 才放行（双方都 ≥3 时仍走 includes）。
+  {
+    neteaseSearchResults = [neTrack('n-bait', '诱惑的街', '某人', 100)];
+    const r = await svc.fanOutLike(
+      session,
+      'merged-bait',
+      [{ platform: 'qq', trackId: 'q-bait' }],
+      true,
+      { title: '诱', artist: '林宥嘉', duration: 100 },
+    );
+    assert.ok(
+      !(await likedIds('netease')).includes('n-bait'),
+      '单字 seed + 长候选 不可 includes 命中（虹/诱/Love 等)',
+    );
+    console.log('✅ 25. Tier 2 单字标题长度门：单字 seed 不再误并长候选');
+  }
+
+  // ── 26. Tier 3 跨版本拒绝：seed 是 studio 版（无标签）+ cand 是 Live 版（差 25s）
+  // 用户场景：用户 ❤ 的是 QQ studio 版（300s），Spotify 搜索返回 Live 版（320s）
+  // 同名歌，老代码用 ±30s lenient 命中 → live 被 star 进来。修：跨版本守卫把
+  // 30s 收窄到 ±3s（seed 是 null、cand 是 LIVE，标签不等）。
+  {
+    neteaseSearchResults = []; // 清空，避免其他平台干扰
+    spotifySearchResults = [spTrack('sp-live', '诱 (Live)', '林宥嘉', 320)];
+    const r = await svc.fanOutLike(
+      session,
+      'merged-xversion',
+      [{ platform: 'qq', trackId: 'q-xv' }],
+      true,
+      { title: '诱', artist: '林宥嘉', duration: 300 },
+    );
+    assert.strictEqual(
+      r.fannedOutTo.includes('spotify'),
+      false,
+      `跨版本（studio seed + live cand 差 20s）不可命中，实际 fannedOutTo=${JSON.stringify(r.fannedOutTo)}`,
+    );
+    console.log('✅ 26. Tier 3 跨版本拒绝：studio seed + (Live) cand 不命中');
+  }
+
+  // ── 27. Tier 3 同版本保留：seed 是 (Live) + cand 也是 (Live) 差 20s 仍命中
+  // 用户场景：用户 ❤ 的是 QQ (Live) 版（320s），Spotify 也有 (Live) 版（300s）。
+  // 同版本标签 → 30s lenient 保留（这是为找回用户已经在听的同一录音的跨平台源）。
+  {
+    neteaseSearchResults = [];
+    spotifySearchResults = [spTrack('sp-live-2', '誘 (Live at Studio)', '林宥嘉', 300)];
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      await svc.fanOutLike(
+        session,
+        'merged-xversion-2',
+        [{ platform: 'qq', trackId: 'q-xv-2' }],
+        true,
+        { title: '誘 (Live)', artist: '林宥嘉', duration: 320 },
+      );
+      const ok = await waitFor(async () =>
+        (await likedIds('spotify')).includes('sp-live-2'),
+      );
+      assert.ok(
+        ok,
+        '同版本（都是 LIVE）差 20s 仍命中 30s lenient',
+      );
+    } finally {
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 27. Tier 3 同版本保留：(Live) seed + (Live at Studio) cand 命中');
+  }
+
+  // ── 28. COVER 候选池前置过滤：搜出来的整条候选都是翻唱版 → 直接 no-match
+  // 用户场景：seed = 海阔天空（studio，原版），所有平台搜索都只返回了「翻唱」
+  // 版（标题含 (翻唱) / (Cover by X)）。修：extractVersionTag 在 matchEquivalentTrack
+  // 入口就过滤掉 COVER → 后续 6 tier 看不到，no match 正确返回。
+  {
+    neteaseSearchResults = [
+      neTrack('n-cov', '海阔天空 (翻唱)', '路人甲', 305),
+      neTrack('n-cov-2', '海阔天空 (Cover by X)', 'X', 304),
+    ];
+    const r = await svc.fanOutLike(
+      session,
+      'merged-only-cover',
+      [{ platform: 'qq', trackId: 'q-oc' }],
+      true,
+      { title: '海阔天空', artist: 'Beyond', duration: 305 },
+    );
+    assert.strictEqual(
+      r.fannedOutTo.includes('netease'),
+      false,
+      `全是翻唱候选时绝不能被 fan-out 到 netease，实际 fannedOutTo=${JSON.stringify(r.fannedOutTo)}`,
+    );
+    console.log('✅ 28. COVER 候选池前置过滤：所有候选是翻唱 → no match');
+  }
+
+  // ── 29. PLACEBO 反向回归：seed + cand 都是米津玄師 / 野田洋次郎（同一 collab
+  // 两端），Tier 5b 应命中（discriminator：extra 是 cand 自己艺人整串，且 cand
+  // 与 seed 艺人语义对齐）。
+  // 修复前：反转规则「extraHitsSeed=true → continue」误拒（extra `野田洋次郎`
+  // 出现在 seed 字段里）。修复后：加 extraIsExactCandArtist 整串佐证，
+  // PLACEBO 重新命中。
+  {
+    spotifySearchResults = [spTrack('sp-placebo', 'PLACEBO + 野田洋次郎', 'Kenshi Yonezu / Yojiro Noda', 240)];
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      await svc.fanOutLike(
+        session,
+        'merged-placebo',
+        [{ platform: 'qq', trackId: 'q-placebo' }],
+        true,
+        { title: 'PLACEBO (安慰剂)', artist: '米津玄師 / 野田洋次郎', duration: 240 },
+      );
+      const ok = await waitFor(async () =>
+        (await likedIds('spotify')).includes('sp-placebo'),
+      );
+      assert.ok(
+        ok,
+        'PLACEBO 多艺人 collab 重新命中（extra 整串等于 cand 艺人）',
+      );
+    } finally {
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 29. PLACEBO 反向回归：修复 extraHitsSeed 误拒，collab 重新命中');
+  }
+
+  // ── 30. 标题罗马音变体：星野源 恋 ↔ Spotify Koi ─────────────
+  // 用户场景：QQ 上是「恋」（汉字），Spotify 索引的是罗马音「Koi」——搜汉字
+  // 召回到 0。修：searchEquivalentUncached 加 title-romaji 变体（kuromoji
+  // 读日文读音 → koi 再搜）。这里 mock 的 spotify.search 按 kw 区分：只有 kw
+  // 含 'koi' 才返回 Koi（模拟 Spotify 按罗马音索引），其余返回空。
+  {
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = {
+      ...origSpotify,
+      search: async (_ps: unknown, kw: string, _limit: number) => {
+        if (kw.toLowerCase().includes('koi')) {
+          return [spTrack('sp-koi', 'Koi', '星野源', 270)];
+        }
+        return [];
+      },
+    };
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      await svc.fanOutLike(
+        session,
+        'merged-koi',
+        [{ platform: 'qq', trackId: 'q-koi' }],
+        true,
+        { title: '恋', artist: '星野源', duration: 270 },
+      );
+      const ok = await waitFor(async () =>
+        (await likedIds('spotify')).includes('sp-koi'),
+      );
+      assert.ok(ok, '标题罗马音变体应命中 Spotify 的 Koi（星野源 恋）');
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 30. 标题罗马音变体：恋 ↔ Koi（Spotify 罗马音索引）命中');
+  }
+
+  // ── 31. 假名标题跨脚本：aiko もっと ↔ Spotify Motto ─────────
+  // 用户场景：seed「もっと - aiko」（假名标题），Spotify 是「Motto - aiko」。
+  // 修：isCrossScript 的 hasCjk 加入假名（぀-ヿ）——旧版只看汉字，「もっと」
+  // 不被视为 CJK 侧 → Tier 4 跨脚本标题拒绝。这里 mock 返回 Motto - aiko
+  // （标题罗马音已在 #30 覆盖召回，本 case 专测匹配层）。
+  {
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = {
+      ...origSpotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        spTrack('sp-motto', 'Motto', 'aiko', 290),
+      ],
+    };
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      await svc.fanOutLike(
+        session,
+        'merged-motto',
+        [{ platform: 'qq', trackId: 'q-motto' }],
+        true,
+        { title: 'もっと', artist: 'aiko', duration: 291 },
+      );
+      const ok = await waitFor(async () =>
+        (await likedIds('spotify')).includes('sp-motto'),
+      );
+      assert.ok(ok, '假名标题跨脚本应命中 Spotify 的 Motto（aiko もっと）');
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 31. 假名标题跨脚本：もっと ↔ Motto（aiko）命中');
+  }
+
+  // ── 32. 多候选选最近时长版本（告别的时代 选错版本修复）──────
+  // seed 告别的时代 dur=300（QQ/网易云 同专辑母带版）。Spotify 返回两个版本：
+  // 精选集版 dur=280（排搜索结果**第一**）+ 同专辑版 dur=301。旧代码「命中
+  // 即返回第一个」→ star 精选集版（错）。修后按时长接近度排序 → star 301 版。
+  {
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = {
+      ...origSpotify,
+      search: async (_ps: unknown, _kw: string, _limit: number) => [
+        spTrack('sp-compilation', '告别的时代', '罗大佑', 280), // 精选集版，排第一
+        spTrack('sp-album', '告别的时代', '罗大佑', 301), // 同专辑母带版，时长最近
+      ],
+    };
+    const origSessionProviders = session.providers;
+    (session as any).providers = {
+      ...session.providers,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    try {
+      await svc.fanOutLike(
+        session,
+        'merged-gaobie',
+        [{ platform: 'qq', trackId: 'q-gaobie' }],
+        true,
+        { title: '告别的时代', artist: '罗大佑', duration: 300 },
+      );
+      const ok = await waitFor(async () =>
+        (await likedIds('spotify')).includes('sp-album'),
+      );
+      assert.ok(ok, '应 star 时长最接近的同专辑版 sp-album(301)，非排第一的精选集版 sp-compilation(280)');
+      assert.ok(
+        !(await likedIds('spotify')).includes('sp-compilation'),
+        '不应 star 精选集版',
+      );
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+    }
+    console.log('✅ 32. 多候选按时长接近度选版本（告别的时代 选对同专辑版）');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 32 项通过');
 }
 
 main().catch((err) => {

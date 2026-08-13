@@ -373,8 +373,10 @@ async function main() {
     'getLibrary 同步返回时 likedPlatforms 仍是 netease（自愈是异步）',
   );
   svc2.healLibraryItem(session2, libBefore.items[0]);
-  // 等异步任务完成（healLibraryItem 走 searchEquivalent，search mock 立即返回）
-  await new Promise((r) => setTimeout(r, 200));
+  // 等异步任务完成。注意：searchEquivalent 现在会先 await warmupJa()
+  // （kuromoji 词典首次加载 ~几百 ms-1s，2026-08-07 星野源 恋 修复引入），
+  // 200ms 不够，等 2s 覆盖首次词典加载。
+  await new Promise((r) => setTimeout(r, 2000));
   // 再读一次 storage：library 应已补 QQ/Spotify source（netease 本来就有）
   const stored: any = fakeStorage2.get(`library:${session2.id}`);
   const libItem = stored.items[0];

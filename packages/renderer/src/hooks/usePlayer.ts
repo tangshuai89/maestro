@@ -172,6 +172,9 @@ export function usePlayer(
   // the same unified track we detected for (avoids a stale detect clobbering a
   // newer song's ❤ state after a fast skip).
   const activeMergedIdRef = useRef<string | undefined>(undefined);
+  // refreshLikedState 的「代」计数：每次触发自增，poll 循环只认自己那一代——
+  // 换歌 / 新的 refresh 触发时旧 poll 立即让位，避免旧循环覆盖新歌角标。
+  const likedRefreshGenRef = useRef(0);
   // On source switch with a track playing, skip one provider-change auto-load
   // so the current song keeps playing until it ends / the user skips.
   const skipAutoLoadRef = useRef(false);
@@ -558,18 +561,20 @@ export function usePlayer(
    * 防止快速切歌时旧结果盖掉新歌状态。
    */
   const detectAndApplyLiked = useCallback(
-    async (unified: UnifiedSearchItem | undefined) => {
+    async (
+      unified: UnifiedSearchItem | undefined,
+    ): Promise<number | null> => {
       activeMergedIdRef.current = unified?.id;
       if (!unified) {
         setFanOutCount(0);
-        return;
+        return 0;
       }
       const sources = unified.sources
         .filter((s) => s.hasCopyright)
         .map((s) => ({ platform: s.platform, trackId: s.trackId }));
       if (!sources.length) {
         setFanOutCount(0);
-        return;
+        return 0;
       }
       try {
         const r = await detectLiked(unified.id, sources, {
@@ -577,12 +582,16 @@ export function usePlayer(
           artist: unified.artist,
           duration: unified.duration,
         });
-        // 只在还停留在这首歌时应用（防快速切歌竞态）。
-        if (activeMergedIdRef.current !== unified.id) return;
-        setFanOutCount(r.liked ? r.fannedOutTo.length : 0);
+        // 只在还停留在这首歌时应用（防快速切歌竞态）。null = 结果被丢弃，
+        // 调用方（poll）不当作稳定值、会继续重试。
+        if (activeMergedIdRef.current !== unified.id) return null;
+        const count = r.liked ? r.fannedOutTo.length : 0;
+        setFanOutCount(count);
         setTrack((prev) => (prev ? { ...prev, liked: r.liked } : prev));
+        return count;
       } catch {
         // 检测失败不影响播放，静默。
+        return null;
       }
     },
     [],
@@ -591,9 +600,60 @@ export function usePlayer(
   /**
    * 重检当前这首歌的 liked/fanOut 状态。用于后台跨平台匹配（LikeSyncQueue
    * discover）补齐后重新拿到更新后的 fannedOutTo，让 fanOutCount 角标准确。
+   *
+   * 不做单次刷新——后台 discover 是异步的（搜索 + 串行消费 + 退避重试，最多
+   * 几十秒），单个 2.5s 定时器过早探查会读到 discover 落地前的中间值（角标
+   * 永远停在 1，看不到后台补齐的 netease / spotify）。`refreshLikedStateUntilStable`
+   * 会持续轮询直到连续两次读到相同的 count（含 liked 状态），证明后台已落定。
+   * 中途换歌 / ❤↔取消 / 触发新一轮 refresh 时旧轮询自动让位（generation 计数）。
    */
   const refreshLikedState = useCallback(() => {
     void detectAndApplyLiked(currentUnifiedRef.current);
+  }, [detectAndApplyLiked]);
+
+  /**
+   * 持续轮询 detect，直到 liked + fanOutCount 连续两次读到相同值——证明后台
+   * discover 已落定，再无平台会补上来。返回 Promise<{ liked, count } | null>，
+   * 外层 stale 时返回 null（切歌 / 翻转 / 新一轮 refresh 让位）。
+   *
+   * 节奏：前 6s 每 800ms 探一次（discover 通常 < 3s 落定），再放慢到每 2s，
+   * 最多 25s 后放弃——background discover 真卡死了也不把 UI 拉死。
+   */
+  const refreshLikedStateUntilStable = useCallback(async (): Promise<{
+    liked: boolean;
+    count: number;
+  } | null> => {
+    const myGen = ++likedRefreshGenRef.current;
+    const startTs = Date.now();
+    const HARD_TIMEOUT_MS = 25_000;
+    let lastKey: string | null = null;
+    let stableHits = 0;
+    while (Date.now() - startTs < HARD_TIMEOUT_MS) {
+      if (likedRefreshGenRef.current !== myGen) return null; // 让位给新一轮
+      const unified = currentUnifiedRef.current;
+      if (!unified) return null;
+      const count = await detectAndApplyLiked(unified);
+      if (likedRefreshGenRef.current !== myGen) return null;
+      if (count === null) {
+        // 探测失败（响应被丢弃 / 网络错）—— 重试但不计入稳定命中。
+        stableHits = 0;
+        lastKey = null;
+      } else {
+        const liked = !!trackRef.current?.liked;
+        const key = `${liked}|${count}`;
+        if (key === lastKey) {
+          stableHits += 1;
+          if (stableHits >= 2) return { liked, count };
+        } else {
+          lastKey = key;
+          stableHits = 1;
+        }
+      }
+      const elapsed = Date.now() - startTs;
+      const delay = elapsed < 6_000 ? 800 : 2_000;
+      await new Promise((r) => setTimeout(r, delay));
+    }
+    return null;
   }, [detectAndApplyLiked]);
 
   /** WPS 连上后重切当前歌——从 30s 预览路径切换到 WPS 全曲路径。 */
@@ -1177,6 +1237,7 @@ export function usePlayer(
     handleLike,
     handleDislike,
     refreshLikedState,
+    refreshLikedStateUntilStable,
     refreshTrackForWps,
     seek,
     resetForSwitch,

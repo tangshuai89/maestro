@@ -1,15 +1,27 @@
 // 跨包共享的归一（displayKey）从 @maestro/common 引入——和 server normalizeKey
 // 同一条流水线，确保 server 端合并的「UnifiedSearchItem」在弹窗里不会被重新
 // 拆开 / 错并（前后端 fuzzy key 漂移是「合并不利索」的根因）。
-import { displayKey } from '@maestro/common';
+import {
+  displayKey,
+  extractVersionTag,
+  normalizeKey,
+  stageNameAliasMatch,
+  titleAliasKey,
+  type VersionTag,
+} from '@maestro/common';
 import type { UnifiedSearchItem, MusicProvider } from '../api';
 
 /**
  * 红心库的「展示级」跨平台分组。
  *
- * server `mergeLibrary` 用 `normalizeKey`(歌名+歌手) + 时长 ±3s 把跨平台
- * 同首合并到同一条 `UnifiedSearchItem`。这里再做一道展示级聚类：把 server
- * 拆开的不同版本（Live/Remix/Acoustic）重新聚到同一 group（可展开看子行），
+ * server `mergeLibrary` 用 `normalizeKey`(歌名+歌手) 把跨平台同首合并到同
+ * 一条 `UnifiedSearchItem`——但 server 现在因 `stripVersionTags` 把 (Live)
+ * 与 (现场版) 落到不同 key（catalog 级跨版本隔离），所以一个 group 内可能
+ * 出现「海阔天空」+「海阔天空 (Live)」两条不同 item。这里把它们按 displayKey
+ * 重新聚到同一 group，**展开后用 versionTag 染色**让用户区分版本。翻唱
+ * （COVER）也在同 group 里展开，但折叠行默认不展示它（representative 优先
+ * 取 studio + 有封面）。
+ *
  * 跨平台但 server 没合并的「同人异名」（如 QQ 写「F.I.R.飞儿乐团」/ 网易云
  * 写「F.I.R.」）也聚一起——这部分由 `displayKey` 在 `normalizeKey` 基础上
  * 加 `stripParensContent` 实现。
@@ -26,22 +38,27 @@ import type { UnifiedSearchItem, MusicProvider } from '../api';
 export interface LibraryGroup {
   /** 稳定的 React key。 */
   key: string;
-  /** 折叠态展示用的代表条目（有封面优先、标题最简洁的成员）。 */
+  /** 折叠态展示用的代表条目（studio + 有封面优先，其次标题最简洁，COVER 排末）。 */
   representative: UnifiedSearchItem;
   /** 代表条目在原始 items 数组里的下标（点折叠行播放时传给 onPlay）。 */
   representativeIndex: number;
-  /** 组内所有成员（含原始下标，展开子列表 + 点击播放用）。 */
-  members: Array<{ item: UnifiedSearchItem; index: number }>;
+  /** 组内所有成员（含原始下标、版本标签，展开子列表 + 点击播放用）。 */
+  members: Array<{
+    item: UnifiedSearchItem;
+    index: number;
+    versionTag: VersionTag;
+  }>;
   /** 组覆盖的平台（去重、按徽章优先级排序）。 */
   platforms: MusicProvider[];
+  /** 组内**任一成员是 COVER**——折叠行加 ⚠ 翻唱提示。 */
+  hasCover: boolean;
 }
 
-/** 同一 displayKey 内，时长差 ≤ 此值才并入同一组（秒）。
- *
- *  跨平台同一录音通常差 0-3s；Live/Remix/Acoustic 差 5-30s+。
- *  5s 容差足以覆盖跨平台时长漂移，同时能把混音版/不插电版独立成条（不被
- *  原版误并）。旧版用 12s 导致 Remix (差 8s) / Acoustic (差 5s) 误并。 */
-const DURATION_TOL_SEC = 5;
+// 2026-08-07 需求变更：**同歌曲 + 同歌手全部合并**——不再按时长拆组。
+// 同一 displayKey（title+artist 归一相等）无论 studio / live / remix /
+// acoustic 全部并成一个 group，版本差异靠展开子行 + versionTag 染色体现。
+// 旧版按时长 ±5s 聚类会把「Live 320s vs studio 300s」拆成两组（用户明确
+// 不要：同歌同歌手就是一首歌，版本只是子条目）。
 
 /** 徽章展示顺序（与播放优先级一致）。 */
 export const BADGE_ORDER: MusicProvider[] = ['qq', 'netease', 'spotify', 'deezer'];
@@ -64,61 +81,151 @@ export function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
 
 interface MutableGroup extends LibraryGroup {
   anchorDuration: number;
+  /** 组代表艺人的原始串 + 归一 key——桶内「同人」判等用（不等同 title 时
+   *  新建组；同 title 不同人靠这俩区分）。 */
+  artist: string;
+  artistKey: string;
+}
+
+/** 多艺人拆分：按常见分隔符（/／,&;）切分，与 server artistLooseMatch 同口径。 */
+/**
+ * 弹窗分组「title 尾缀宽容」：Spotify 偶尔给歌名追加版本/合作信息但不加括号
+ * （如「... - zerokoi ver.」「... - Remix」），displayKey 不知此形式而把整串
+ * 留在 key 尾——分桶后与原版不同桶 → 拆开。**先**剥常见版本/合作尾缀再做分桶：
+ * 「 - xxx ver./remix/cover/feat/live」+ 一些无意义词（the/of/and）。
+ * 严格白名单——不在白名单的不剥，避免误并。
+ */
+function stripTrailingVersionSuffix(s: string): string {
+  if (!s) return s;
+  // 1) 版本/合作尾缀：「 - xxx ver./remix/cover/feat/live」+ 长度 0~N（仅剥一次）
+  //    关键词作尾部、前面非空白/非- 字符——直接列关键词，不用 \b（中文边界不灵）。
+  const SUFFIX_RE =
+    /[\s\u3000]*[-—–][\s\u3000]*[^-\s\u3000][^]*?\s*(?:ver\.?|version|remix|cover|feat\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\s\u3000]*$/i;
+  // 2) 无意义尾词：「 - the」「 - of」之类（最多剥 3 层）。
+  const STOPWORDS = /[\s\u3000]*[-—–][\s\u3000]*(?:the|of|and|a|an)[\s\u3000]*$/i;
+  let out = s;
+  for (let i = 0; i < 3; i++) {
+    const prev = out;
+    if (SUFFIX_RE.test(out)) out = out.replace(SUFFIX_RE, '').trim();
+    else if (STOPWORDS.test(out)) out = out.replace(STOPWORDS, '').trim();
+    if (out === prev) break;
+  }
+  return out;
+}
+
+function splitArtists(raw: string): string[] {
+  return raw
+    .split(/\s*[/／,;&]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 弹窗分组的「艺人同人」判定（2026-08-07 多艺人兜底）：
+ *  1) 归一相等（cjkUnify 简繁统一 + noise strip）
+ *  2) 策展别名表整串命中（陈绮贞 = Cheer Chen）
+ *  3) 多艺人拆分配对：任一方 ≥2 人时，按分隔符拆开逐对匹配
+ *     （归一相等 或 表别名），命中 ≥ ceil(多侧/2) 即同人——
+ *     Vocaloid「のぼる↑P / 初音未来」vs「Noboru」这类组合写法差异。
+ * 单艺人对单艺人仍只走 1/2——Coldplay vs Cold、Taylor vs Taylor Swift
+ * 这类巧合前缀不因拆分放宽而误并（双方都单艺人，不触发 3）。
+ */
+function artistsEquivalent(a: string, b: string): boolean {
+  const na = normalizeKey(a, '');
+  const nb = normalizeKey(b, '');
+  if (na && nb && na === nb) return true;
+  if (stageNameAliasMatch(a, b)) return true;
+  const pa = splitArtists(a);
+  const pb = splitArtists(b);
+  if (pa.length < 2 && pb.length < 2) return false;
+  let matched = 0;
+  for (const x of pa) {
+    for (const y of pb) {
+      const nx = normalizeKey(x, '');
+      const ny = normalizeKey(y, '');
+      if ((nx && ny && nx === ny) || stageNameAliasMatch(x, y)) {
+        matched++;
+        break;
+      }
+    }
+  }
+  // 以「多的一侧」过半为命中（与 server artistLooseMatch 的 ceil(n/2) 同哲学）。
+  const need = Math.ceil(Math.max(pa.length, pb.length) / 2);
+  return matched > 0 && matched >= need;
 }
 
 export function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
-  const byFk = new Map<string, MutableGroup[]>();
+  // 2026-08-07 分两级：
+  //  1) title 桶：按 displayKey(title, '') 归一（剥括号/feat/简繁/大小写），
+  //     同歌（含不同版本 studio/live/remix）进同一桶——这是上一轮「同歌
+  //     同歌手全并」的桶。titleKey 再过 titleAliasKey 归等价类（策展表，
+  //     如「悲歌」= 韩语「애절가」）——不同语言标题的同歌进同一桶（O(1)）。
+  //  2) artist 判等：桶内再按 artistsEquivalent（归一相等 / 策展别名 /
+  //     多艺人拆分配对）分 group——不同人同标题（花田错 王力宏 vs 王馨卓）
+  //     仍拆开，别名表外不猜。
+  // 别名表来自 @maestro/common（与 server 跨平台匹配同表，单一真值源）。
+  const byTitle = new Map<string, MutableGroup[]>();
   const order: MutableGroup[] = [];
 
-  // 预先把每个 item 的 displayKey 算好（一次摊销）。displayKey 内部已经过
-  // feat strip / 括号 strip / noise strip / OpenCC tw→cn / lowercase 整套
-  // 流水线——和 server normalizeKey 同口径。
+  // 预先把每个 item 的 titleKey + artistKey + versionTag 算好（一次摊销）。
   const enriched = items.map((item, index) => ({
     item,
     index,
-    fullKey: displayKey(item.title, item.artist),
+    titleKey: titleAliasKey(displayKey(stripTrailingVersionSuffix(item.title), '')),
+    artistKey: normalizeKey(item.artist, ''),
+    versionTag: extractVersionTag(item.title),
   }));
 
   for (const e of enriched) {
-    let bucket = byFk.get(e.fullKey);
-    if (!bucket) {
-      bucket = [];
-      byFk.set(e.fullKey, bucket);
-    }
-    // 同 displayKey 内按时长聚类：差 ≤ DURATION_TOL_SEC 进同 group；超过则
-    // 开新 group。同 displayKey 但跨平台时长差 >5s 的通常是不同版本
-    // （live/remix/acoustic 短版），值得让用户分开看到。
-    const g = bucket.find(
-      (grp) =>
-        !(grp.anchorDuration > 0 && e.item.duration > 0) ||
-        Math.abs(grp.anchorDuration - e.item.duration) <= DURATION_TOL_SEC,
-    );
+    const targetBucket = byTitle.get(e.titleKey) ?? [];
+    if (!byTitle.has(e.titleKey)) byTitle.set(e.titleKey, targetBucket);
+    // 同 title 桶内：找「艺人同人」的既有 group（artistsEquivalent）。
+    const g = targetBucket.find((grp) => artistsEquivalent(grp.artist, e.item.artist));
     if (g) {
-      g.members.push({ item: e.item, index: e.index });
+      g.members.push({ item: e.item, index: e.index, versionTag: e.versionTag });
       if (!(g.anchorDuration > 0) && e.item.duration > 0) {
         g.anchorDuration = e.item.duration;
       }
     } else {
       const fresh: MutableGroup = {
-        key: `${e.fullKey}#${bucket.length}`,
+        key: `${e.titleKey}#${order.length}`,
         representative: e.item,
         representativeIndex: e.index,
-        members: [{ item: e.item, index: e.index }],
+        members: [{ item: e.item, index: e.index, versionTag: e.versionTag }],
         platforms: [],
+        hasCover: e.versionTag === 'COVER',
         anchorDuration: e.item.duration,
+        artist: e.item.artist,
+        artistKey: e.artistKey,
       };
-      bucket.push(fresh);
+      targetBucket.push(fresh);
       order.push(fresh);
     }
   }
 
   for (const g of order) {
     if (!g) continue;
-    // 代表：有封面优先，其次标题最短（通常是无译名括号的原名，更干净）。
+    // 代表条目优先级：studio（versionTag=null）优先 → 有封面优先 →
+    // 翻唱（COVER）排末 → **时长长优先** → 标题最短。
+    // 时长长优先（2026-08-07）：默认播**原版/完整版**——重录版/短版
+    // 通常更短（Humbert Humbert 日が落ちるまで：原版 296s vs 2021 重录版
+    // 248s），而标题最短反而会选到重录版（标题更短更干净）。折叠行
+    // 默认播长的原版，toggle 展开可自选其他版本。
     const rep = g.members.reduce((best, m) => {
+      const bv = best.versionTag;
+      const mv = m.versionTag;
+      const bvIsStudio = bv === null;
+      const mvIsStudio = mv === null;
+      if (bvIsStudio !== mvIsStudio) return mvIsStudio ? m : best;
       const bc = best.item.coverUrl ? 1 : 0;
       const mc = m.item.coverUrl ? 1 : 0;
       if (mc !== bc) return mc > bc ? m : best;
+      const bvIsCover = bv === 'COVER';
+      const mvIsCover = mv === 'COVER';
+      if (bvIsCover !== mvIsCover) return mvIsCover ? best : m;
+      const bd = best.item.duration > 0 ? best.item.duration : 0;
+      const md = m.item.duration > 0 ? m.item.duration : 0;
+      if (bd !== md) return md > bd ? m : best;
       return m.item.title.length < best.item.title.length ? m : best;
     }, g.members[0]);
     g.representative = rep.item;
@@ -127,10 +234,13 @@ export function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
     // 角标 = 所有成员 likedPlatforms 的并集（fallback sources）。
     // likedPlatforms 反映用户真实 ❤ 状态（import + fanOut），比 sources 准。
     const set = new Set<MusicProvider>();
+    let hasCover = false;
     for (const m of g.members) {
+      if (m.versionTag === 'COVER') hasCover = true;
       for (const p of likedPlatforms(m.item)) set.add(p);
     }
     g.platforms = BADGE_ORDER.filter((p) => set.has(p));
+    g.hasCover = hasCover;
   }
 
   return order;
@@ -139,4 +249,28 @@ export function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
 /** 单个统一条目覆盖的平台（去重、按徽章顺序）——子行徽章用。 */
 export function itemPlatforms(item: UnifiedSearchItem): MusicProvider[] {
   return likedPlatforms(item);
+}
+
+/** 中文短标签：折叠行/子行展示版本用。 */
+export function versionTagLabel(tag: VersionTag): string {
+  switch (tag) {
+    case 'LIVE':
+      return '现场';
+    case 'ACOUSTIC':
+      return '原声';
+    case 'REMIX':
+      return '混音';
+    case 'INSTRUMENTAL':
+      return '伴奏';
+    case 'COVER':
+      return '翻唱';
+    case 'KARAOKE':
+      return '伴唱';
+    case 'DEMO':
+      return '样带';
+    case 'EDIT':
+      return '剪辑';
+    default:
+      return '';
+  }
 }
