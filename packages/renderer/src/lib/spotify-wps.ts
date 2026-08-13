@@ -331,8 +331,10 @@ export function createWpsWrapper(): WpsWrapper {
     });
     if (!res.ok && res.status !== 204) {
       const text = await res.text().catch(() => '');
+      wpsWarn('play', `failed ${res.status} ${text.slice(0, 200)}`);
       throw new Error(`spotify-wps: play failed ${res.status} ${text.slice(0, 200)}`);
     }
+    wpsLog('play', `ok ${res.status}`);
   }
 
   async function resume(): Promise<void> {
@@ -353,9 +355,16 @@ export function createWpsWrapper(): WpsWrapper {
   async function transferHere(): Promise<void> {
     if (!player) return;
     const deviceId = (player as unknown as { _deviceId?: string })._deviceId;
-    if (!deviceId) return;
+    if (!deviceId) {
+      wpsWarn('transfer', 'no deviceId — skip transfer');
+      return;
+    }
     const token = await getToken?.();
-    if (!token) return;
+    if (!token) {
+      wpsWarn('transfer', 'no token — skip transfer');
+      return;
+    }
+    wpsLog('transfer', `PUT /v1/me/player device=${deviceId}`);
     const res = await fetch('https://api.spotify.com/v1/me/player', {
       method: 'PUT',
       headers: {
@@ -366,8 +375,10 @@ export function createWpsWrapper(): WpsWrapper {
     });
     if (!res.ok && res.status !== 204) {
       const text = await res.text().catch(() => '');
+      wpsWarn('transfer', `failed ${res.status} ${text.slice(0, 200)}`);
       throw new Error(`spotify-wps: transfer failed ${res.status} ${text.slice(0, 200)}`);
     }
+    wpsLog('transfer', `ok ${res.status}`);
   }
 
   function onStateChange(cb: WpsStateCallback): () => void {
