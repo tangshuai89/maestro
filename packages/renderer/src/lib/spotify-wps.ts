@@ -150,6 +150,36 @@ function makeDeviceName(): string {
   return `maestro-${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
+/**
+ * Spotify Connect API 带重试的 PUT（transfer / play 共用）。
+ *
+ * 背景：WPS SDK `ready` 事件下发 device_id 后，设备**异步注册**到账户的
+ * Spotify Connect 设备列表（几十 ms ~ 几秒）。立刻调 PUT /v1/me/player
+ * 会 404 "Device not found"。对 404 退避重试，给注册时间。
+ */
+const DEVICE_NOT_FOUND_RETRY_DELAYS_MS = [500, 1500, 3000];
+
+async function spotifyApiWithRetry(
+  url: string,
+  init: RequestInit,
+  tag: string,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok || res.status === 204) return res;
+    if (
+      res.status === 404 &&
+      attempt < DEVICE_NOT_FOUND_RETRY_DELAYS_MS.length
+    ) {
+      const wait = DEVICE_NOT_FOUND_RETRY_DELAYS_MS[attempt];
+      wpsLog(tag, `404 Device not found — 等 ${wait}ms 重试（设备注册中，第 ${attempt + 1} 次）`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    return res;
+  }
+}
+
 export function createWpsWrapper(): WpsWrapper {
   let player: SpotifyPlayer | null = null;
   let getToken: (() => Promise<string | null>) | null = null;
@@ -321,14 +351,18 @@ export function createWpsWrapper(): WpsWrapper {
     const token = await getToken?.();
     if (!token) throw new Error('spotify-wps: no token');
     wpsLog('play', `PUT /v1/me/player/play device=${deviceId} uri=${trackUri}`);
-    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    const res = await spotifyApiWithRetry(
+      `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uris: [trackUri] }),
       },
-      body: JSON.stringify({ uris: [trackUri] }),
-    });
+      'play',
+    );
     if (!res.ok && res.status !== 204) {
       const text = await res.text().catch(() => '');
       wpsWarn('play', `failed ${res.status} ${text.slice(0, 200)}`);
@@ -365,14 +399,18 @@ export function createWpsWrapper(): WpsWrapper {
       return;
     }
     wpsLog('transfer', `PUT /v1/me/player device=${deviceId}`);
-    const res = await fetch('https://api.spotify.com/v1/me/player', {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    const res = await spotifyApiWithRetry(
+      'https://api.spotify.com/v1/me/player',
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_ids: [deviceId], play: false }),
       },
-      body: JSON.stringify({ device_ids: [deviceId], play: false }),
-    });
+      'transfer',
+    );
     if (!res.ok && res.status !== 204) {
       const text = await res.text().catch(() => '');
       wpsWarn('transfer', `failed ${res.status} ${text.slice(0, 200)}`);

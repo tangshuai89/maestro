@@ -76,15 +76,41 @@ const TRIAL_GAP_SEC = 45;
  * items with no playable source and keeping `tracks` ALIGNED with `unifiedItems`
  * (same index → same song) so per-song ❤ detect / fan-out maps correctly.
  * Shared by playSearch (initial queue) and loadNextTrack (reco next batch).
+ *
+ * `opts.wpsReady` = Spotify Premium + WPS 已激活。此时服务端 bestSource
+ * 仍把 Spotify 排最后（PLAY_PRIORITY: qq > netease > deezer > spotify，且
+ * Spotify 常被标 vipLocked=30s preview）——但 WPS 是**全曲**可播的，应该
+ * 优先用 Spotify 源走 WPS 路径，而不是 fallback 到 deezer 30s 预览。
  */
-function parsePlayableQueue(items: UnifiedSearchItem[]): {
+function parsePlayableQueue(
+  items: UnifiedSearchItem[],
+  opts?: { wpsReady?: boolean },
+): {
   tracks: Track[];
   unifiedItems: UnifiedSearchItem[];
 } {
+  const wpsReady = opts?.wpsReady ?? false;
   const tracks: Track[] = [];
   const unifiedItems: UnifiedSearchItem[] = [];
   for (const it of items) {
-    const t = pickPlayableTrack(it);
+    // WPS 可用 → Spotify 源优先（audioUrl 留空，presentTrack 里 WPS 接管）
+    const spotifySrc = wpsReady
+      ? it.sources.find((s) => s.platform === 'spotify')
+      : undefined;
+    const t: Track | null = spotifySrc
+      ? {
+          id: spotifySrc.trackId,
+          provider: 'spotify',
+          title: it.title,
+          artist: it.artist,
+          album: it.album,
+          coverUrl: it.coverUrl,
+          audioUrl: '', // <audio> 不用，WPS 全曲接管
+          duration: it.duration,
+          liked: false,
+          mediaMid: spotifySrc.mediaMid,
+        }
+      : pickPlayableTrack(it);
     if (t) {
       tracks.push(t);
       unifiedItems.push(it);
@@ -684,7 +710,9 @@ export function usePlayer(
           // Race guard: user may have skipped / switched source / started a new
           // search during the await — only mutate if this is still the queue.
           if (queueRef.current !== q) return;
-          const parsed = parsePlayableQueue(more);
+          const parsed = parsePlayableQueue(more, {
+            wpsReady: Boolean(wpsRef?.current?.wpsReady),
+          });
           if (parsed.tracks.length) {
             q.tracks.push(...parsed.tracks);
             (q.unifiedItems ??= []).push(...parsed.unifiedItems);
@@ -726,7 +754,7 @@ export function usePlayer(
     } finally {
       setLoading(false);
     }
-  }, [provider, deezerPreset, presentTrack, detectAndApplyLiked]);
+  }, [provider, deezerPreset, presentTrack, detectAndApplyLiked, wpsRef]);
 
   /** Play a search result: parse UnifiedSearchItem[] into a playable queue,
    *  dropping items with no playable source. Keeps unifiedItems aligned with
@@ -740,7 +768,9 @@ export function usePlayer(
     ) => {
       // Keep track+unified ALIGNED: drop non-playable from both so idx maps
       // to the right unified item (for per-song ❤ detect / fan-out).
-      const { tracks, unifiedItems: aligned } = parsePlayableQueue(unifiedItems);
+      const { tracks, unifiedItems: aligned } = parsePlayableQueue(unifiedItems, {
+        wpsReady: Boolean(wpsRef?.current?.wpsReady),
+      });
       const targetSrcIndex = unifiedItems[index] ? index : 0;
       const startIdx = aligned.indexOf(unifiedItems[targetSrcIndex]);
       if (startIdx < 0 || tracks.length === 0) {
@@ -755,7 +785,7 @@ export function usePlayer(
       presentTrack(tracks[startIdx], aligned[startIdx]);
       void detectAndApplyLiked(aligned[startIdx]);
     },
-    [presentTrack, detectAndApplyLiked],
+    [presentTrack, detectAndApplyLiked, wpsRef],
   );
 
   // Auto-load on provider / preset change (but skip once when delaying a
@@ -934,9 +964,11 @@ export function usePlayer(
         if (wpsPlayedIdRef.current !== track.id) {
           const uri = `spotify:track:${track.id}`;
           wpsPlayedIdRef.current = track.id;
-          void wps.transferHere().then(() =>
-            wps.play(uri),
-          ).catch((e: Error) => {
+          // transferHere 失败（设备还没注册完）不阻断 play——play 请求带
+          // device_id 参数本身也会激活设备。两边都有 404 退避重试。
+          void wps.transferHere().catch((e: Error) => {
+            wpsLog('transfer-fallback', `transferHere 失败，继续 play：${e.message}`);
+          }).then(() => wps.play(uri)).catch((e: Error) => {
             console.error('[wps] play() rejected:', e);
             setError(`WPS 播放失败：${e.message}`);
           });
