@@ -98,6 +98,55 @@
   position: relative;
 }
 
+// 搜索条：header 与 body 之间的固定区（不随列表滚动）。
+.liked-modal-search {
+  position: relative;
+  flex-shrink: 0;
+  padding: 6px 16px 2px;
+  border-bottom: 1px solid $overlay-divider;
+}
+
+.liked-modal-search-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 30px 0 12px;
+  border: 1px solid $overlay-field-border;
+  border-radius: 8px;
+  background: $overlay-field-bg;
+  color: $overlay-text;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.1s ease;
+
+  &::placeholder {
+    color: $overlay-text-faint;
+  }
+
+  &:focus {
+    border-color: $overlay-field-border-hi;
+  }
+}
+
+.liked-modal-search-clear {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: $overlay-hover;
+  color: $overlay-text-faint;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+
+  &:hover {
+    color: $overlay-text;
+  }
+}
+
 // 虚拟滚动列表容器：virtualizer 用它算 visible range。高度由 .liked-modal-body
 // 的 flex: 1 + min-height: 0 决定；自己只负责内部 absolute 定位。
 .liked-modal-list {
@@ -331,6 +380,86 @@
 
 .liked-modal-badge-deezer {
   background: #a238ff;
+}
+
+// ── 版本 / 翻唱 染色（Step 4 跨平台 fan-out 重构配套）───────────────
+// 折叠行的组级徽章不染色（保留并集总览），子行徽章按 versionTag 加左边框
+// 标识 + 内部小字标签，让用户一眼区分 studio / live / 翻唱。COVER 默认
+// 折叠行用 ⚠ 标记，展开子行看斜体「翻唱」字样。
+.liked-modal-badges {
+  &--live {
+    .liked-modal-badge { border-top: 2px solid #3b82f6; }
+  }
+  &--acoustic {
+    .liked-modal-badge { border-top: 2px solid #a855f7; }
+  }
+  &--remix {
+    .liked-modal-badge { border-top: 2px solid #f97316; }
+  }
+  &--instrumental {
+    .liked-modal-badge { border-top: 2px solid #94a3b8; }
+  }
+  &--karaoke {
+    .liked-modal-badge { border-top: 2px solid #64748b; }
+  }
+  &--demo {
+    .liked-modal-badge { border-top: 2px solid #cbd5e1; }
+  }
+  &--edit {
+    .liked-modal-badge { border-top: 2px solid #fbbf24; }
+  }
+  &--cover {
+    // 翻唱：边框 + 内部字染色为「灰 + 斜体」，区别于录音版本。
+    .liked-modal-badge {
+      border-top: 2px solid #64748b;
+      background-image: linear-gradient(135deg, transparent 45%, rgba(100,116,139,0.4) 50%, transparent 55%);
+      font-style: italic;
+    }
+  }
+}
+
+.liked-modal-badge-version {
+  display: none; // 默认隐藏，CSS 用 .liked-modal-badges--* 容器决定是否可见
+}
+
+// 子行版本标签（title 旁的 inline 小字）
+.liked-modal-version-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  vertical-align: middle;
+
+  &--live { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+  &--acoustic { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+  &--remix { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+  &--instrumental { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+  &--cover { background: rgba(100, 116, 139, 0.18); color: #94a3b8; font-style: italic; }
+  &--karaoke { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+  &--demo { background: rgba(203, 213, 225, 0.15); color: #cbd5e1; }
+  &--edit { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+}
+
+// 折叠行末尾的「含翻唱」⚠ 提示
+.liked-modal-cover-warn {
+  font-size: 12px;
+  color: #f59e0b;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+// 子行配色：子行的左侧 2px 描边让版本类型一眼可辨
+.liked-modal-subrow {
+  &--live { border-left: 2px solid rgba(59, 130, 246, 0.5); }
+  &--acoustic { border-left: 2px solid rgba(168, 85, 247, 0.5); }
+  &--remix { border-left: 2px solid rgba(249, 115, 22, 0.5); }
+  &--instrumental { border-left: 2px solid rgba(148, 163, 184, 0.4); }
+  &--cover { border-left: 2px solid rgba(100, 116, 139, 0.5); }
+  &--karaoke { border-left: 2px solid rgba(100, 116, 139, 0.4); }
+  &--demo { border-left: 2px solid rgba(203, 213, 225, 0.4); }
+  &--edit { border-left: 2px solid rgba(251, 191, 36, 0.4); }
 }
 
 .liked-modal-footer {

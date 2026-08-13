@@ -34,6 +34,7 @@ import { toRomaji } from 'wanakana';
 import { Converter } from 'opencc-js';
 import * as kuromoji from 'kuromoji';
 import * as path from 'path';
+import { stageNameAliasMatch } from '@maestro/common';
 
 /** 汉字（含扩展 A / 兼容区）。 */
 const HAN = /[㐀-䶿一-鿿豈-﫿]/;
@@ -122,8 +123,10 @@ export function warmupJa(): Promise<void> {
 }
 
 /** 用 kuromoji 把日文文本罗马化（取每 token 的片假名 reading → 黑本式）。
- *  tokenizer 未就绪 → 返回空串（触发后台预热，本次走拼音路线）。 */
-function romanizeJa(s: string): string {
+ *  tokenizer 未就绪 → 返回空串（触发后台预热，本次走拼音路线）。
+ *  导出供 music.service 搜索变体用（Spotify 按罗马音索引日文歌名——「恋」
+ *  → koi，搜汉字召回不到）。 */
+export function romanizeJa(s: string): string {
   if (!s) return '';
   if (!_jaTokenizer) {
     void warmupJa();
@@ -207,122 +210,10 @@ function romanizeVariants(s: string): string[] {
   return [...set];
 }
 
-// ── 英文艺名别名表（2026-08-03）────────────────────────────────────────
-// 中文平台（QQ/网易云）用汉字名，Spotify 常用**非音译的英文艺名**（Jay Chou /
-// JJ Lin / G.E.M.）。拼音路线只能桥「孙燕姿→sunyanzi」这类音译名，艺名与读音
-// 完全无关——周杰伦拼音 zhoujielun ≠ Jay Chou，任何罗马化算法都桥不了。
-// 日语侧同理：ZUTOMAYO（ずっと真夜中でいいのに。）是造词型拉丁艺名，kuromoji
-// 只给「zutto mayonaka de ii noni」，对不上。这里用**精确整串匹配**的策展表
-// 做最后一公里（与 kuromoji 同哲学：只桥明确名单，不上算法猜测）：
-//   - key = 剥括号注释 + 简繁统一（cn2t）后的全名（汉字/假名皆可）——
-//     「ずっと真夜中でいいのに」和「周杰倫」都是合法 key；括号里的读音/译名
-//     注释（如 (永远是深夜有多好｡)）不参与 key
-//   - 只认整串相等，「小周杰伦」≠「周杰伦」
-//   - 值 = 该艺人在 Spotify 等平台的拉丁艺名（可多个：邓紫棋 = G.E.M./Gloria Tang）
-// 表外名字永远走不到这里（表内无铃木爱理），「铃木爱理 vs Lefty Hand Cream」
-// 式翻唱链防线不受影响。
-const STAGE_NAME_ALIASES: Record<string, string[]> = {
-  周杰倫: ['Jay Chou'],
-  蔡依林: ['Jolin Tsai'],
-  林俊傑: ['JJ Lin'],
-  王力宏: ['Wang Leehom', 'Leehom Wang'],
-  鄧紫棋: ['G.E.M.', 'Gloria Tang'],
-  羅志祥: ['Show Luo'],
-  蕭敬騰: ['Jam Hsiao'],
-  楊丞琳: ['Rainie Yang'],
-  張韶涵: ['Angela Chang'],
-  潘瑋柏: ['Wilber Pan'],
-  方大同: ['Khalil Fong'],
-  陳奕迅: ['Eason Chan'],
-  薛之謙: ['Joker Xue'],
-  吳青峰: ['Greeny Wu'],
-  張惠妹: ['A-Mei'],
-  許嵩: ['Vae'],
-  汪蘇瀧: ['Silence Wong'],
-  徐佳瑩: ['Lala Hsu'],
-  吳克群: ['Kenji Wu'],
-  陶喆: ['David Tao'],
-  王菲: ['Faye Wong'],
-  鄭秀文: ['Sammi Cheng'],
-  張信哲: ['Jeff Chang'],
-  梁靜茹: ['Fish Leong'],
-  范曉萱: ['Mavis Fan'],
-  庾澄慶: ['Harlem Yu'],
-  周華健: ['Wakin Chau', 'Emil Chau'],
-  王心凌: ['Cyndi Wang'],
-  蔡健雅: ['Tanya Chua'],
-  戴佩妮: ['Penny Tai'],
-  辛曉琪: ['Winnie Hsin'],
-  蘇慧倫: ['Tarcy Su'],
-  蕭亞軒: ['Elva Hsiao'],
-  張靚穎: ['Jane Zhang'],
-  劉德華: ['Andy Lau'],
-  張學友: ['Jacky Cheung'],
-  郭富城: ['Aaron Kwok'],
-  黎明: ['Leon Lai'],
-  譚詠麟: ['Alan Tam'],
-  陳慧琳: ['Kelly Chen'],
-  梁詠琪: ['Gigi Leung'],
-  莫文蔚: ['Karen Mok'],
-  容祖兒: ['Joey Yung'],
-  謝霆鋒: ['Nicholas Tse'],
-  古巨基: ['Leo Ku'],
-  蔡卓妍: ['Charlene Choi'],
-  鍾欣潼: ['Gillian Chung'],
-  楊千嬅: ['Miriam Yeung'],
-  鄭伊健: ['Ekin Cheng'],
-  鄧麗君: ['Teresa Teng'],
-  林憶蓮: ['Sandy Lam'],
-  葉倩文: ['Sally Yeh'],
-  王傑: ['Dave Wang'],
-  張宇: ['Phil Chang'],
-  任賢齊: ['Richie Jen'],
-  陳小春: ['Jordan Chan'],
-  陳冠希: ['Edison Chen'],
-  周渝民: ['Vic Chou'],
-  言承旭: ['Jerry Yan'],
-  吳建豪: ['Vanness Wu'],
-  朱孝天: ['Ken Chu'],
-  五月天: ['Mayday'],
-  蘇打綠: ['Sodagreen'],
-  飛兒樂團: ['F.I.R.'],
-  八三夭: ['831'],
-  動力火車: ['Power Station'],
-  草蜢: ['Grasshopper'],
-  // 日语侧：拉丁艺名与读音无关的（造词型/缩写型/外来语非读音化写法）。
-  ずっと真夜中でいいのに: ['ZUTOMAYO', 'ZTMY'],
-  サカナクション: ['Sakanaction'],
-  スピッツ: ['Spitz'],
-  スキマスイッチ: ['Sukima Switch'],
-  バンプオブチキン: ['BUMP OF CHICKEN'],
-  ワンオクロック: ['ONE OK ROCK'],
-  オフィシャルヒゲダンディズム: ['Official HIGE DANDISM'],
-  ミセスグリーンアップル: ['Mrs. GREEN APPLE'],
-  米津玄師: ['Kenshi Yonezu'],
-  藤井風: ['Fujii Kaze'],
-  ミレイ: ['milet'],
-  キタニタツヤ: ['Tatsuya Kitani'],
-};
-
-/**
- * 艺人名 → 别名表 key：剥掉括号注释（读音/译名）后只取汉字+假名，
- * 再 cn2t 统一为繁体（表 key 用繁体）。纯拉丁名 → null，表示「这一侧
- * 不是日/中文名，走不了别名通道」。
- */
-function stageNameKey(s: string): string | null {
-  const stripped = s.replace(/[(（\[【][^)）\]】]*[)）\]】]/g, '');
-  let out = '';
-  for (const ch of stripped) {
-    if (HAN.test(ch) || KANA.test(ch)) out += ch;
-  }
-  if (!out) return null;
-  return cn2t(out);
-}
-
-/** 英文艺名归一：小写 + 去标点（"G.E.M."→"gem"、"JJ Lin"→"jjlin"）。 */
-function normStageName(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
+// ── 英文艺名别名表（2026-08-03 起）────────────────────────────────────
+// 策展表已抽到 @maestro/common（packages/common/src/artistAlias.ts）——
+// server 的跨平台匹配与 renderer 的弹窗分组共用同一张表，避免两端各写一份
+// 漂移。这里只 import `stageNameAliasMatch`（精确整串匹配，双向）。
 
 /** 音译重叠判定的最短长度——太短（≤3）的罗马化串靠 includes 容易撞巧合。 */
 const MIN_ROMAJI_OVERLAP_LEN = 4;
@@ -346,22 +237,15 @@ const MIN_ROMAJI_OVERLAP_LEN = 4;
  *           浜崎あゆみ↔Ayumi Hamasaki（顺序无关）
  *
  * 英文艺名别名（2026-08-03）：周杰伦 ↔ Jay Chou 这类**非音译**艺名，罗马化
- * 路线（拼音/kuromoji/假名括号）永远桥不了，走 STAGE_NAME_ALIASES 策展表——
- * 精确整串匹配（汉字侧 key 全名相等、拉丁侧归一后与表值相等），不做子串。
- * 表内是手工确认的同人，故不经 MIN_ROMAJI_OVERLAP_LEN 长度门限（G.E.M. 等
- * 3 字符艺名也能过）。
+ * 路线（拼音/kuromoji/假名括号）永远桥不了，走 @maestro/common 的策展表
+ * `stageNameAliasMatch`——精确整串匹配（汉字侧 key 全名相等、拉丁侧归一后
+ * 与表值相等），不做子串。表内是手工确认的同人，故不经
+ * MIN_ROMAJI_OVERLAP_LEN 长度门限（G.E.M. 等 3 字符艺名也能过）。
  */
 export function artistTransliterationMatch(a: string, b: string): boolean {
   if (!a || !b) return false;
   // 英文艺名别名通道（先于罗马化：表内名不需要经过长度门限）。
-  const ka = stageNameKey(a);
-  const kb = stageNameKey(b);
-  const aliasHit = (key: string | null, other: string): boolean =>
-    !!key &&
-    !!STAGE_NAME_ALIASES[key] &&
-    STAGE_NAME_ALIASES[key].some((st) => normStageName(st) === normStageName(other));
-  if (aliasHit(ka, b)) return true;
-  if (aliasHit(kb, a)) return true;
+  if (stageNameAliasMatch(a, b)) return true;
   const va = romanizeVariants(a);
   const vb = romanizeVariants(b);
   for (const ra of va) {
@@ -377,17 +261,35 @@ export function artistTransliterationMatch(a: string, b: string): boolean {
   const splitTokens = (s: string): string[] =>
     s.split(' ').filter(Boolean);
   const tryTokenMatch = (cjk: string, latinVariants: string[]): boolean => {
-    // 1) kuromoji token 级读音（识别规则日文名）
-    let tokens = romanizeJaTokens(cn2t(cjk));
+    // 1) kuromoji token 级读音（识别规则日文名）——算法猜测，受长度门防误并
+    //    （「すず」撞「すずき」）。⚠️ kuromoji 对艺名可能**错读**（「星野源」
+    //    的「源」被拆成 はじめ=hajime，实际是 げん=gen）——错读 token 会
+    //    拖垮整体判定，所以 kuromoji 判定与括号直读判定**互不拖累**。
+    const kuromojiTokens = romanizeJaTokens(cn2t(cjk));
     // 2) 假名括号直读（带空格 → 拆词）。「德永英明 (とくなが ひであき)」的
-    //    kuromoji 拆不对，但括号读音直接给对。
+    //    kuromoji 拆不对，但括号读音直接给对——这是**发音真相**，不受
+    //    MIN_ROMAJI_OVERLAP_LEN 长度门限制（「ほしの げん」的 gen 仅 3 字符
+    //    也必须参与），否则 3 字名（gen/rei/ai…）全被跳过、姓名颠倒桥不上。
+    const furiganaTokens: string[] = [];
     for (const v of romanizeVariants(cjk)) {
-      if (v.includes(' ')) tokens = tokens.concat(splitTokens(v));
+      if (v.includes(' ')) furiganaTokens.push(...splitTokens(v));
     }
-    if (tokens.length < 2) return false;
     for (const latin of latinVariants) {
       if (!latin || latin.length < MIN_ROMAJI_OVERLAP_LEN) continue;
-      if (tokens.every((tok) => tok.length >= MIN_ROMAJI_OVERLAP_LEN && latin.includes(tok))) {
+      // 括号直读（≥2 字 token，发音真相）全部命中 → 通过（星野源 case）。
+      if (
+        furiganaTokens.length >= 2 &&
+        furiganaTokens.every((tok) => tok.length >= 2 && latin.includes(tok))
+      ) {
+        return true;
+      }
+      // kuromoji token 全部命中（带长度门）→ 通过（无括号规则日文名）。
+      if (
+        kuromojiTokens.length >= 2 &&
+        kuromojiTokens.every(
+          (tok) => tok.length >= MIN_ROMAJI_OVERLAP_LEN && latin.includes(tok),
+        )
+      ) {
         return true;
       }
     }

@@ -8,10 +8,33 @@
  */
 export {};
 const assert = require('node:assert');
-const { displayKey } = require('@maestro/common');
+const {
+  displayKey,
+  extractVersionTag,
+  normalizeKey,
+  stageNameAliasMatch,
+  titleAliasKey,
+} = require('@maestro/common');
+
+/** 弹窗分组 title 尾缀宽容——与 renderer groupLibrary 同步（2026-08-07
+ *  Spotify 偶给歌名加版本标签但不加括号：あの頃～ジンジンバオヂュオニー～ - zerokoi ver.）。 */
+function stripTrailingVersionSuffix(s: string): string {
+  if (!s) return s;
+  const SUFFIX_RE = /[\s　]*[-—–][\s　]*[^-\s　][^]*?\s*(?:ver\.?|version|remix|cover|feat\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\s　]*$/i;
+  const STOPWORDS = /[\s　]*[-—–][\s　]*(?:the|of|and|a|an)[\s　]*$/i;
+  let out = s;
+  for (let i = 0; i < 3; i++) {
+    const prev = out;
+    if (SUFFIX_RE.test(out)) out = out.replace(SUFFIX_RE, '').trim();
+    else if (STOPWORDS.test(out)) out = out.replace(STOPWORDS, '').trim();
+    if (out === prev) break;
+  }
+  return out;
+}
 
 // ── 复制的实现（与 packages/renderer/src/lib/groupLibrary.ts 同步） ──────
 type MusicProvider = 'qq' | 'netease' | 'spotify' | 'deezer';
+type VersionTag = 'LIVE' | 'ACOUSTIC' | 'REMIX' | 'INSTRUMENTAL' | 'COVER' | 'KARAOKE' | 'DEMO' | 'EDIT' | null;
 
 interface UnifiedSearchItem {
   id: string;
@@ -27,11 +50,11 @@ interface LibraryGroup {
   key: string;
   representative: UnifiedSearchItem;
   representativeIndex: number;
-  members: Array<{ item: UnifiedSearchItem; index: number }>;
+  members: Array<{ item: UnifiedSearchItem; index: number; versionTag: VersionTag }>;
   platforms: MusicProvider[];
+  hasCover: boolean;
 }
 
-const DURATION_TOL_SEC = 5;
 const BADGE_ORDER: MusicProvider[] = ['qq', 'netease', 'spotify', 'deezer'];
 
 function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
@@ -42,64 +65,122 @@ function likedPlatforms(item: UnifiedSearchItem): MusicProvider[] {
 
 interface MutableGroup extends LibraryGroup {
   anchorDuration: number;
+  artist: string;
+  artistKey: string;
+}
+
+/** 多艺人拆分：与 renderer groupLibrary 同步。 */
+function splitArtists(raw: string): string[] {
+  return raw
+    .split(/\s*[\/／,;&]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** 弹窗分组的「艺人同人」判定：归一相等 / 策展别名整串 / 多艺人拆分配对。 */
+function artistsEquivalent(a: string, b: string): boolean {
+  const na = normalizeKey(a, '');
+  const nb = normalizeKey(b, '');
+  if (na && nb && na === nb) return true;
+  if (stageNameAliasMatch(a, b)) return true;
+  const pa = splitArtists(a);
+  const pb = splitArtists(b);
+  if (pa.length < 2 && pb.length < 2) return false;
+  let matched = 0;
+  for (const x of pa) {
+    for (const y of pb) {
+      const nx = normalizeKey(x, '');
+      const ny = normalizeKey(y, '');
+      if ((nx && ny && nx === ny) || stageNameAliasMatch(x, y)) {
+        matched++;
+        break;
+      }
+    }
+  }
+  const need = Math.ceil(Math.max(pa.length, pb.length) / 2);
+  return matched > 0 && matched >= need;
 }
 
 function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
-  const byFk = new Map<string, MutableGroup[]>();
+  // 2026-08-07 分两级：
+  //  1) title 桶：displayKey(title, '') 归一（剥括号/feat/简繁/大小写）+
+  //     titleAliasKey 等价类（悲歌 = 韩语 애절가）
+  //  2) artist 判等：桶内 artistsEquivalent（归一相等 / 策展别名 /
+  //     多艺人拆分配对）；表外不同人拆开。
+  const byTitle = new Map<string, MutableGroup[]>();
   const order: MutableGroup[] = [];
 
   const enriched = items.map((item, index) => ({
     item,
     index,
-    fullKey: displayKey(item.title, item.artist),
+    titleKey: titleAliasKey(displayKey(stripTrailingVersionSuffix(item.title), '')),
+    artistKey: normalizeKey(item.artist, ''),
+    versionTag: extractVersionTag(item.title),
   }));
 
+  // 同歌 + 同歌手全部合并到同一 group——无论版本（studio/live/remix/acoustic）
+  // 与时长差（用户需求：同歌同歌手就是一首歌）。版本差异靠展开子行染色。
   for (const e of enriched) {
-    let bucket = byFk.get(e.fullKey);
-    if (!bucket) {
-      bucket = [];
-      byFk.set(e.fullKey, bucket);
-    }
-    const g = bucket.find(
-      (grp) =>
-        !(grp.anchorDuration > 0 && e.item.duration > 0) ||
-        Math.abs(grp.anchorDuration - e.item.duration) <= DURATION_TOL_SEC,
+    const bucket = byTitle.get(e.titleKey);
+    if (!bucket) byTitle.set(e.titleKey, []);
+    const g = byTitle.get(e.titleKey)!.find((grp) =>
+      artistsEquivalent(grp.artist, e.item.artist),
     );
     if (g) {
-      g.members.push({ item: e.item, index: e.index });
+      g.members.push({ item: e.item, index: e.index, versionTag: e.versionTag });
       if (!(g.anchorDuration > 0) && e.item.duration > 0) {
         g.anchorDuration = e.item.duration;
       }
     } else {
       const fresh: MutableGroup = {
-        key: `${e.fullKey}#${bucket.length}`,
+        key: `${e.titleKey}#${order.length}`,
         representative: e.item,
         representativeIndex: e.index,
-        members: [{ item: e.item, index: e.index }],
+        members: [{ item: e.item, index: e.index, versionTag: e.versionTag }],
         platforms: [],
+        hasCover: e.versionTag === 'COVER',
         anchorDuration: e.item.duration,
+        artist: e.item.artist,
+        artistKey: e.artistKey,
       };
-      bucket.push(fresh);
+      byTitle.get(e.titleKey)!.push(fresh);
       order.push(fresh);
     }
   }
 
   for (const g of order) {
     if (!g) continue;
+    // 代表：studio（versionTag=null）优先 → 有封面优先 → 标题最短 → COVER 排末。
     const rep = g.members.reduce((best, m) => {
+      const bv = best.versionTag;
+      const mv = m.versionTag;
+      const bvIsStudio = bv === null;
+      const mvIsStudio = mv === null;
+      if (bvIsStudio !== mvIsStudio) return mvIsStudio ? m : best;
       const bc = best.item.coverUrl ? 1 : 0;
       const mc = m.item.coverUrl ? 1 : 0;
       if (mc !== bc) return mc > bc ? m : best;
+      const bvIsCover = bv === 'COVER';
+      const mvIsCover = mv === 'COVER';
+      if (bvIsCover !== mvIsCover) return mvIsCover ? best : m;
+      // 时长长优先（2026-08-07）：默认播原版/完整版——重录版通常更短，
+      // 标题最短反而会选到重录版。
+      const bd = best.item.duration > 0 ? best.item.duration : 0;
+      const md = m.item.duration > 0 ? m.item.duration : 0;
+      if (bd !== md) return md > bd ? m : best;
       return m.item.title.length < best.item.title.length ? m : best;
     }, g.members[0]);
     g.representative = rep.item;
     g.representativeIndex = rep.index;
 
     const set = new Set<MusicProvider>();
+    let hasCover = false;
     for (const m of g.members) {
+      if (m.versionTag === 'COVER') hasCover = true;
       for (const p of likedPlatforms(m.item)) set.add(p);
     }
     g.platforms = BADGE_ORDER.filter((p) => set.has(p));
+    g.hasCover = hasCover;
   }
 
   return order;
@@ -142,7 +223,10 @@ function main() {
     console.log('✅ 1. 同 fuzzyKey 合并 + platforms 并集');
   }
 
-  // ── 2. likedPlatforms 透到组级 platforms（核心修复） ─────────
+  // ── 2. likedPlatforms 透到组级 platforms + F.I.R. 策展别名合并 ──
+  // 2026-08-07：分组升级为「同 title 桶 + 艺人归一相等或**策展别名表**命中
+  // 合并」——F.I.R.飞儿乐团 与 F.I.R. 在 @maestro/common 别名表内（飛兒樂團:
+  // ['F.I.R.']），是同一个人，合并到同 group。表外（Coldplay vs Cold）仍拆。
   {
     const groups = groupLibraryItems([
       item({
@@ -162,14 +246,14 @@ function main() {
         likedPlatforms: ['qq', 'netease', 'spotify'],
       }),
     ]);
-    // 注意：displayKey('Lydia', 'F.I.R.飞儿乐团') 与 displayKey('Lydia', 'F.I.R.')
-    // 不同（F.I.R. vs fir飞儿乐团），会被聚到两个 group；这与历史期望
-    // 不同——之前的二级扫描（artistPrefixMatch）会强行合并，但代价是
-    // 「Coldplay vs Cold」「Taylor vs Taylor Swift」等纯巧合 prefix 也被
-    // 误并。F.I.R. 同人异名的合并现在交给 server mergeLibrary 处理；
-    // 弹窗展示层只聚类、不启发。
-    assert.strictEqual(groups.length, 2, 'F.I.R. 同人异名不靠前端启发合并（拆 2 条独立）');
-    console.log('✅ 2. likedPlatforms 透到组级 platforms（按 member 各自取值）');
+    // 同 title（Lydia）+ 别名表命中 → 合并 1 组；徽章取成员并集。
+    assert.strictEqual(groups.length, 1, 'F.I.R.飞儿乐团 ↔ F.I.R.（策展别名）合并');
+    assert.deepStrictEqual(
+      groups[0].platforms.sort(),
+      ['netease', 'qq', 'spotify'],
+      '平台徽章 = 成员 likedPlatforms 并集',
+    );
+    console.log('✅ 2. F.I.R. 策展别名合并 + likedPlatforms 透到组级');
   }
 
   // ── 3. 完全相同艺人合并（基线） ─────────────────────────────
@@ -209,16 +293,18 @@ function main() {
     console.log('✅ 5. likedPlatforms 单函数行为正确');
   }
 
-  // ── 6. 时长差 > 5s 不合并（同 fuzzyKey 内） ───────────────────────
-  // 旧版 12s 容差把 Remix/Acoustic (差 8s/5s) 误并；新版 5s 容差把它们拆开。
+  // ── 6. 时长差 > 5s 仍合并（2026-08-07 需求变更：同歌同歌手全并） ────
+  // 旧版 5s 容差把 Remix/Acoustic 拆开；现在用户要求「同歌曲+同歌手全部
+  // 合并」，版本差异靠展开子行 + versionTag 染色体现 → 不再按时长拆组。
   {
     const groups = groupLibraryItems([
       item({ id: 'a', title: 'Song', artist: 'X', duration: 200, sources: [{ platform: 'qq', trackId: 'q1' }] }),
       item({ id: 'b', title: 'Song (Remix)', artist: 'X', duration: 208, sources: [{ platform: 'netease', trackId: 'n1' }] }),
     ]);
-    // displayKey 剥括号后同 key，但时长差 8s > 5s 容差 → 拆 2 条
-    assert.strictEqual(groups.length, 2, 'displayKey 同但时长差 8s > 5s → 不合并（Remix vs 原版）');
-    console.log('✅ 6. 时长差超容差不合并（同 fuzzyKey 内；防版本误并）');
+    assert.strictEqual(groups.length, 1, 'displayKey 同（版本标签被剥）→ 合并（Remix vs 原版同歌）');
+    assert.strictEqual(groups[0].members.length, 2, '两成员都在同一 group');
+    assert.strictEqual(groups[0].members[1].versionTag, 'REMIX', 'Remix 成员带 REMIX 标签');
+    console.log('✅ 6. 同歌同歌手全并：Remix 与 原版 合并（子行标 REMIX）');
   }
 
   // ── 7. feat. 后缀标题合并 ────────────────────────────────
@@ -307,17 +393,18 @@ function main() {
     console.log('✅ 12. B4 当前行为：(feat. A/B) 聚到同 group，由 server 拆分不同协奏版本');
   }
 
-  // ── 13. (Live) 与原版 displayKey 相同但时长差超容差 → 拆 2 条 ───
-  // displayKey 确实会剥括号让「Song」与「Song (Live)」落到同一 key，
-  // 但 Live 版本通常时长差 ≥ 5s → 时长聚类把原版和 Live 版拆成两个 group。
-  // 这是 feature：弹窗里 Live 版独立展示，避免误并。
+  // ── 13. (Live) 与原版同歌同歌手 → 合并（2026-08-07 需求变更） ────
+  // displayKey 剥括号让「Song」与「Song (Live)」落到同一 key；新需求要求
+  // 同歌同歌手全部合并 → Live 与原版进同 group，展开子行标 LIVE 染色。
   {
     const groups = groupLibraryItems([
       item({ id: 'a', title: 'Song', artist: 'X', duration: 200, sources: [{ platform: 'qq', trackId: 'q1' }] }),
       item({ id: 'b', title: 'Song (Live)', artist: 'X', duration: 215, sources: [{ platform: 'netease', trackId: 'n1' }] }),
     ]);
-    assert.strictEqual(groups.length, 2, 'displayKey 同但时长差 15s > 5s → 拆 2 条（Live 独立展示）');
-    console.log('✅ 13. displayKey 同但时长差超容差 → 拆（Live vs 原版）');
+    assert.strictEqual(groups.length, 1, 'displayKey 同（Live 标签被剥）→ 合并（Live vs 原版同歌）');
+    assert.strictEqual(groups[0].members.length, 2, '两成员都在同一 group');
+    assert.strictEqual(groups[0].members[1].versionTag, 'LIVE', 'Live 成员带 LIVE 标签');
+    console.log('✅ 13. 同歌同歌手全并：Live 与原版 合并（子行标 LIVE）');
   }
 
   // ── 14. 跨平台同录音（差 ≤ 5s）聚到同 group ────────────────
@@ -331,7 +418,198 @@ function main() {
     console.log('✅ 14. 跨平台同录音（差 ≤ 5s）聚同 group');
   }
 
-  console.log('\n🎉 groupLibrary.test 全部 14 项通过');
+  // ── 15. 策展别名合并：马赛克乐队 ↔ 马赛克（同乐队，带/不带后缀）──
+  // 2026-08-07 需求：弹窗里这两类要合并。走 @maestro/common 策展别名表
+  // （stageNameAliasMatch），不做拼音/前缀模糊——Coldplay vs Cold 在 #9 已
+  // 锁死为拆开。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'a', title: '无解', artist: '马赛克乐队', duration: 240, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'b', title: '无解', artist: '马赛克', duration: 241, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '马赛克乐队 ↔ 马赛克（策展别名）合并');
+    assert.strictEqual(groups[0].members.length, 2, '两成员同 group');
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq'], '徽章 = 并集');
+    console.log('✅ 15. 马赛克乐队 ↔ 马赛克 策展别名合并');
+  }
+
+  // ── 16. 策展别名合并：陈绮贞 ↔ Cheer Chen（中/英艺名）─────────
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'a', title: '还是会寂寞', artist: '陈绮贞', duration: 260, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'b', title: '还是会寂寞', artist: 'Cheer Chen', duration: 261, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '陈绮贞 ↔ Cheer Chen（策展别名）合并');
+    assert.strictEqual(groups[0].members.length, 2);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['qq', 'spotify'], '徽章 = 并集');
+    console.log('✅ 16. 陈绮贞 ↔ Cheer Chen 策展别名合并');
+  }
+
+  // ── 17. 范逸臣三平台三写法 → 合并（网易云/QQ/Spotify）─────────
+  // 网易云「范逸臣」、QQ「【范逸臣 Van Fan】」（整体被【】包裹的格式标记）、
+  // Spotify「Fan Yi Chen」。别名表 key 简体、值含繁体 + 英文；「汉字名同人」
+  // 分支桥「范逸臣 Van Fan」混合串。用户实际场景：Missing You 三平台三首歌。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'ne', title: 'Missing You', artist: '范逸臣', duration: 300, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'qq', title: 'Missing You', artist: '【范逸臣 Van Fan】', duration: 302, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'sp', title: 'Missing You', artist: 'Fan Yi Chen', duration: 301, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '范逸臣三平台三写法 → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3, '三成员同 group');
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify'], '徽章 = 三平台并集');
+    console.log('✅ 17. 范逸臣三平台三写法（范逸臣/【范逸臣 Van Fan】/Fan Yi Chen）合并');
+  }
+
+  // ── 18. 森山直太朗 ↔ Naotaro Moriyama（罗马音姓名颠倒）─────────
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'ne', title: '桜', artist: '森山直太朗', duration: 320, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: '桜', artist: 'Naotaro Moriyama', duration: 321, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '森山直太朗 ↔ Naotaro Moriyama（策展别名）合并');
+    assert.strictEqual(groups[0].members.length, 2);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'spotify'], '徽章 = 并集');
+    console.log('✅ 18. 森山直太朗 ↔ Naotaro Moriyama 策展别名合并');
+  }
+
+  // ── 19. 小野丽莎：QQ「小野丽莎（Lisa Ono）」vs 其他「小野丽莎」──
+  // QQ 写混合串（含英文括号剥不掉），「汉字名同人」分支桥；Spotify 的
+  // Lisa Ono 走表 values。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: 'Fly Me To The Moon', artist: '小野丽莎（Lisa Ono）', duration: 200, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: 'Fly Me To The Moon', artist: '小野丽莎', duration: 201, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: 'Fly Me To The Moon', artist: 'Lisa Ono', duration: 200, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '小野丽莎三平台写法 → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify'], '徽章 = 三平台并集');
+    console.log('✅ 19. 小野丽莎（小野丽莎/小野丽莎（Lisa Ono）/Lisa Ono）合并');
+  }
+
+  // ── 20. 小野丽莎日文名变体：小野リサ（独立/括号）────────────
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: 'Fly Me To The Moon', artist: '小野丽莎（小野リサ）', duration: 200, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: 'Fly Me To The Moon', artist: '小野リサ', duration: 201, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: 'Fly Me To The Moon', artist: 'Lisa Ono', duration: 200, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '小野丽莎日文名变体 → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify'], '徽章 = 三平台并集');
+    console.log('✅ 20. 小野丽莎（小野丽莎（小野リサ）/小野リサ/Lisa Ono）合并');
+  }
+
+  // ── 21. 金范洙《悲歌》四写法 → 合并（含韩语标题 + OST 嵌套书名号）──
+  // QQ「悲歌（애절가）」+ 网易云「悲歌」（繁体歌手）+ 网易云韩语版「애절가」
+  // + OST 版「悲歌 (韩剧《茶母》OST)」（括号内含书名号，stripParensContent
+  // 修复前会带出 ost 尾巴拆开）。titleAliasKey 把「애절가」归到「悲歌」桶；
+  // artist 繁简 cjkUnify 统一；OST 括号整体剥掉。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: '悲歌（애절가）', artist: '金范洙', duration: 240, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: '悲歌', artist: '金範洙', duration: 241, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'ne-ko', title: '애절가', artist: '金范洙', duration: 239, sources: [{ platform: 'netease', trackId: 'n2' }], likedPlatforms: ['netease'] }),
+      item({ id: 'qq-ost', title: '悲歌 (韩剧《茶母》OST)', artist: '金范洙', duration: 240, sources: [{ platform: 'qq', trackId: 'q2' }], likedPlatforms: ['qq'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '金范洙悲歌四写法 → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 4, '四成员同 group');
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq'], '徽章 = 并集');
+    console.log('✅ 21. 金范洙《悲歌》：韩语标题 + 繁体歌手 + OST 嵌套书名号 → 合并');
+  }
+
+  // ── 22. Humbert Humbert：纯片假名 ↔ 英文（日が落ちるまで）────────
+  // 网易云纯片假名「ハンバート ハンバート」、QQ/Spotify 英文「Humbert Humbert」。
+  // toRomaji 给 hanbato（规则读法）≠ Humbert（法语艺术化拼写），音译桥不上，
+  // 策展表兜底。带片假名括号的写法 stripFuriganaParens 已归一相等。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'ne', title: '日が落ちるまで (直到太阳下山)', artist: 'ハンバート ハンバート', duration: 296, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'qq', title: '日が落ちるまで (直到太阳下山)', artist: 'Humbert Humbert', duration: 296, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'sp', title: '日が落ちるまで', artist: 'Humbert Humbert (ハンバート ハンバート)', duration: 297, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, 'Humbert Humbert 片假名/英文写法 → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3, '三成员同 group');
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify'], '徽章 = 三平台并集');
+    console.log('✅ 22. Humbert Humbert：ハンバート ハンバート ↔ Humbert Humbert 合并');
+  }
+
+  // ── 23. Humbert Humbert《今晩はお月さん》：中文译名合并 ──────
+  // 平台之一显示纯中文译名「今晚月色真好」。titleAlias 策展（日→中歌名
+  // 翻译无算法），displayKey(title,'') 剥括号后归到「今晩はお月さん」桶。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'ne', title: '今晩はお月さん', artist: 'ハンバート ハンバート', duration: 200, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'qq', title: '今晚月色真好', artist: 'Humbert Humbert', duration: 201, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '今晩はお月さん ↔ 今晚月色真好（titleAlias）合并');
+    assert.strictEqual(groups[0].members.length, 2);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq'], '徽章 = 并集');
+    console.log('✅ 23. Humbert Humbert《今晩はお月さん》中文译名合并');
+  }
+
+  // ── 24. 桑田佳佑《明日晴れるかな》：罗马音歌手 + 中文译名标题 ──
+  // Spotify 歌手 Keisuke Kuwata（罗马音，弹窗分组只信策展表）+ 网易云
+  // 繁体歌手桑田佳祐 + 中文译名标题「明日会放晴么」（titleAlias）。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: '明日晴れるかな', artist: '桑田佳佑', duration: 300, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'sp', title: '明日晴れるかな', artist: 'Keisuke Kuwata', duration: 301, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+      item({ id: 'ne', title: '明日会放晴么', artist: '桑田佳祐', duration: 299, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '桑田佳佑三平台写法（罗马音歌手 + 中文译名标题）→ 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify'], '徽章 = 三平台并集');
+    console.log('✅ 24. 桑田佳佑《明日晴れるかな》：罗马音歌手 + 中文译名标题合并');
+  }
+
+  // ── 25. Vocaloid 多艺人组合（白い雪のプリンセスは）──────────
+  // QQ「のぼる↑P / 初音未来 (初音ミク)」+ 网易云「のぼる↑ / 初音ミク」
+  // + Spotify「Noboru」（单艺人）。多艺人拆分配对 + 表别名（のぼる↔Noboru、
+  // 初音未来↔初音ミク）桥接。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: '白い雪のプリンセスは (白如雪的公主啊)', artist: 'のぼる↑P / 初音未来 (初音ミク)', duration: 261, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: '白い雪のプリンセスは', artist: 'のぼる↑ / 初音ミク', duration: 260, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: '白い雪のプリンセスは (feat. 初音ミク)', artist: 'Noboru', duration: 261, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, 'Vocaloid 多艺人组合三平台 → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify'], '徽章 = 三平台并集');
+    console.log('✅ 25. Vocaloid 多艺人组合（のぼる↑P/のぼる/Noboru）合并');
+  }
+
+  // ── 26. 代表条目时长优先：原版 vs 重录版默认播长的 ──────────
+  // Humbert Humbert 日が落ちるまで：QQ 原版 296s（标题带注释更长）vs
+  // Spotify 2021 重录版 248s（标题更短）。折叠行默认应播 296s 原版。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: '日が落ちるまで (直到太阳下山)', artist: 'Humbert Humbert', duration: 296, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'sp', title: '日が落ちるまで', artist: 'Humbert Humbert', duration: 248, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '原版 + 重录版合并 1 组（toggle 展开）');
+    assert.strictEqual(groups[0].members.length, 2);
+    assert.strictEqual(groups[0].representativeIndex, 0, '代表 = 时长长的原版（296s），非标题更短的重录版');
+    console.log('✅ 26. 代表条目时长优先：默认播原版 296s 而非重录版 248s');
+  }
+
+  // ── 27. title 尾缀宽容：Spotify「- zerokoi ver.」/「- Remix」合并 ──
+  // Spotify 偶尔给歌名加版本标签但不加括号（あの頃～ジンジンバオヂュオニー～ - zerokoi ver.）。
+  // 剥常见版本尾缀再做分桶 → 同歌同艺人合并。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: 'あの頃~ジンジンバオヂュオニー~', artist: 'whiteeeen', duration: 343, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: 'あの頃～ジンジンバオヂュオニー～', artist: 'whiteeeen', duration: 343, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: 'あの頃～ジンジンバオヂュオニー～ - zerokoi ver.', artist: 'whiteeeen', duration: 347, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, 'QQ 网易云 + Spotify - zerokoi ver. → 合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3);
+    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify']);
+    console.log('✅ 27. title 尾缀宽容：Spotify「- zerokoi ver.」与原版合并');
+  }
+
+  console.log('\n🎉 groupLibrary.test 全部 27 项通过');
 }
 
 main();

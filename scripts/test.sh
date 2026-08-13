@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # scripts/test.sh — auto-discover and run every *.test.ts under packages/*/src.
-# Usage: npm test
+# Usage:
+#   npm test                 one-shot run
+#   npm test -- --watch      re-run whenever any *.test.ts or src/** changes
 set -euo pipefail
+
+WATCH=0
+for arg in "$@"; do
+  case "$arg" in
+    --watch|-w) WATCH=1 ;;
+  esac
+done
 
 run_pkg() {
   local pkg="$1"
@@ -21,9 +30,36 @@ run_pkg() {
   done
 }
 
-run_pkg common    "$PWD"
-run_pkg server    "$PWD"
-run_pkg electron  "$PWD"
-run_pkg renderer  "$PWD"
+run_all() {
+  run_pkg common    "$PWD"
+  run_pkg server    "$PWD"
+  run_pkg electron  "$PWD"
+  run_pkg renderer  "$PWD"
+  echo "── all tests passed ──"
+}
 
-echo "── all tests passed ──"
+if [ "$WATCH" -eq 0 ]; then
+  run_all
+  exit 0
+fi
+
+# --watch: cheap mtime polling. No chokidar / fs.watch dependency — we just
+# re-run whenever any *.test.ts or src/** is newer than the last run.
+SENTINEL="$(mktemp -t maestro-test.XXXXXX)"
+touch "$SENTINEL"
+trap 'rm -f "$SENTINEL"' EXIT
+
+run_all
+echo "── watching for changes (Ctrl-C to exit) ──"
+
+while true; do
+  sleep 1
+  if [ -n "$(find packages -type f \( -name '*.test.ts' -o -path '*/src/*' \) -newer "$SENTINEL" -print -quit)" ]; then
+    touch "$SENTINEL"
+    echo
+    echo "── change detected, re-running tests ──"
+    if ! run_all; then
+      echo "── tests failed; will retry on next change ──"
+    fi
+  fi
+done

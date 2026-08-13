@@ -1,0 +1,6017 @@
+[
+  {
+    "name": "緑黄色社会",
+    "count": 9,
+    "key": "緑黃色社會",
+    "aliases": [
+      "绿黄色社会",
+      "緑黃色社會"
+    ],
+    "needsWebSearch": true,
+    "core": "緑黄色社会",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "上白石萌音 (かみしらいし もね)",
+    "count": 9,
+    "key": "上白石萌音",
+    "aliases": [
+      "上白石萌音",
+      "kamishiraishi mone"
+    ],
+    "needsWebSearch": false,
+    "core": "上白石萌音",
+    "annotation": "かみしらいし もね",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "King Gnu (キング・ヌー)",
+    "count": 8,
+    "key": "キング・ヌー",
+    "aliases": [
+      "kingu/nuu",
+      "King Gnu"
+    ],
+    "needsWebSearch": false,
+    "core": "キング・ヌー",
+    "annotation": "キング・ヌー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "孟慧圆",
+    "count": 8,
+    "key": "孟慧圓",
+    "aliases": [
+      "孟慧圆",
+      "孟慧圓"
+    ],
+    "needsWebSearch": true,
+    "core": "孟慧圆",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "YOASOBI (ヨアソビ)",
+    "count": 8,
+    "key": "ヨアソビ",
+    "aliases": [
+      "yoasobi",
+      "YOASOBI"
+    ],
+    "needsWebSearch": false,
+    "core": "ヨアソビ",
+    "annotation": "ヨアソビ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "majiko (まじ娘)",
+    "count": 7,
+    "key": "まじ娘",
+    "aliases": [
+      "まじ娘",
+      "maji娘",
+      "majiko"
+    ],
+    "needsWebSearch": false,
+    "core": "まじ娘",
+    "annotation": "まじ娘",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "朴树",
+    "count": 6,
+    "key": "朴樹",
+    "aliases": [
+      "朴树",
+      "朴樹"
+    ],
+    "needsWebSearch": true,
+    "core": "朴树",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "iwamizu (이와미즈)",
+    "count": 6,
+    "key": "이와미즈",
+    "aliases": [
+      "이와미즈",
+      "iwamizu"
+    ],
+    "needsWebSearch": false,
+    "core": "이와미즈",
+    "annotation": "이와미즈",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "aiko (あいこ)",
+    "count": 5,
+    "key": "あいこ",
+    "aliases": [
+      "aiko"
+    ],
+    "needsWebSearch": false,
+    "core": "あいこ",
+    "annotation": "あいこ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "椎名林檎 (しいな りんご)",
+    "count": 5,
+    "key": "椎名林檎",
+    "aliases": [
+      "椎名林檎",
+      "shiina ringo"
+    ],
+    "needsWebSearch": false,
+    "core": "椎名林檎",
+    "annotation": "しいな りんご",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "袁娅维TIA RAY",
+    "count": 5,
+    "key": "袁婭維",
+    "aliases": [
+      "袁娅维",
+      "袁婭維"
+    ],
+    "needsWebSearch": true,
+    "core": "袁娅维",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "松本梨香 (まつもと りか)",
+    "count": 5,
+    "key": "松本梨香",
+    "aliases": [
+      "松本梨香",
+      "matsumoto rika"
+    ],
+    "needsWebSearch": false,
+    "core": "松本梨香",
+    "annotation": "まつもと りか",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "滨崎步 (浜崎あゆみ)",
+    "count": 5,
+    "key": "濱崎步",
+    "aliases": [
+      "滨崎步",
+      "濱崎步",
+      "浜崎ayumi"
+    ],
+    "needsWebSearch": true,
+    "core": "滨崎步",
+    "annotation": "浜崎あゆみ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "手嶌葵 (てしま あおい)",
+    "count": 4,
+    "key": "手嶌葵",
+    "aliases": [
+      "手嶌葵",
+      "teshima aoi"
+    ],
+    "needsWebSearch": false,
+    "core": "手嶌葵",
+    "annotation": "てしま あおい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "蔡旻佑",
+    "count": 4,
+    "key": "蔡旻佑",
+    "aliases": [
+      "蔡旻佑"
+    ],
+    "needsWebSearch": true,
+    "core": "蔡旻佑",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "单依纯",
+    "count": 4,
+    "key": "單依純",
+    "aliases": [
+      "单依纯",
+      "單依純"
+    ],
+    "needsWebSearch": true,
+    "core": "单依纯",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "柴田淳 (しばた じゅん)",
+    "count": 4,
+    "key": "柴田淳",
+    "aliases": [
+      "柴田淳",
+      "shibata jun"
+    ],
+    "needsWebSearch": false,
+    "core": "柴田淳",
+    "annotation": "しばた じゅん",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "JABBERLOOP (ジャバループ)",
+    "count": 4,
+    "key": "ジャバループ",
+    "aliases": [
+      "jabaruupu",
+      "JABBERLOOP"
+    ],
+    "needsWebSearch": false,
+    "core": "ジャバループ",
+    "annotation": "ジャバループ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "BLU-SWING (ブルー・スウィング)",
+    "count": 4,
+    "key": "ブルー・スウィング",
+    "aliases": [
+      "buruu/suuingu",
+      "BLU"
+    ],
+    "needsWebSearch": false,
+    "core": "ブルー・スウィング",
+    "annotation": "ブルー・スウィング",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "梁博",
+    "count": 4,
+    "key": "梁博",
+    "aliases": [
+      "梁博"
+    ],
+    "needsWebSearch": true,
+    "core": "梁博",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "毛不易",
+    "count": 4,
+    "key": "毛不易",
+    "aliases": [
+      "毛不易"
+    ],
+    "needsWebSearch": true,
+    "core": "毛不易",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "蛋堡",
+    "count": 4,
+    "key": "蛋堡",
+    "aliases": [
+      "蛋堡"
+    ],
+    "needsWebSearch": true,
+    "core": "蛋堡",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "丁世光",
+    "count": 4,
+    "key": "丁世光",
+    "aliases": [
+      "丁世光"
+    ],
+    "needsWebSearch": true,
+    "core": "丁世光",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李昕融",
+    "count": 4,
+    "key": "李昕融",
+    "aliases": [
+      "李昕融"
+    ],
+    "needsWebSearch": true,
+    "core": "李昕融",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Official髭男dism (OFFICIAL HIGE DANDISM)",
+    "count": 4,
+    "key": "髭男",
+    "aliases": [
+      "髭男",
+      "OFFICIAL HIGE DANDISM",
+      "Official"
+    ],
+    "needsWebSearch": false,
+    "core": "髭男",
+    "annotation": "OFFICIAL HIGE DANDISM",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "林英雄 (임영웅)",
+    "count": 4,
+    "key": "林英雄",
+    "aliases": [
+      "林英雄"
+    ],
+    "needsWebSearch": true,
+    "core": "林英雄",
+    "annotation": "임영웅",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "back number (バックナンバー)",
+    "count": 4,
+    "key": "バックナンバー",
+    "aliases": [
+      "bakkunanbaa",
+      "back number"
+    ],
+    "needsWebSearch": false,
+    "core": "バックナンバー",
+    "annotation": "バックナンバー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "花澤香菜 (はなざわ かな)",
+    "count": 3,
+    "key": "花澤香菜",
+    "aliases": [
+      "花泽香菜",
+      "花澤香菜",
+      "hanazawa kana"
+    ],
+    "needsWebSearch": false,
+    "core": "花澤香菜",
+    "annotation": "はなざわ かな",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "苏见信 (信)",
+    "count": 3,
+    "key": "蘇見信",
+    "aliases": [
+      "苏见信",
+      "蘇見信"
+    ],
+    "needsWebSearch": true,
+    "core": "苏见信",
+    "annotation": "信",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "胡彦斌",
+    "count": 3,
+    "key": "胡彥斌",
+    "aliases": [
+      "胡彦斌",
+      "胡彥斌"
+    ],
+    "needsWebSearch": true,
+    "core": "胡彦斌",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Daoko (ダヲコ)",
+    "count": 3,
+    "key": "ダヲコ",
+    "aliases": [
+      "dawoko",
+      "Daoko"
+    ],
+    "needsWebSearch": false,
+    "core": "ダヲコ",
+    "annotation": "ダヲコ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "徐子未",
+    "count": 3,
+    "key": "徐子未",
+    "aliases": [
+      "徐子未"
+    ],
+    "needsWebSearch": true,
+    "core": "徐子未",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "坂本龙一 (さかもと りゅういち)",
+    "count": 3,
+    "key": "坂本龍一",
+    "aliases": [
+      "坂本龙一",
+      "坂本龍一",
+      "sakamoto ryuuichi"
+    ],
+    "needsWebSearch": false,
+    "core": "坂本龙一",
+    "annotation": "さかもと りゅういち",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "りりあ。",
+    "count": 3,
+    "key": "りりあ",
+    "aliases": [
+      "riria"
+    ],
+    "needsWebSearch": false,
+    "core": "りりあ",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "铃木爱理 (すずき あいり)",
+    "count": 3,
+    "key": "鈴木愛理",
+    "aliases": [
+      "铃木爱理",
+      "鈴木愛理",
+      "suzuki airi"
+    ],
+    "needsWebSearch": false,
+    "core": "铃木爱理",
+    "annotation": "すずき あいり",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "YELLOW黄宣",
+    "count": 3,
+    "key": "黃宣",
+    "aliases": [
+      "黄宣",
+      "黃宣",
+      "YELLOW"
+    ],
+    "needsWebSearch": false,
+    "core": "黄宣",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "十明",
+    "count": 3,
+    "key": "十明",
+    "aliases": [
+      "十明"
+    ],
+    "needsWebSearch": true,
+    "core": "十明",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "アトラスサウンドチーム",
+    "count": 3,
+    "key": "アトラスサウンドチーム",
+    "aliases": [
+      "atorasusaundochiimu"
+    ],
+    "needsWebSearch": false,
+    "core": "アトラスサウンドチーム",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "久石让",
+    "count": 3,
+    "key": "久石讓",
+    "aliases": [
+      "久石让",
+      "久石讓"
+    ],
+    "needsWebSearch": true,
+    "core": "久石让",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "声优小剧场",
+    "count": 3,
+    "key": "聲優小劇場",
+    "aliases": [
+      "声优小剧场",
+      "聲優小劇場"
+    ],
+    "needsWebSearch": true,
+    "core": "声优小剧场",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "澈子",
+    "count": 3,
+    "key": "澈子",
+    "aliases": [
+      "澈子"
+    ],
+    "needsWebSearch": true,
+    "core": "澈子",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "GUMI (グミ)",
+    "count": 3,
+    "key": "グミ",
+    "aliases": [
+      "gumi",
+      "GUMI"
+    ],
+    "needsWebSearch": false,
+    "core": "グミ",
+    "annotation": "グミ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "DJ小金",
+    "count": 3,
+    "key": "小金",
+    "aliases": [
+      "小金",
+      "DJ"
+    ],
+    "needsWebSearch": true,
+    "core": "小金",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "无限开关 (スキマスイッチ)",
+    "count": 3,
+    "key": "無限開關",
+    "aliases": [
+      "无限开关",
+      "無限開關",
+      "sukimasuitchi"
+    ],
+    "needsWebSearch": false,
+    "core": "无限开关",
+    "annotation": "スキマスイッチ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Re:Plus (リ:プラス)",
+    "count": 3,
+    "key": "リプラス",
+    "aliases": [
+      "ri:purasu",
+      "ripurasu",
+      "Re"
+    ],
+    "needsWebSearch": false,
+    "core": "リプラス",
+    "annotation": "リ:プラス",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "BTS (防弹少年团)",
+    "count": 3,
+    "key": "防彈少年團",
+    "aliases": [
+      "防弹少年团",
+      "防彈少年團",
+      "BTS"
+    ],
+    "needsWebSearch": true,
+    "core": "防弹少年团",
+    "annotation": "防弹少年团",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "中村由利子 (なかむら ゆりこ)",
+    "count": 3,
+    "key": "中村由利子",
+    "aliases": [
+      "中村由利子",
+      "nakamura yuriko"
+    ],
+    "needsWebSearch": false,
+    "core": "中村由利子",
+    "annotation": "なかむら ゆりこ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "德永英明 (とくなが ひであき)",
+    "count": 3,
+    "key": "德永英明",
+    "aliases": [
+      "德永英明",
+      "tokunaga hideaki"
+    ],
+    "needsWebSearch": false,
+    "core": "德永英明",
+    "annotation": "とくなが ひであき",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "迷悠奈 (みゆな)",
+    "count": 3,
+    "key": "迷悠奈",
+    "aliases": [
+      "迷悠奈",
+      "miyuna"
+    ],
+    "needsWebSearch": false,
+    "core": "迷悠奈",
+    "annotation": "みゆな",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "MC HotDog 热狗",
+    "count": 2,
+    "key": "熱狗",
+    "aliases": [
+      "热狗",
+      "熱狗",
+      "MC HotDog"
+    ],
+    "needsWebSearch": false,
+    "core": "热狗",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "张震岳",
+    "count": 2,
+    "key": "張震嶽",
+    "aliases": [
+      "张震岳",
+      "張震嶽"
+    ],
+    "needsWebSearch": true,
+    "core": "张震岳",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "YUI (ユイ)",
+    "count": 2,
+    "key": "ユイ",
+    "aliases": [
+      "yui",
+      "YUI"
+    ],
+    "needsWebSearch": false,
+    "core": "ユイ",
+    "annotation": "ユイ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "東京事変",
+    "count": 2,
+    "key": "東京事変",
+    "aliases": [
+      "东京事変",
+      "東京事変"
+    ],
+    "needsWebSearch": true,
+    "core": "東京事変",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "九连真人",
+    "count": 2,
+    "key": "九連真人",
+    "aliases": [
+      "九连真人",
+      "九連真人"
+    ],
+    "needsWebSearch": true,
+    "core": "九连真人",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "葛东琪",
+    "count": 2,
+    "key": "葛東琪",
+    "aliases": [
+      "葛东琪",
+      "葛東琪"
+    ],
+    "needsWebSearch": true,
+    "core": "葛东琪",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "五条人",
+    "count": 2,
+    "key": "五條人",
+    "aliases": [
+      "五条人",
+      "五條人"
+    ],
+    "needsWebSearch": true,
+    "core": "五条人",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "孙盛希",
+    "count": 2,
+    "key": "孫盛希",
+    "aliases": [
+      "孙盛希",
+      "孫盛希"
+    ],
+    "needsWebSearch": true,
+    "core": "孙盛希",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "MACO (まこ)",
+    "count": 2,
+    "key": "まこ",
+    "aliases": [
+      "mako",
+      "MACO"
+    ],
+    "needsWebSearch": false,
+    "core": "まこ",
+    "annotation": "まこ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "金海心",
+    "count": 2,
+    "key": "金海心",
+    "aliases": [
+      "金海心"
+    ],
+    "needsWebSearch": true,
+    "core": "金海心",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "知更鸟 / HOYO-MiX / Chevy",
+    "count": 2,
+    "key": "知更鳥",
+    "aliases": [
+      "知更鸟",
+      "知更鳥"
+    ],
+    "needsWebSearch": true,
+    "core": "知更鸟",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "知更鸟",
+    "count": 2,
+    "key": "知更鳥",
+    "aliases": [
+      "知更鸟",
+      "知更鳥"
+    ],
+    "needsWebSearch": true,
+    "core": "知更鸟",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Fine乐团",
+    "count": 2,
+    "key": "樂團",
+    "aliases": [
+      "乐团",
+      "樂團",
+      "Fine"
+    ],
+    "needsWebSearch": true,
+    "core": "乐团",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Reol (れをる)",
+    "count": 2,
+    "key": "れをる",
+    "aliases": [
+      "reworu",
+      "Reol"
+    ],
+    "needsWebSearch": false,
+    "core": "れをる",
+    "annotation": "れをる",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "坂本龍一",
+    "count": 2,
+    "key": "坂本龍一",
+    "aliases": [
+      "坂本龙一",
+      "坂本龍一"
+    ],
+    "needsWebSearch": true,
+    "core": "坂本龍一",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "林家谦",
+    "count": 2,
+    "key": "林家謙",
+    "aliases": [
+      "林家谦",
+      "林家謙"
+    ],
+    "needsWebSearch": true,
+    "core": "林家谦",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "福禄寿FloruitShow",
+    "count": 2,
+    "key": "福祿壽",
+    "aliases": [
+      "福禄寿",
+      "福祿壽"
+    ],
+    "needsWebSearch": true,
+    "core": "福禄寿",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "step.jad依加",
+    "count": 2,
+    "key": "依加",
+    "aliases": [
+      "依加",
+      "step.jad"
+    ],
+    "needsWebSearch": false,
+    "core": "依加",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "神前暁 (こうさき さとる)",
+    "count": 2,
+    "key": "神前暁",
+    "aliases": [
+      "神前暁",
+      "kousaki satoru"
+    ],
+    "needsWebSearch": false,
+    "core": "神前暁",
+    "annotation": "こうさき さとる",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "曾沛慈",
+    "count": 2,
+    "key": "曾沛慈",
+    "aliases": [
+      "曾沛慈"
+    ],
+    "needsWebSearch": true,
+    "core": "曾沛慈",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ENHYPEN (엔하이픈)",
+    "count": 2,
+    "key": "엔하이픈",
+    "aliases": [
+      "엔하이픈",
+      "ENHYPEN"
+    ],
+    "needsWebSearch": false,
+    "core": "엔하이픈",
+    "annotation": "엔하이픈",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "洛天依",
+    "count": 2,
+    "key": "洛天依",
+    "aliases": [
+      "洛天依"
+    ],
+    "needsWebSearch": true,
+    "core": "洛天依",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "言和",
+    "count": 2,
+    "key": "言和",
+    "aliases": [
+      "言和"
+    ],
+    "needsWebSearch": true,
+    "core": "言和",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "岡崎体育 (おかざき たいいく)",
+    "count": 2,
+    "key": "岡崎體育",
+    "aliases": [
+      "冈崎体育",
+      "岡崎體育",
+      "okazaki taiiku"
+    ],
+    "needsWebSearch": false,
+    "core": "岡崎体育",
+    "annotation": "おかざき たいいく",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "门尼",
+    "count": 2,
+    "key": "門尼",
+    "aliases": [
+      "门尼",
+      "門尼"
+    ],
+    "needsWebSearch": true,
+    "core": "门尼",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "LiSA (织部里沙)",
+    "count": 2,
+    "key": "織部裡沙",
+    "aliases": [
+      "织部里沙",
+      "織部裡沙",
+      "LiSA"
+    ],
+    "needsWebSearch": true,
+    "core": "织部里沙",
+    "annotation": "织部里沙",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "天炫男孩",
+    "count": 2,
+    "key": "天炫男孩",
+    "aliases": [
+      "天炫男孩"
+    ],
+    "needsWebSearch": true,
+    "core": "天炫男孩",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "UNISON SQUARE GARDEN (ユニゾン・スクエア・ガーデン)",
+    "count": 2,
+    "key": "ユニゾン・スクエア・ガーデン",
+    "aliases": [
+      "yunizon/sukuea/gaaden",
+      "UNISON SQUARE GARDEN"
+    ],
+    "needsWebSearch": false,
+    "core": "ユニゾン・スクエア・ガーデン",
+    "annotation": "ユニゾン・スクエア・ガーデン",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "クリス・ハート (Chris Hart)",
+    "count": 2,
+    "key": "クリス・ハート",
+    "aliases": [
+      "kurisu/haato",
+      "Chris Hart"
+    ],
+    "needsWebSearch": false,
+    "core": "クリス・ハート",
+    "annotation": "Chris Hart",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "幾田りら (ikura)",
+    "count": 2,
+    "key": "幾田りら",
+    "aliases": [
+      "几田りら",
+      "幾田りら",
+      "幾田rira",
+      "ikura"
+    ],
+    "needsWebSearch": false,
+    "core": "幾田りら",
+    "annotation": "ikura",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "EGOIST (エゴイスト)",
+    "count": 2,
+    "key": "エゴイスト",
+    "aliases": [
+      "egoisuto",
+      "EGOIST"
+    ],
+    "needsWebSearch": false,
+    "core": "エゴイスト",
+    "annotation": "エゴイスト",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "林韩星 (임한별)",
+    "count": 2,
+    "key": "林韓星",
+    "aliases": [
+      "林韩星",
+      "林韓星"
+    ],
+    "needsWebSearch": true,
+    "core": "林韩星",
+    "annotation": "임한별",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "이무진 (李茂珍)",
+    "count": 2,
+    "key": "이무진",
+    "aliases": [
+      "이무진"
+    ],
+    "needsWebSearch": false,
+    "core": "이무진",
+    "annotation": "李茂珍",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "SING女团",
+    "count": 2,
+    "key": "女團",
+    "aliases": [
+      "女团",
+      "女團",
+      "SING"
+    ],
+    "needsWebSearch": true,
+    "core": "女团",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "乃木坂46",
+    "count": 2,
+    "key": "乃木坂",
+    "aliases": [
+      "乃木坂"
+    ],
+    "needsWebSearch": true,
+    "core": "乃木坂",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "TAEYANG (太阳)",
+    "count": 2,
+    "key": "太陽",
+    "aliases": [
+      "太阳",
+      "太陽",
+      "TAEYANG"
+    ],
+    "needsWebSearch": false,
+    "core": "太阳",
+    "annotation": "太阳",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "菅田将晖 (すだ まさき)",
+    "count": 2,
+    "key": "菅田將暉",
+    "aliases": [
+      "菅田将晖",
+      "菅田將暉",
+      "suda masaki"
+    ],
+    "needsWebSearch": false,
+    "core": "菅田将晖",
+    "annotation": "すだ まさき",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "熊木杏里 (くまき あんり)",
+    "count": 2,
+    "key": "熊木杏裡",
+    "aliases": [
+      "熊木杏里",
+      "熊木杏裡",
+      "kumaki anri"
+    ],
+    "needsWebSearch": false,
+    "core": "熊木杏里",
+    "annotation": "くまき あんり",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Lily Sayonara (リリィ、さよなら。)",
+    "count": 2,
+    "key": "リリィさよなら",
+    "aliases": [
+      "riryi,sayonara.",
+      "riryisayonara",
+      "Lily Sayonara"
+    ],
+    "needsWebSearch": false,
+    "core": "リリィさよなら",
+    "annotation": "リリィ、さよなら。",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "李素罗 (이소라)",
+    "count": 2,
+    "key": "李素羅",
+    "aliases": [
+      "李素罗",
+      "李素羅"
+    ],
+    "needsWebSearch": true,
+    "core": "李素罗",
+    "annotation": "이소라",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Softly (ソフトリー)",
+    "count": 2,
+    "key": "ソフトリー",
+    "aliases": [
+      "sofutorii",
+      "Softly"
+    ],
+    "needsWebSearch": false,
+    "core": "ソフトリー",
+    "annotation": "ソフトリー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ゲスの極み乙女 (极度卑劣少女)",
+    "count": 2,
+    "key": "ゲスの極み乙女",
+    "aliases": [
+      "ゲスの极み乙女",
+      "ゲスの極み乙女",
+      "gesuno極mi乙女"
+    ],
+    "needsWebSearch": false,
+    "core": "ゲスの極み乙女",
+    "annotation": "极度卑劣少女",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "花たん (花糖)",
+    "count": 2,
+    "key": "花たん",
+    "aliases": [
+      "花たん",
+      "花tan"
+    ],
+    "needsWebSearch": false,
+    "core": "花たん",
+    "annotation": "花糖",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "爱缪 (あいみょん)",
+    "count": 2,
+    "key": "愛繆",
+    "aliases": [
+      "爱缪",
+      "愛繆",
+      "aimyon"
+    ],
+    "needsWebSearch": false,
+    "core": "爱缪",
+    "annotation": "あいみょん",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "阿杜",
+    "count": 2,
+    "key": "阿杜",
+    "aliases": [
+      "阿杜"
+    ],
+    "needsWebSearch": true,
+    "core": "阿杜",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "MC HotDog 热狗 / 张震岳",
+    "count": 1,
+    "key": "熱狗張震嶽",
+    "aliases": [
+      "热狗",
+      "熱狗",
+      "MC HotDog"
+    ],
+    "needsWebSearch": false,
+    "core": "热狗",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "吉川慶 (よしかわ けい)",
+    "count": 1,
+    "key": "吉川慶",
+    "aliases": [
+      "吉川庆",
+      "吉川慶",
+      "yoshikawa kei"
+    ],
+    "needsWebSearch": false,
+    "core": "吉川慶",
+    "annotation": "よしかわ けい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鞠婧祎",
+    "count": 1,
+    "key": "鞠婧禕",
+    "aliases": [
+      "鞠婧祎",
+      "鞠婧禕"
+    ],
+    "needsWebSearch": true,
+    "core": "鞠婧祎",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "杨坤",
+    "count": 1,
+    "key": "楊坤",
+    "aliases": [
+      "杨坤",
+      "楊坤"
+    ],
+    "needsWebSearch": true,
+    "core": "杨坤",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "藤田恵美 (ふじた えみ)",
+    "count": 1,
+    "key": "藤田恵美",
+    "aliases": [
+      "藤田恵美",
+      "fujita emi"
+    ],
+    "needsWebSearch": false,
+    "core": "藤田恵美",
+    "annotation": "ふじた えみ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "跟风超人",
+    "count": 1,
+    "key": "跟風超人",
+    "aliases": [
+      "跟风超人",
+      "跟風超人"
+    ],
+    "needsWebSearch": true,
+    "core": "跟风超人",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "悠木碧 (ゆうき あおい)",
+    "count": 1,
+    "key": "悠木碧",
+    "aliases": [
+      "悠木碧",
+      "yuuki aoi"
+    ],
+    "needsWebSearch": false,
+    "core": "悠木碧",
+    "annotation": "ゆうき あおい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李嘉格 / GAI周延",
+    "count": 1,
+    "key": "李嘉格周延",
+    "aliases": [
+      "李嘉格"
+    ],
+    "needsWebSearch": true,
+    "core": "李嘉格",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李嘉格",
+    "count": 1,
+    "key": "李嘉格",
+    "aliases": [
+      "李嘉格"
+    ],
+    "needsWebSearch": true,
+    "core": "李嘉格",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "GAI周延",
+    "count": 1,
+    "key": "周延",
+    "aliases": [
+      "周延",
+      "GAI"
+    ],
+    "needsWebSearch": true,
+    "core": "周延",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "许靖韵",
+    "count": 1,
+    "key": "許靖韻",
+    "aliases": [
+      "许靖韵",
+      "許靖韻"
+    ],
+    "needsWebSearch": true,
+    "core": "许靖韵",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "蜜雪薇琪",
+    "count": 1,
+    "key": "蜜雪薇琪",
+    "aliases": [
+      "蜜雪薇琪"
+    ],
+    "needsWebSearch": true,
+    "core": "蜜雪薇琪",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "新裤子",
+    "count": 1,
+    "key": "新褲子",
+    "aliases": [
+      "新裤子",
+      "新褲子"
+    ],
+    "needsWebSearch": true,
+    "core": "新裤子",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "和平和浪",
+    "count": 1,
+    "key": "和平和浪",
+    "aliases": [
+      "和平和浪"
+    ],
+    "needsWebSearch": true,
+    "core": "和平和浪",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Cö shu Nie (コシュニエ)",
+    "count": 1,
+    "key": "コシュニエ",
+    "aliases": [
+      "koshunie"
+    ],
+    "needsWebSearch": false,
+    "core": "コシュニエ",
+    "annotation": "コシュニエ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "宝石Gem",
+    "count": 1,
+    "key": "寶石",
+    "aliases": [
+      "宝石",
+      "寶石"
+    ],
+    "needsWebSearch": true,
+    "core": "宝石",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "神山羊",
+    "count": 1,
+    "key": "神山羊",
+    "aliases": [
+      "神山羊"
+    ],
+    "needsWebSearch": true,
+    "core": "神山羊",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "音阙诗听 / 赵方婧",
+    "count": 1,
+    "key": "音闕詩聽趙方婧",
+    "aliases": [
+      "音阙诗听",
+      "音闕詩聽"
+    ],
+    "needsWebSearch": true,
+    "core": "音阙诗听",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "音阙诗听",
+    "count": 1,
+    "key": "音闕詩聽",
+    "aliases": [
+      "音阙诗听",
+      "音闕詩聽"
+    ],
+    "needsWebSearch": true,
+    "core": "音阙诗听",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "赵方婧",
+    "count": 1,
+    "key": "趙方婧",
+    "aliases": [
+      "赵方婧",
+      "趙方婧"
+    ],
+    "needsWebSearch": true,
+    "core": "赵方婧",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "颜人中",
+    "count": 1,
+    "key": "顏人中",
+    "aliases": [
+      "颜人中",
+      "顏人中"
+    ],
+    "needsWebSearch": true,
+    "core": "颜人中",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "梁凡",
+    "count": 1,
+    "key": "梁凡",
+    "aliases": [
+      "梁凡"
+    ],
+    "needsWebSearch": true,
+    "core": "梁凡",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "许慧欣",
+    "count": 1,
+    "key": "許慧欣",
+    "aliases": [
+      "许慧欣",
+      "許慧欣"
+    ],
+    "needsWebSearch": true,
+    "core": "许慧欣",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "品冠",
+    "count": 1,
+    "key": "品冠",
+    "aliases": [
+      "品冠"
+    ],
+    "needsWebSearch": true,
+    "core": "品冠",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王心如",
+    "count": 1,
+    "key": "王心如",
+    "aliases": [
+      "王心如"
+    ],
+    "needsWebSearch": true,
+    "core": "王心如",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鈴木杏奈",
+    "count": 1,
+    "key": "鈴木杏奈",
+    "aliases": [
+      "铃木杏奈",
+      "鈴木杏奈"
+    ],
+    "needsWebSearch": true,
+    "core": "鈴木杏奈",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "何维健",
+    "count": 1,
+    "key": "何維健",
+    "aliases": [
+      "何维健",
+      "何維健"
+    ],
+    "needsWebSearch": true,
+    "core": "何维健",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "刘柏辛Lexie",
+    "count": 1,
+    "key": "劉柏辛",
+    "aliases": [
+      "刘柏辛",
+      "劉柏辛"
+    ],
+    "needsWebSearch": true,
+    "core": "刘柏辛",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "三浦透子 (みうら とうこ)",
+    "count": 1,
+    "key": "三浦透子",
+    "aliases": [
+      "三浦透子",
+      "miura touko"
+    ],
+    "needsWebSearch": false,
+    "core": "三浦透子",
+    "annotation": "みうら とうこ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "米津玄師 / 野田洋次郎",
+    "count": 1,
+    "key": "米津玄師野田洋次郎",
+    "aliases": [
+      "米津玄师",
+      "米津玄師"
+    ],
+    "needsWebSearch": true,
+    "core": "米津玄師",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "野田洋次郎",
+    "count": 1,
+    "key": "野田洋次郎",
+    "aliases": [
+      "野田洋次郎"
+    ],
+    "needsWebSearch": true,
+    "core": "野田洋次郎",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "宮川大聖 (みやかわくん)",
+    "count": 1,
+    "key": "宮川大聖",
+    "aliases": [
+      "宫川大圣",
+      "宮川大聖",
+      "miyakawakun"
+    ],
+    "needsWebSearch": false,
+    "core": "宮川大聖",
+    "annotation": "みやかわくん",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "曾溯恕",
+    "count": 1,
+    "key": "曾溯恕",
+    "aliases": [
+      "曾溯恕"
+    ],
+    "needsWebSearch": true,
+    "core": "曾溯恕",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "董书含",
+    "count": 1,
+    "key": "董書含",
+    "aliases": [
+      "董书含",
+      "董書含"
+    ],
+    "needsWebSearch": true,
+    "core": "董书含",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "施文斌",
+    "count": 1,
+    "key": "施文斌",
+    "aliases": [
+      "施文斌"
+    ],
+    "needsWebSearch": true,
+    "core": "施文斌",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "许哲珮",
+    "count": 1,
+    "key": "許哲珮",
+    "aliases": [
+      "许哲珮",
+      "許哲珮"
+    ],
+    "needsWebSearch": true,
+    "core": "许哲珮",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "遠藤正明 (えんどう まさあき)",
+    "count": 1,
+    "key": "遠藤正明",
+    "aliases": [
+      "远藤正明",
+      "遠藤正明",
+      "endou masaaki"
+    ],
+    "needsWebSearch": false,
+    "core": "遠藤正明",
+    "annotation": "えんどう まさあき",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "易烊千玺",
+    "count": 1,
+    "key": "易烊千璽",
+    "aliases": [
+      "易烊千玺",
+      "易烊千璽"
+    ],
+    "needsWebSearch": true,
+    "core": "易烊千玺",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "石玺彤",
+    "count": 1,
+    "key": "石璽彤",
+    "aliases": [
+      "石玺彤",
+      "石璽彤"
+    ],
+    "needsWebSearch": true,
+    "core": "石玺彤",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王以太",
+    "count": 1,
+    "key": "王以太",
+    "aliases": [
+      "王以太"
+    ],
+    "needsWebSearch": true,
+    "core": "王以太",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "平井大 (ひらい だい)",
+    "count": 1,
+    "key": "平井大",
+    "aliases": [
+      "平井大",
+      "hirai dai"
+    ],
+    "needsWebSearch": false,
+    "core": "平井大",
+    "annotation": "ひらい だい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "蔡子伊",
+    "count": 1,
+    "key": "蔡子伊",
+    "aliases": [
+      "蔡子伊"
+    ],
+    "needsWebSearch": true,
+    "core": "蔡子伊",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "安全地帯 (あんぜんちたい)",
+    "count": 1,
+    "key": "安全地帯",
+    "aliases": [
+      "安全地帯",
+      "anzenchitai"
+    ],
+    "needsWebSearch": false,
+    "core": "安全地帯",
+    "annotation": "あんぜんちたい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "MeLo_绿萝组",
+    "count": 1,
+    "key": "綠蘿組",
+    "aliases": [
+      "绿萝组",
+      "綠蘿組",
+      "MeLo"
+    ],
+    "needsWebSearch": true,
+    "core": "绿萝组",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鱼椒盐 / 张恋歌",
+    "count": 1,
+    "key": "魚椒鹽張戀歌",
+    "aliases": [
+      "鱼椒盐",
+      "魚椒鹽"
+    ],
+    "needsWebSearch": true,
+    "core": "鱼椒盐",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鱼椒盐",
+    "count": 1,
+    "key": "魚椒鹽",
+    "aliases": [
+      "鱼椒盐",
+      "魚椒鹽"
+    ],
+    "needsWebSearch": true,
+    "core": "鱼椒盐",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "张恋歌",
+    "count": 1,
+    "key": "張戀歌",
+    "aliases": [
+      "张恋歌",
+      "張戀歌"
+    ],
+    "needsWebSearch": true,
+    "core": "张恋歌",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "GARNiDELiA (ガルニデリア)",
+    "count": 1,
+    "key": "ガルニデリア",
+    "aliases": [
+      "garunideria",
+      "GARNiDELiA"
+    ],
+    "needsWebSearch": false,
+    "core": "ガルニデリア",
+    "annotation": "ガルニデリア",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "优素Yusuf",
+    "count": 1,
+    "key": "優素",
+    "aliases": [
+      "优素",
+      "優素"
+    ],
+    "needsWebSearch": true,
+    "core": "优素",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "网易阴阳师手游",
+    "count": 1,
+    "key": "網易陰陽師手遊",
+    "aliases": [
+      "网易阴阳师手游",
+      "網易陰陽師手遊"
+    ],
+    "needsWebSearch": true,
+    "core": "网易阴阳师手游",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "上白石萌音",
+    "count": 1,
+    "key": "上白石萌音",
+    "aliases": [
+      "上白石萌音"
+    ],
+    "needsWebSearch": true,
+    "core": "上白石萌音",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Depapepe (デパペペ)",
+    "count": 1,
+    "key": "デパペペ",
+    "aliases": [
+      "depapepe",
+      "Depapepe"
+    ],
+    "needsWebSearch": false,
+    "core": "デパペペ",
+    "annotation": "デパペペ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "しゃろう",
+    "count": 1,
+    "key": "しゃろう",
+    "aliases": [
+      "sharou"
+    ],
+    "needsWebSearch": false,
+    "core": "しゃろう",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "eill (エイル)",
+    "count": 1,
+    "key": "エイル",
+    "aliases": [
+      "eiru",
+      "eill"
+    ],
+    "needsWebSearch": false,
+    "core": "エイル",
+    "annotation": "エイル",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "JUJU (ジュジュ)",
+    "count": 1,
+    "key": "ジュジュ",
+    "aliases": [
+      "juju",
+      "JUJU"
+    ],
+    "needsWebSearch": false,
+    "core": "ジュジュ",
+    "annotation": "ジュジュ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "谢安琪",
+    "count": 1,
+    "key": "謝安琪",
+    "aliases": [
+      "谢安琪",
+      "謝安琪"
+    ],
+    "needsWebSearch": true,
+    "core": "谢安琪",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "周传雄",
+    "count": 1,
+    "key": "周傳雄",
+    "aliases": [
+      "周传雄",
+      "周傳雄"
+    ],
+    "needsWebSearch": true,
+    "core": "周传雄",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "新しい学校のリーダーズ",
+    "count": 1,
+    "key": "新しい學校のリーダーズ",
+    "aliases": [
+      "新しい学校のリーダーズ",
+      "新しい學校のリーダーズ",
+      "新shii学校noriidaazu"
+    ],
+    "needsWebSearch": true,
+    "core": "新しい学校のリーダーズ",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "张杰 / HOYO-MiX",
+    "count": 1,
+    "key": "張傑",
+    "aliases": [
+      "张杰",
+      "張傑"
+    ],
+    "needsWebSearch": true,
+    "core": "张杰",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "张杰",
+    "count": 1,
+    "key": "張傑",
+    "aliases": [
+      "张杰",
+      "張傑"
+    ],
+    "needsWebSearch": true,
+    "core": "张杰",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "大原ゆい子",
+    "count": 1,
+    "key": "大原ゆい子",
+    "aliases": [
+      "大原ゆい子",
+      "大原yui子"
+    ],
+    "needsWebSearch": true,
+    "core": "大原ゆい子",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "草食考拉",
+    "count": 1,
+    "key": "草食考拉",
+    "aliases": [
+      "草食考拉"
+    ],
+    "needsWebSearch": true,
+    "core": "草食考拉",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "闫泽欢",
+    "count": 1,
+    "key": "閆澤歡",
+    "aliases": [
+      "闫泽欢",
+      "閆澤歡"
+    ],
+    "needsWebSearch": true,
+    "core": "闫泽欢",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "澤野弘之 (さわの ひろゆき)",
+    "count": 1,
+    "key": "澤野弘之",
+    "aliases": [
+      "泽野弘之",
+      "澤野弘之",
+      "sawano hiroyuki"
+    ],
+    "needsWebSearch": false,
+    "core": "澤野弘之",
+    "annotation": "さわの ひろゆき",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "管平湖",
+    "count": 1,
+    "key": "管平湖",
+    "aliases": [
+      "管平湖"
+    ],
+    "needsWebSearch": true,
+    "core": "管平湖",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "谭晶 / HOYO-MiX",
+    "count": 1,
+    "key": "譚晶",
+    "aliases": [
+      "谭晶",
+      "譚晶"
+    ],
+    "needsWebSearch": true,
+    "core": "谭晶",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "谭晶",
+    "count": 1,
+    "key": "譚晶",
+    "aliases": [
+      "谭晶",
+      "譚晶"
+    ],
+    "needsWebSearch": true,
+    "core": "谭晶",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "袁娅维TIA RAY / HOYO-MiX",
+    "count": 1,
+    "key": "袁婭維",
+    "aliases": [
+      "袁娅维",
+      "袁婭維"
+    ],
+    "needsWebSearch": true,
+    "core": "袁娅维",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "富贵晴美 (ふうき はるみ)",
+    "count": 1,
+    "key": "富貴晴美",
+    "aliases": [
+      "富贵晴美",
+      "富貴晴美",
+      "fuuki harumi"
+    ],
+    "needsWebSearch": false,
+    "core": "富贵晴美",
+    "annotation": "ふうき はるみ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李想Evelyn",
+    "count": 1,
+    "key": "李想",
+    "aliases": [
+      "李想"
+    ],
+    "needsWebSearch": true,
+    "core": "李想",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "薛汀哲",
+    "count": 1,
+    "key": "薛汀哲",
+    "aliases": [
+      "薛汀哲"
+    ],
+    "needsWebSearch": true,
+    "core": "薛汀哲",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "三Z-STUDIO / HOYO-MiX / 于梓贝",
+    "count": 1,
+    "key": "三於梓貝",
+    "aliases": [],
+    "needsWebSearch": true,
+    "core": "三",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "三Z-STUDIO",
+    "count": 1,
+    "key": "三",
+    "aliases": [],
+    "needsWebSearch": true,
+    "core": "三",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "于梓贝",
+    "count": 1,
+    "key": "於梓貝",
+    "aliases": [
+      "于梓贝",
+      "於梓貝"
+    ],
+    "needsWebSearch": true,
+    "core": "于梓贝",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "飞石号",
+    "count": 1,
+    "key": "飛石號",
+    "aliases": [
+      "飞石号",
+      "飛石號"
+    ],
+    "needsWebSearch": true,
+    "core": "飞石号",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "白静晨",
+    "count": 1,
+    "key": "白靜晨",
+    "aliases": [
+      "白静晨",
+      "白靜晨"
+    ],
+    "needsWebSearch": true,
+    "core": "白静晨",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "何天程",
+    "count": 1,
+    "key": "何天程",
+    "aliases": [
+      "何天程"
+    ],
+    "needsWebSearch": true,
+    "core": "何天程",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ウォン・ウィンツァン",
+    "count": 1,
+    "key": "ウォン・ウィンツァン",
+    "aliases": [
+      "uon/uintsuan"
+    ],
+    "needsWebSearch": false,
+    "core": "ウォン・ウィンツァン",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "钟凯琳",
+    "count": 1,
+    "key": "鍾凱琳",
+    "aliases": [
+      "钟凯琳",
+      "鍾凱琳"
+    ],
+    "needsWebSearch": true,
+    "core": "钟凯琳",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "蔡徐坤",
+    "count": 1,
+    "key": "蔡徐坤",
+    "aliases": [
+      "蔡徐坤"
+    ],
+    "needsWebSearch": true,
+    "core": "蔡徐坤",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "铃木爱理 (すずき あいり) / HOYO-MiX",
+    "count": 1,
+    "key": "鈴木愛理",
+    "aliases": [
+      "铃木爱理",
+      "鈴木愛理",
+      "suzuki airi"
+    ],
+    "needsWebSearch": false,
+    "core": "铃木爱理",
+    "annotation": "すずき あいり",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "松原正樹",
+    "count": 1,
+    "key": "松原正樹",
+    "aliases": [
+      "松原正树",
+      "松原正樹"
+    ],
+    "needsWebSearch": true,
+    "core": "松原正樹",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "杨楚骁",
+    "count": 1,
+    "key": "楊楚驍",
+    "aliases": [
+      "杨楚骁",
+      "楊楚驍"
+    ],
+    "needsWebSearch": true,
+    "core": "杨楚骁",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王源",
+    "count": 1,
+    "key": "王源",
+    "aliases": [
+      "王源"
+    ],
+    "needsWebSearch": true,
+    "core": "王源",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "曾轶可",
+    "count": 1,
+    "key": "曾軼可",
+    "aliases": [
+      "曾轶可",
+      "曾軼可"
+    ],
+    "needsWebSearch": true,
+    "core": "曾轶可",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "郭冠廷",
+    "count": 1,
+    "key": "郭冠廷",
+    "aliases": [
+      "郭冠廷"
+    ],
+    "needsWebSearch": true,
+    "core": "郭冠廷",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "陶喆 / 卢广仲",
+    "count": 1,
+    "key": "陶喆盧廣仲",
+    "aliases": [
+      "陶喆"
+    ],
+    "needsWebSearch": true,
+    "core": "陶喆",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "JUDY AND MARY (ジュディ・アンド・マリー)",
+    "count": 1,
+    "key": "ジュディ・アンド・マリー",
+    "aliases": [
+      "judei/ando/marii",
+      "JUDY AND MARY"
+    ],
+    "needsWebSearch": false,
+    "core": "ジュディ・アンド・マリー",
+    "annotation": "ジュディ・アンド・マリー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "琟娜 Verna",
+    "count": 1,
+    "key": "琟娜",
+    "aliases": [
+      "琟娜"
+    ],
+    "needsWebSearch": true,
+    "core": "琟娜",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鈴木雅之 (すずきまさゆき) / 铃木爱理 (すずき あいり)",
+    "count": 1,
+    "key": "鈴木雅之鈴木愛理",
+    "aliases": [
+      "铃木雅之",
+      "鈴木雅之",
+      "suzukimasayuki"
+    ],
+    "needsWebSearch": false,
+    "core": "鈴木雅之",
+    "annotation": "すずきまさゆき",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鈴木雅之 (すずきまさゆき)",
+    "count": 1,
+    "key": "鈴木雅之",
+    "aliases": [
+      "铃木雅之",
+      "鈴木雅之",
+      "suzukimasayuki"
+    ],
+    "needsWebSearch": false,
+    "core": "鈴木雅之",
+    "annotation": "すずきまさゆき",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "伍佰 & China Blue",
+    "count": 1,
+    "key": "伍佰",
+    "aliases": [
+      "伍佰"
+    ],
+    "needsWebSearch": true,
+    "core": "伍佰",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "郭静",
+    "count": 1,
+    "key": "郭靜",
+    "aliases": [
+      "郭静",
+      "郭靜"
+    ],
+    "needsWebSearch": true,
+    "core": "郭静",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "飞狗MOCO",
+    "count": 1,
+    "key": "飛狗",
+    "aliases": [
+      "飞狗",
+      "飛狗"
+    ],
+    "needsWebSearch": true,
+    "core": "飞狗",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ChiliChill乐团",
+    "count": 1,
+    "key": "樂團",
+    "aliases": [
+      "乐团",
+      "樂團",
+      "ChiliChill"
+    ],
+    "needsWebSearch": false,
+    "core": "乐团",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "YELLOW黄宣 / 9m88",
+    "count": 1,
+    "key": "黃宣",
+    "aliases": [
+      "黄宣",
+      "黃宣",
+      "YELLOW"
+    ],
+    "needsWebSearch": false,
+    "core": "黄宣",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "YELLOW黄宣 / 范晓萱",
+    "count": 1,
+    "key": "黃宣范曉萱",
+    "aliases": [
+      "黄宣",
+      "黃宣",
+      "YELLOW"
+    ],
+    "needsWebSearch": false,
+    "core": "黄宣",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Aimer (エメ)",
+    "count": 1,
+    "key": "エメ",
+    "aliases": [
+      "eme",
+      "Aimer"
+    ],
+    "needsWebSearch": false,
+    "core": "エメ",
+    "annotation": "エメ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "方大同 / 王力宏",
+    "count": 1,
+    "key": "方大同王力宏",
+    "aliases": [
+      "方大同"
+    ],
+    "needsWebSearch": true,
+    "core": "方大同",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "窦靖童",
+    "count": 1,
+    "key": "竇靖童",
+    "aliases": [
+      "窦靖童",
+      "竇靖童"
+    ],
+    "needsWebSearch": true,
+    "core": "窦靖童",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Ms.OOJA (ミス・オオジャ)",
+    "count": 1,
+    "key": "ミス・オオジャ",
+    "aliases": [
+      "misu/ooja",
+      "Ms.OOJA"
+    ],
+    "needsWebSearch": false,
+    "core": "ミス・オオジャ",
+    "annotation": "ミス・オオジャ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "彭佳慧",
+    "count": 1,
+    "key": "彭佳慧",
+    "aliases": [
+      "彭佳慧"
+    ],
+    "needsWebSearch": true,
+    "core": "彭佳慧",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "戴荃",
+    "count": 1,
+    "key": "戴荃",
+    "aliases": [
+      "戴荃"
+    ],
+    "needsWebSearch": true,
+    "core": "戴荃",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "吴建豪 / 方大同",
+    "count": 1,
+    "key": "吳建豪方大同",
+    "aliases": [
+      "吴建豪",
+      "吳建豪"
+    ],
+    "needsWebSearch": true,
+    "core": "吴建豪",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "逃跑计划",
+    "count": 1,
+    "key": "逃跑計劃",
+    "aliases": [
+      "逃跑计划",
+      "逃跑計劃"
+    ],
+    "needsWebSearch": true,
+    "core": "逃跑计划",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "三土念遥",
+    "count": 1,
+    "key": "三土念遙",
+    "aliases": [
+      "三土念遥",
+      "三土念遙"
+    ],
+    "needsWebSearch": true,
+    "core": "三土念遥",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "nonoc (ノノック)",
+    "count": 1,
+    "key": "ノノック",
+    "aliases": [
+      "nonokku",
+      "nonoc"
+    ],
+    "needsWebSearch": false,
+    "core": "ノノック",
+    "annotation": "ノノック",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "刘嘉星",
+    "count": 1,
+    "key": "劉嘉星",
+    "aliases": [
+      "刘嘉星",
+      "劉嘉星"
+    ],
+    "needsWebSearch": true,
+    "core": "刘嘉星",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "朱一龙 / 杨恩又",
+    "count": 1,
+    "key": "朱一龍楊恩又",
+    "aliases": [
+      "朱一龙",
+      "朱一龍"
+    ],
+    "needsWebSearch": true,
+    "core": "朱一龙",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "朱一龙",
+    "count": 1,
+    "key": "朱一龍",
+    "aliases": [
+      "朱一龙",
+      "朱一龍"
+    ],
+    "needsWebSearch": true,
+    "core": "朱一龙",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "杨恩又",
+    "count": 1,
+    "key": "楊恩又",
+    "aliases": [
+      "杨恩又",
+      "楊恩又"
+    ],
+    "needsWebSearch": true,
+    "core": "杨恩又",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "张智成",
+    "count": 1,
+    "key": "張智成",
+    "aliases": [
+      "张智成",
+      "張智成"
+    ],
+    "needsWebSearch": true,
+    "core": "张智成",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "杨沛宜",
+    "count": 1,
+    "key": "楊沛宜",
+    "aliases": [
+      "杨沛宜",
+      "楊沛宜"
+    ],
+    "needsWebSearch": true,
+    "core": "杨沛宜",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "洛天依 / 言和",
+    "count": 1,
+    "key": "洛天依言和",
+    "aliases": [
+      "洛天依"
+    ],
+    "needsWebSearch": true,
+    "core": "洛天依",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "声优小剧场 / 颜笑",
+    "count": 1,
+    "key": "聲優小劇場顏笑",
+    "aliases": [
+      "声优小剧场",
+      "聲優小劇場"
+    ],
+    "needsWebSearch": true,
+    "core": "声优小剧场",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "颜笑",
+    "count": 1,
+    "key": "顏笑",
+    "aliases": [
+      "颜笑",
+      "顏笑"
+    ],
+    "needsWebSearch": true,
+    "core": "颜笑",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李昕融 / 樊桐舟 / 李凯稠",
+    "count": 1,
+    "key": "李昕融樊桐舟李凱稠",
+    "aliases": [
+      "李昕融"
+    ],
+    "needsWebSearch": true,
+    "core": "李昕融",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "樊桐舟",
+    "count": 1,
+    "key": "樊桐舟",
+    "aliases": [
+      "樊桐舟"
+    ],
+    "needsWebSearch": true,
+    "core": "樊桐舟",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李凯稠",
+    "count": 1,
+    "key": "李凱稠",
+    "aliases": [
+      "李凯稠",
+      "李凱稠"
+    ],
+    "needsWebSearch": true,
+    "core": "李凯稠",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "超级小可爱",
+    "count": 1,
+    "key": "超級小可愛",
+    "aliases": [
+      "超级小可爱",
+      "超級小可愛"
+    ],
+    "needsWebSearch": true,
+    "core": "超级小可爱",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "アトラスサウンドチーム / ATLUS GAME MUSIC",
+    "count": 1,
+    "key": "アトラスサウンドチーム",
+    "aliases": [
+      "atorasusaundochiimu"
+    ],
+    "needsWebSearch": false,
+    "core": "アトラスサウンドチーム",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "蝶々P (一之瀬ユウ) / GUMI (グミ)",
+    "count": 1,
+    "key": "蝶",
+    "aliases": [
+      "一之瀬yuu"
+    ],
+    "needsWebSearch": true,
+    "core": "蝶",
+    "annotation": "一之瀬ユウ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "蝶々P (一之瀬ユウ)",
+    "count": 1,
+    "key": "蝶",
+    "aliases": [
+      "一之瀬yuu"
+    ],
+    "needsWebSearch": true,
+    "core": "蝶",
+    "annotation": "一之瀬ユウ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "優里 (ゆうり)",
+    "count": 1,
+    "key": "優裡",
+    "aliases": [
+      "优里",
+      "優裡",
+      "yuuri"
+    ],
+    "needsWebSearch": false,
+    "core": "優里",
+    "annotation": "ゆうり",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "井上苑子",
+    "count": 1,
+    "key": "井上苑子",
+    "aliases": [
+      "井上苑子"
+    ],
+    "needsWebSearch": true,
+    "core": "井上苑子",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "そらる (soraru)",
+    "count": 1,
+    "key": "そらる",
+    "aliases": [
+      "soraru"
+    ],
+    "needsWebSearch": false,
+    "core": "そらる",
+    "annotation": "soraru",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "まふまふ (mafumafu)",
+    "count": 1,
+    "key": "まふまふ",
+    "aliases": [
+      "mafumafu"
+    ],
+    "needsWebSearch": false,
+    "core": "まふまふ",
+    "annotation": "mafumafu",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "遊助 (上地雄辅)",
+    "count": 1,
+    "key": "遊助",
+    "aliases": [
+      "游助",
+      "遊助"
+    ],
+    "needsWebSearch": true,
+    "core": "遊助",
+    "annotation": "上地雄辅",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "松本梨香 (まつもと りか) / 大谷育江 (おおたに いくえ)",
+    "count": 1,
+    "key": "松本梨香大谷育江",
+    "aliases": [
+      "松本梨香",
+      "matsumoto rika"
+    ],
+    "needsWebSearch": false,
+    "core": "松本梨香",
+    "annotation": "まつもと りか",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "大谷育江 (おおたに いくえ)",
+    "count": 1,
+    "key": "大谷育江",
+    "aliases": [
+      "大谷育江",
+      "ootani ikue"
+    ],
+    "needsWebSearch": false,
+    "core": "大谷育江",
+    "annotation": "おおたに いくえ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "无缺公子",
+    "count": 1,
+    "key": "無缺公子",
+    "aliases": [
+      "无缺公子",
+      "無缺公子"
+    ],
+    "needsWebSearch": true,
+    "core": "无缺公子",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "コレサワ (koresawa)",
+    "count": 1,
+    "key": "コレサワ",
+    "aliases": [
+      "koresawa"
+    ],
+    "needsWebSearch": false,
+    "core": "コレサワ",
+    "annotation": "koresawa",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "高薏涵",
+    "count": 1,
+    "key": "高薏涵",
+    "aliases": [
+      "高薏涵"
+    ],
+    "needsWebSearch": true,
+    "core": "高薏涵",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Frandé法兰黛乐团",
+    "count": 1,
+    "key": "法蘭黛樂團",
+    "aliases": [
+      "法兰黛乐团",
+      "法蘭黛樂團",
+      "Frand"
+    ],
+    "needsWebSearch": false,
+    "core": "法兰黛乐团",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李昕融 / 叶嘉",
+    "count": 1,
+    "key": "李昕融葉嘉",
+    "aliases": [
+      "李昕融"
+    ],
+    "needsWebSearch": true,
+    "core": "李昕融",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "叶嘉",
+    "count": 1,
+    "key": "葉嘉",
+    "aliases": [
+      "叶嘉",
+      "葉嘉"
+    ],
+    "needsWebSearch": true,
+    "core": "叶嘉",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "周杰伦 / 言承旭 / 吴建豪 / 周渝民",
+    "count": 1,
+    "key": "周杰倫言承旭吳建豪周渝民",
+    "aliases": [
+      "周杰伦",
+      "周杰倫"
+    ],
+    "needsWebSearch": true,
+    "core": "周杰伦",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "凇仔",
+    "count": 1,
+    "key": "凇仔",
+    "aliases": [
+      "凇仔"
+    ],
+    "needsWebSearch": true,
+    "core": "凇仔",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "纯音乐",
+    "count": 1,
+    "key": "純音樂",
+    "aliases": [
+      "纯音乐",
+      "純音樂"
+    ],
+    "needsWebSearch": true,
+    "core": "纯音乐",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王一博 / 郭富城",
+    "count": 1,
+    "key": "王一博郭富城",
+    "aliases": [
+      "王一博"
+    ],
+    "needsWebSearch": true,
+    "core": "王一博",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王一博",
+    "count": 1,
+    "key": "王一博",
+    "aliases": [
+      "王一博"
+    ],
+    "needsWebSearch": true,
+    "core": "王一博",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "腾格尔 / 徐梦圆",
+    "count": 1,
+    "key": "騰格爾徐夢圓",
+    "aliases": [
+      "腾格尔",
+      "騰格爾"
+    ],
+    "needsWebSearch": true,
+    "core": "腾格尔",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "腾格尔",
+    "count": 1,
+    "key": "騰格爾",
+    "aliases": [
+      "腾格尔",
+      "騰格爾"
+    ],
+    "needsWebSearch": true,
+    "core": "腾格尔",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "徐梦圆",
+    "count": 1,
+    "key": "徐夢圓",
+    "aliases": [
+      "徐梦圆",
+      "徐夢圓"
+    ],
+    "needsWebSearch": true,
+    "core": "徐梦圆",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "姜智英 (강지영)",
+    "count": 1,
+    "key": "姜智英",
+    "aliases": [
+      "姜智英"
+    ],
+    "needsWebSearch": true,
+    "core": "姜智英",
+    "annotation": "강지영",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Re:Plus (リ:プラス) / Yu-ri",
+    "count": 1,
+    "key": "リプラス",
+    "aliases": [
+      "ri:purasu",
+      "ripurasu",
+      "Re"
+    ],
+    "needsWebSearch": false,
+    "core": "リプラス",
+    "annotation": "リ:プラス",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "李泉",
+    "count": 1,
+    "key": "李泉",
+    "aliases": [
+      "李泉"
+    ],
+    "needsWebSearch": true,
+    "core": "李泉",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "回春丹乐队",
+    "count": 1,
+    "key": "回春丹樂隊",
+    "aliases": [
+      "回春丹乐队",
+      "回春丹樂隊"
+    ],
+    "needsWebSearch": true,
+    "core": "回春丹乐队",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "BENI (安良城红)",
+    "count": 1,
+    "key": "安良城紅",
+    "aliases": [
+      "安良城红",
+      "安良城紅",
+      "BENI"
+    ],
+    "needsWebSearch": true,
+    "core": "安良城红",
+    "annotation": "安良城红",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "夏日入侵企画",
+    "count": 1,
+    "key": "夏日入侵企畫",
+    "aliases": [
+      "夏日入侵企画",
+      "夏日入侵企畫"
+    ],
+    "needsWebSearch": true,
+    "core": "夏日入侵企画",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "坂本龙一 (さかもと りゅういち) / Jaques Morelenbaum / Judy Kang",
+    "count": 1,
+    "key": "坂本龍一",
+    "aliases": [
+      "坂本龙一",
+      "坂本龍一",
+      "sakamoto ryuuichi"
+    ],
+    "needsWebSearch": false,
+    "core": "坂本龙一",
+    "annotation": "さかもと りゅういち",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "薛凯琪",
+    "count": 1,
+    "key": "薛凱琪",
+    "aliases": [
+      "薛凯琪",
+      "薛凱琪"
+    ],
+    "needsWebSearch": true,
+    "core": "薛凯琪",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "絢香 (あやか)",
+    "count": 1,
+    "key": "絢香",
+    "aliases": [
+      "绚香",
+      "絢香",
+      "ayaka"
+    ],
+    "needsWebSearch": false,
+    "core": "絢香",
+    "annotation": "あやか",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "花*花",
+    "count": 1,
+    "key": "花花",
+    "aliases": [
+      "花花"
+    ],
+    "needsWebSearch": true,
+    "core": "花花",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "AiNA THE END (アイナ・ジ・エンド)",
+    "count": 1,
+    "key": "アイナ・ジ・エンド",
+    "aliases": [
+      "aina/ji/endo",
+      "AiNA THE END"
+    ],
+    "needsWebSearch": false,
+    "core": "アイナ・ジ・エンド",
+    "annotation": "アイナ・ジ・エンド",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "LE SSERAFIM (르세라핌) / j-hope",
+    "count": 1,
+    "key": "르세라핌",
+    "aliases": [
+      "르세라핌",
+      "LE SSERAFIM"
+    ],
+    "needsWebSearch": false,
+    "core": "르세라핌",
+    "annotation": "르세라핌",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "LE SSERAFIM (르세라핌)",
+    "count": 1,
+    "key": "르세라핌",
+    "aliases": [
+      "르세라핌",
+      "LE SSERAFIM"
+    ],
+    "needsWebSearch": false,
+    "core": "르세라핌",
+    "annotation": "르세라핌",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "葫芦童声",
+    "count": 1,
+    "key": "葫蘆童聲",
+    "aliases": [
+      "葫芦童声",
+      "葫蘆童聲"
+    ],
+    "needsWebSearch": true,
+    "core": "葫芦童声",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "理想混蛋",
+    "count": 1,
+    "key": "理想混蛋",
+    "aliases": [
+      "理想混蛋"
+    ],
+    "needsWebSearch": true,
+    "core": "理想混蛋",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "言承旭 / 五月天 阿信",
+    "count": 1,
+    "key": "言承旭五月天阿信",
+    "aliases": [
+      "言承旭"
+    ],
+    "needsWebSearch": true,
+    "core": "言承旭",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "チョーキューメイ (ChoQMay)",
+    "count": 1,
+    "key": "チョーキューメイ",
+    "aliases": [
+      "chookyuumei",
+      "ChoQMay"
+    ],
+    "needsWebSearch": false,
+    "core": "チョーキューメイ",
+    "annotation": "ChoQMay",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Jack Lee (잭리) / Bob James / Nathan East / Lewis Pragasam",
+    "count": 1,
+    "key": "잭리",
+    "aliases": [
+      "잭리",
+      "Jack Lee"
+    ],
+    "needsWebSearch": false,
+    "core": "잭리",
+    "annotation": "잭리",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Jack Lee (잭리)",
+    "count": 1,
+    "key": "잭리",
+    "aliases": [
+      "잭리",
+      "Jack Lee"
+    ],
+    "needsWebSearch": false,
+    "core": "잭리",
+    "annotation": "잭리",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "中国交响乐团",
+    "count": 1,
+    "key": "中國交響樂團",
+    "aliases": [
+      "中国交响乐团",
+      "中國交響樂團"
+    ],
+    "needsWebSearch": true,
+    "core": "中国交响乐团",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "星尘",
+    "count": 1,
+    "key": "星塵",
+    "aliases": [
+      "星尘",
+      "星塵"
+    ],
+    "needsWebSearch": true,
+    "core": "星尘",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "NewJeans (뉴진스)",
+    "count": 1,
+    "key": "뉴진스",
+    "aliases": [
+      "뉴진스",
+      "NewJeans"
+    ],
+    "needsWebSearch": false,
+    "core": "뉴진스",
+    "annotation": "뉴진스",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "祁奕翔1",
+    "count": 1,
+    "key": "祁奕翔",
+    "aliases": [
+      "祁奕翔"
+    ],
+    "needsWebSearch": true,
+    "core": "祁奕翔",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Ayumu Imazu (今津渉)",
+    "count": 1,
+    "key": "今津渉",
+    "aliases": [
+      "今津渉",
+      "Ayumu Imazu"
+    ],
+    "needsWebSearch": false,
+    "core": "今津渉",
+    "annotation": "今津渉",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "汪小敏",
+    "count": 1,
+    "key": "汪小敏",
+    "aliases": [
+      "汪小敏"
+    ],
+    "needsWebSearch": true,
+    "core": "汪小敏",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "小濑村晶 (Akira Kosemura)",
+    "count": 1,
+    "key": "小瀨村晶",
+    "aliases": [
+      "小濑村晶",
+      "小瀨村晶",
+      "Akira Kosemura"
+    ],
+    "needsWebSearch": false,
+    "core": "小濑村晶",
+    "annotation": "Akira Kosemura",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "林昱君",
+    "count": 1,
+    "key": "林昱君",
+    "aliases": [
+      "林昱君"
+    ],
+    "needsWebSearch": true,
+    "core": "林昱君",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "笹野芽実",
+    "count": 1,
+    "key": "笹野芽実",
+    "aliases": [
+      "笹野芽実"
+    ],
+    "needsWebSearch": true,
+    "core": "笹野芽実",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "高橋あず美 / アトラスサウンドチーム / ATLUS GAME MUSIC",
+    "count": 1,
+    "key": "高橋あず美アトラスサウンドチーム",
+    "aliases": [
+      "高桥あず美",
+      "高橋あず美",
+      "高橋azu美"
+    ],
+    "needsWebSearch": true,
+    "core": "高橋あず美",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "高橋あず美",
+    "count": 1,
+    "key": "高橋あず美",
+    "aliases": [
+      "高桥あず美",
+      "高橋あず美",
+      "高橋azu美"
+    ],
+    "needsWebSearch": true,
+    "core": "高橋あず美",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "鹭巣诗郎 (さぎす しろう) / Claire",
+    "count": 1,
+    "key": "鷺巣詩郎",
+    "aliases": [
+      "鹭巣诗郎",
+      "鷺巣詩郎",
+      "sagisu shirou"
+    ],
+    "needsWebSearch": false,
+    "core": "鹭巣诗郎",
+    "annotation": "さぎす しろう",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "鹭巣诗郎 (さぎす しろう)",
+    "count": 1,
+    "key": "鷺巣詩郎",
+    "aliases": [
+      "鹭巣诗郎",
+      "鷺巣詩郎",
+      "sagisu shirou"
+    ],
+    "needsWebSearch": false,
+    "core": "鹭巣诗郎",
+    "annotation": "さぎす しろう",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "清塚信也 (Shin'ya Kiyozuka)",
+    "count": 1,
+    "key": "清塚信也",
+    "aliases": [
+      "清冢信也",
+      "清塚信也"
+    ],
+    "needsWebSearch": true,
+    "core": "清塚信也",
+    "annotation": "Shin'ya Kiyozuka",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "幾田りら (ikura) / HOYO-MiX",
+    "count": 1,
+    "key": "幾田りら",
+    "aliases": [
+      "几田りら",
+      "幾田りら",
+      "幾田rira",
+      "ikura"
+    ],
+    "needsWebSearch": false,
+    "core": "幾田りら",
+    "annotation": "ikura",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "George (죠지)",
+    "count": 1,
+    "key": "죠지",
+    "aliases": [
+      "죠지",
+      "George"
+    ],
+    "needsWebSearch": false,
+    "core": "죠지",
+    "annotation": "죠지",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "陈致逸 / HOYO-MiX",
+    "count": 1,
+    "key": "陳致逸",
+    "aliases": [
+      "陈致逸",
+      "陳致逸"
+    ],
+    "needsWebSearch": true,
+    "core": "陈致逸",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "陈致逸",
+    "count": 1,
+    "key": "陳致逸",
+    "aliases": [
+      "陈致逸",
+      "陳致逸"
+    ],
+    "needsWebSearch": true,
+    "core": "陈致逸",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Tim Hardin Trio (蒂姆·哈丁三重奏)",
+    "count": 1,
+    "key": "蒂姆哈丁三重奏",
+    "aliases": [
+      "蒂姆哈丁三重奏",
+      "Tim Hardin Trio"
+    ],
+    "needsWebSearch": false,
+    "core": "蒂姆哈丁三重奏",
+    "annotation": "蒂姆·哈丁三重奏",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "こっちのけんと (菅生健人)",
+    "count": 1,
+    "key": "こっちのけんと",
+    "aliases": [
+      "kotchinokento"
+    ],
+    "needsWebSearch": false,
+    "core": "こっちのけんと",
+    "annotation": "菅生健人",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "刘 洋",
+    "count": 1,
+    "key": "劉洋",
+    "aliases": [
+      "刘洋",
+      "劉洋"
+    ],
+    "needsWebSearch": true,
+    "core": "刘洋",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "2PM (투피엠)",
+    "count": 1,
+    "key": "투피엠",
+    "aliases": [
+      "투피엠",
+      "2PM"
+    ],
+    "needsWebSearch": false,
+    "core": "투피엠",
+    "annotation": "투피엠",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "许阁 (허각) / 林韩星 (임한별) / 이무진 (李茂珍) / 이진성 (李振成)",
+    "count": 1,
+    "key": "許閣林韓星이무진이진성",
+    "aliases": [
+      "许阁",
+      "許閣"
+    ],
+    "needsWebSearch": true,
+    "core": "许阁",
+    "annotation": "허각",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "许阁 (허각)",
+    "count": 1,
+    "key": "許閣",
+    "aliases": [
+      "许阁",
+      "許閣"
+    ],
+    "needsWebSearch": true,
+    "core": "许阁",
+    "annotation": "허각",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "이진성 (李振成)",
+    "count": 1,
+    "key": "이진성",
+    "aliases": [
+      "이진성"
+    ],
+    "needsWebSearch": false,
+    "core": "이진성",
+    "annotation": "李振成",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "神前暁 (こうさき さとる) / 内田ましろ / きしかな子",
+    "count": 1,
+    "key": "神前暁內田ましろきしかな子",
+    "aliases": [
+      "神前暁",
+      "kousaki satoru"
+    ],
+    "needsWebSearch": false,
+    "core": "神前暁",
+    "annotation": "こうさき さとる",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "内田ましろ",
+    "count": 1,
+    "key": "內田ましろ",
+    "aliases": [
+      "内田ましろ",
+      "內田ましろ",
+      "内田mashiro"
+    ],
+    "needsWebSearch": true,
+    "core": "内田ましろ",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "きしかな子",
+    "count": 1,
+    "key": "きしかな子",
+    "aliases": [
+      "きしかな子",
+      "kishikana子"
+    ],
+    "needsWebSearch": true,
+    "core": "きしかな子",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "DAY6 (데이식스)",
+    "count": 1,
+    "key": "데이식스",
+    "aliases": [
+      "데이식스",
+      "DAY6"
+    ],
+    "needsWebSearch": false,
+    "core": "데이식스",
+    "annotation": "데이식스",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "松隆子 (松たか子)",
+    "count": 1,
+    "key": "松隆子",
+    "aliases": [
+      "松隆子",
+      "松taka子"
+    ],
+    "needsWebSearch": true,
+    "core": "松隆子",
+    "annotation": "松たか子",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "IU (아이유)",
+    "count": 1,
+    "key": "아이유",
+    "aliases": [
+      "아이유",
+      "IU"
+    ],
+    "needsWebSearch": false,
+    "core": "아이유",
+    "annotation": "아이유",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "CHANMINA (ちゃんみな)",
+    "count": 1,
+    "key": "ちゃんみな",
+    "aliases": [
+      "chanmina",
+      "CHANMINA"
+    ],
+    "needsWebSearch": false,
+    "core": "ちゃんみな",
+    "annotation": "ちゃんみな",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Yellow Magic Orchestra (黄色魔术交响乐团)",
+    "count": 1,
+    "key": "黃色魔術交響樂團",
+    "aliases": [
+      "黄色魔术交响乐团",
+      "黃色魔術交響樂團",
+      "Yellow Magic Orchestra"
+    ],
+    "needsWebSearch": false,
+    "core": "黄色魔术交响乐团",
+    "annotation": "黄色魔术交响乐团",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "袁野夕",
+    "count": 1,
+    "key": "袁野夕",
+    "aliases": [
+      "袁野夕"
+    ],
+    "needsWebSearch": true,
+    "core": "袁野夕",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "金永所 (YOUNGSO)",
+    "count": 1,
+    "key": "金永所",
+    "aliases": [
+      "金永所",
+      "YOUNGSO"
+    ],
+    "needsWebSearch": false,
+    "core": "金永所",
+    "annotation": "YOUNGSO",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "GUMMY (거미)",
+    "count": 1,
+    "key": "거미",
+    "aliases": [
+      "거미",
+      "GUMMY"
+    ],
+    "needsWebSearch": false,
+    "core": "거미",
+    "annotation": "거미",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Jusqu'à Grand-Père (ジュスカ・グランペール)",
+    "count": 1,
+    "key": "ジュスカ・グランペール",
+    "aliases": [
+      "jusuka/guranpeeru",
+      "Jusqu"
+    ],
+    "needsWebSearch": false,
+    "core": "ジュスカ・グランペール",
+    "annotation": "ジュスカ・グランペール",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ko-ko-ya (コーコーヤ)",
+    "count": 1,
+    "key": "コーコーヤ",
+    "aliases": [
+      "kookooya",
+      "ko"
+    ],
+    "needsWebSearch": false,
+    "core": "コーコーヤ",
+    "annotation": "コーコーヤ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Sam Ock (샘 옥)",
+    "count": 1,
+    "key": "샘옥",
+    "aliases": [
+      "샘옥",
+      "Sam Ock"
+    ],
+    "needsWebSearch": false,
+    "core": "샘옥",
+    "annotation": "샘 옥",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Re:Plus (リ:プラス) / 二宮愛 (にのみや あい)",
+    "count": 1,
+    "key": "二宮愛",
+    "aliases": [
+      "ri:purasu",
+      "ripurasu",
+      "Re"
+    ],
+    "needsWebSearch": false,
+    "core": "リプラス",
+    "annotation": "リ:プラス",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "二宮愛 (にのみや あい)",
+    "count": 1,
+    "key": "二宮愛",
+    "aliases": [
+      "二宫爱",
+      "二宮愛",
+      "ninomiya ai"
+    ],
+    "needsWebSearch": false,
+    "core": "二宮愛",
+    "annotation": "にのみや あい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Epitone Project (에피톤 프로젝트)",
+    "count": 1,
+    "key": "에피톤프로젝트",
+    "aliases": [
+      "에피톤프로젝트",
+      "Epitone Project"
+    ],
+    "needsWebSearch": false,
+    "core": "에피톤프로젝트",
+    "annotation": "에피톤 프로젝트",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "杉惠ゆりか (スージー)",
+    "count": 1,
+    "key": "杉惠ゆりか",
+    "aliases": [
+      "杉惠ゆりか",
+      "suujii",
+      "杉惠yurika"
+    ],
+    "needsWebSearch": false,
+    "core": "杉惠ゆりか",
+    "annotation": "スージー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "スタァライト九九組 (Starlight九九组)",
+    "count": 1,
+    "key": "スタァライト九九組",
+    "aliases": [
+      "スタァライト九九组",
+      "スタァライト九九組",
+      "sutaaraito九九組"
+    ],
+    "needsWebSearch": false,
+    "core": "スタァライト九九組",
+    "annotation": "Starlight九九组",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "wacci (ワッチ)",
+    "count": 1,
+    "key": "ワッチ",
+    "aliases": [
+      "watchi",
+      "wacci"
+    ],
+    "needsWebSearch": false,
+    "core": "ワッチ",
+    "annotation": "ワッチ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ACAね / ぬゆり (Lanndo)",
+    "count": 1,
+    "key": "ねぬゆり",
+    "aliases": [
+      "ACA"
+    ],
+    "needsWebSearch": false,
+    "core": "ね",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ACAね",
+    "count": 1,
+    "key": "ね",
+    "aliases": [
+      "ACA"
+    ],
+    "needsWebSearch": false,
+    "core": "ね",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ぬゆり (Lanndo)",
+    "count": 1,
+    "key": "ぬゆり",
+    "aliases": [
+      "nuyuri",
+      "Lanndo"
+    ],
+    "needsWebSearch": false,
+    "core": "ぬゆり",
+    "annotation": "Lanndo",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "かぴ",
+    "count": 1,
+    "key": "かぴ",
+    "aliases": [
+      "kapi"
+    ],
+    "needsWebSearch": false,
+    "core": "かぴ",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "WSG워너비 (가야G) (WSG WANNBE (Gaya-G))",
+    "count": 1,
+    "key": "워너비",
+    "aliases": [
+      "워너비",
+      "WSG"
+    ],
+    "needsWebSearch": false,
+    "core": "워너비",
+    "annotation": "가야G",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Woody (우디)",
+    "count": 1,
+    "key": "우디",
+    "aliases": [
+      "우디",
+      "Woody"
+    ],
+    "needsWebSearch": false,
+    "core": "우디",
+    "annotation": "우디",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Metablue赛博蓝 / Heeze",
+    "count": 1,
+    "key": "賽博藍",
+    "aliases": [
+      "赛博蓝",
+      "賽博藍",
+      "Metablue"
+    ],
+    "needsWebSearch": false,
+    "core": "赛博蓝",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Metablue赛博蓝",
+    "count": 1,
+    "key": "賽博藍",
+    "aliases": [
+      "赛博蓝",
+      "賽博藍",
+      "Metablue"
+    ],
+    "needsWebSearch": false,
+    "core": "赛博蓝",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "TAEYANG (太阳) / Jimin",
+    "count": 1,
+    "key": "太陽",
+    "aliases": [
+      "太阳",
+      "太陽",
+      "TAEYANG"
+    ],
+    "needsWebSearch": false,
+    "core": "太阳",
+    "annotation": "太阳",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Younha (윤하)",
+    "count": 1,
+    "key": "윤하",
+    "aliases": [
+      "윤하",
+      "Younha"
+    ],
+    "needsWebSearch": false,
+    "core": "윤하",
+    "annotation": "윤하",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "테이 (Tei)",
+    "count": 1,
+    "key": "테이",
+    "aliases": [
+      "테이",
+      "Tei"
+    ],
+    "needsWebSearch": false,
+    "core": "테이",
+    "annotation": "Tei",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "西原健一郎 (Kenichiro Nishihara) / Pismo",
+    "count": 1,
+    "key": "西原健一郎",
+    "aliases": [
+      "西原健一郎",
+      "Kenichiro Nishihara"
+    ],
+    "needsWebSearch": false,
+    "core": "西原健一郎",
+    "annotation": "Kenichiro Nishihara",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "西原健一郎 (Kenichiro Nishihara)",
+    "count": 1,
+    "key": "西原健一郎",
+    "aliases": [
+      "西原健一郎",
+      "Kenichiro Nishihara"
+    ],
+    "needsWebSearch": false,
+    "core": "西原健一郎",
+    "annotation": "Kenichiro Nishihara",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ハルレオ (haruleo)",
+    "count": 1,
+    "key": "ハルレオ",
+    "aliases": [
+      "harureo",
+      "haruleo"
+    ],
+    "needsWebSearch": false,
+    "core": "ハルレオ",
+    "annotation": "haruleo",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "桑田佳祐 (くわた けいすけ)",
+    "count": 1,
+    "key": "桑田佳祐",
+    "aliases": [
+      "桑田佳祐",
+      "kuwata keisuke"
+    ],
+    "needsWebSearch": false,
+    "core": "桑田佳祐",
+    "annotation": "くわた けいすけ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Kassy (케이시)",
+    "count": 1,
+    "key": "케이시",
+    "aliases": [
+      "케이시",
+      "Kassy"
+    ],
+    "needsWebSearch": false,
+    "core": "케이시",
+    "annotation": "케이시",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "YENA (崔叡娜) / BIBI (비비)",
+    "count": 1,
+    "key": "崔叡娜비비",
+    "aliases": [
+      "崔叡娜",
+      "YENA"
+    ],
+    "needsWebSearch": true,
+    "core": "崔叡娜",
+    "annotation": "崔叡娜",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "YENA (崔叡娜)",
+    "count": 1,
+    "key": "崔叡娜",
+    "aliases": [
+      "崔叡娜",
+      "YENA"
+    ],
+    "needsWebSearch": true,
+    "core": "崔叡娜",
+    "annotation": "崔叡娜",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "BIBI (비비)",
+    "count": 1,
+    "key": "비비",
+    "aliases": [
+      "비비",
+      "BIBI"
+    ],
+    "needsWebSearch": false,
+    "core": "비비",
+    "annotation": "비비",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "경서예지 / 전건호 (全健浩)",
+    "count": 1,
+    "key": "경서예지전건호",
+    "aliases": [
+      "경서예지"
+    ],
+    "needsWebSearch": false,
+    "core": "경서예지",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "경서예지",
+    "count": 1,
+    "key": "경서예지",
+    "aliases": [
+      "경서예지"
+    ],
+    "needsWebSearch": false,
+    "core": "경서예지",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "전건호 (全健浩)",
+    "count": 1,
+    "key": "전건호",
+    "aliases": [
+      "전건호"
+    ],
+    "needsWebSearch": false,
+    "core": "전건호",
+    "annotation": "全健浩",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "周深",
+    "count": 1,
+    "key": "周深",
+    "aliases": [
+      "周深"
+    ],
+    "needsWebSearch": true,
+    "core": "周深",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "内田真礼 (うちだ まあや)",
+    "count": 1,
+    "key": "內田真禮",
+    "aliases": [
+      "内田真礼",
+      "內田真禮",
+      "uchida maaya"
+    ],
+    "needsWebSearch": false,
+    "core": "内田真礼",
+    "annotation": "うちだ まあや",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "瀧沢一留 (Takizawa Ichiru)",
+    "count": 1,
+    "key": "瀧沢一留",
+    "aliases": [
+      "泷沢一留",
+      "瀧沢一留",
+      "Takizawa Ichiru"
+    ],
+    "needsWebSearch": false,
+    "core": "瀧沢一留",
+    "annotation": "Takizawa Ichiru",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "大石昌良 (オーイシマサヨシ)",
+    "count": 1,
+    "key": "大石昌良",
+    "aliases": [
+      "大石昌良",
+      "ooishimasayoshi"
+    ],
+    "needsWebSearch": false,
+    "core": "大石昌良",
+    "annotation": "オーイシマサヨシ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "半边",
+    "count": 1,
+    "key": "半邊",
+    "aliases": [
+      "半边",
+      "半邊"
+    ],
+    "needsWebSearch": true,
+    "core": "半边",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "宇多田光 (宇多田ヒカル)",
+    "count": 1,
+    "key": "宇多田光",
+    "aliases": [
+      "宇多田光",
+      "宇多田hikaru"
+    ],
+    "needsWebSearch": true,
+    "core": "宇多田光",
+    "annotation": "宇多田ヒカル",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "坂本九 (さかもと きゅう)",
+    "count": 1,
+    "key": "坂本九",
+    "aliases": [
+      "坂本九",
+      "sakamoto kyuu"
+    ],
+    "needsWebSearch": false,
+    "core": "坂本九",
+    "annotation": "さかもと きゅう",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "まきちゃんぐ (makichangu)",
+    "count": 1,
+    "key": "まきちゃんぐ",
+    "aliases": [
+      "makichangu"
+    ],
+    "needsWebSearch": false,
+    "core": "まきちゃんぐ",
+    "annotation": "makichangu",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "KOKIA (吉田亚纪子)",
+    "count": 1,
+    "key": "吉田亞紀子",
+    "aliases": [
+      "吉田亚纪子",
+      "吉田亞紀子",
+      "KOKIA"
+    ],
+    "needsWebSearch": false,
+    "core": "吉田亚纪子",
+    "annotation": "吉田亚纪子",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "任然",
+    "count": 1,
+    "key": "任然",
+    "aliases": [
+      "任然"
+    ],
+    "needsWebSearch": true,
+    "core": "任然",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "板野友美 (いたの ともみ)",
+    "count": 1,
+    "key": "板野友美",
+    "aliases": [
+      "板野友美",
+      "itano tomomi"
+    ],
+    "needsWebSearch": false,
+    "core": "板野友美",
+    "annotation": "いたの ともみ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Eric周兴哲",
+    "count": 1,
+    "key": "周興哲",
+    "aliases": [
+      "周兴哲",
+      "周興哲",
+      "Eric"
+    ],
+    "needsWebSearch": true,
+    "core": "周兴哲",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "打首狱门同好会 (うちくびごくもんどうこうかい) / 大澤 敦史",
+    "count": 1,
+    "key": "打首獄門同好會大澤敦史",
+    "aliases": [
+      "打首狱门同好会",
+      "打首獄門同好會",
+      "uchikubigokumondoukoukai"
+    ],
+    "needsWebSearch": false,
+    "core": "打首狱门同好会",
+    "annotation": "うちくびごくもんどうこうかい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "打首狱门同好会 (うちくびごくもんどうこうかい)",
+    "count": 1,
+    "key": "打首獄門同好會",
+    "aliases": [
+      "打首狱门同好会",
+      "打首獄門同好會",
+      "uchikubigokumondoukoukai"
+    ],
+    "needsWebSearch": false,
+    "core": "打首狱门同好会",
+    "annotation": "うちくびごくもんどうこうかい",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "大澤 敦史",
+    "count": 1,
+    "key": "大澤敦史",
+    "aliases": [
+      "大泽敦史",
+      "大澤敦史"
+    ],
+    "needsWebSearch": true,
+    "core": "大澤敦史",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Key Sounds Label (キー・サウンズ・レーベル)",
+    "count": 1,
+    "key": "キー・サウンズ・レーベル",
+    "aliases": [
+      "kii/saunzu/reeberu",
+      "Key Sounds Label"
+    ],
+    "needsWebSearch": false,
+    "core": "キー・サウンズ・レーベル",
+    "annotation": "キー・サウンズ・レーベル",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "迷悠奈 (みゆな) / クボタカイ",
+    "count": 1,
+    "key": "迷悠奈クボタカイ",
+    "aliases": [
+      "迷悠奈",
+      "miyuna"
+    ],
+    "needsWebSearch": false,
+    "core": "迷悠奈",
+    "annotation": "みゆな",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "クボタカイ",
+    "count": 1,
+    "key": "クボタカイ",
+    "aliases": [
+      "kubotakai"
+    ],
+    "needsWebSearch": false,
+    "core": "クボタカイ",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "家入レオ (家入莉奥)",
+    "count": 1,
+    "key": "家入レオ",
+    "aliases": [
+      "家入レオ",
+      "家入reo"
+    ],
+    "needsWebSearch": false,
+    "core": "家入レオ",
+    "annotation": "家入莉奥",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ナオト・インティライミ (中村直人)",
+    "count": 1,
+    "key": "ナオト・インティライミ",
+    "aliases": [
+      "naoto/inteiraimi"
+    ],
+    "needsWebSearch": false,
+    "core": "ナオト・インティライミ",
+    "annotation": "中村直人",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Foorin (フーリン)",
+    "count": 1,
+    "key": "フーリン",
+    "aliases": [
+      "fuurin",
+      "Foorin"
+    ],
+    "needsWebSearch": false,
+    "core": "フーリン",
+    "annotation": "フーリン",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "王俊凯 / 蔡依林",
+    "count": 1,
+    "key": "王俊凱蔡依林",
+    "aliases": [
+      "王俊凯",
+      "王俊凱"
+    ],
+    "needsWebSearch": true,
+    "core": "王俊凯",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王俊凯",
+    "count": 1,
+    "key": "王俊凱",
+    "aliases": [
+      "王俊凯",
+      "王俊凱"
+    ],
+    "needsWebSearch": true,
+    "core": "王俊凯",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "生物股长 (いきものがかり)",
+    "count": 1,
+    "key": "生物股長",
+    "aliases": [
+      "生物股长",
+      "生物股長",
+      "ikimonogakari"
+    ],
+    "needsWebSearch": false,
+    "core": "生物股长",
+    "annotation": "いきものがかり",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ØMI (登坂广臣)",
+    "count": 1,
+    "key": "登坂廣臣",
+    "aliases": [
+      "登坂广臣",
+      "登坂廣臣"
+    ],
+    "needsWebSearch": true,
+    "core": "登坂广臣",
+    "annotation": "登坂广臣",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "日向文",
+    "count": 1,
+    "key": "日向文",
+    "aliases": [
+      "日向文"
+    ],
+    "needsWebSearch": true,
+    "core": "日向文",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ヘクとパスカル (Hekuto Pascal)",
+    "count": 1,
+    "key": "ヘクとパスカル",
+    "aliases": [
+      "hekutopasukaru",
+      "Hekuto Pascal"
+    ],
+    "needsWebSearch": false,
+    "core": "ヘクとパスカル",
+    "annotation": "Hekuto Pascal",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "藤原樱 (藤原さくら)",
+    "count": 1,
+    "key": "藤原櫻",
+    "aliases": [
+      "藤原樱",
+      "藤原櫻",
+      "藤原sakura"
+    ],
+    "needsWebSearch": true,
+    "core": "藤原樱",
+    "annotation": "藤原さくら",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "H△G (ハグ)",
+    "count": 1,
+    "key": "ハグ",
+    "aliases": [
+      "hagu"
+    ],
+    "needsWebSearch": false,
+    "core": "ハグ",
+    "annotation": "ハグ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "ULTRA TOWER (ウルトラタワー)",
+    "count": 1,
+    "key": "ウルトラタワー",
+    "aliases": [
+      "urutoratawaa",
+      "ULTRA TOWER"
+    ],
+    "needsWebSearch": false,
+    "core": "ウルトラタワー",
+    "annotation": "ウルトラタワー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "WANIMA (ワニマ)",
+    "count": 1,
+    "key": "ワニマ",
+    "aliases": [
+      "wanima",
+      "WANIMA"
+    ],
+    "needsWebSearch": false,
+    "core": "ワニマ",
+    "annotation": "ワニマ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "當山みれい (当山真玲)",
+    "count": 1,
+    "key": "當山みれい",
+    "aliases": [
+      "当山みれい",
+      "當山みれい",
+      "當山mirei"
+    ],
+    "needsWebSearch": false,
+    "core": "當山みれい",
+    "annotation": "当山真玲",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "じーざす (じーざすP) / 镜音铃 (鏡音リン) / 镜音连 (鏡音レン)",
+    "count": 1,
+    "key": "じーざす鏡音鈴鏡音連",
+    "aliases": [
+      "ji-zasuP",
+      "ji-zasu"
+    ],
+    "needsWebSearch": false,
+    "core": "じーざす",
+    "annotation": "じーざすP",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "じーざす (じーざすP)",
+    "count": 1,
+    "key": "じーざす",
+    "aliases": [
+      "ji-zasuP",
+      "ji-zasu"
+    ],
+    "needsWebSearch": false,
+    "core": "じーざす",
+    "annotation": "じーざすP",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "镜音铃 (鏡音リン)",
+    "count": 1,
+    "key": "鏡音鈴",
+    "aliases": [
+      "镜音铃",
+      "鏡音鈴",
+      "鏡音rin"
+    ],
+    "needsWebSearch": true,
+    "core": "镜音铃",
+    "annotation": "鏡音リン",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "镜音连 (鏡音レン)",
+    "count": 1,
+    "key": "鏡音連",
+    "aliases": [
+      "镜音连",
+      "鏡音連",
+      "鏡音ren"
+    ],
+    "needsWebSearch": true,
+    "core": "镜音连",
+    "annotation": "鏡音レン",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Paloalto (팔로알토) / BewhY (비와이)",
+    "count": 1,
+    "key": "팔로알토비와이",
+    "aliases": [
+      "팔로알토",
+      "Paloalto"
+    ],
+    "needsWebSearch": false,
+    "core": "팔로알토",
+    "annotation": "팔로알토",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Paloalto (팔로알토)",
+    "count": 1,
+    "key": "팔로알토",
+    "aliases": [
+      "팔로알토",
+      "Paloalto"
+    ],
+    "needsWebSearch": false,
+    "core": "팔로알토",
+    "annotation": "팔로알토",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "BewhY (비와이)",
+    "count": 1,
+    "key": "비와이",
+    "aliases": [
+      "비와이",
+      "BewhY"
+    ],
+    "needsWebSearch": false,
+    "core": "비와이",
+    "annotation": "비와이",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "쿠기 (Coogie) / SUPERBEE (슈퍼비)",
+    "count": 1,
+    "key": "쿠기",
+    "aliases": [
+      "쿠기",
+      "Coogie"
+    ],
+    "needsWebSearch": false,
+    "core": "쿠기",
+    "annotation": "Coogie",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "쿠기 (Coogie)",
+    "count": 1,
+    "key": "쿠기",
+    "aliases": [
+      "쿠기",
+      "Coogie"
+    ],
+    "needsWebSearch": false,
+    "core": "쿠기",
+    "annotation": "Coogie",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "SUPERBEE (슈퍼비)",
+    "count": 1,
+    "key": "슈퍼비",
+    "aliases": [
+      "슈퍼비",
+      "SUPERBEE"
+    ],
+    "needsWebSearch": false,
+    "core": "슈퍼비",
+    "annotation": "슈퍼비",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Yozoh (요조) / 小洋槐乐队 (소규모 아카시아 밴드)",
+    "count": 1,
+    "key": "小洋槐樂隊",
+    "aliases": [
+      "요조",
+      "Yozoh"
+    ],
+    "needsWebSearch": false,
+    "core": "요조",
+    "annotation": "요조",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "Yozoh (요조)",
+    "count": 1,
+    "key": "요조",
+    "aliases": [
+      "요조",
+      "Yozoh"
+    ],
+    "needsWebSearch": false,
+    "core": "요조",
+    "annotation": "요조",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "小洋槐乐队 (소규모 아카시아 밴드)",
+    "count": 1,
+    "key": "小洋槐樂隊",
+    "aliases": [
+      "小洋槐乐队",
+      "小洋槐樂隊"
+    ],
+    "needsWebSearch": true,
+    "core": "小洋槐乐队",
+    "annotation": "소규모 아카시아 밴드",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "S.E.N.S. (神思者)",
+    "count": 1,
+    "key": "神思者",
+    "aliases": [
+      "神思者",
+      "S.E.N.S."
+    ],
+    "needsWebSearch": false,
+    "core": "神思者",
+    "annotation": "神思者",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "雀斑乐团",
+    "count": 1,
+    "key": "雀斑樂團",
+    "aliases": [
+      "雀斑乐团",
+      "雀斑樂團"
+    ],
+    "needsWebSearch": true,
+    "core": "雀斑乐团",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "龙宽九段",
+    "count": 1,
+    "key": "龍寬九段",
+    "aliases": [
+      "龙宽九段",
+      "龍寬九段"
+    ],
+    "needsWebSearch": true,
+    "core": "龙宽九段",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "栗プリン (Kuripurin)",
+    "count": 1,
+    "key": "栗プリン",
+    "aliases": [
+      "栗プリン",
+      "栗purin",
+      "Kuripurin"
+    ],
+    "needsWebSearch": false,
+    "core": "栗プリン",
+    "annotation": "Kuripurin",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Flower (フラワー)",
+    "count": 1,
+    "key": "フラワー",
+    "aliases": [
+      "furawaa",
+      "Flower"
+    ],
+    "needsWebSearch": false,
+    "core": "フラワー",
+    "annotation": "フラワー",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Lambsey (ラムジ)",
+    "count": 1,
+    "key": "ラムジ",
+    "aliases": [
+      "ramuji",
+      "Lambsey"
+    ],
+    "needsWebSearch": false,
+    "core": "ラムジ",
+    "annotation": "ラムジ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "芝麻Mochi",
+    "count": 1,
+    "key": "芝麻",
+    "aliases": [
+      "芝麻"
+    ],
+    "needsWebSearch": true,
+    "core": "芝麻",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "皇后皮箱",
+    "count": 1,
+    "key": "皇后皮箱",
+    "aliases": [
+      "皇后皮箱"
+    ],
+    "needsWebSearch": true,
+    "core": "皇后皮箱",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "尤长靖",
+    "count": 1,
+    "key": "尤長靖",
+    "aliases": [
+      "尤长靖",
+      "尤長靖"
+    ],
+    "needsWebSearch": true,
+    "core": "尤长靖",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "郑恩地 (정은지)",
+    "count": 1,
+    "key": "鄭恩地",
+    "aliases": [
+      "郑恩地",
+      "鄭恩地"
+    ],
+    "needsWebSearch": true,
+    "core": "郑恩地",
+    "annotation": "정은지",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "GUMI (グミ) / 八王子P (8#Prince)",
+    "count": 1,
+    "key": "八王子",
+    "aliases": [
+      "gumi",
+      "GUMI"
+    ],
+    "needsWebSearch": false,
+    "core": "グミ",
+    "annotation": "グミ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "八王子P (8#Prince)",
+    "count": 1,
+    "key": "八王子",
+    "aliases": [
+      "八王子"
+    ],
+    "needsWebSearch": true,
+    "core": "八王子",
+    "annotation": "8#Prince",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "宋旻浩 (MINO) / TAEYANG (太阳)",
+    "count": 1,
+    "key": "宋旻浩",
+    "aliases": [
+      "宋旻浩",
+      "MINO"
+    ],
+    "needsWebSearch": true,
+    "core": "宋旻浩",
+    "annotation": "MINO",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "宋旻浩 (MINO)",
+    "count": 1,
+    "key": "宋旻浩",
+    "aliases": [
+      "宋旻浩",
+      "MINO"
+    ],
+    "needsWebSearch": true,
+    "core": "宋旻浩",
+    "annotation": "MINO",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "sokodomo (양승호) / HAON (김하온)",
+    "count": 1,
+    "key": "양승호김하온",
+    "aliases": [
+      "양승호",
+      "sokodomo"
+    ],
+    "needsWebSearch": false,
+    "core": "양승호",
+    "annotation": "양승호",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "sokodomo (양승호)",
+    "count": 1,
+    "key": "양승호",
+    "aliases": [
+      "양승호",
+      "sokodomo"
+    ],
+    "needsWebSearch": false,
+    "core": "양승호",
+    "annotation": "양승호",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "HAON (김하온)",
+    "count": 1,
+    "key": "김하온",
+    "aliases": [
+      "김하온",
+      "HAON"
+    ],
+    "needsWebSearch": false,
+    "core": "김하온",
+    "annotation": "김하온",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "李泳知 (이영지) / Woo / CHANGMO (창모) / The Quiett (더 콰이엇)",
+    "count": 1,
+    "key": "李泳知",
+    "aliases": [
+      "李泳知"
+    ],
+    "needsWebSearch": true,
+    "core": "李泳知",
+    "annotation": "이영지",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "李泳知 (이영지)",
+    "count": 1,
+    "key": "李泳知",
+    "aliases": [
+      "李泳知"
+    ],
+    "needsWebSearch": true,
+    "core": "李泳知",
+    "annotation": "이영지",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "CHANGMO (창모)",
+    "count": 1,
+    "key": "창모",
+    "aliases": [
+      "창모",
+      "CHANGMO"
+    ],
+    "needsWebSearch": false,
+    "core": "창모",
+    "annotation": "창모",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "The Quiett (더 콰이엇)",
+    "count": 1,
+    "key": "더콰이엇",
+    "aliases": [
+      "더콰이엇",
+      "The Quiett"
+    ],
+    "needsWebSearch": false,
+    "core": "더콰이엇",
+    "annotation": "더 콰이엇",
+    "isJapanese": false,
+    "isKorean": true
+  },
+  {
+    "name": "山本彩 (やまもと さやか)",
+    "count": 1,
+    "key": "山本彩",
+    "aliases": [
+      "山本彩",
+      "yamamoto sayaka"
+    ],
+    "needsWebSearch": false,
+    "core": "山本彩",
+    "annotation": "やまもと さやか",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "欅坂46",
+    "count": 1,
+    "key": "欅坂",
+    "aliases": [
+      "榉坂",
+      "欅坂"
+    ],
+    "needsWebSearch": true,
+    "core": "欅坂",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "艾热AIR / JelloRio李佳隆",
+    "count": 1,
+    "key": "艾熱李佳隆",
+    "aliases": [
+      "艾热",
+      "艾熱"
+    ],
+    "needsWebSearch": true,
+    "core": "艾热",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "艾热AIR",
+    "count": 1,
+    "key": "艾熱",
+    "aliases": [
+      "艾热",
+      "艾熱"
+    ],
+    "needsWebSearch": true,
+    "core": "艾热",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "JelloRio李佳隆",
+    "count": 1,
+    "key": "李佳隆",
+    "aliases": [
+      "李佳隆",
+      "JelloRio"
+    ],
+    "needsWebSearch": false,
+    "core": "李佳隆",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "吴亦凡",
+    "count": 1,
+    "key": "吳亦凡",
+    "aliases": [
+      "吴亦凡",
+      "吳亦凡"
+    ],
+    "needsWebSearch": true,
+    "core": "吴亦凡",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "横浜銀蠅 (よこはまぎんばえ)",
+    "count": 1,
+    "key": "橫浜銀蠅",
+    "aliases": [
+      "横浜银蝇",
+      "橫浜銀蠅",
+      "yokohamaginbae"
+    ],
+    "needsWebSearch": false,
+    "core": "横浜銀蠅",
+    "annotation": "よこはまぎんばえ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "小峰峰（陈峰）",
+    "count": 1,
+    "key": "小峰峰",
+    "aliases": [
+      "小峰峰"
+    ],
+    "needsWebSearch": true,
+    "core": "小峰峰",
+    "annotation": "陈峰",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "申容财 (신용재) / 尹民秀 (윤민수)",
+    "count": 1,
+    "key": "申容財尹民秀",
+    "aliases": [
+      "申容财",
+      "申容財"
+    ],
+    "needsWebSearch": true,
+    "core": "申容财",
+    "annotation": "신용재",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "申容财 (신용재)",
+    "count": 1,
+    "key": "申容財",
+    "aliases": [
+      "申容财",
+      "申容財"
+    ],
+    "needsWebSearch": true,
+    "core": "申容财",
+    "annotation": "신용재",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "尹民秀 (윤민수)",
+    "count": 1,
+    "key": "尹民秀",
+    "aliases": [
+      "尹民秀"
+    ],
+    "needsWebSearch": true,
+    "core": "尹民秀",
+    "annotation": "윤민수",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "あるふぁきゅん。",
+    "count": 1,
+    "key": "あるふぁきゅん",
+    "aliases": [
+      "arufuakyun"
+    ],
+    "needsWebSearch": false,
+    "core": "あるふぁきゅん",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "Mitchie M (人间调教)",
+    "count": 1,
+    "key": "人間調教",
+    "aliases": [
+      "人间调教",
+      "人間調教",
+      "Mitchie M"
+    ],
+    "needsWebSearch": false,
+    "core": "人间调教",
+    "annotation": "人间调教",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "OSTER project (オスタープロジェクト)",
+    "count": 1,
+    "key": "オスタープロジェクト",
+    "aliases": [
+      "osutaapurojekuto",
+      "OSTER project"
+    ],
+    "needsWebSearch": false,
+    "core": "オスタープロジェクト",
+    "annotation": "オスタープロジェクト",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "黄霄雲",
+    "count": 1,
+    "key": "黃霄雲",
+    "aliases": [
+      "黄霄云",
+      "黃霄雲"
+    ],
+    "needsWebSearch": true,
+    "core": "黄霄雲",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "袁娅维TIA RAY / 小宇-宋念宇",
+    "count": 1,
+    "key": "袁婭維小宇宋念宇",
+    "aliases": [
+      "袁娅维",
+      "袁婭維"
+    ],
+    "needsWebSearch": true,
+    "core": "袁娅维",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "小宇-宋念宇",
+    "count": 1,
+    "key": "小宇宋念宇",
+    "aliases": [
+      "小宇宋念宇"
+    ],
+    "needsWebSearch": true,
+    "core": "小宇宋念宇",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "GUMI (グミ) / KYO",
+    "count": 1,
+    "key": "グミ",
+    "aliases": [
+      "gumi",
+      "GUMI"
+    ],
+    "needsWebSearch": false,
+    "core": "グミ",
+    "annotation": "グミ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "河合奈保子 (かわい なおこ)",
+    "count": 1,
+    "key": "河合奈保子",
+    "aliases": [
+      "河合奈保子",
+      "kawai naoko"
+    ],
+    "needsWebSearch": false,
+    "core": "河合奈保子",
+    "annotation": "かわい なおこ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Mongol800 (モンゴル800)",
+    "count": 1,
+    "key": "モンゴル",
+    "aliases": [
+      "mongoru800",
+      "mongoru",
+      "Mongol800"
+    ],
+    "needsWebSearch": false,
+    "core": "モンゴル",
+    "annotation": "モンゴル800",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "周笔畅",
+    "count": 1,
+    "key": "周筆暢",
+    "aliases": [
+      "周笔畅",
+      "周筆暢"
+    ],
+    "needsWebSearch": true,
+    "core": "周笔畅",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "miu-clips (阿藤芳史)",
+    "count": 1,
+    "key": "阿藤芳史",
+    "aliases": [
+      "阿藤芳史",
+      "miu"
+    ],
+    "needsWebSearch": true,
+    "core": "阿藤芳史",
+    "annotation": "阿藤芳史",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "まるりとりゅうが (真瑠梨与隆雅)",
+    "count": 1,
+    "key": "まるりとりゅうが",
+    "aliases": [
+      "maruritoryuuga"
+    ],
+    "needsWebSearch": false,
+    "core": "まるりとりゅうが",
+    "annotation": "真瑠梨与隆雅",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "足首",
+    "count": 1,
+    "key": "足首",
+    "aliases": [
+      "足首"
+    ],
+    "needsWebSearch": true,
+    "core": "足首",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "椎名林檎 (しいな りんご) / 浮雲",
+    "count": 1,
+    "key": "椎名林檎浮雲",
+    "aliases": [
+      "椎名林檎",
+      "shiina ringo"
+    ],
+    "needsWebSearch": false,
+    "core": "椎名林檎",
+    "annotation": "しいな りんご",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "浮雲",
+    "count": 1,
+    "key": "浮雲",
+    "aliases": [
+      "浮云",
+      "浮雲"
+    ],
+    "needsWebSearch": true,
+    "core": "浮雲",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "はるまきごはん (春卷饭)",
+    "count": 1,
+    "key": "はるまきごはん",
+    "aliases": [
+      "harumakigohan"
+    ],
+    "needsWebSearch": false,
+    "core": "はるまきごはん",
+    "annotation": "春卷饭",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "chay (チャイ)",
+    "count": 1,
+    "key": "チャイ",
+    "aliases": [
+      "chai",
+      "chay"
+    ],
+    "needsWebSearch": false,
+    "core": "チャイ",
+    "annotation": "チャイ",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "のぼる↑P / 初音未来 (初音ミク)",
+    "count": 1,
+    "key": "のぼる初音未來",
+    "aliases": [
+      "noboru"
+    ],
+    "needsWebSearch": false,
+    "core": "のぼる",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "信泽宣明 (Nobuaki Nobusawa)",
+    "count": 1,
+    "key": "信澤宣明",
+    "aliases": [
+      "信泽宣明",
+      "信澤宣明",
+      "Nobuaki Nobusawa"
+    ],
+    "needsWebSearch": false,
+    "core": "信泽宣明",
+    "annotation": "Nobuaki Nobusawa",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "高橋瞳 (たかはしひとみ)",
+    "count": 1,
+    "key": "高橋瞳",
+    "aliases": [
+      "高桥瞳",
+      "高橋瞳",
+      "takahashihitomi"
+    ],
+    "needsWebSearch": false,
+    "core": "高橋瞳",
+    "annotation": "たかはしひとみ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "日本群星 (オムニバス)",
+    "count": 1,
+    "key": "日本群星",
+    "aliases": [
+      "日本群星",
+      "omunibasu"
+    ],
+    "needsWebSearch": false,
+    "core": "日本群星",
+    "annotation": "オムニバス",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "ちびた",
+    "count": 1,
+    "key": "ちびた",
+    "aliases": [
+      "chibita"
+    ],
+    "needsWebSearch": false,
+    "core": "ちびた",
+    "annotation": null,
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "whiteeeen (ホワイティーン)",
+    "count": 1,
+    "key": "ホワイティーン",
+    "aliases": [
+      "howaiteiin",
+      "whiteeeen"
+    ],
+    "needsWebSearch": false,
+    "core": "ホワイティーン",
+    "annotation": "ホワイティーン",
+    "isJapanese": true,
+    "isKorean": false
+  },
+  {
+    "name": "川濑智子 (かわせ ともこ)",
+    "count": 1,
+    "key": "川瀨智子",
+    "aliases": [
+      "川濑智子",
+      "川瀨智子",
+      "kawase tomoko"
+    ],
+    "needsWebSearch": false,
+    "core": "川濑智子",
+    "annotation": "かわせ ともこ",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "新山詩織 (にいやま しおり)",
+    "count": 1,
+    "key": "新山詩織",
+    "aliases": [
+      "新山诗织",
+      "新山詩織",
+      "niiyama shiori"
+    ],
+    "needsWebSearch": false,
+    "core": "新山詩織",
+    "annotation": "にいやま しおり",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "金范洙 (김범수)",
+    "count": 1,
+    "key": "金範洙",
+    "aliases": [
+      "金范洙",
+      "金範洙"
+    ],
+    "needsWebSearch": true,
+    "core": "金范洙",
+    "annotation": "김범수",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "王若琳",
+    "count": 1,
+    "key": "王若琳",
+    "aliases": [
+      "王若琳"
+    ],
+    "needsWebSearch": true,
+    "core": "王若琳",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "MISIA (米希亚)",
+    "count": 1,
+    "key": "米希亞",
+    "aliases": [
+      "米希亚",
+      "米希亞",
+      "MISIA"
+    ],
+    "needsWebSearch": false,
+    "core": "米希亚",
+    "annotation": "米希亚",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "Che'Nelle (香奈儿)",
+    "count": 1,
+    "key": "香奈兒",
+    "aliases": [
+      "香奈儿",
+      "香奈兒",
+      "Che"
+    ],
+    "needsWebSearch": true,
+    "core": "香奈儿",
+    "annotation": "香奈儿",
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "杨颖",
+    "count": 1,
+    "key": "楊穎",
+    "aliases": [
+      "杨颖",
+      "楊穎"
+    ],
+    "needsWebSearch": true,
+    "core": "杨颖",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  },
+  {
+    "name": "南拳妈妈",
+    "count": 1,
+    "key": "南拳媽媽",
+    "aliases": [
+      "南拳妈妈",
+      "南拳媽媽"
+    ],
+    "needsWebSearch": true,
+    "core": "南拳妈妈",
+    "annotation": null,
+    "isJapanese": false,
+    "isKorean": false
+  }
+]

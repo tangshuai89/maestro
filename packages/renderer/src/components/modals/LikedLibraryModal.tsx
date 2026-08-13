@@ -3,7 +3,12 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import Modal from '../common/Modal';
 import { getLibrary, importLibrary } from '../../api';
 import type { LibraryImportResult, UnifiedSearchItem, MusicProvider } from '../../api';
-import { groupLibraryItems, itemPlatforms } from '../../lib/groupLibrary';
+import {
+  groupLibraryItems,
+  itemPlatforms,
+  versionTagLabel,
+} from '../../lib/groupLibrary';
+import type { VersionTag } from '@maestro/common';
 import { placeholderCover } from '../../lib/placeholderCover';
 import {
   readCachedLibrary,
@@ -21,15 +26,26 @@ interface Props {
   onImportSettled?: (newCount: number | undefined) => void;
 }
 
-/** 平台徽章：一个平台一个色块。QQ=Q / 网易云=云 / Spotify=S / Deezer=D。 */
-function PlatformBadges({ platforms }: { platforms: MusicProvider[] }) {
+/** 平台徽章：一个平台一个色块。QQ=Q / 网易云=云 / Spotify=S / Deezer=D。
+ *  versionTag 决定徽章配色（live=蓝 / acoustic=紫 / remix=橙 / 翻唱=灰等）；
+ *  子行（展开后）传 versionTag 让每个成员染色，折叠行传 null 保持默认色。
+ *  折叠行的「组级」徽章仍走原逻辑（无 versionTag 染色），便于一眼看出
+ *  「这首歌在几个平台被心过」的总览；版本细节在子行。 */
+function PlatformBadges({
+  platforms,
+  versionTag,
+}: {
+  platforms: MusicProvider[];
+  versionTag?: VersionTag;
+}) {
+  const vtClass = versionTag ? ` liked-modal-badges--${versionTag.toLowerCase()}` : '';
   return (
-    <div className="liked-modal-sources">
+    <div className={`liked-modal-sources${vtClass}`}>
       {platforms.map((platform) => (
         <span
           key={platform}
           className={`liked-modal-badge liked-modal-badge-${platform}`}
-          title={platform}
+          title={versionTag && versionTagLabel(versionTag) ? `${platform} · ${versionTagLabel(versionTag)}` : platform}
         >
           {platform === 'qq'
             ? 'Q'
@@ -38,6 +54,9 @@ function PlatformBadges({ platforms }: { platforms: MusicProvider[] }) {
               : platform === 'spotify'
                 ? 'S'
                 : 'D'}
+          {versionTag && versionTag !== null && versionTag !== 'COVER' && (
+            <span className="liked-modal-badge-version">{versionTagLabel(versionTag)}</span>
+          )}
         </span>
       ))}
     </div>
@@ -195,9 +214,26 @@ export default function LikedLibraryModal({
   };
 
   const items = useMemo(() => data?.items ?? [], [data]);
+  // 搜索：按歌名/歌手不区分大小写包含匹配。在分组**之前**过滤 items——
+  // 命中的 item 进分组，天然只显示匹配组。
+  // ⚠️ 下标映射：filtered 保留「过滤后在原始 items 里的下标」——groupLibraryItems
+  // 返回的 member.index 是 filteredItems 内的位置，onPlay 必须用 originalIndex
+  // 在原始 items 里定位，否则搜索过滤后点击播放会错位（播默认列表第 1 首）。
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const indexed = items.map((item, originalIndex) => ({ item, originalIndex }));
+    if (!q) return indexed;
+    return indexed.filter(
+      ({ item }) =>
+        item.title.toLowerCase().includes(q) ||
+        item.artist.toLowerCase().includes(q),
+    );
+  }, [items, query]);
+  const filteredItems = useMemo(() => filtered.map((f) => f.item), [filtered]);
   // 展示级跨平台分组：把后端没并起来的同名副本（QQ 加了译名括号那种）折叠成
   // 一个可展开的组。仅影响展示，onPlay 仍按成员在 items 里的原始下标定位。
-  const groups = useMemo(() => groupLibraryItems(items), [items]);
+  const groups = useMemo(() => groupLibraryItems(filteredItems), [filteredItems]);
   // 哪些组当前展开（按 group.key）。
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (key: string) =>
@@ -253,7 +289,9 @@ export default function LikedLibraryModal({
       <>
         <div
           className={`liked-modal-row${isOpen ? ' is-open' : ''}`}
-          onClick={() => onPlay(items, g.representativeIndex)}
+          onClick={() =>
+            onPlay(items, filtered[g.representativeIndex].originalIndex)
+          }
         >
           {rep.coverUrl ? (
             <img
@@ -284,6 +322,15 @@ export default function LikedLibraryModal({
             </div>
           </div>
           <PlatformBadges platforms={g.platforms} />
+          {g.hasCover && (
+            <span
+              className="liked-modal-cover-warn"
+              title="组内包含翻唱版本，展开查看"
+              aria-label="含翻唱版本"
+            >
+              ⚠
+            </span>
+          )}
           {multi && (
             <button
               className="liked-modal-toggle"
@@ -310,15 +357,22 @@ export default function LikedLibraryModal({
             {g.members.map((m) => (
               <li
                 key={m.item.id}
-                className="liked-modal-subrow"
+                className={`liked-modal-subrow${m.versionTag ? ` liked-modal-subrow--${m.versionTag.toLowerCase()}` : ''}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onPlay(items, m.index);
+                  onPlay(items, filtered[m.index].originalIndex);
                 }}
               >
                 <span className="liked-modal-subrow-dot" aria-hidden />
                 <div className="liked-modal-meta">
-                  <div className="liked-modal-track">{m.item.title}</div>
+                  <div className="liked-modal-track">
+                    {m.item.title}
+                    {m.versionTag && (
+                      <span className={`liked-modal-version-tag liked-modal-version-tag--${m.versionTag.toLowerCase()}`}>
+                        {versionTagLabel(m.versionTag)}
+                      </span>
+                    )}
+                  </div>
                   <div className="liked-modal-artist">
                     {m.item.artist}
                     {m.item.album && (
@@ -326,7 +380,10 @@ export default function LikedLibraryModal({
                     )}
                   </div>
                 </div>
-                <PlatformBadges platforms={itemPlatforms(m.item)} />
+                <PlatformBadges
+                  platforms={itemPlatforms(m.item)}
+                  versionTag={m.versionTag}
+                />
               </li>
             ))}
           </ul>
@@ -371,6 +428,30 @@ export default function LikedLibraryModal({
       {/* 「正在同步」条：refreshing 时显示。position:absolute 浮在 header 下边缘。 */}
       {refreshing && <div className="liked-modal-syncbar" aria-hidden />}
 
+      {/* 搜索条：只库非空时显示。过滤在分组前，命中即显示匹配组。 */}
+      {items.length > 0 && (
+        <div className="liked-modal-search">
+          <input
+            type="text"
+            className="liked-modal-search-input"
+            placeholder="搜索歌名或歌手…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="搜索我的喜欢"
+          />
+          {query && (
+            <button
+              className="liked-modal-search-clear"
+              onClick={() => setQuery('')}
+              aria-label="清除搜索"
+              title="清除搜索"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         className="liked-modal-body"
         ref={bodyRef}
@@ -395,16 +476,20 @@ export default function LikedLibraryModal({
           <div className="liked-modal-empty">
             <div className="liked-modal-empty-icon">♡</div>
             <div className="liked-modal-empty-text">
-              还没有导入任何红心歌曲
+              {items.length > 0
+                ? `未找到匹配「${query.trim()}」的歌曲`
+                : '还没有导入任何红心歌曲'}
             </div>
-            <button
-              className="liked-modal-refresh"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              {refreshing && <span className="liked-modal-btn-spinner" aria-hidden />}
-              {refreshing ? '导入中…' : '现在导入'}
-            </button>
+            {items.length === 0 && (
+              <button
+                className="liked-modal-refresh"
+                onClick={handleRefresh}
+                disabled={refreshing}
+              >
+                {refreshing && <span className="liked-modal-btn-spinner" aria-hidden />}
+                {refreshing ? '导入中…' : '现在导入'}
+              </button>
+            )}
           </div>
         )}
 
