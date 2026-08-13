@@ -16,6 +16,46 @@ import { getSpotifyToken } from '../api';
 import { createWpsWrapper, type WpsWrapper, type WpsPlayerState } from '../lib/spotify-wps';
 import { wpsLog, wpsWarn, wpsError, wpsDebugBanner } from '../lib/debug';
 
+/**
+ * 探测 EME/Widevine 是否对 renderer 可用。WPS SDK 播放时内部调
+ * `navigator.requestMediaKeySystemAccess('com.widevine.alpha', ...)`，
+ * 不可用（CDM 没暴露 / session 权限）→ 播放必报 playback_error。
+ */
+async function probeEmeWidevine(): Promise<void> {
+  const nav = navigator as Navigator & {
+    requestMediaKeySystemAccess?: (
+      keySystem: string,
+      config: unknown[],
+    ) => Promise<unknown>;
+  };
+  if (typeof nav.requestMediaKeySystemAccess !== 'function') {
+    wpsError('eme', 'navigator.requestMediaKeySystemAccess 不存在 → EME 不可用，WPS 播放必失败');
+    return;
+  }
+  try {
+    const access = await nav.requestMediaKeySystemAccess('com.widevine.alpha', [
+      {
+        initDataTypes: ['cenc'],
+        audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+        videoCapabilities: [],
+        distinctiveIdentifier: 'optional',
+        persistentState: 'optional',
+      },
+    ]);
+    const info = await (
+      access as { getConfiguration: () => unknown }
+    ).getConfiguration();
+    wpsLog('eme', `requestMediaKeySystemAccess('com.widevine.alpha') OK — keySystem=${(info as { keySystem?: string }).keySystem ?? 'widevine'}`);
+  } catch (err) {
+    wpsError(
+      'eme',
+      `requestMediaKeySystemAccess('com.widevine.alpha') 抛错:`,
+      (err as Error)?.message ?? String(err),
+      '→ Widevine CDM 未暴露给 renderer（castLabs components 已装但 webContents 拿不到 CDM？）',
+    );
+  }
+}
+
 export interface UseSpotifyWpsPlayer {
   /** WPS player 是否 connected。false = 走 30s 预览路径。 */
   wpsReady: boolean;
@@ -52,7 +92,6 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
   useEffect(() => {
     wpsDebugBanner();
     if (!enabled) {
-      // Free / 没登录 / tier 缺省 → 不 connect，已有 wrapper 断连
       wpsLog('enabled', `disabled → 不 connect，wpsReady=false（30s 预览路径）`);
       wrapperRef.current?.disconnect();
       wrapperRef.current = null;
@@ -78,6 +117,9 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
           setWpsReady(false);
           return;
         }
+        // EME/Widevine 可用性探测：WPS SDK 内部靠 requestMediaKeySystemAccess
+        // 拿 Widevine 解密音频。不可用 → connect 能成但播放必 playback_error。
+        await probeEmeWidevine();
         const w = createWpsWrapper();
         wrapperRef.current = w;
         // No stored unsubscribe: teardown calls w.disconnect() which clears
