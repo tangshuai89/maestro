@@ -20,7 +20,9 @@
     "lint:renderer": "cd packages/renderer && npm run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "pretypecheck": "npm run build:common",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build:common",
     "test": "bash scripts/test.sh"
   },
   "author": "tangshuai89",
