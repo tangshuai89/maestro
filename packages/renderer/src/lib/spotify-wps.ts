@@ -19,6 +19,8 @@
 
 // SDK 脚本由 index.html defer 加载（<script src="https://sdk.scdn.co/spotify-player.js">）。
 
+import { wpsDebugBanner, wpsLog, wpsWarn, wpsError } from './debug';
+
 export type WpsStateCallback = (s: WpsPlayerState) => void;
 
 export interface WpsPlayerState {
@@ -129,9 +131,11 @@ function waitForSdk(): Promise<SpotifySdk> {
     const start = Date.now();
     const tick = () => {
       if ((window as unknown as { __wpsSdkReady?: boolean }).__wpsSdkReady && window.Spotify) {
+        wpsLog('sdk', `ready after ${Date.now() - start}ms`);
         return resolve(window.Spotify);
       }
       if (Date.now() - start > 5000) {
+        wpsError('sdk', `timeout after 5s; __wpsSdkReady=${Boolean((window as unknown as { __wpsSdkReady?: boolean }).__wpsSdkReady)}, window.Spotify=${Boolean(window.Spotify)}`);
         return reject(new Error('spotify-wps: SDK 未在 5s 内 ready'));
       }
       setTimeout(tick, 50);
@@ -181,6 +185,7 @@ export function createWpsWrapper(): WpsWrapper {
     // SDK 事件 payload 类型各异，回调统一收 unknown 再 narrow（见 on() 签名）。
     const onPlayerStateChanged = (payload: unknown): void => {
       const sdkState = payload as SpotifyWebPlaybackState | null;
+      wpsLog('state', `player_state_changed paused=${sdkState?.paused} pos=${sdkState?.position}ms hasTrack=${Boolean(sdkState?.track)}`);
       if (!sdkState || !sdkState.track) {
         emit({ hasTrack: false, isPlaying: false, track: null, positionMs: 0 });
         return;
@@ -204,11 +209,15 @@ export function createWpsWrapper(): WpsWrapper {
       if (info?.device_id) {
         (p as unknown as { _deviceId?: string })._deviceId = info.device_id;
         deviceId = info.device_id;
+        wpsLog('ready', `SDK ready event fired, device_id=${info.device_id}`);
         readyCallbacks.forEach((cb) => { try { cb(); } catch { /* ignore */ } });
         readyCallbacks.length = 0;
+      } else {
+        wpsWarn('ready', 'ready event fired but no device_id', fmtErr(payload));
       }
     };
     const onNotReady = (): void => {
+      wpsWarn('not_ready', 'Spotify Connect device went offline (player paused / transferred away)');
       emit({ hasTrack: false, isPlaying: false, track: null, positionMs: 0 });
     };
     // SDK 提供 .addListener()，.on() 是 alias
@@ -234,18 +243,25 @@ export function createWpsWrapper(): WpsWrapper {
     };
     on('authentication_error', (e: unknown) => {
       wpsFatal = true;
-      console.warn('[spotify-wps] authentication_error:', fmtErr(e));
+      // 通常是 OAuth scope 缺 `streaming`（WPS 必须）。重 OAuth 即可解决。
+      wpsError('fatal', 'authentication_error', fmtErr(e),
+        '→ 大概率：OAuth scope 缺 streaming。撤销授权（https://www.spotify.com/account/apps/）后重新 OAuth');
     });
     on('playback_error', (e: unknown) => {
       console.warn('[spotify-wps] playback_error:', fmtErr(e));
+      wpsWarn('fatal', 'playback_error（非致命）', fmtErr(e));
     });
     on('initialization_error', (e: unknown) => {
       wpsFatal = true;
-      console.warn('[spotify-wps] initialization_error:', fmtErr(e));
+      // 通常是 EME / Widevine CDM 初始化失败（隐私模式 / DRM 不支持的浏览器）。
+      wpsError('fatal', 'initialization_error', fmtErr(e),
+        '→ 大概率：EME/Widevine CDM 失败。试试退出隐私窗口 / 换浏览器');
     });
     on('account_error', (e: unknown) => {
       wpsFatal = true;
-      console.warn('[spotify-wps] account_error:', fmtErr(e));
+      // 账户被 Spotify 拒绝（Premium 校验失败 / 区域限制）。
+      wpsError('fatal', 'account_error', fmtErr(e),
+        '→ 大概率：Premium 账户校验失败 / 区域限制 / Family plan 子账户被识别成 free');
     });
   }
 
@@ -272,8 +288,12 @@ export function createWpsWrapper(): WpsWrapper {
         },
         volume: 0.8,
       });
-      bindListeners(p);
-      const ok = await p.connect();
+    wpsLog('connect', `creating player name=${deviceName} token.len=${token.length}`);
+    wpsDebugBanner();
+    bindListeners(p);
+    const t0 = Date.now();
+    const ok = await p.connect();
+    wpsLog('connect', `p.connect()=${ok} took=${Date.now() - t0}ms`);
     if (!ok) {
       throw new Error('spotify-wps: connect() 返 false');
     }
@@ -300,6 +320,7 @@ export function createWpsWrapper(): WpsWrapper {
     if (!deviceId) throw new Error('spotify-wps: device not ready');
     const token = await getToken?.();
     if (!token) throw new Error('spotify-wps: no token');
+    wpsLog('play', `PUT /v1/me/player/play device=${deviceId} uri=${trackUri}`);
     const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
       method: 'PUT',
       headers: {

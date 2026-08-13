@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSpotifyToken } from '../api';
 import { createWpsWrapper, type WpsWrapper, type WpsPlayerState } from '../lib/spotify-wps';
+import { wpsLog, wpsWarn, wpsError, wpsDebugBanner } from '../lib/debug';
 
 export interface UseSpotifyWpsPlayer {
   /** WPS player 是否 connected。false = 走 30s 预览路径。 */
@@ -49,24 +50,31 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
   const wrapperRef = useRef<WpsWrapper | null>(null);
 
   useEffect(() => {
+    wpsDebugBanner();
     if (!enabled) {
       // Free / 没登录 / tier 缺省 → 不 connect，已有 wrapper 断连
+      wpsLog('enabled', `disabled → 不 connect，wpsReady=false（30s 预览路径）`);
       wrapperRef.current?.disconnect();
       wrapperRef.current = null;
       setWpsReady(false);
       console.log('[wps hook] disabled, wpsReady=false');
       return;
     }
+    wpsLog('enabled', `enabled → 准备 connect`);
 
     let cancelled = false;
     let refreshTimer: number | null = null;
 
     async function init(): Promise<void> {
+      wpsDebugBanner();
+      wpsLog('init', `enabled=true → fetch token`);
       try {
         const tok = await getSpotifyToken();
         if (cancelled) return;
+        wpsLog('init', `token received tier=${tok.tier} expiresIn=${Math.round((tok.expiresAt - Date.now()) / 1000)}s`);
         if (tok.tier !== 'premium') {
           // 罕见的并发：login 切到 free / premium 切换中 → 不连
+          wpsLog('init', `tier !== 'premium' (got ${String(tok.tier)}) → skip connect, wpsReady stays false → 30s preview fallback`);
           setWpsReady(false);
           return;
         }
@@ -79,6 +87,7 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
         });
         await w.connect(tok.accessToken);
         if (cancelled) { w.disconnect(); return; }
+        wpsLog('init', 'connect returned; polling for emeOk && hasDeviceId (15s budget)');
         // 不等 fixed timeout——SDK ready 事件先到才真 ready。
         // 安全上限 15s；期间 emeOk 变为 false 或 ready 不 fire 则退出。
         const ready = await new Promise<boolean>((resolve) => {
@@ -94,9 +103,11 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
           check();
         });
         if (!ready) {
+          wpsWarn('init', `ready check failed: emeOk=${w.emeOk} hasDeviceId=${w.hasDeviceId} → wpsReady=false`);
           setWpsReady(false);
           return;
         }
+        wpsLog('init', `READY (emeOk && hasDeviceId) — Premium WPS 全曲播放路径已激活`);
         setWpsReady(true);
 
         // Token 续期定时器：每次 tick 检查 expiresAt；将到期则重拉 + connect
@@ -106,21 +117,27 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
             const cur = await getSpotifyToken();
             if (cancelled) return;
             const remaining = cur.expiresAt - Date.now();
+            wpsLog('token-refresh', `remaining=${Math.round(remaining / 1000)}s`);
             if (remaining < TOKEN_REFRESH_LEAD_MS) {
               // 仅刷新 token，不重建 connection —— 避免 disconnect→connect 之间
               // 的播放秒停（v2 已知限制：$w.connect() 会断旧 player 再建新。
               // 修复：不重连，只让 SDK 的 getOAuthToken 回调在下次 WebSocket 续连
               // 时拿到新 token）。
               w.refreshToken(cur.accessToken);
+              wpsLog('token-refresh', `刷新 token（剩 ${Math.round(remaining / 1000)}s < 60s lead）`);
             }
           } catch (err) {
             // token 端点失败时保持现有连接（WPS 自己会断），下次 tick 再试
             console.warn('[wps] token refresh check failed:', err);
+            wpsWarn('token-refresh', 'token refresh endpoint failed:', err);
           }
         }, TOKEN_CHECK_INTERVAL_MS);
       } catch (err) {
         if (!cancelled) {
           console.warn('[wps] init failed (Premium required, Free = expected):', err);
+          // 大概率是 waitForSdk 超时 / scope 缺 streaming / token 无效
+          wpsError('init', 'connect() 抛错 → wpsReady=false:', err,
+            '→ 大概率：SDK 超时（网络/scdn.co 被墙）/ OAuth scope 缺 streaming / token 无效');
           setWpsReady(false);
         }
       }

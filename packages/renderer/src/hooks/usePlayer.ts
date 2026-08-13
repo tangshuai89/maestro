@@ -34,6 +34,7 @@ import {
   writeStoredDeezerPreset,
 } from '../lib/storage';
 import { useCoverArt } from './useCoverArt';
+import { wpsLog } from '../lib/debug';
 
 /**
  * 跨平台降级的优先级（镜像 server 的 PLAY_PRIORITY）：某首歌的当前源播放
@@ -317,6 +318,9 @@ export function usePlayer(
       // 30s 预览代理，跟 WPS 全曲流冲突（双声道）。WPS 就绪判断懒读 ref。
       if (next.provider === 'spotify' && wpsRef?.current?.wpsReady) {
         audioUrl = '';
+        wpsLog('presentTrack', `provider=spotify && wpsReady=true → 清空 audioUrl（WPS 全曲接管）`);
+      } else if (next.provider === 'spotify') {
+        wpsLog('presentTrack', `provider=spotify 但 wpsReady=${Boolean(wpsRef?.current?.wpsReady)} → 走 30s 预览路径（如果 Premium 但仍卡 30s，看 enabled/wpsReady/connect 日志）`);
       }
       if (next.coverUrl) {
         // presentCover reads the ref.current INSIDE its async work, so it
