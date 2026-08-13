@@ -59,7 +59,12 @@ export default function App() {
   // WPS 仅在 spotify Premium 时启用；Free / 其他 provider 走 <audio> + 30s 预览。
   const wpsEnabled = player.provider === 'spotify' && auth.auth.tier === 'premium';
   wpsDebugBanner();
-  wpsLog('wpsEnabled', `provider=${player.provider} tier=${String(auth.auth.tier)} → wpsEnabled=${wpsEnabled}`);
+  // wpsEnabled 只在变化时打（每次 render 都打会刷屏，淹没其他 wps 日志）
+  const prevWpsEnabled = useRef<boolean | null>(null);
+  if (prevWpsEnabled.current !== wpsEnabled) {
+    prevWpsEnabled.current = wpsEnabled;
+    wpsLog('wpsEnabled', `provider=${player.provider} tier=${String(auth.auth.tier)} → wpsEnabled=${wpsEnabled}`);
+  }
   const wps = useSpotifyWpsPlayer({ enabled: wpsEnabled });
   wpsRef.current = wps;
 
