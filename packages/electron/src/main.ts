@@ -754,7 +754,15 @@ app.whenReady().then(async () => {
     console.log('[main] widevine components ready:', widevineStatus);
   } catch (err) {
     // 组件加载失败不阻塞启动——非 Spotify 源照常用，Spotify 自动退回 30s 预览。
-    console.error('[main] widevine components failed (Spotify 全曲不可用，退回 30s 预览):', err);
+    // 把 detail 也 stringify 出来（默认 devtools 只显示 [Object]）。
+    const safeStr = (v: unknown): string => {
+      try { return JSON.stringify(v, (_k, val) => typeof val === 'bigint' ? String(val) : val); }
+      catch { return String(v); }
+    };
+    console.error(
+      '[main] widevine components failed (Spotify 全曲不可用，退回 30s 预览):',
+      safeStr(err),
+    );
   }
   // Renderer 端 WPS 初始化失败时（"No supported keysystem was found"）用来
   // 排查：Widevine CDM 在本机到底 ready 没。让 renderer 也能看到 main 端
