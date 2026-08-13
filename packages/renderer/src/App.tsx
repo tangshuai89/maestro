@@ -10,7 +10,7 @@ import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
 import type { LibraryImportResult } from './api';
 import { readCachedLibrary } from './lib/likedCache';
-import { wpsLog, wpsDebugBanner } from './lib/debug';
+import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
 import Titlebar from './components/layout/Titlebar';
 import CoverCard from './components/player/CoverCard';
@@ -162,6 +162,19 @@ export default function App() {
     next: player.handleSkip,
     prev: player.handlePrev,
   };
+  // 启动时查一次 main 端 Widevine CDM 状态。Spotify WPS 初始化失败时
+  // （"No supported keysystem was found"）这里能看到 castLabs components
+  // 到底有没有就绪，不用切回 npm run dev 终端看 main log。
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.getWidevineStatus) return;
+    void api.getWidevineStatus().then((s) => {
+      wpsLog('widevine', `ready=${s.ready} status=${JSON.stringify(s.status)}`);
+      if (!s.ready) {
+        wpsError('widevine', 'Widevine CDM 未就绪 — Spotify WPS 全曲播放不可用，会卡 30s');
+      }
+    });
+  }, []);
   useEffect(() => {
     const api = window.electronAPI;
     if (!api?.onTrayCommand) return;

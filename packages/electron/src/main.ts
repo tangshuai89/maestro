@@ -745,13 +745,24 @@ app.whenReady().then(async () => {
   //    Playback SDK 靠 EME/Widevine 解密整首曲流，必须在建窗口前 whenReady，
   //    否则 renderer 里 SDK 抢先初始化会报 initialization_error → 退回 30s 预览。
   //    没有 Premium 也能验证组件本身就绪（status 里 Widevine=ready/registered）。
+  let widevineReady = false;
+  let widevineStatus: unknown = null;
   try {
     await components.whenReady();
-    console.log('[main] widevine components ready:', components.status());
+    widevineReady = true;
+    widevineStatus = components.status();
+    console.log('[main] widevine components ready:', widevineStatus);
   } catch (err) {
     // 组件加载失败不阻塞启动——非 Spotify 源照常用，Spotify 自动退回 30s 预览。
     console.error('[main] widevine components failed (Spotify 全曲不可用，退回 30s 预览):', err);
   }
+  // Renderer 端 WPS 初始化失败时（"No supported keysystem was found"）用来
+  // 排查：Widevine CDM 在本机到底 ready 没。让 renderer 也能看到 main 端
+  // 状态，不用切到 npm run dev 启动终端。
+  ipcMain.handle('widevine:status', () => ({
+    ready: widevineReady,
+    status: widevineStatus,
+  }));
 
   // 1. 启动 sidecar（prod 模式才有），等它就绪
   try {
