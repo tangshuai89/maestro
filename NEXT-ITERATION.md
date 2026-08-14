@@ -6,22 +6,103 @@
 ## 当前状态（基线）
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）
-均已合入 `master`。四大平台能力**端到端可用**：登录、搜索、radio、跨平台
-match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、visionOS 风 Bento UI、
-Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron fork）。
++ **版本标签 + 别名表合并**（PR #52：castLabs fork v31.7.7→v43.2.0+wvcus、
+QA 全绿、80+ 个测试）+ **WPS 诊断 + 设备 404 重试 + WPS 优先 Spotify 源 + EME 探测**
+（PR #53）均已合入 `master` / `fix/fanout`。四大平台能力**端到端可用**：
+登录、搜索、radio、跨平台 match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、
+visionOS 风 Bento UI、Spotify WPS 路径完整。
 
-剩 ~10% 的工作集中在三类：
+**已知阻塞**：Spotify Premium 全曲播放卡在 **Widevine license server 500**——
+castLabs fork 的免费 `+wvcus` 构建是 **dev VMP 签名**（README 原话：
+"For production use you can sign up for our EVS service"），Spotify 生产 license
+服务器拒 dev 签名 → 500。**唯一修复路径 = castLabs EVS（生产 VMP 签名）+ Apple
+Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立的"Apple Dev
++EVS 落地"专案。
 
-1. **生产化最后一步**：`npm run pack` 端到端冒烟 + castLabs EVS VMP 签名
-   把"能装"做成"装完能 Premium 播整曲"。
-2. **Settings 收尾**：独立设置页（备份入口、DeepSeek key 管理、源连接健康、
+剩 ~10% 的工作集中在四类：
+
+1. **Apple Dev + EVS 落地（本期最优先）**：见下 0 节。0 成本 EVS + $99/年 Apple Dev。
+2. **生产化最后一步**：`npm run pack` 端到端冒烟（避开 #1 license 阻塞后）。
+3. **Settings 收尾**：独立设置页（备份入口、DeepSeek key 管理、源连接健康、
    渠道优先级）+ 首次启动引导流。
-3. **桌面体验与 AI 深化**：Lite 模式、桌面歌词浮窗、媒体键/全局热键、
+4. **桌面体验与 AI 深化**：Lite 模式、桌面歌词浮窗、媒体键/全局热键、
    自然语言歌单（战略重点）。
 
 ---
 
-## 1. 生产打包（packaging）— **接近完成，只剩端到端 + VMP 签名**
+## 0. Apple Developer + castLabs EVS 落地 — **本期最优先**
+
+> **背景**：Spotify WPS 卡在 license server 500，根因是 castLabs fork `+wvcus`
+> 构建用 **dev VMP 签名**（README 原话），被 Spotify 生产 license server 拒。
+> Spotify 自己桌面端的 Electron fork 不开放——他们是 Widevine 3PL 自签的
+> production VMP 第三方路径。第三方唯一合规通道 = castLabs EVS（Electronic
+> Video Service），**完全免费**（公开承诺 2020-09-04 wiki），个人开发者零成本
+> 可签。macOS 侧还需 Apple Developer Account（$99/年）做 code-sign / notarize，
+> 否则 Gatekeeper 拦 dmg。
+>
+> **W1 收尾不能跳过这一步**——EVS 不签，license 永远 500，"能装"也播不响。
+
+### 0.1 一次性环境准备（1–2 小时）
+
+- [ ] **买 Apple Developer Account**（[developer.apple.com](https://developer.apple.com/programs/enroll/)，
+      $99/年），批准后装 Developer ID Application Certificate 到 Mac Keychain
+- [ ] **pip 装 EVS 客户端**：`pip3 install --upgrade castlabs-evs`
+- [ ] **注册 EVS 账户**：`python3 -m castlabs_evs.account signup`（e-mail 收验证码，
+      Org 随便填个人；账号**永久免费**，签 streaming signature 不收费）
+- [ ] **EVS 客户端**登录后自动缓存 access token 到 `~/.castlabs-evs/`；
+      `EVS_NO_ASK=1` 跳过交互（CI / 自动化友好）
+
+### 0.2 集成 build → sign → notarize（半天）
+
+- [ ] **`packages/electron/afterPack-vmp.cjs`** 已就位（PR #39），在 codesign **之前**
+      调 `castlabs_evs.vmp sign-pkg dist/mac-{x64,arm64}/Maestro.app`——
+      macOS VMP 签名必须在 codesign **之前**（vmp-resign.py 也在 dist 里可手签）；
+      Windows 必须在 codesign **之后**。**逻辑已就绪**，缺的是 EVS 凭据
+- [ ] 验证 `build.electronDist` 仍指本地 `node_modules/electron/dist`（v43 Widevine CDM）
+- [ ] 验证 `build.afterPack` 钩子链：VMP sign → codesign → notarize → dmg
+- [ ] 逃生阀 `SKIP_VMP=1 npm run pack` 保留（无 Apple Dev / 无 EVS 凭据时验打包管线）
+- [ ] **CI 化**（可选）：把 EVS 凭据放 GitHub Actions secret，每次 release tag 自动
+      出 prod-signed dmg
+
+### 0.3 验收（半小）
+
+- [ ] 装 EVS-signed dmg → 登录 Premium → 播完整曲目（**目标**：license 200，
+      `hasTrack=true`，进 WPS 全曲路径，不再卡 30s）
+- [ ] Spotify 桌面端可见 `maestro-xxxx` 设备 + transport（play/pause/seek）生效
+- [ ] token 1h 重连不掉播
+- [ ] 重复连续播 3 首以上无 `playback_error`
+
+### 0.4 不在本期范围
+
+- iOS / Android 端（用 WPS 路径就行）
+- castLabs 商业 VMP 审计（3PL，`3pl@castlabs.com`）——仅在偏离 ECS 标准布局时需要，
+  本项目就是标准 ECS v43 fork，不需要
+- `persistent` signature（Spotify 走 `streaming` 即可，persistent 是下载场景）
+
+### 0.5 风险 + 兜底
+
+- **EVS 凭据失效**（每月 token 过期）：`castlabs_evs.account refresh` 续期；CI 里
+  `EVS_NO_ASK=1` + secret 注入
+- **Apple Dev 申请被拒**（罕见，多数 1-3 天批）：用 Apple ID 个人账号也行（功能受限，
+  团队签名 / TestFlight 不行，但本地 dev 用 Developer ID 自签够用）
+- **dmg 被 Gatekeeper 拒**（"unidentified developer"）：notarize 走通后自动消失；
+  本地测试阶段用户可右键打开绕过
+
+### 0.6 估时
+
+- 0.1 一次性环境：1–2 小时（Apple Dev 申请是瓶颈，可能 1–3 天，**尽早提交**）
+- 0.2 集成：0.5–1 天（afterPack-vmp 钩子已就位，主要调通 EVS 凭据 + codesign 时序）
+- 0.3 验收：0.5 小时
+- **合计**：1–2 天（**不算 Apple Dev 审批等待**）
+
+---
+
+## 1. 生产打包（packaging）— **等 #0 EVS 落地后才能跑完整链**
+
+> 顺序：**先做 #0 Apple Dev + EVS**（#0.2 集成 VMP 钩子）→ 再做 #1 task 16
+> 端到端冒烟 → 最后 #1 验收（装 dmg 播整曲）。**#1 task 16 没 EVS 凭据会失败**
+> （`afterPack-vmp.cjs` 跳过签名但产物仍 dev-signed，license 500 阻塞），
+> 所以 #0 必须在 #1 之前。
 
 - **Spec**: `specs/packaging/spec.md` + `tasks.md`（task 1–15 已勾，仅 task 16 端到端冒烟未跑）
 - **已完成**：
@@ -31,8 +112,14 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
   - ✅ electron-builder extraResources：renderer / server / build 都进 `.app/Contents/Resources/`（#9、#13、#14）
   - ✅ macOS 应用图标（`.icns`）+ Dock 图标 + macOS Tray（播放/暂停/上下首/显示/退出）
     + 关窗到托盘、Cmd+Q 真退出并 kill sidecar（#15）
-  - ✅ Spotify Widevine 路径：换 castLabs Electron fork（`v31.7.7+wvcus`）
-    + `components.whenReady()` 接入（PR #39，specs/spotify v2.1）
+  - ✅ Spotify Widevine 路径：castLabs Electron fork **升级到 `v43.2.0+wvcus`**（PR #52）
+    + `components.whenReady()` 接入 + Widevine CDM v4.10.3050.0 装好（PR #52，specs/spotify v2.1）
+  - ✅ WPS 调试链：`?wpsDebug=1` 开关 + `[wps-debug]` 日志覆盖 wpsEnabled/tier/SDK/connect/
+    ready/fatal/widevine/transfer/play/presentTrack/transferHere（PR #53）
+  - ✅ 设备 404 重试：Spotify Connect 设备注册延迟 → 退避 0.5s/1.5s/3s（PR #53）
+  - ✅ WPS 优先 Spotify 源：服务端 bestSource 把 Spotify 排最后，render 端
+    `parsePlayableQueue` 在 WPS 激活时强制用 Spotify 源（PR #53）
+  - ✅ EME 探测：connect 前 `requestMediaKeySystemAccess('com.widevine.alpha')` 验可用
   - ✅ 打包 VMP 钩子：`packages/electron/afterPack-vmp.cjs` 在 codesign 前
     调 `castlabs_evs.vmp sign-pkg`（含 `SKIP_VMP=1` 逃生阀），`build.electronDist`
     指本地 castLabs dist（PR #39）
@@ -46,15 +133,21 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
 - **风险**：
   - 本机 iOA 拦 Widevine CDM 运行时下载（CDN `redirector.gvt1.com` 被 TLS 拦截——
     直连返 567B HTML 拦截页）。已在无 iOA 网络 + 已装 CDM 的机器上绕开。
-  - EVS 签名是 castLabs 商业服务，但注册免费
-- **估时**：0.5–1 天（一次性环境准备 + 一次冒烟）
+  - **EVS 签名本身完全免费**（公开承诺 2020-09-04 wiki），但**它只对 ECS v6+ 官方
+    fork 有效**——本项目用的就是标准 ECS v43 fork，无 3PL 审计问题
+- **估时**：0.5–1 天（一次性环境准备 + 一次冒烟），**前置 = #0 落地**
 
 ---
 
-## 2. Spotify 平台对等 — **已基本完成，仅剩 Premium 手动验证**
+## 2. Spotify 平台对等 — **应用层全完成，Widevine 全曲卡在 license 500**
 
-- **Spec**: `specs/spotify/spec.md` v1 + v2（v2 任务 1–24 全勾；v2.1 Widevine
-  任务 26–31 全勾，仅 32/33 需 Premium 手动）
+> **现状**（v2 + v2.1 + v2.2 调试全部合入 `master`/`fix/fanout`）：应用层 100% 完成，
+> Widevine CDM 装好且 EME 探测 OK，但 Spotify WPS 仍卡在 **license server 500**
+> ——castLabs fork `+wvcus` 是 **dev VMP 签名**，被 Spotify 生产 license server
+> 拒。**修复路径 = #0（Apple Dev + castLabs EVS 签名）**。
+
+- **Spec**: `specs/spotify/spec.md` v1 + v2 + v2.1（任务 1–31 全勾；v2.2 调试
+  增量见 `specs/spotify/tasks.md`）
 - **已完成**：
   - ✅ OAuth PKCE 完整闭环（start / callback / refresh）（v1 task 1–2）
   - ✅ Web API 搜索 + 字段映射到统一 Track（v1 task 5）
@@ -65,33 +158,15 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
   - ✅ usePlayer 路由：spotify + premium + wpsReady → WPS 全曲；
     否则回退 30s 预览（v2 task 20–21）
   - ✅ SourceSelect 按 tier 切 desc（v2 task 19）
-  - ✅ Widevine 运行时换 castLabs fork + components.whenReady（v2.1）
+  - ✅ castLabs fork **升级到 v43.2.0+wvcus**（PR #52），Widevine CDM v4.10.3050.0
+    装好 + EME 探测 OK（v2.1 task 26–31 + v2.2）
+  - ✅ `?wpsDebug=1` 开关 + 全链路 `[wps-debug]` 日志（v2.2 调试）
+  - ✅ 设备注册 404 退避重试 + WPS 优先 Spotify 源（PR #53）
 - **仍剩**（specs/spotify tasks 25、32、33）：
-  - [ ] Premium 手动：完整曲目播放 >30s / Spotify 桌面端可见设备 / transport / token 重连
+  - [ ] **#0 EVS 落地后**：Premium 手动 → 播整曲 / Spotify 桌面端可见设备 /
+        transport / token 重连——**当前 30s 卡死的根因就是 dev VMP 签名**
   - [ ] 打包 DMG 经 EVS VMP 签名后 Premium 仍能播整曲
 - **不做**：歌词（额外 scope，deferred）、曲末自动切歌（WPS 检测不可靠，已知限制）
-
----
-
-## 2. Spotify 平台对等
-
-- **Spec**: `specs/spotify/spec.md`（P5 v1：OAuth PKCE + liked-songs read）
-- **当前**：
-  - ✅ OAuth PKCE 登录、读 liked 库、unified-search 串入、fan-out ❤ read 路径
-  - 🚧 play 只能 30s 预览（无 Premium 账号，或我们还没接 `player` endpoint）
-  - 📋 ❤ 写回 Spotify（`PUT /v1/me/tracks`）
-- **范围（v2）**：
-  - 走通 Spotify Web Playback SDK 的 OAuth scope (`streaming user-read-email user-modify-playback-state`)
-    → 桌面 App 内嵌 WebView 跑 SDK（已有 Electron 嵌页能力）
-  - ❤ 写回：拿 `access_token` 调 `PUT /v1/me/tracks?ids=...`
-- **验收**：
-  - [ ] Premium 账号能从 Spotify 源直接播完整曲目
-  - [ ] unified search 选中 Spotify bestSource → 跳 Spotify Web Playback
-  - [ ] 网易云 / QQ 收 ❤ 后，Spotify 端 playlist 同步出现
-- **风险**：
-  - Web Playback SDK 要 Premium + active browser-like context（Electron 满足）
-  - ❤ 写回需要 user-library-modify scope，OAuth 流程里加即可
-- **估时**：3–4 天（SDK 集成 + 测试矩阵）
 
 ---
 
@@ -312,7 +387,8 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
 
 | 周 | 内容 |
 | --- | --- |
-| **W1** | #1 收尾：`npm run pack` 端到端冒烟 + EVS VMP 签名一次性 setup + Premium 手动验收（需无 iOA 网络 + Premium 账号） |
+| **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ `pip install castlabs-evs` + 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
+| **W1** | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播） |
 | **W2** | #5 Settings（独立 modal：DeepSeek key、库管理、源连接健康）+ **#6.2 渠道优先级**（并入 Settings） |
 | **W3** | #6.3 Lite 模式（normal/lite 切换 + ✨ 入口接 reco-deepseek） + **7.4 NL 歌单先写 `specs/nl-playlist/spec.md`** |
 | **W4** | #4 歌词体验收尾（多源聚合 + share）+ 7.1 EQ / 7.2 桌面歌词（基本功打磨，优先级低于 W2/W3） |
@@ -320,7 +396,8 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
 
 > **本轮（已发）**：
 > - ✅ #1 包装主体 + #6.4 Tray/图标（packaging spec task 1–15）
-> - ✅ #2 Spotify v2 全部应用层（task 1–24 + v2.1 task 26–31）+ Widevine 运行时换 castLabs fork
+> - ✅ #2 Spotify v2 全部应用层（task 1–24）+ v2.1 Widevine 路径（task 26–31，castLabs fork **已升级到 v43.2.0+wvcus**）
+> - ✅ **v2.2 调试链**（PR #53）：`?wpsDebug=1` 日志 + 设备 404 退避重试 + WPS 优先 Spotify 源 + EME 探测——定位到 **license 500** 是 castLabs dev VMP 签名被 Spotify 生产 license server 拒
 > - ✅ #3.1 加密备份 + 每日自动备份 + Electron 端 STORAGE_DIR 修正
 > - ✅ #6.1 红心点播核实（无需改动）
 >
@@ -328,6 +405,7 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
 > - 6.x 全部不再做独立 PR（6.2 并入 #5、6.3 单做、6.4 已合、6.1 已合）
 > - 7.x 除 7.3 媒体键外都属于"打磨批次"，发版前不必全做完
 > - 7.4 NL 歌单要 W3 起 spec 先行（避免重蹈 6.4 一次性写大段发现的延迟）
+> - **castLabs 商业 3PL VMP 审计**（`3pl@castlabs.com`）——本项目用标准 ECS v43 fork，**不需要 3PL**
 >
 > 上面的估时是"代码写完"，实际产出还要算 review + 跑 spec 下 `tasks.md` 验收。
 > 每项开工前先读对应 spec（`specs/<name>/spec.md`）复习一遍，再决定要不要新建 ADR。
@@ -347,7 +425,13 @@ Spotify Premium 全曲播放（Web Playback SDK + Widevine + castLabs Electron f
   + electron-builder extraResources / electronDist / afterPack（EVS VMP 签名 + codesign 时序）
 - `~/knowledge/maestro/spotify.md`：OAuth PKCE + tier 缓存 + WPS 包装（spotify-wps.ts
   模式：window.__wpsSdkReady 旗位 + wpsFatal/emeOk/hasDeviceId 三态）
-  + **Widevine 铁三角**：vanilla Electron 无 CDM、无 VMP；castLabs fork 是唯一同版
-  drop-in；本机 iOA 拦 CDM CDN → 567B HTML 拦截页；换无 TLS 拦截网络或用 EVS 已签 .app
+  + **Widevine + VMP 铁四角**（**新加 license 500 教训**）：
+    - vanilla Electron 无 CDM、无 VMP
+    - castLabs fork 是唯一同版 drop-in（**v43.2.0+wvcus**，v31.7.7 旧版太老 + 协议变更下载 CDM 失败）
+    - **license 500 = dev VMP 签名被 Spotify 生产 server 拒**——必须走 **EVS（免费）**
+      签 production VMP，否则"能装不能响"
+    - 本机 iOA 拦 CDM CDN（`redirector.gvt1.com`）→ 567B HTML 拦截页；换无 TLS 拦截网络
+    - WPS 路径完整调试链 `?wpsDebug=1`（PR #53 落地）——把"widevine/tier/SDK ready/
+      connect/ready/fatal/transfer/play/presentTrack" 全打到 console
 
 这样下期迭代（或交接）的人有现成入口。

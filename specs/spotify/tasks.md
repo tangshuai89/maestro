@@ -32,7 +32,10 @@
 > v2 应用层 code-complete 但 vanilla Electron 无 Widevine CDM + 无 VMP 签名，
 > WPS 永远 initialization_error 退 30s。换 castLabs fork 解决。
 
-- [x] 26. electron devDep 换 `github:castlabs/electron-releases#v31.7.7+wvcus`（drop-in，同版）+ npm install
+- [x] 26. electron devDep 换 `github:castlabs/electron-releases`（drop-in，同版）+ npm install
+  - 2024-08 锁 v31.7.7+wvcus，2026-08 升级到 **v43.2.0+wvcus**（commit `8244344`）——
+    v31 的 Component Updater 协议被 Google 服务器拒，CDM 装不上；
+    v43 走当前协议，Widevine CDM v4.10.3050.0 装好
 - [x] 27. main.ts: import `components` + 建窗口前 `await components.whenReady()` + log `components.status()`
 - [x] 28. main.ts: 删无效的 `enable-features=EncryptedMedia` hack + 修 webPreferences Widevine 注释
 - [x] 29. 删死路脚本 scripts/get-widevine-cdm.js（手动下 CDM 过不了 VMP）
@@ -40,3 +43,37 @@
 - [x] 31. typecheck 干净 + build:electron 通过 + 启动看 components.status() Widevine 就绪
 - [ ] 32. ⚠️ 本机 iOA 挡 CDM 运行时下载：`components.whenReady()` 报 error 0 但 WidevineCdm/ 空，直连 CDM CDN 返回 567B HTML 拦截页。代码/配置正确，全曲无法在此机验证（见 spec v2 已知限制）
 - [ ] 33. 【需无 TLS 拦截网络 + Premium 手动】dev 下 CDM 能下 + Premium 播整曲；【需 EVS 账号 + Premium】打包 DMG VMP 签名后仍能播整曲
+
+## v2.2（调试：定位"Premium 但仍 30s"根因 → 锁在 license 500）
+
+> v2.1 把 CDM 装好了，但 Premium 实际播放仍卡 30s。PR #53 加全链路调试，
+> 定位到 **Spotify license server 500**：castLabs fork `+wvcus` 是 **dev VMP 签名**，
+> 被生产 license server 拒。修复路径 = **v2.3 Apple Dev + castLabs EVS**（见下）。
+
+- [x] 34. `?wpsDebug=1` URL 开关 + `__wpsDebugOn()/Off()` console toggle + localStorage 持久化（`packages/renderer/src/lib/debug.ts`）
+- [x] 35. App.tsx / useSpotifyWpsPlayer / spotify-wps 全链路 `[wps-debug]` 日志（wpsEnabled/tier/SDK ready/connect/ready/fatal/transfer/play/presentTrack）
+- [x] 36. IPC `widevine:status`：renderer 启动时调 main 拉 `components.status()`，打到 console
+- [x] 37. EME 探测 `requestMediaKeySystemAccess('com.widevine.alpha')`：connect 前确认 CDM 可用
+- [x] 38. `parsePlayableQueue` 支持 `wpsReady` 参数：WPS 激活时优先 Spotify 源（之前服务端 bestSource 把 Spotify 排最后，WPS 路径不触发）
+- [x] 39. `spotifyApiWithRetry` 工具：transfer / play 遇 404（device 还没注册到 Spotify Connect 设备列表）退避重试 0.5s/1.5s/3s
+- [x] 40. `transferHere` 失败不阻断 `play`（两边都 404 重试；play 带 `device_id` 也会激活设备）
+
+## v2.3（Apple Developer + castLabs EVS —— 唯一修复 license 500 的路径）
+
+> **根因（v2.2 定位）**：castLabs fork `+wvcus` 是 **dev VMP 签名**（README 原话：
+> "For production use you can sign up for our EVS service"），Spotify 生产 license
+> server 拒 → `POST /v1/widevine-license/v1/audio/license 500` → `playback_error` →
+> `hasTrack=false` → 30s 退。**Spotify 自己桌面端用 prod VMP 签的 ECS**——第三方
+> 拿不到，唯一合规通道 = castLabs EVS（完全免费）签 streaming。
+> 
+> **EVS = Electronic Video Service**：castLabs 公开承诺 **完全免费**（2020-09-04 wiki），
+> 个人开发者零成本，签 streaming signature 不收费。**前置 = Apple Developer**
+> （$99/年）做 macOS code-sign / notarize，否则 Gatekeeper 拦 dmg。
+
+- [ ] 41. **买 Apple Developer Account**（[developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/)，$99/年，1–3 天批）—— **⚠️ 先提交**（1–3 天延迟），同时跑 #42-#44
+- [ ] 42. `pip install --upgrade castlabs-evs`
+- [ ] 43. `python3 -m castlabs_evs.account signup`（e-mail 验证，凭据缓存 `~/.castlabs-evs/`）—— **0 成本**
+- [ ] 44. EVS 签出 dev 用 .app：`python3 -m castlabs_evs.vmp sign-pkg <dist/mac-arm64/Maestro.app>` —— `?wpsDebug=1` 重跑验证 license 返 200 + `hasTrack=true`
+- [ ] 45. `afterPack-vmp.cjs` 钩子**生产模式**（无 `SKIP_VMP=1`）跑通：sign → codesign → notarize → dmg
+- [ ] 46. 装 EVS-signed dmg → 登录 Premium → 播整曲 / Spotify 桌面端可见 "maestro-xxxx" 设备 / transport / token 1h 重连不掉播
+- [ ] 47. CI 化（可选）：EVS 凭据进 GitHub Actions secret，`EVS_NO_ASK=1` 跑 release tag 自动出 prod-signed dmg
