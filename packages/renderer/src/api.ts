@@ -249,7 +249,16 @@ export async function detectLiked(
   mergedId: string,
   sources: Array<{ platform: MusicProvider; trackId: string }>,
   meta?: LikeMeta,
-): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
+): Promise<{
+  liked: boolean;
+  fannedOutTo: MusicProvider[];
+  /**
+   * true = 后台跨平台 discover 已落定，fannedOutTo 是最终值；
+   * false = waitForSettled 超时（discover 还在跑 / 排着队），fannedOutTo 是
+   * **中间态**——前端轮询绝不能把两个相同的中间值当成稳定，必须等到 true。
+   */
+  settled: boolean;
+}> {
   return json(
     await fetchWithToken(`${API_BASE}/music/like/detect`, {
       method: 'POST',

@@ -593,18 +593,18 @@ export function usePlayer(
   const detectAndApplyLiked = useCallback(
     async (
       unified: UnifiedSearchItem | undefined,
-    ): Promise<number | null> => {
+    ): Promise<{ count: number; settled: boolean } | null> => {
       activeMergedIdRef.current = unified?.id;
       if (!unified) {
         setFanOutCount(0);
-        return 0;
+        return { count: 0, settled: true };
       }
       const sources = unified.sources
         .filter((s) => s.hasCopyright)
         .map((s) => ({ platform: s.platform, trackId: s.trackId }));
       if (!sources.length) {
         setFanOutCount(0);
-        return 0;
+        return { count: 0, settled: true };
       }
       try {
         const r = await detectLiked(unified.id, sources, {
@@ -618,7 +618,7 @@ export function usePlayer(
         const count = r.liked ? r.fannedOutTo.length : 0;
         setFanOutCount(count);
         setTrack((prev) => (prev ? { ...prev, liked: r.liked } : prev));
-        return count;
+        return { count, settled: r.settled };
       } catch {
         // 检测失败不影响播放，静默。
         return null;
@@ -642,12 +642,21 @@ export function usePlayer(
   }, [detectAndApplyLiked]);
 
   /**
-   * 持续轮询 detect，直到 liked + fanOutCount 连续两次读到相同值——证明后台
-   * discover 已落定，再无平台会补上来。返回 Promise<{ liked, count } | null>，
-   * 外层 stale 时返回 null（切歌 / 翻转 / 新一轮 refresh 让位）。
+   * 持续轮询 detect，直到后台 discover 确认落定（detect 响应 settled=true）
+   * 且 liked + fanOutCount 连续两次读到相同值。返回 Promise<{ liked, count } |
+   * null>，外层 stale 时返回 null（切歌 / 翻转 / 新一轮 refresh 让位）。
+   *
+   * ⚠️ 稳定判定的关键：**只有 settled=true 的读数才计入稳定命中**。detect 的
+   * waitForSettled 只有 6s，后台 discover（跨平台搜索 + 串行队列）可能更久——
+   * 尤其某个 likeable 平台没有这首歌时（如 Spotify 无中文老歌，fanOut 永远
+   * 不含它，每次 detect 都重搜）。这种窗口里连续两次读到相同 count 只是
+   * 「中间态没变」，不是「discover 落定」；按老逻辑判定稳定后轮询退出，discover
+   * 落定（如 netease 补上、count 1→2）后没人再刷新，角标永远停在 1（用户
+   * 实测：好不容易-方大同，QQ+网易云已 ❤，Spotify 无此歌，角标不显示 2）。
+   * settled=false 的读数重置 lastKey/stableHits，逼轮询等到真落定。
    *
    * 节奏：前 6s 每 800ms 探一次（discover 通常 < 3s 落定），再放慢到每 2s，
-   * 最多 25s 后放弃——background discover 真卡死了也不把 UI 拉死。
+   * 最多 30s 后放弃——background discover 真卡死了也不把 UI 拉死。
    */
   const refreshLikedStateUntilStable = useCallback(async (): Promise<{
     liked: boolean;
@@ -655,25 +664,30 @@ export function usePlayer(
   } | null> => {
     const myGen = ++likedRefreshGenRef.current;
     const startTs = Date.now();
-    const HARD_TIMEOUT_MS = 25_000;
+    const HARD_TIMEOUT_MS = 30_000;
     let lastKey: string | null = null;
     let stableHits = 0;
     while (Date.now() - startTs < HARD_TIMEOUT_MS) {
       if (likedRefreshGenRef.current !== myGen) return null; // 让位给新一轮
       const unified = currentUnifiedRef.current;
       if (!unified) return null;
-      const count = await detectAndApplyLiked(unified);
+      const res = await detectAndApplyLiked(unified);
       if (likedRefreshGenRef.current !== myGen) return null;
-      if (count === null) {
+      if (res === null) {
         // 探测失败（响应被丢弃 / 网络错）—— 重试但不计入稳定命中。
+        stableHits = 0;
+        lastKey = null;
+      } else if (!res.settled) {
+        // discover 还没落定：读到的 count 是中间态，既不算稳定命中，
+        // 也不作比较基准（防止中间态与落定后的最终值恰好相同被误判稳定）。
         stableHits = 0;
         lastKey = null;
       } else {
         const liked = !!trackRef.current?.liked;
-        const key = `${liked}|${count}`;
+        const key = `${liked}|${res.count}`;
         if (key === lastKey) {
           stableHits += 1;
-          if (stableHits >= 2) return { liked, count };
+          if (stableHits >= 2) return { liked, count: res.count };
         } else {
           lastKey = key;
           stableHits = 1;

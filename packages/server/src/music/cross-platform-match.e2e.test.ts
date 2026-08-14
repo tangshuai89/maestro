@@ -1641,7 +1641,93 @@ async function main() {
     console.log('✅ 32. 多候选按时长接近度选版本（告别的时代 选对同专辑版）');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 32 项通过');
+  // ── 33. 慢 discover（某 likeable 平台搜索悬挂 > waitForSettled 6s）→ settled 语义
+  // 用户场景：好不容易-方大同，QQ + 网易云已 ❤，Spotify 已登录但**没有这首歌**
+  // （且网络差时搜索能悬挂 30s / fetch failed）。discover 必须搜 Spotify 才能
+  // 确认缺席 → 串行队列被拖过 detect 的 waitForSettled(6s) → detect 返回的是
+  // **中间态**（只有 qq，角标 1）。老前端把两个相同的中间值当"稳定"停止轮询，
+  // discover 落定（netease 补上、应显示 2）后没人再刷新 → 角标永远不显示 2。
+  // 修：detect 响应带 settled 标志——settled=false = 中间态，前端必须继续轮询
+  // 直到 settled=true；同时等价曲搜索套 5s 超时，悬挂不再堵死整条队列。
+  {
+    const origSpotify = (svc as any).spotify;
+    const origSessionProviders = session.providers;
+    let releaseSpotify: () => void = () => {};
+    const spotifyGate = new Promise<void>((r) => {
+      releaseSpotify = r;
+    });
+    (svc as any).spotify = {
+      ...origSpotify,
+      search: async () => {
+        await spotifyGate; // 模拟悬挂的网络请求（老代码无超时 → 堵死串行队列）
+        return [];
+      },
+    };
+    (session as any).providers = {
+      ...origSessionProviders,
+      spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
+    };
+    (svc as any).likedCache.clear();
+    (svc as any).equivSearchCache.clear();
+    qqLikedRemote = ['q-slow'];
+    neteaseSearchResults = [neTrack('n-slow', '慢速测试曲', 'Slow Artist', 200)];
+    try {
+      // (a) discover 未落定 → settled=false，fannedOutTo 只有 qq（netease 还没补上）
+      const ra = await svc.detectLikedAndSync(
+        session,
+        'merged-slow',
+        [{ platform: 'qq', trackId: 'q-slow' }],
+        { title: '慢速测试曲', artist: 'Slow Artist', duration: 200 },
+      );
+      assert.strictEqual(
+        ra.settled,
+        false,
+        `discover 悬挂时 detect 应返回 settled=false（中间态），实际 ${JSON.stringify(ra)}`,
+      );
+      assert.deepStrictEqual(
+        ra.fannedOutTo.sort(),
+        ['qq'],
+        'settled=false 时 fannedOutTo 只含已落账平台（qq）',
+      );
+
+      // (b) 放行 Spotify（模拟 fetch 最终返回/失败）→ discover 落定 → 后续
+      // detect 应返回 settled=true 且 fannedOutTo 含 netease（角标 = 2）。
+      releaseSpotify();
+      const ok = await waitFor(async () => {
+        const rb = await svc.detectLikedAndSync(
+          session,
+          'merged-slow',
+          [{ platform: 'qq', trackId: 'q-slow' }],
+          { title: '慢速测试曲', artist: 'Slow Artist', duration: 200 },
+        );
+        return rb.settled === true && rb.fannedOutTo.includes('netease');
+      }, 8000);
+      assert.ok(
+        ok,
+        'discover 落定后 detect 应返回 settled=true 且 fannedOutTo 含 netease',
+      );
+      const rc = await svc.detectLikedAndSync(
+        session,
+        'merged-slow',
+        [{ platform: 'qq', trackId: 'q-slow' }],
+        { title: '慢速测试曲', artist: 'Slow Artist', duration: 200 },
+      );
+      assert.deepStrictEqual(
+        rc.fannedOutTo.sort(),
+        ['netease', 'qq'],
+        `落定后角标应是 2 平台（qq+netease），实际 ${JSON.stringify(rc.fannedOutTo)}`,
+      );
+    } finally {
+      releaseSpotify(); // 别把 gate 卡在队列里影响后续用例
+      (svc as any).spotify = origSpotify;
+      (session as any).providers = origSessionProviders;
+      (svc as any).equivSearchCache.clear();
+      neteaseSearchResults = [];
+    }
+    console.log('✅ 33. 慢 discover → detect settled=false（中间态），落定后 settled=true 角标齐全');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 33 项通过');
 }
 
 main().catch((err) => {

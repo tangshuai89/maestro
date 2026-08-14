@@ -52,10 +52,16 @@ const LYRICS_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
 const LYRICS_CACHE_TTL_MS = 10 * 60 * 1000;
 const LYRICS_CACHE_MAX = 2_000;
 
-/** 跨平台等价曲搜索（同 (session, platform, title+artist kw)）的内存缓存 TTL。
- *  比歌词缓存短得多——只用于「同一次事件窗口内的并发去重」，放过几分钟用户
- *  重新点这首歌就当新鲜搜。 */
-const EQUIV_SEARCH_CACHE_TTL_MS = 30_000;
+/** 跨平台等价曲搜索（同 (session, platform, title+artist kw, 时长分桶)）的内存缓存。
+ *  TTL 按结果性质分级：
+ *  - **命中 / 干净缺席**（搜索成功但匹配不到——歌确实不在该平台）→ 1h。缺席是
+ *    稳定事实，每次 detect 都重搜会白占队列（用户场景：Spotify 没有中文老歌，
+ *    fanOut 永远不含它，skip-enqueue 短路不生效，每切一次歌都重搜一遍）。
+ *  - **失败 / 超时**（网络抖动、API 报错——不代表缺席）→ 30s。给网络恢复留
+ *    空间，下个 30s 窗口重新搜。
+ *  容量上限不变。 */
+const EQUIV_MATCH_CACHE_TTL_MS = 60 * 60 * 1000;
+const EQUIV_FAIL_CACHE_TTL_MS = 30_000;
 const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
 
 /** 有任何一行 time>0 才算 synced——lyrics.ovh / Deezer 纯文本歌词全部
@@ -1259,31 +1265,51 @@ export class MusicService {
   ): Promise<Track | null> {
     const kw = `${meta.title} ${meta.artist}`.trim();
     if (!kw) return null;
-    // 短 TTL 缓存：同一 session 在 ≤30s 内对同一 (platform, kw) 的等价曲搜索
-    // 返回同样结果——like sync 的 resolveEquivalents 与 renderer 的
+    // 结果缓存：同一 session 对同一 (platform, kw, 时长分桶) 的等价曲搜索返回
+    // 同样结果——like sync 的 resolveEquivalents 与 renderer 的
     // tryUpgradeFromTrial 都会调 searchEquivalent，二者经常并发（VIP 试听
-    // 检测触发降级的同时用户也在点 ❤ 触发 discover），不去重会把 QQ 后端
-    // 当成并行批量搜索来打。两层 log 也跟着刷。30s 足够覆盖这两个事件窗口。
-    // key 用 sessionId 隔离多用户；null 结果也缓存（避免被打挂的 platform
-    // 反复探）。每个 session 上限 256 条，超出时按时间淘汰最早的。
-    const cacheKey = `${session.id}|${platform}|${kw}`;
+    // 检测触发降级的同时用户也在点 ❤ 触发 discover），不去重会把平台后端
+    // 当成并行批量搜索来打。两层 log 也跟着刷。
+    // TTL 分级：命中 / **干净缺席**（搜索成功但歌确实不在该平台）缓存 1h——
+    // 缺席是稳定事实，每次 detect 重搜只浪费串行队列；失败 / 超时缓存 30s，
+    // 给网络恢复留窗口（失败 ≠ 缺席，不能按缺席长缓存）。
+    // key 带时长分桶（±3s 匹配容差的取整）：同歌不同版本（studio/live 差
+    // 秒级）不会互相吞掉搜索结果。key 用 sessionId 隔离多用户；null 结果也
+    // 缓存（避免被打挂的 platform 反复探）。每 session 上限 256 条，超出按
+    // 时间淘汰最早的。
+    const durationBucket = Math.round(meta.duration / 3);
+    const cacheKey = `${session.id}|${platform}|${kw}|${durationBucket}`;
     const cached = this.equivSearchCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < EQUIV_SEARCH_CACHE_TTL_MS) {
-      return cached.track;
+    if (cached) {
+      const ttl = cached.clean
+        ? EQUIV_MATCH_CACHE_TTL_MS
+        : EQUIV_FAIL_CACHE_TTL_MS;
+      if (Date.now() - cached.at < ttl) return cached.track;
     }
 
     const result = await this.searchEquivalentUncached(session, platform, meta, kw);
-    this.equivSearchCache.set(cacheKey, { at: Date.now(), track: result });
+    this.equivSearchCache.set(cacheKey, {
+      at: Date.now(),
+      track: result.track,
+      clean: result.clean,
+    });
     this.pruneEquivSearchCache();
-    return result;
+    return result.track;
   }
 
+  /**
+   * 真搜（无缓存）。返回 { track, clean }：
+   *  - clean=true：搜索**成功**（命中 / 全部变体跑完确认缺席）——结果稳定，
+   *    可长 TTL 缓存（命中 1h / 缺席 1h）。
+   *  - clean=false：抛异常（网络失败 / 平台报错）——**不代表缺席**，只短
+   *    TTL 缓存（30s），给网络恢复留重搜窗口。
+   */
   private async searchEquivalentUncached(
     session: Session,
     platform: MusicProvider,
     meta: LikeMeta,
     kw: string,
-  ): Promise<Track | null> {
+  ): Promise<{ track: Track | null; clean: boolean }> {
     try {
       // 准备 N 组搜索变体 + 各自的 limit。对每个变体跑「搜索 → 4 tier 匹配」，
       // 任意一组命中即返回。修两类回归：
@@ -1353,8 +1379,15 @@ export class MusicService {
       }
 
       const tried: string[] = [];
+      let timedOut = false; // 任一变体超时 → 无法断定"该平台没有这首歌" → clean=false
       for (const v of variants) {
         const tracks = await this.runPlatformSearch(session, platform, v.kw, v.limit);
+        if (tracks === null) {
+          // 5s 超时：视为该变体缺席（不阻塞后续变体），但结果不能算"干净缺席"。
+          timedOut = true;
+          tried.push(`${v.tag}=${v.kw}→timeout`);
+          continue;
+        }
         // 把 top 3 候选挂在 tried 上：no-match 时一眼能看出"Spotify 实际返回了什么",
         // 区分"歌曲不在该平台"vs"匹配规则漏过"。诊断比"kw→count"信息密度高得多。
         const samples = tracks.slice(0, 3).map(
@@ -1366,7 +1399,7 @@ export class MusicService {
         );
         if (tracks.length === 0) continue;
         const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag);
-        if (matched) return matched;
+        if (matched) return { track: matched, clean: true };
       }
       // 全部变体都跑过且没命中 → 记日志，明确告诉调用方"试过哪些变体 + 各自
       // 候选"。diagnostics: 这种 no-match 是很常见的（该平台没有这首歌），但
@@ -1387,36 +1420,57 @@ export class MusicService {
             `tried=[${tried.filter((t) => t.startsWith('title-romaji')).join(' | ')}]`,
         );
       }
-      return null;
+      // clean = 所有变体都**正常完成**且无命中（歌确实不在该平台，长 TTL 缓存）；
+      // 任一变体超时/失败（timedOut）→ 不确定缺席，只短 TTL 缓存。
+      return { track: null, clean: !timedOut };
     } catch (err) {
       this.logger.warn(
         `searchEquivalent ${platform} "${kw}" failed: ${(err as Error).message}`,
       );
-      return null;
+      // 失败 ≠ 缺席：网络抖动 / 平台抽风时这首可能其实存在。clean=false →
+      // 只短 TTL 缓存，别把「搜索失败」当「没有这首歌」记 1 小时。
+      return { track: null, clean: false };
     }
   }
 
-  /** 单平台单 kw 的搜索分发（剥掉各 provider 的 null session 守卫）。 */
+  /** 单平台单 kw 的搜索分发（剥掉各 provider 的 null session 守卫）。
+   *  ⚠️ 必须套 withTimeout（单平台 5s，见 AGENTS.md 硬约束）：等价曲搜索是
+   *  同步队列 discover 的一环，队列**串行**消费——一个平台的 fetch 悬挂会把
+   *  整条队列堵死（用户实测：Spotify 搜索 fetch failed 悬挂 30s，netease 的
+   *  落账和所有后续 detect 全被拖过 waitForSettled 的 6s 窗口，❤ 角标停 1）。
+   *  @returns Track[] 正常结果（可能为空）；**null = 超时**——超时是"搜索失败"
+   *  不是"歌确实不在该平台"，调用方必须据此把结果标成 clean=false（只短 TTL
+   *  缓存），绝不能把超时当成缺席记 1 小时。 */
   private async runPlatformSearch(
     session: Session,
     platform: MusicProvider,
     kw: string,
     limit: number,
-  ): Promise<Track[]> {
-    if (platform === 'qq') {
-      return this.qq.search(session.providers.qq ?? {}, kw, limit);
-    }
-    if (platform === 'netease') {
-      const ps = session.providers.netease;
-      if (!ps?.musicU) return [];
-      return this.netease.search(ps, kw, limit);
-    }
-    if (platform === 'spotify') {
-      const ps = session.providers.spotify;
-      if (!ps?.spotify) return [];
-      return this.spotify.search(ps, kw, limit);
-    }
-    return []; // deezer 匿名无收藏，不参与
+  ): Promise<Track[] | null> {
+    const search = (): Promise<Track[]> => {
+      if (platform === 'qq') {
+        return this.qq.search(session.providers.qq ?? {}, kw, limit);
+      }
+      if (platform === 'netease') {
+        const ps = session.providers.netease;
+        if (!ps?.musicU) return Promise.resolve([]);
+        return this.netease.search(ps, kw, limit);
+      }
+      if (platform === 'spotify') {
+        const ps = session.providers.spotify;
+        if (!ps?.spotify) return Promise.resolve([]);
+        return this.spotify.search(ps, kw, limit);
+      }
+      return Promise.resolve([]); // deezer 匿名无收藏，不参与
+    };
+    return withTimeout(
+      search,
+      UNIFIED_SEARCH_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `equivalent search "${kw}" on ${platform} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+        ),
+    ); // 超时 → null（不阻塞其他平台 / 后续变体）
   }
 
   /** 4 tier 匹配：strict → loose → title-exact → cross-script。
@@ -2156,7 +2210,7 @@ export class MusicService {
     mergedId: string,
     sources: Array<{ platform: MusicProvider; trackId: string }>,
     meta?: LikeMeta,
-  ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
+  ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[]; settled: boolean }> {
     const byPlatform = this.groupByPlatform(sources);
 
     // 每个平台：判断是否已红心（任一变体在收藏里就算），并选一个代表 trackId
@@ -2180,7 +2234,8 @@ export class MusicService {
       // 没有任何平台红心 → 只读检测，什么都不写。但如果这首歌有 fan-out
       // 记录（可能挂在漂移前的老 mergedId 下），说明它曾被心过但远端已被
       // 对账/取消——不在这里清理（交给 loadState 的 GC 启发式）。
-      return { liked: false, fannedOutTo: [] };
+      // 无任何红心：不写不排队，没有 discover 可等 → settled=true。
+      return { liked: false, fannedOutTo: [], settled: true };
     }
 
     // 有红心 → 检测本身只读；真正的「补齐其余平台」交给同步队列异步做。
@@ -2226,22 +2281,35 @@ export class MusicService {
       this.buildDiscover(meta, [...byPlatform.keys()]),
     );
 
-    // 等 discover 落定再返回 fannedOutTo——否则前端 2.5s 后的 refreshLikedState
+    // 等 discover 落定再返回 fannedOutTo——否则前端 refreshLikedState 的 detect
     // 会和后台搜索竞态：响应里的角标数还是「补平台之前」的状态，UI 上永远
     // 不涨（用户侧现象：日志已 "library patched += qq, spotify"，❤ 角标没显示
     // 数字 2）。等待期间队列把跨平台匹配 + 库补源写完，这里重新读 state 拿
     // 最终记录。超时（6s）返回当前状态——best-effort，下次 refresh 再等。
-    await this.likeSync.waitForSettled(session.id, canonicalId, 6000);
-    const settled = this.loadState(session);
+    //
+    // settled=false（超时）是关键信号：discover 还在跑 / 排在队列后面，本次
+    // fannedOutTo 是**中间态**（如只有 qq，netease 还没落账）。前端必须
+    // 据此**继续轮询**，绝不能把两个相同中间值当稳定（否则 Spotify 搜索
+    // 悬挂时角标永远停在 1，discover 落定后也没人再刷新——本次 bug 的根）。
+    const settled = await this.likeSync.waitForSettled(
+      session.id,
+      canonicalId,
+      6000,
+    );
+    const stateAfterWait = this.loadState(session);
     // 同曲不同版本（时长差 >±3s → mergeLibrary 拆成独立 item / 独立 fanOut
     // 记录）的兄弟库条目：把它们已红心的 source 平台并入当前记录，让 ❤ 角标
     // 按「歌」算而不是按「版本」算。canonicalMergedId 只按 (platform, trackId)
     // 桥——兄弟版本 trackId 不同，桥不到，不加这步角标就漏（用户播放 258s
     // 版本时看不到 275s 版本已补上的 qq/spotify）。
-    this.mergeSiblingLibraryLikes(settled, session, canonicalId, meta);
-    this.saveState(session, settled);
-    const record = settled.fanOut[canonicalId] ?? [];
-    return { liked: true, fannedOutTo: record.map((e) => e.platform) };
+    this.mergeSiblingLibraryLikes(stateAfterWait, session, canonicalId, meta);
+    this.saveState(session, stateAfterWait);
+    const record = stateAfterWait.fanOut[canonicalId] ?? [];
+    return {
+      liked: true,
+      fannedOutTo: record.map((e) => e.platform),
+      settled,
+    };
   }
 
   /**
@@ -2801,12 +2869,13 @@ export class MusicService {
     }
   }
 
-  /** (sessionId|platform|kw) → 最近一次等价曲搜索结果。null 也缓存，避免被打挂
-   *  的 platform 在 30s 窗口内被反复探（同一个事件窗口内 like sync 的 discover
-   *  与 renderer 的 trial upgrade 会并发调 searchEquivalent）。 */
+  /** (sessionId|platform|kw|时长分桶) → 最近一次等价曲搜索结果。null 也缓存。
+   *  `clean` = 这次搜索是否**正常完成**（命中 / 干净缺席）——决定 TTL：
+   *  命中 / 干净缺席 1h（歌不在该平台是稳定事实，别每次 detect 重搜）；
+   *  失败 / 超时 30s（网络抖动 ≠ 缺席，留重搜窗口）。 */
   private readonly equivSearchCache = new Map<
     string,
-    { at: number; track: Track | null }
+    { at: number; track: Track | null; clean: boolean }
   >();
 
   private pruneEquivSearchCache(): void {
