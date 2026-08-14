@@ -1727,7 +1727,79 @@ async function main() {
     console.log('✅ 33. 慢 discover → detect settled=false（中间态），落定后 settled=true 角标齐全');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 33 项通过');
+  // ── 34. 合唱跨平台配对：拼接 key 移除后仍走拆分配对命中 ──
+  // 2026-08-14：别名表的多艺人拼接 key（'方大同王力宏' 等 33 条）全部移除——
+  // 独唱↔合唱不再经表互并（见 common artistAlias.test）。合唱的跨平台匹配由
+  // artistLooseMatch 的 splitArtists 拆分配对承担：QQ「方大同 / 王力宏」↔
+  // Spotify「Khalil Fong / Wang Leehom」按位桥（表：方大同↔Khalil Fong、
+  // 王力宏↔Wang Leehom），2/2 命中 → 红心正常同步。回归锁死这条链路。
+  {
+    neteaseSearchResults = [
+      neTrack('n-collab-34', '好不容易', 'Khalil Fong / Wang Leehom', 380),
+    ];
+    // fanOutLike 立即返回（discover 异步落账），轮询本地 liked 集合等命中。
+    await svc.fanOutLike(
+      session,
+      'merged-collab-34',
+      [{ platform: 'qq', trackId: 'q-collab-34' }],
+      true,
+      { title: '好不容易', artist: '方大同 / 王力宏', duration: 380 },
+    );
+    const ok = await waitFor(async () =>
+      (await likedIds('netease')).includes('n-collab-34'),
+    );
+    assert.ok(
+      ok,
+      '合唱 seed 应通过拆分配对命中 netease 合唱候选（Khalil Fong / Wang Leehom）',
+    );
+    console.log('✅ 34. 合唱跨平台配对：方大同/王力宏 ↔ Khalil Fong/Wang Leehom 命中');
+  }
+
+  // ── 35. 松散规则误并修复（2026-08-14 用户实测）──
+  //  a) 「我们 - 陈奕迅」(260s) 不得匹配合唱/另一首歌「我們萬歲 - Eason Chan /
+  //     eason and the duo band」(237s)——2 字标题 ⊂ 4 字标题，Tier 5 relaxed
+  //     title 的 50% 长度门恰好在 0.5 放行。修：短标题门（短侧 <3 字、长侧
+  //     >3 字 → 拒，与 Tier 2 同款）。
+  //  b) 「告别的时代」(studio 300s) 不得匹配「告别的时代 - Live」(237s)——无
+  //     括号的破折号版本尾缀 extractVersionTag 认不出 → 版本守卫退化 lenient
+  //     30s。修：versionTagStrict 识别 ' - Live' 尾缀 → 版本不等 → ±3s 严格。
+  {
+    const origSpotify = (svc as any).spotify;
+    (svc as any).spotify = {
+      ...origSpotify,
+      search: async () => [
+        spTrack('sp-wmws-35', '我們萬歲', 'Eason Chan / eason and the duo band', 237),
+      ],
+    };
+    try {
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: '我们', artist: '陈奕迅', duration: 260,
+      });
+      assert.strictEqual(t, null, '「我们」不得匹配「我們萬歲」（短标题门）');
+    } finally {
+      (svc as any).spotify = origSpotify;
+    }
+    (svc as any).equivSearchCache.clear();
+
+    (svc as any).spotify = {
+      ...origSpotify,
+      search: async () => [
+        spTrack('sp-live-35', '告别的时代 - Live', '罗大佑', 237),
+      ],
+    };
+    try {
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: '告别的时代', artist: '罗大佑', duration: 300,
+      });
+      assert.strictEqual(t, null, '「告别的时代」studio 不得匹配「告别的时代 - Live」（无括号版本尾缀守卫）');
+    } finally {
+      (svc as any).spotify = origSpotify;
+      (svc as any).equivSearchCache.clear();
+    }
+    console.log('✅ 35. 松散规则收紧：我们≠我們萬歲、告别的时代≠-Live 版');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 35 项通过');
 }
 
 main().catch((err) => {

@@ -240,12 +240,15 @@ const JP_KANJI: Record<string, string> = {
   楽: '乐', // U+697D 新字体（舊 樂→乐）
   実: '实', // U+5B9F 新字体（舊 實→实）
   帰: '归', // U+5E30 新字体（舊 歸→归）
-  団: '团', // U+56E3 新字体（舊 團→团）
   薬: '药', // U+85AC 新字体（舊 藥→药）
+  団: '团', // U+56E3 新字体（舊 團→团）
   駅: '驿', // U+99C5 新字体（舊 驛→驿；「駅」是日文独有的「站」写法）
   // 2026-08-07: 桑田佳祐 vs 桑田佳佑——OpenCC tw→cn 不处理「祐」（U+7950，日
   // 文人名用字），导致 normalizeKey 两边对不上、跨平台匹配全挂。兜底归一。
   祐: '佑', // U+7950 → U+4F51（人名专用，简体「佑」是常用写法）
+  // 2026-08-14: 川瀬智子 vs 川濑智子——「瀬」是日文新字体（U+702C），旧字体
+  // 「瀨」OpenCC 覆盖（瀨→濑），新字体不认 → 库内同艺人的两种写法 split。
+  瀬: '濑', // U+702C 新字体（舊 瀨→濑）
 };
 
 const JP_KANJI_REGEX: RegExp = (() => {
@@ -358,4 +361,22 @@ export function normalizeKey(title: string, artist: string): string {
  */
 export function displayKey(title: string, artist: string): string {
   return normalizeKey(stripParensContent(title), stripParensContent(artist));
+}
+
+// ── 多艺人拆分（跨包统一，2026-08-14 从两端收拢）────────────────────
+/**
+ * 把多艺人字符串按常见分隔符切分。collab 场景：「米津玄師 / 野田洋次郎」
+ * → ['米津玄師', '野田洋次郎']；「A, B & C」→ ['A', 'B', 'C']。
+ *
+ * 2026-08-14 加 **× / ×（U+00D7 / U+2715）**：Spotify/Apple 常用
+ * 「Mitchie M×OSTER project」表达合作（不写 & 或 /），缺它会把合作曲的
+ * 拆分配对桥不上（用户实测：歌の栖む家メゾン初音 分裂）。
+ * 只切显式分隔符，不切括号内容里的连字符——括号注释交给
+ * stripFuriganaParens/stripParensContent 处理。
+ */
+export function splitArtists(raw: string): string[] {
+  return raw
+    .split(/\s*[/／,&;×]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

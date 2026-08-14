@@ -5,7 +5,9 @@ import {
   displayKey,
   extractVersionTag,
   normalizeKey,
+  splitArtists,
   stageNameAliasMatch,
+  stripParensContent,
   titleAliasKey,
   type VersionTag,
 } from '@maestro/common';
@@ -87,7 +89,6 @@ interface MutableGroup extends LibraryGroup {
   artistKey: string;
 }
 
-/** 多艺人拆分：按常见分隔符（/／,&;）切分，与 server artistLooseMatch 同口径。 */
 /**
  * 弹窗分组「title 尾缀宽容」：Spotify 偶尔给歌名追加版本/合作信息但不加括号
  * （如「... - zerokoi ver.」「... - Remix」），displayKey 不知此形式而把整串
@@ -113,15 +114,8 @@ function stripTrailingVersionSuffix(s: string): string {
   return out;
 }
 
-function splitArtists(raw: string): string[] {
-  return raw
-    .split(/\s*[/／,;&]\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 /**
- * 弹窗分组的「艺人同人」判定（2026-08-07 多艺人兜底）：
+ * 弹窗分组的「艺人同人」判定（2026-08-07 多艺人兜底，2026-08-14 增强）：
  *  1) 归一相等（cjkUnify 简繁统一 + noise strip）
  *  2) 策展别名表整串命中（陈绮贞 = Cheer Chen）
  *  3) 多艺人拆分配对：任一方 ≥2 人时，按分隔符拆开逐对匹配
@@ -131,8 +125,8 @@ function splitArtists(raw: string): string[] {
  * 这类巧合前缀不因拆分放宽而误并（双方都单艺人，不触发 3）。
  */
 function artistsEquivalent(a: string, b: string): boolean {
-  const na = normalizeKey(a, '');
-  const nb = normalizeKey(b, '');
+  const na = normalizeKey(stripParensContent(a), '');
+  const nb = normalizeKey(stripParensContent(b), '');
   if (na && nb && na === nb) return true;
   if (stageNameAliasMatch(a, b)) return true;
   const pa = splitArtists(a);
@@ -141,8 +135,8 @@ function artistsEquivalent(a: string, b: string): boolean {
   let matched = 0;
   for (const x of pa) {
     for (const y of pb) {
-      const nx = normalizeKey(x, '');
-      const ny = normalizeKey(y, '');
+      const nx = normalizeKey(stripParensContent(x), '');
+      const ny = normalizeKey(stripParensContent(y), '');
       if ((nx && ny && nx === ny) || stageNameAliasMatch(x, y)) {
         matched++;
         break;

@@ -28,7 +28,7 @@ import {
   DIFFERENT_VERSION_DURATION_TOLERANCE_SEC,
   mergeCrossScript,
 } from './search.util';
-import { extractVersionTag, type VersionTag } from '@maestro/common';
+import { extractVersionTag, splitArtists, type VersionTag } from '@maestro/common';
 import { MatchService } from '../match/match.service';
 import { jaroWinkler } from '../match/fuzzy';
 import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
@@ -1484,7 +1484,7 @@ export class MusicService {
     const wantKey = this.normalizeKey(meta.title, meta.artist);
     const wantTitleKey = this.normalizeKey(meta.title, '');
     const wantArtistKey = this.normalizeKey(meta.artist, '');
-    const wantVersion = extractVersionTag(meta.title);
+    const wantVersion = this.versionTagStrict(meta.title);
 
     // 候选池前置过滤：任何候选是「翻唱/COVER」（标题含 (Cover by X) / (翻唱)
     // / (COVER) / (原唱：X) / (翻自) / (翻)）一律踢出，不进入后续 6 tier。
@@ -1586,7 +1586,8 @@ export class MusicService {
       // 跨版本守卫：长时长门（30s）只在 seed 与 cand 同版本标签时启用。
       // 任一边是 LIVE / ACOUSTIC / REMIX / INST / KARAOKE / DEMO / EDIT
       // → 改用 ±3s 严格，不让 30s 把 live 拉进 studio ❤ 的 fan-out 圈。
-      const candVersion = extractVersionTag(t.title);
+      // versionTagStrict：' - Live' 无括号尾缀也算 LIVE（2026-08-14）。
+      const candVersion = this.versionTagStrict(t.title);
       if (
         this.durationMismatchVersionSafe(
           wantVersion,
@@ -1657,7 +1658,6 @@ export class MusicService {
       );
       return t;
     }
-
     // 第五遍：relaxed title match — 先把两侧标题的"括号内容"剥掉再做 substring。
     // 修「胸の煙 (焚心如火) vs 胸の煙 (胸の煙 胸の煙 - Single / 胸の煙 (Official MV)」
     // 类回归：seed 和候选标题共享同一个"原版标题"，但都有 extra 内容（版本标签、
@@ -1668,6 +1668,12 @@ export class MusicService {
     // 「花田错 王馨卓」这种"同名曲不同歌手"在标题容错后撞上。duration 同样
     //  用跨版本容差 30s：典型 case 是「何なんw 藤井风」QQ 源 vs Spotify 源
     //  album vs single 版差 15-30s。
+    //
+    // ⚠️ 2026-08-14 收紧（用户实测误并）：
+    //  - **短标题门**（与 Tier 2 同款）：短侧 <3 字、长侧 >3 字 → 拒——
+    //    「我们」(2字) 是「我们万岁」(4字) 的子串，lenDiff=0.5 恰好卡在
+    //    50% 门槛上放行 → 陈奕迅《我们》把《我们万岁》star 上。
+    //  - lenDiff 门槛 0.5 → 0.4（双保险）。
     const wantTitleClean = stripParensContent(meta.title);
     const wantTitleNormClean = this.normalizeKey(wantTitleClean, '');
     if (wantTitleNormClean) {
@@ -1679,6 +1685,12 @@ export class MusicService {
           Math.abs(candTitleNormClean.length - wantTitleNormClean.length) /
           Math.max(candTitleNormClean.length, wantTitleNormClean.length);
         if (lenDiff > 0.5) continue;
+        if (
+          Math.min(candTitleNormClean.length, wantTitleNormClean.length) < 3 &&
+          Math.max(candTitleNormClean.length, wantTitleNormClean.length) > 3
+        ) {
+          continue; // 短标题（<3 字）撞长标题——「我们」⊂「我们万岁」必须拒
+        }
         const isSub =
           candTitleNormClean === wantTitleNormClean ||
           candTitleNormClean.includes(wantTitleNormClean) ||
@@ -1686,7 +1698,9 @@ export class MusicService {
         if (!isSub) continue;
         if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
         // 跨版本守卫（与 Tier 3 一致）：版本标签不等 → 改用 ±3s 严格。
-        const candVersion = extractVersionTag(t.title);
+        // versionTagStrict 识别无括号尾缀（'告别的时代 - Live'）——否则
+        // lenient 30s 会把 studio seed 的 live 版也 star 上（2026-08-14）。
+        const candVersion = this.versionTagStrict(t.title);
         if (
           this.durationMismatchVersionSafe(
             wantVersion,
@@ -1844,17 +1858,14 @@ export class MusicService {
     const a = this.normalizeKey(rawA, '');
     const b = this.normalizeKey(rawB, '');
     if (!a || !b) return false;
-    if (
-      a.includes(b) ||
-      b.includes(a) ||
-      artistTransliterationMatch(rawA, rawB)
-    ) {
-      return true;
-    }
-    // 多艺人兜底：双方都 ≥2 协作者时按配对别名/罗马化匹配。
-    const partsA = this.splitArtists(rawA);
-    const partsB = this.splitArtists(rawB);
-    if (partsA.length >= 2 && partsB.length >= 2) {
+    const partsA = splitArtists(rawA);
+    const partsB = splitArtists(rawB);
+    // 任一侧 ≥2 协作者 → **只走拆分配对**（与 renderer groupLibrary 同口径）：
+    // 禁止整串 includes / 整串音译——「方大同 / 王力宏」的归一串
+    // ('方大同王力宏'，分隔符在 normalizeKey 里被剥) 包含「方大同」、拼音
+    // 'fangdatongwanglihong' 包含 'fangdatong'，整串路径会把独唱/合唱误并。
+    // 配对按位比较，命中 ≥ ceil(多侧/2) 才过（同一 collab 的不同平台写法）。
+    if (partsA.length >= 2 || partsB.length >= 2) {
       let matched = 0;
       for (const pa of partsA) {
         const normPa = this.normalizeKey(pa, '');
@@ -1863,8 +1874,8 @@ export class MusicService {
           const normPb = this.normalizeKey(pb, '');
           if (!normPb) continue;
           if (
-            normPa.includes(normPb) ||
-            normPb.includes(normPa) ||
+            (Math.min(normPa.length, normPb.length) >= 4 &&
+              (normPa.includes(normPb) || normPb.includes(normPa))) ||
             artistTransliterationMatch(pa, pb)
           ) {
             matched++;
@@ -1872,24 +1883,16 @@ export class MusicService {
           }
         }
       }
-      return matched >= Math.ceil(partsA.length / 2);
+      return matched >= Math.ceil(Math.max(partsA.length, partsB.length) / 2);
     }
-    return false;
+    // 单艺人 vs 单艺人：includes 门——**短侧 ≥ 4 字符**才允许单向包含
+    // （'方大同' 3 字 ∈ '方大同王力宏' 这类 3 字短名混排靠策展表，不走裸子串）。
+    const minLen = Math.min(a.length, b.length);
+    if (minLen >= 4 && (a.includes(b) || b.includes(a))) return true;
+    return artistTransliterationMatch(rawA, rawB);
   }
 
-  /**
-   * 把多艺人字符串按常见分隔符切分。collab 场景：「米津玄師 / 野田洋次郎」
-   * → ['米津玄師', '野田洋次郎']；「A, B & C」→ ['A', 'B', 'C']。
-   * 只切显式分隔符（/／,&;），不切括号内容里的连字符——括号注释交给
-   * stripFuriganaParens/stripFeatTags 在 normalizeKey 里剥。
-   */
-  private splitArtists(raw: string): string[] {
-    return raw
-      .split(/\s*[\/／,;&]\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
+  
   /**
    * 「给定的 rawArtist 是不是某 artist 字段（可能多艺人）里的某位艺人的
    * 别名/罗马化」。用于 Tier 5b：判断 cand 标题末尾追加的 co-author 段是否
@@ -1901,7 +1904,7 @@ export class MusicService {
     // 先直接整串桥（单艺人场景）。
     if (artistTransliterationMatch(rawArtist, field)) return true;
     // 拆字段按位桥。
-    const parts = this.splitArtists(field);
+    const parts = splitArtists(field);
     for (const p of parts) {
       if (artistTransliterationMatch(rawArtist, p)) return true;
       const np = this.normalizeKey(p, '');
@@ -1955,6 +1958,45 @@ export class MusicService {
    *  找回用户已经在听但跨平台搜不到的歌，避免让用户手动按"重新搜索"。
    *  仍然比"任意两首同歌"严格（remix 普遍 ≥30s，不在范围内）。
    */
+  /**
+   * 版本标签的**严格检测**：括号形式（extractVersionTag）+ 无括号破折号尾缀。
+   *
+   * 2026-08-14 修复：Tier 5（relaxed title）的版本守卫只认括号形式——
+   * Spotify 常写「告别的时代 - Live」（无括号），extractVersionTag 返回 null，
+   * 版本守卫退化为 lenient 30s → studio seed 把 live 版也 star 上（用户实测：
+   * 告别的时代 被「告别的时代 - Live」误匹配）。这里补上「 - 版本词 收尾」
+   * 的识别：' - Live' / ' - Live at O2' / ' - Remix' …。
+   *
+   * 安全：只认**破折号分隔 + 版本词收尾**（'Love Live' 这类歌名自身含
+   * 'Live' 且无分隔符 → 不误判）。
+   */
+  private versionTagStrict(raw: string): VersionTag {
+    if (!raw) return null;
+    const bracketed = extractVersionTag(raw);
+    if (bracketed) return bracketed;
+    const m = stripParensContent(raw).match(
+      /(?:[-—–]\s*)(live|acoustic|unplugged|remix|remixed|instrumental|inst|karaoke|cover|demo|edit|现场版?|不插电|原声|混音|伴奏|卡拉ok|翻唱|剪辑版|电台版)(?:\s+(?:at|in|from)\s+[^]*)?$/i,
+    );
+    if (!m) return null;
+    const w = m[1].toLowerCase().replace(/\.$/, '');
+    if (w.startsWith('live')) return 'LIVE';
+    if (w.startsWith('acoustic') || w === 'unplugged' || w === '不插电' || w === '原声') return 'ACOUSTIC';
+    if (w.startsWith('remix')) return 'REMIX';
+    if (w.startsWith('inst')) return 'INSTRUMENTAL';
+    if (w === 'karaoke' || w === '卡拉ok') return 'KARAOKE';
+    if (w === 'cover' || w === '翻唱') return 'COVER';
+    if (w.startsWith('demo')) return 'DEMO';
+    if (w.startsWith('edit')) return 'EDIT';
+    return null;
+  }
+
+  /**
+   * 跨版本 duration 容差：title-exact / 剥括号后 substring 等强信号匹配的
+   *  "同歌不同版本"情况。差 30s 以内都接受（QQ 源 258s vs Spotify 源 243s
+   *  的 15s 差、album vs single 的典型 15-30s 差）。本规则的"宽"是为了
+   *  找回用户已经在听但跨平台搜不到的歌，避免让用户手动按"重新搜索"。
+   *  仍然比"任意两首同歌"严格（remix 普遍 ≥30s，不在范围内）。
+   */
   private durationMismatchLenient(
     seedDuration: number,
     candDuration: number,
@@ -1968,7 +2010,6 @@ export class MusicService {
 
   /**
    * 检测两个 normalizeKey 后的艺人名字是否属于"不同文字系统"（一个 CJK，一个
-   * 拉丁字母）。用于放宽跨平台匹配：Spotify 常用罗马字（"Fujii Kaze"）而 QQ/
    * 网易云用汉字（"藤井风"）——歌名+时长已对上时，不应因艺人脚本不同而拒绝。
    */
   private isCrossScript(a: string, b: string): boolean {

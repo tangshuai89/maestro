@@ -56,9 +56,15 @@ export function romanize(s: string): string {
   if (!s) return '';
   const cached = romanizeCache.get(s);
   if (cached !== undefined) return cached;
+  // 2026-08-14 修复（拼音串扰）：串内含假名 → 判定为**日文名**，汉字部分
+  // 不喂拼音（拼音读日文汉字是中文读音，纯噪声——「藤井風」会被读成
+  // tengjingfeng，与任何 "Feng" 艺人单向包含误并）。日文读音交给
+  // romanizeJa（kuromoji）路线；这里只转假名 + 保留拉丁。
+  const hasKana = KANA.test(s);
   let out = '';
   for (const ch of s) {
     if (HAN.test(ch)) {
+      if (hasKana) continue; // 日文名：汉字不拼音化
       const py = pinyin(ch, { toneType: 'none', type: 'array' });
       out += py && py.length ? py.join('') : '';
     } else if (KANA.test(ch)) {
@@ -72,7 +78,6 @@ export function romanize(s: string): string {
   romanizeCache.set(s, out);
   return out;
 }
-
 // ── kuromoji（日文汉字读音）─────────────────────────────────────────────
 
 /** OpenCC 简→繁（cn2t）：把简体写法的日文名还原成 IPADIC 认得的日文汉字。
@@ -214,9 +219,11 @@ function romanizeVariants(s: string): string[] {
 // 策展表已抽到 @maestro/common（packages/common/src/artistAlias.ts）——
 // server 的跨平台匹配与 renderer 的弹窗分组共用同一张表，避免两端各写一份
 // 漂移。这里只 import `stageNameAliasMatch`（精确整串匹配，双向）。
-
-/** 音译重叠判定的最短长度——太短（≤3）的罗马化串靠 includes 容易撞巧合。 */
-const MIN_ROMAJI_OVERLAP_LEN = 4;
+/** 音译重叠判定的最短长度——太短（≤4）的罗马化串靠 includes 容易撞巧合
+ *  （'feng' 是 'tengjingfeng' 的子串 → 藤井風 与任何 "Feng" 艺人误并；
+ *  'zhou' 是 'zhoujielun' 的子串 → 周姓艺人互相污染）。5 字符起才允许
+ *  includes 方向。相等匹配（==）不受此门限制。 */
+const MIN_ROMAJI_OVERLAP_LEN = 5;
 
 /**
  * 两个（已 normalizeKey 的）艺人 key 是否「音译对得上」。
@@ -251,8 +258,15 @@ export function artistTransliterationMatch(a: string, b: string): boolean {
   for (const ra of va) {
     for (const rb of vb) {
       if (!ra || !rb) continue;
-      if (Math.min(ra.length, rb.length) < MIN_ROMAJI_OVERLAP_LEN) continue;
-      if (ra === rb || ra.includes(rb) || rb.includes(ra)) return true;
+      // 相等（==）不经长度门（'aiko'↔'aiko' 自循环）；includes 方向才受门限
+      // （'feng' ∈ 'tengjingfeng' 这类拼音碎片碰撞）。
+      if (
+        ra === rb ||
+        (Math.min(ra.length, rb.length) >= MIN_ROMAJI_OVERLAP_LEN &&
+          (ra.includes(rb) || rb.includes(ra)))
+      ) {
+        return true;
+      }
     }
   }
   // 顺序无关集合匹配：CJK 侧拆成 token（kuromoji token / 假名括号 token），

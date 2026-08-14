@@ -12,3 +12,4 @@ export {
 } from './normalizer.js';
 export { stageNameAliasMatch } from './artistAlias.js';
 export { titleAliasMatch, titleAliasKey } from './titleAlias.js';
+export { splitArtists } from './normalizer';

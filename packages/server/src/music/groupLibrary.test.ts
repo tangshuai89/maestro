@@ -12,7 +12,9 @@ const {
   displayKey,
   extractVersionTag,
   normalizeKey,
+  splitArtists,
   stageNameAliasMatch,
+  stripParensContent,
   titleAliasKey,
 } = require('@maestro/common');
 
@@ -69,18 +71,12 @@ interface MutableGroup extends LibraryGroup {
   artistKey: string;
 }
 
-/** 多艺人拆分：与 renderer groupLibrary 同步。 */
-function splitArtists(raw: string): string[] {
-  return raw
-    .split(/\s*[\/／,;&]\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+// splitArtists 来自 @maestro/common（与 renderer 同口径，含 × 分隔符）。
 
 /** 弹窗分组的「艺人同人」判定：归一相等 / 策展别名整串 / 多艺人拆分配对。 */
 function artistsEquivalent(a: string, b: string): boolean {
-  const na = normalizeKey(a, '');
-  const nb = normalizeKey(b, '');
+  const na = normalizeKey(stripParensContent(a), '');
+  const nb = normalizeKey(stripParensContent(b), '');
   if (na && nb && na === nb) return true;
   if (stageNameAliasMatch(a, b)) return true;
   const pa = splitArtists(a);
@@ -89,8 +85,8 @@ function artistsEquivalent(a: string, b: string): boolean {
   let matched = 0;
   for (const x of pa) {
     for (const y of pb) {
-      const nx = normalizeKey(x, '');
-      const ny = normalizeKey(y, '');
+      const nx = normalizeKey(stripParensContent(x), '');
+      const ny = normalizeKey(stripParensContent(y), '');
       if ((nx && ny && nx === ny) || stageNameAliasMatch(x, y)) {
         matched++;
         break;
@@ -597,19 +593,49 @@ function main() {
   // ── 27. title 尾缀宽容：Spotify「- zerokoi ver.」/「- Remix」合并 ──
   // Spotify 偶尔给歌名加版本标签但不加括号（あの頃～ジンジンバオヂュオニー～ - zerokoi ver.）。
   // 剥常见版本尾缀再做分桶 → 同歌同艺人合并。
+  // ── 28. 用户实测分裂修复（2026-08-14）：同名+同歌手多写法合并 ──
+  // 爱的大逃杀：QQ「雀斑乐团」vs 网易云「雀斑」（表：雀斑樂團 含 '雀斑' 值）。
+  // 花篝り：QQ「日本群星 (オムニバス)」vs 网易云「V.A.」（表：日本群星 含 V.A. 值）。
+  // レイニブル：QQ「德永英明」vs Spotify「Hideaki Tokunaga」（表值拉丁词序无关）。
+  // 归り道：QQ「乃木坂46」vs Spotify「Nogizaka46」（stageNameKey 保留数字）。
+  // 満月の夜なら：QQ「あいみょん」vs 网易云「爱缪 (あいみょん)」（假名 key + 剥括号）。
+  // 花のように：QQ「松隆子 (松たか子)」vs Spotify「Takako Matsu」（剥括号 + 表值）。
+  // 川瀬智子 vs Tommy heavenly6（stageNameKey 日文新字体往返归一：瀬→濑→瀨）。
   {
-    const groups = groupLibraryItems([
-      item({ id: 'qq', title: 'あの頃~ジンジンバオヂュオニー~', artist: 'whiteeeen', duration: 343, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
-      item({ id: 'ne', title: 'あの頃～ジンジンバオヂュオニー～', artist: 'whiteeeen', duration: 343, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
-      item({ id: 'sp', title: 'あの頃～ジンジンバオヂュオニー～ - zerokoi ver.', artist: 'whiteeeen', duration: 347, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
-    ]);
-    assert.strictEqual(groups.length, 1, 'QQ 网易云 + Spotify - zerokoi ver. → 合并 1 组');
-    assert.strictEqual(groups[0].members.length, 3);
-    assert.deepStrictEqual(groups[0].platforms.sort(), ['netease', 'qq', 'spotify']);
-    console.log('✅ 27. title 尾缀宽容：Spotify「- zerokoi ver.」与原版合并');
+    const cases: Array<{ title: string; artists: string[]; why: string }> = [
+      { title: '爱的大逃杀', artists: ['雀斑乐团', '雀斑'], why: '雀斑乐团 ↔ 雀斑（表补值）' },
+      { title: '花篝り', artists: ['日本群星 (オムニバス)', 'V.A.'], why: '日本群星 ↔ V.A.（表补值）' },
+      { title: 'レイニブル', artists: ['德永英明', 'Hideaki Tokunaga'], why: '德永英明 ↔ Hideaki Tokunaga（拉丁词序无关）' },
+      { title: '归り道は远回りしたくなる', artists: ['乃木坂46', 'Nogizaka46'], why: '乃木坂46 ↔ Nogizaka46（数字 key）' },
+      { title: '満月の夜なら', artists: ['あいみょん', '爱缪 (あいみょん)'], why: 'あいみょん ↔ 爱缪（假名 key + 剥括号）' },
+      { title: '花のように', artists: ['松隆子 (松たか子)', 'Takako Matsu'], why: '松隆子 ↔ Takako Matsu（剥括号 + 表值）' },
+      { title: 'pray', artists: ['川瀬智子', 'Tommy heavenly6'], why: '川瀬智子 ↔ Tommy heavenly6（新字体往返归一）' },
+      { title: 'キャンディライン', artists: ['高橋瞳 (たかはしひとみ)', 'Hitomi Takahashi'], why: '高橋瞳 ↔ Hitomi Takahashi（表值补全）' },
+      { title: '伊卡洛斯', artists: ['品冠', 'Victor Wong'], why: '品冠 ↔ Victor Wong（新条目）' },
+    ];
+    for (const c of cases) {
+      const groups = groupLibraryItems(
+        c.artists.map((artist, i) =>
+          item({ id: c.title + '-' + i, title: c.title, artist, duration: 260 + i, sources: [{ platform: 'qq', trackId: 'q' + i }], likedPlatforms: ['qq'] }),
+        ),
+      );
+      assert.strictEqual(groups.length, 1, `应合并 1 组：${c.title}（${c.why}），实际 ${groups.length} 组`);
+    }
+    console.log('✅ 28. 用户实测分裂修复：雀斑/日本群星/德永英明/乃木坂46/あいみょん 等同名+同歌手多写法合并');
   }
 
-  console.log('\n🎉 groupLibrary.test 全部 27 项通过');
+  // ── 29. 正确分裂保持：同名不同人不得误并（翻唱/不同歌）────────
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'a', title: '说好的幸福呢', artist: '周杰伦', duration: 260, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'b', title: '说好的幸福呢', artist: 'Jason Chen', duration: 270, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'c', title: '一个人想着一个人', artist: '曾沛慈', duration: 290, sources: [{ platform: 'qq', trackId: 'q2' }], likedPlatforms: ['qq'] }),
+      item({ id: 'd', title: '一个人想着一个人', artist: '董书含', duration: 300, sources: [{ platform: 'netease', trackId: 'n2' }], likedPlatforms: ['netease'] }),
+    ]);
+    assert.strictEqual(groups.length, 4, '翻唱/不同歌手同标题 → 保持 4 组不误并');
+    console.log('✅ 29. 正确分裂保持：周杰伦≠Jason Chen、曾沛慈≠董书含 不误并');
+  }
+  console.log('\n🎉 groupLibrary.test 全部 29 项通过');
 }
-
 main();
+

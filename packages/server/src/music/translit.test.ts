@@ -248,7 +248,45 @@ async function main() {
     console.log('✅ 7. 别名表防误并：整串匹配 + 表外名不搭表内 key');
   }
 
-  console.log('\n🎉 translit.test 全部 7 项通过');
+  // 2026-08-14：拼音串扰负向（跨语言误读）。
+  //  - 藤井風：拼音路线读日文汉字 → tengjingfeng，'feng'（4 字）是其子串——
+  //    任何叫 "Feng" 的艺人都会被误并。修：重叠门 4→5（'feng'/'zhou' 等
+  //    4 字拼音碎片被挡）；含假名的日文名拼音路线整体关闭。
+  //  - 周杰伦 ↔ Zhou：'zhoujielun' ⊃ 'zhou'（4 字）同样被长度门挡。
+  //  - 高橋あず美 ↔ gaoqiao：含假名 → 汉字不喂拼音，拼音串不再产生。
+  {
+    const rejectCrossTalk: Array<[string, string, string]> = [
+      ['藤井風', 'Feng', '拼音 tengjingfeng ⊃ feng（4 字碎片，长度门 5 挡掉）'],
+      ['周杰伦', 'Zhou', '拼音 zhoujielun ⊃ zhou（4 字碎片）'],
+      ['高橋あず美', 'gaoqiao', '含假名 → 拼音路线关闭（高橋 不再被读成 gaoqiao）'],
+    ];
+    for (const [a, b, why] of rejectCrossTalk) {
+      assert.strictEqual(
+        artistTransliterationMatch(a, b),
+        false,
+        `应拒绝（拼音串扰）: ${a} ↔ ${b}（${why}）`,
+      );
+    }
+    // 正向回归：含假名日文名的 kuromoji 音译桥不受影响（铃木爱理 ↔ suzukiairi）。
+    assert.ok(
+      artistTransliterationMatch('铃木爱理', 'suzukiairi'),
+      '应接受: 铃木爱理 ↔ suzukiairi（kuromoji，拼音关闭后仍桥）',
+    );
+    // romanize 层面：含假名的串汉字不再被拼音化（'高橋あず美' 只剩假名部分）。
+    assert.strictEqual(
+      romanize('高橋あず美'),
+      'azu',
+      'romanize: 含假名 → 汉字跳过、假名 wanakana（不再产出 gaoqiao…）',
+    );
+    assert.strictEqual(
+      romanize('高橋あず美').includes('gaoqiao'),
+      false,
+      'romanize: 不得含中文拼音串',
+    );
+    console.log('✅ 8. 拼音串扰负向：日文名不与拉丁碎片误并（藤井風≠Feng / 周杰伦≠Zhou）');
+  }
+
+  console.log('\n🎉 translit.test 全部 8 项通过');
 }
 
 main().catch((err) => {
