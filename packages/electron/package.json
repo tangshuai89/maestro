@@ -15,7 +15,7 @@
     "electron-is-dev": "^2.0.0"
   },
   "devDependencies": {
-    "electron": "https://github.com/castlabs/electron-releases#df8ffa5cc53bb0ddfffe0c994d3c70ecb9c2c2c7",
+    "electron": "https://github.com/castlabs/electron-releases#8244344c33634d9323377c0d0fd1d9b7f9b69540",
     "electron-builder": "^24.13.3",
     "typescript": "^5.5.4",
     "@types/node": "^22.0.0"

@@ -10,6 +10,7 @@ import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
 import type { LibraryImportResult } from './api';
 import { readCachedLibrary } from './lib/likedCache';
+import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
 import Titlebar from './components/layout/Titlebar';
 import CoverCard from './components/player/CoverCard';
@@ -57,13 +58,22 @@ export default function App() {
 
   // WPS 仅在 spotify Premium 时启用；Free / 其他 provider 走 <audio> + 30s 预览。
   const wpsEnabled = player.provider === 'spotify' && auth.auth.tier === 'premium';
+  wpsDebugBanner();
+  // wpsEnabled 只在变化时打（每次 render 都打会刷屏，淹没其他 wps 日志）
+  const prevWpsEnabled = useRef<boolean | null>(null);
+  if (prevWpsEnabled.current !== wpsEnabled) {
+    prevWpsEnabled.current = wpsEnabled;
+    wpsLog('wpsEnabled', `provider=${player.provider} tier=${String(auth.auth.tier)} → wpsEnabled=${wpsEnabled}`);
+  }
   const wps = useSpotifyWpsPlayer({ enabled: wpsEnabled });
   wpsRef.current = wps;
 
   // 当 WPS 从 disconnected → connected 时，当前歌如果已经在播（30s 预览），
   // 需要重调 presentTrack 让 usePlayer 切到 WPS 全曲播放路径。
   useEffect(() => {
+    wpsLog('wpsReady-change', `wpsReady=${wps.wpsReady} currentTrack.provider=${String(player.track?.provider)}`);
     if (wps.wpsReady && player.track?.provider === 'spotify') {
+      wpsLog('wpsReady-change', `→ refreshTrackForWps（切到 WPS 全曲路径）`);
       player.refreshTrackForWps();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,6 +167,19 @@ export default function App() {
     next: player.handleSkip,
     prev: player.handlePrev,
   };
+  // 启动时查一次 main 端 Widevine CDM 状态。Spotify WPS 初始化失败时
+  // （"No supported keysystem was found"）这里能看到 castLabs components
+  // 到底有没有就绪，不用切回 npm run dev 终端看 main log。
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.getWidevineStatus) return;
+    void api.getWidevineStatus().then((s) => {
+      wpsLog('widevine', `ready=${s.ready} status=${JSON.stringify(s.status)}`);
+      if (!s.ready) {
+        wpsError('widevine', 'Widevine CDM 未就绪 — Spotify WPS 全曲播放不可用，会卡 30s');
+      }
+    });
+  }, []);
   useEffect(() => {
     const api = window.electronAPI;
     if (!api?.onTrayCommand) return;

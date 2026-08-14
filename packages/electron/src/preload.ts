@@ -91,9 +91,14 @@ const electronAPI = {
   },
 
   /** Open a QQ Music login window; resolves when the login cookie is captured. */
-  qqLogin: (): Promise<QqLoginResponse> => ipcRenderer.invoke('qq:login'),  /** Open a NetEase login window; resolves when MUSIC_U is captured. */
+  qqLogin: (): Promise<QqLoginResponse> => ipcRenderer.invoke('qq:login'),  /** Open a NetEase login window; resolves when the login cookie is captured. */
   neteaseLogin: (): Promise<NeteaseLoginResponse> =>
     ipcRenderer.invoke('netease:login'),
+
+  /** Widevine CDM 就绪状态（Spotify WPS 全曲播放必需）。Renderer 在
+   *  WPS 初始化失败时（"No supported keysystem was found"）用它排查。 */
+  getWidevineStatus: (): Promise<{ ready: boolean; status: unknown }> =>
+    ipcRenderer.invoke('widevine:status'),
 
   /** Subscribe to QQ login-completed events. */
   onQqLoginSuccess: (cb: (r: QqLoginResult) => void): (() => void) => {

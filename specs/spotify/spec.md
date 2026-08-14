@@ -122,28 +122,65 @@ GET  /api/music/stream/spotify/{trackId}
   usePlayer 的时间轴，UI 其余部分对 WPS 无感知。
 - **feature flag**：整条 WPS 路径被 `tier === 'premium'` 门控。Free / 未登录 /
   非 spotify → `wpsReady` 恒 false，行为与 v1 完全一致。
-- **Electron 运行时（Widevine）**：WPS 靠 EME/Widevine CDM 解密整曲流，而
+- **Electron 运行时（Widevine + VMP）**：WPS 靠 EME/Widevine CDM 解密整曲流，而
   vanilla Electron 不带 CDM，且 Spotify 的 license 服务器要求宿主二进制带 VMP
   （Verified Media Path）签名——手动下 CDM 也过不了 VMP，是死路。因此运行时换成
-  **castLabs Electron fork**（`github:castlabs/electron-releases#v31.7.7+wvcus`，
-  与官方 31.7.7 同版、drop-in）：内置 CDM + VMP 签名。`main.ts` 在建窗口前
-  `await components.whenReady()` 等 CDM 就绪。dev 直接跑该二进制，Premium 开箱能
-  播整曲；打包见下「打包 / VMP」。
+  **castLabs Electron fork**（当前 `github:castlabs/electron-releases#8244344`，即
+  `v43.2.0+wvcus`；曾用 `v31.7.7+wvcus`，**2026-08 升级**——v31 的 Component Updater
+  协议被 Google 服务器拒，CDM 永远装不上）：内置 CDM + VMP 签名。
+  `main.ts` 在建窗口前 `await components.whenReady()` 等 CDM 就绪。
+- **⚠️ dev VMP 签名被 Spotify 生产 license server 拒**：castLabs fork 的 `+wvcus` 构建
+  是 **dev VMP 签名**（README 原话："For production use you can sign up for our
+  EVS service"），dev 签名过不了 Spotify 生产 license server 的 VMP 校验 → license
+  请求返 500 → 播放会话建不起来 → `playback_error` + `hasTrack=false` + 30s 卡死。
+  根因诊断日志（PR #53 落地）：
+
+  ```
+  POST https://api.spotify.com/v1/widevine-license/v1/audio/license 500 (Internal Server Error)
+  [wps-debug][fatal] playback_error（非致命） {"message":"Playback error"}
+  ```
+
+  **修复路径（见下「打包 / VMP」+ 0.Apple Dev + castLabs EVS 落地）**：
+  castLabs EVS（Electronic Video Service）——**完全免费**（公开承诺 2020-09-04 wiki，
+  签 streaming signature 不收费，个人开发者零成本），但**只对 ECS v6+ 官方 fork 有效**，
+  本项目用的就是标准 ECS v43 fork，无 3PL 审计问题。EVS 签出 .app 后 WPS 路径
+  license 返 200 → 全曲播放。dev 直接跑 `+wvcus` 永远卡 30s（dev 签名），必须签出
+  prod-signed 二进制才能放歌。
+
+- **全链路调试开关 `?wpsDebug=1`**（PR #53）：`packages/renderer/src/lib/debug.ts`
+  统一读取 URL/localStorage，渲染端打 `[wps-debug][category]` 类别日志覆盖
+  `wpsEnabled` / `tier` / `SDK ready` / `connect` / `ready poll` / `fatal` /
+  `widevine`（IPC `widevine:status` 从 main 拉 components.status()） / `transfer` /
+  `play` / `presentTrack` 决策。Console 还暴露 `__wpsDebugOn()` / `__wpsDebugOff()` 立即
+  toggle 并 reload。诊断 Widevine / EME / 设备注册 / transfer / play 各环节用。
+  加上 `device_id 404` 在 `transferHere` / `play` 里**退避重试 0.5s/1.5s/3s**（Spotify
+  Connect 设备注册延迟）——但这是 v43+ 的旧问题，dev 签名下 device 永远不在生产
+  设备列表，重试也救不回来。
 
 ## 打包 / VMP
 
 electron-builder 会重组包 + macOS codesign，把 castLabs 原始 VMP 签名弄失效，
-所以打包产物必须用 castLabs EVS 重新 VMP 签名（且在 codesign 之前）。
+所以打包产物必须用 **castLabs EVS（Electronic Video Service）** 重新 VMP 签名
+（且在 codesign 之前；Windows 在 codesign 之后——EVS 客户端会按平台自动决定时序）。
+**EVS 完全免费**（castLabs 公开承诺 2020-09-04 wiki），签 streaming signature
+不收费；账号永久可用，OAuth-style e-mail 验证。
 
 - `package.json build.afterPack` → `afterPack-vmp.cjs`：mac 平台调
   `python3 -m castlabs_evs.vmp sign-pkg <appOutDir>`，早于 electron-builder 的
   codesign 阶段。
-- `build.electronDist` 指向本地 castLabs `node_modules/.../electron/dist`，
-  避免 electron-builder 按版本号去官方镜像下 vanilla Electron（会丢 Widevine）。
-- **一次性前置（本机手动）**：`pip install --upgrade castlabs-evs` →
-  `python3 -m castlabs_evs.account signup`（免费 EVS 账号，凭据缓存本机）。
+- `build.electronDist` 指向本地 castLabs `node_modules/.../electron/dist`
+  （当前 v43.2.0+wvcus），避免 electron-builder 按版本号去官方镜像下 vanilla Electron
+  （会丢 Widevine）。
+- **一次性前置（本机手动）**：
+  1. **Apple Developer Account**（$99/年，[developer.apple.com](https://developer.apple.com/programs/enroll/)，
+     1–3 天批）—— code-sign / notarize 必需
+  2. `pip install --upgrade castlabs-evs`
+  3. `python3 -m castlabs_evs.account signup`（e-mail 收验证码，凭据缓存 `~/.castlabs-evs/`）
+  4. CI 化（可选）：`EVS_NO_ASK=1` + GitHub Actions secret 注入
+- **EVS 规则**：避免创建冗余账户、避免重复签名（已有有效签名时不签，节省 quota）、
+  按用途选 `streaming` / `persistent`（Spotify 走 `streaming` 即可）
 - 逃生阀 `SKIP_VMP=1 npm run pack`：跳过签名，只验打包管线；产物的 Spotify
-  全曲不可用（退回 30s），其它源正常。
+  全曲不可用（退回 30s，**dev 签名被生产 license server 拒**），其它源正常。
 
 ## v2 验收标准
 

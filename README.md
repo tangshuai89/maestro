@@ -17,9 +17,13 @@ Built with **Electron + React + NestJS** as a desktop-first client.
 > heart fan-out, the visionOS-style Bento glass UI, Spotify OAuth PKCE
 > with heart-write-back, and Premium full-track playback (via Web
 > Playback SDK + Widevine, run on the castLabs Electron fork) are
-> working today in dev. The remaining work — production packaging with
-> VMP signing, settings / lite-mode UX, and a few desktop polish items —
-> is in the [next-iteration plan](./NEXT-ITERATION.md).
+> wired up end-to-end in dev. **Premium full-track is currently blocked
+> at `POST /v1/widevine-license/v1/audio/license 500`** — the castLabs fork
+> is dev VMP-signed and Spotify's production license server rejects it.
+> Fix = **Apple Developer Account ($99/yr) + castLabs EVS (free) VMP signing**
+> ([next-iteration plan](./NEXT-ITERATION.md), section "0. Apple Dev + EVS").
+> The remaining work — production packaging, settings / lite-mode UX,
+> and a few desktop polish items — is also in the plan.
 
 ---
 
@@ -102,10 +106,10 @@ Legend: ✅ done · 🚧 partial / in progress · 📋 planned
 | **Unified liked-songs library** (import + de-dup) | ✅ |
 | **DeepSeek BYO-key AI recommendations** | ✅ |
 | **Heart fan-out to all licensed platforms** | ✅ |
-| **Spotify adapter** (OAuth PKCE + read + ❤ write-back + WPS full-track for Premium) | ✅ |
+| **Spotify adapter** (OAuth PKCE + read + ❤ write-back + WPS full-track for Premium) | ⚠️ dev done · **license 500** in prod |
 | Frontend architecture: CSS/tsx 解耦 + SCSS 7-1 + 拆巨石 | ✅ (PR #13) |
-| **castLabs Electron fork** (Widevine CDM + VMP signing for Spotify WPS) | ✅ (PR #39) |
-| **Production packaging** (NestJS sidecar + prod API base + EVS VMP signing) | 🚧 in progress |
+| **castLabs Electron fork** (Widevine CDM + dev VMP — **prod VMP via EVS** required) | ✅ (PR #39) / upgraded v31→v43 (PR #52) |
+| **Production packaging** (NestJS sidecar + prod API base + **Apple Dev + castLabs EVS VMP signing**) | 🚧 in progress |
 
 **Rough completion: ~85%.** The defining product features (unified search,
 match engine, library, DeepSeek recommendations, heart fan-out) all work
