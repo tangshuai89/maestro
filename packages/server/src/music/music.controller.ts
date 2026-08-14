@@ -214,7 +214,12 @@ export class MusicController {
     },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[] }> {
+  ): Promise<{
+    liked: boolean;
+    fannedOutTo: MusicProvider[];
+    /** true = 后台 discover 已落定（fannedOutTo 是最终值）；false = 超时（中间态，前端应继续轮询）。 */
+    settled: boolean;
+  }> {
     if (!body?.mergedId || typeof body.mergedId !== 'string') {
       throw new BadRequestException('mergedId 必填');
     }

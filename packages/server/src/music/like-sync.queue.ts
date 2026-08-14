@@ -183,21 +183,25 @@ export class LikeSyncQueue {
    * 等待某 (session, mergedId) 的任务落定：pending 与 active 都清空。
    * 供 detect 用——返回 fannedOutTo 前先等后台 discover（跨平台匹配 + 补库）
    * 写完，避免「前端 refreshLikedState 的 detect 和后台搜索竞态，角标永远
-   * 停留在补平台之前的状态」。超时直接 resolve（best-effort：队列被长退避
-   * 重试阻塞时不把 detect 卡死；下次 detect / refresh 会再等）。
+   * 停留在补平台之前的状态」。
+   *
+   * @returns true = 在 timeoutMs 内落定（读到的 fanOut 是最终态）；false =
+   *   超时（discover 还在跑 / 排在队列后面，返回值是**中间态**，调用方必须
+   *   把它标记为 unsettled，前端继续轮询而不是据此判稳定）。best-effort：
+   *   队列被长退避重试阻塞时不把 detect 卡死；下次 detect / refresh 会再等。
    */
   waitForSettled(
     sessionId: string,
     mergedId: string,
     timeoutMs = 6000,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const key = `${sessionId}:${mergedId}`;
     return new Promise((resolve) => {
       const start = Date.now();
       const poll = (): void => {
         const activeKey = this.active ? this.key(this.active) : null;
-        if (!this.pending.has(key) && activeKey !== key) return resolve();
-        if (Date.now() - start >= timeoutMs) return resolve();
+        if (!this.pending.has(key) && activeKey !== key) return resolve(true);
+        if (Date.now() - start >= timeoutMs) return resolve(false);
         setTimeout(poll, 50);
       };
       poll();

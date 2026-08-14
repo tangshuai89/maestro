@@ -74,9 +74,14 @@
 ```
 POST /music/like/detect
 Request:  { "mergedId": "...", "sources": [{"platform","trackId"}, ...] }
-Response: { "liked": true|false, "fannedOutTo": ["qq","netease"] }
+Response: { "liked": true|false, "fannedOutTo": ["qq","netease"], "settled": true|false }
           // liked=true：任一平台已红心；fannedOutTo=能写红心且已/将红心的平台
-          //（不含 deezer / 未登录）。远端补齐是异步的，响应立即返回。
+          //（不含 deezer / 未登录）。远端补齐是异步的。
+          // settled=true：后台 discover（跨平台匹配 + 补库）已落定，fannedOutTo
+          //   是**最终值**，角标可直接用 length。
+          // settled=false：waitForSettled(6s) 超时（discover 还在跑 / 排在串行
+          //   队列后面），fannedOutTo 是**中间态**——前端必须继续轮询，绝不能
+          //   把两个相同的中间值当成稳定（否则慢 discover 时角标永远停在 1）。
 ```
 
 ### 踩取消（新增）
@@ -198,3 +203,23 @@ interface LikeSyncTask {
   路径走 `fanOutLike(liked=false)`（只取消之前 fan-out 过的平台，**不写
   disliked、不碰 fmTrash、不切歌**——那些仍是「踩」的语义）；单平台电台路径走
   toggleLike 翻转。TransportBar 的 ❤ 按 `track.liked` 实心/描边，title 提示可取消。
+
+已实现（2026-08-14，慢 discover 角标修复）：
+
+- **[#11] slow-discover 角标修复**（好不容易-方大同场景：QQ+网易云已 ❤，
+  Spotify 已登录但无此歌 → 角标应显示 2 却一直不显示）：
+  - 根因：等价曲搜索（`runPlatformSearch`）**没有套 withTimeout**，Spotify
+    fetch 悬挂 30s 堵死**串行**同步队列；detect 的 `waitForSettled`(6s) 超时
+    返回**中间态**角标（1）；前端轮询把「连续两次相同中间值」当成稳定提前
+    退出，discover 落定（2）后无人再刷新。
+  - 修复三件套：
+    1. `runPlatformSearch` 套 `withTimeout(5s)`（补上 AGENTS.md 硬约束），
+       超时返回 null（**失败 ≠ 缺席**，不能按干净缺席长缓存）；
+    2. detect 响应新增 `settled` 字段（`waitForSettled` 改为返回是否按时
+       落定），前端只在 `settled=true` 时计入稳定命中，否则继续轮询
+       （`refreshLikedStateUntilStable` 硬超时 25s→30s）；
+    3. 等价曲搜索缓存 TTL 分级：命中 / 干净缺席 1h（歌不在该平台是稳定
+       事实，别每次 detect 重搜），失败 / 超时 30s；key 带时长分桶（±3s
+       容差取整），同歌不同版本不互相吞结果。
+  - 回归：cross-platform-match.e2e #33（悬挂 discover → settled=false →
+    放行 → settled=true + 角标 2 平台）。
