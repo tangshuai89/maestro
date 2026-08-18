@@ -30,7 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { Converter } from 'opencc-js';
-import { cjkUnify } from './normalizer.js';
+import { cjkUnify, normalizeKey, stripParensContent } from './normalizer'; // 无 .js 后缀：ts-node 源级测试可解析（dist 构建同样兼容）
 
 /** 汉字（含扩展 A / 兼容区）。 */
 const HAN = /[㐀-䶿一-鿿豈-﫿]/;
@@ -57,7 +57,7 @@ function cn2t(text: string): string {
  * 简体或繁体都行——「马赛克」与「馬賽克」命中同一值。key 统一繁体（cn2t）。
  */
 const STAGE_NAME_ALIASES: Record<string, string[]> = {
-  緑黃色社會: ['Ryokuoushoku Shakai', '绿黄色社会'], // 緑黄色社会 (9首)
+  綠黃色社會: ['Ryokuoushoku Shakai', '绿黄色社会'], // 緑黄色社会 (9首)
   上白石萌音: ['Mone Kamishiraishi'], // 上白石萌音 (かみしらいし もね) (9首)
   'キング・ヌー': ['King Gnu'], // King Gnu (キング・ヌー) (8首)
   孟慧圓: ['Meng Huiyuan', '孟慧圆'], // 孟慧圆 (8首)
@@ -81,7 +81,7 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   蛋堡: ['Soft Lipa'], // 蛋堡 (4首)
   丁世光: ['Dean Ting'], // 丁世光 (4首)
   李昕融: ['Li Xinrong'], // 李昕融 (4首)
-  髭男: ['OFFICIAL HIGE DANDISM', 'Official'], // Official髭男dism (OFFICIAL HIGE DANDISM) (4首)
+  髭男: ['OFFICIAL HIGE DANDISM'], // Official髭男dism (OFFICIAL HIGE DANDISM) (4首)
   林英雄: ['Lim Young-woong', 'Lim Young Woong', '임영웅'], // 林英雄 (임영웅) (4首)
   バックナンバー: ['back number'], // back number (バックナンバー) (4首)
   花澤香菜: ['花泽香菜', 'hanazawa kana'], // 花澤香菜 (はなざわ かな) (3首)
@@ -89,26 +89,26 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   胡彥斌: ['Tiger Hu', 'Anson Hu', '胡彦斌'], // 胡彦斌 (3首)
   ダヲコ: ['dawoko', 'Daoko'], // Daoko (ダヲコ) (3首)
   徐子未: ['Xu Ziwei'], // 徐子未 (3首)
-  坂本龍一: ['坂本龙一', 'sakamoto ryuuichi'], // 坂本龙一 (さかもと りゅういち) (3首)
+  坂本龍一: ['坂本龙一', 'sakamoto ryuuichi', 'Ryuichi Sakamoto'], // 坂本龙一 (さかもと りゅういち) (3首)
   りりあ: ['Riria.', 'りりあ。'], // りりあ。 (3首)
   鈴木愛理: ['铃木爱理', 'suzuki airi'], // 铃木爱理 (すずき あいり) (3首)
   黃宣: ['黄宣', 'YELLOW'], // YELLOW黄宣 (3首)
-  十明: ['Toumei', 'Shi Ming'], // 十明 (3首)
+  十明: ['Toumei', 'Toaka'], // 十明 (3首)
   アトラスサウンドチーム: ['Atlus Sound Team'], // アトラスサウンドチーム (3首)
   久石讓: ['Joe Hisaishi', 'Hisaishi Jō', '久石让'], // 久石让 (3首)
   聲優小劇場: ['Seiyu Mini Theater', '声优小剧场'], // 声优小剧场 (3首)
   グミ: ['GUMI'], // GUMI (グミ) (3首)
   小金: ['DJ Xiaojin', 'DJ Xiao Jin', 'DJ小金'], // DJ小金 (3首)
-  無限開關: ['无限开关', 'sukimasuitchi'], // 无限开关 (スキマスイッチ) (3首)
-  リプラス: ['ri:purasu', 'ripurasu', 'Re'], // Re:Plus (リ:プラス) (3首)
+  無限開關: ['无限开关', 'Sukima Switch'], // 无限开关 (スキマスイッチ) (3首)
+  リプラス: ['Re:Plus', 'ripurasu'], // Re:Plus (リ:プラス) (3首)
   防彈少年團: ['BTS', 'Bangtan Boys', '防弹少年团', '방탄소년단'], // BTS (防弹少年团) (3首)
   中村由利子: ['nakamura yuriko'], // 中村由利子 (なかむら ゆりこ) (3首)
   德永英明: ['tokunaga hideaki'], // 德永英明 (とくなが ひであき) (3首)
   迷悠奈: ['miyuna'], // 迷悠奈 (みゆな) (3首)
   熱狗: ['热狗', 'MC HotDog'], // MC HotDog 热狗 (2首)
-  張震嶽: ['Chang Chen-yue', 'A-Yue', 'Ayal Komod', '张震岳'], // 张震岳 (2首)
+  張震嶽: ['Chang Chen-yue', 'A-Yue', 'Ayal Komod', 'Zhang Zhen Yue', '张震岳'], // 张震岳 (2首)
   ユイ: ['YUI'], // YUI (ユイ) (2首)
-  東京事変: ['Tokyo Jihen', '东京事变', '東京事變', '东京事変'], // 東京事変 (2首)
+  東京事変: ['Tokyo Jihen', 'Tokyo Incidents', '东京事变', '東京事變', '东京事変'], // 東京事変 (2首)
   九連真人: ['Jiulian Zhenren', '九连真人'], // 九连真人 (2首)
   葛東琪: ['Ge Dongqi', '葛东琪'], // 葛东琪 (2首)
   五條人: ['Wu Tiao Ren', '五条人'], // 五条人 (2首)
@@ -116,7 +116,10 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   まこ: ['MACO'], // MACO (まこ) (2首)
   金海心: ['Jin Haixin', 'Hannah Jin'], // 金海心 (2首)
   知更鳥: ['Zhi Geng Niao', '知更鸟'], // 知更鸟 / HOYO-MiX / Chevy (2首)
-  樂團: ['乐团', 'Fine'], // Fine乐团 (2首)
+  // 2026-08-17 删：`樂團: ['乐团', 'Fine']` 是**过宽 key**——stageNameKey 只留
+  // 汉字，任何「X乐团」都归到「樂團」，导致「Fine乐团」vs「ChiliChill乐团」
+  // 等不同乐队误并（审计 scripts/audit-same-title.ts 暴露）。Fine 场景改走
+  // 下方 LATIN_FULL_ALIASES 精确全串（'fine乐团' → 'fine'）。
   れをる: ['Reol'], // Reol (れをる) (2首)
   林家謙: ['Terence Lam', '林家谦'], // 林家谦 (2首)
   福祿壽: ['FloruitShow', '福禄寿'], // 福禄寿FloruitShow (2首)
@@ -138,14 +141,13 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   太陽: ['太阳', 'TAEYANG'], // TAEYANG (太阳) (2首)
   菅田將暉: ['菅田将晖', 'suda masaki'], // 菅田将晖 (すだ まさき) (2首)
   熊木杏裡: ['熊木杏里', 'kumaki anri'], // 熊木杏里 (くまき あんり) (2首)
-  リリィさよなら: ['Lily Sayonara', 'Lil'], // Lily Sayonara (リリィ、さよなら。) (2首)
+  リリィさよなら: ['Lily Sayonara'], // Lily Sayonara (リリィ、さよなら。) (2首)
   李素羅: ['Lee So-ra', 'Lee Sora', '李素罗'], // 李素罗 (이소라) (2首)
   ソフトリー: ['Softly'], // Softly (ソフトリー) (2首)
-  ゲスの極み乙女: ['ゲスの极み乙女', 'gesuno極mi乙女'], // ゲスの極み乙女 (极度卑劣少女) (2首)
+  ゲスの極み乙女: ['ゲスの极み乙女', 'gesuno極mi乙女', 'Gesu No Kiwami Otome'], // ゲスの極み乙女 (极度卑劣少女) (2首)
   花たん: ['花tan'], // 花たん (花糖) (2首)
   愛繆: ['爱缪', 'aimyon'], // 爱缪 (あいみょん) (2首)
-  阿杜: ['A-Do', 'A-do', 'Andy'], // 阿杜 (2首)
-  熱狗張震嶽: ['热狗', '熱狗', 'MC HotDog', '热狗张震岳'], // MC HotDog 热狗 / 张震岳 (1首)
+  阿杜: ['A-Do', 'A-do'], // 阿杜 (2首)
   吉川慶: ['吉川庆', 'yoshikawa kei'], // 吉川慶 (よしかわ けい) (1首)
   鞠婧禕: ['Ju Jingyi', 'Kiku', '鞠婧祎'], // 鞠婧祎 (1首)
   楊坤: ['Kane Yang', 'Yang Kun', '杨坤'], // 杨坤 (1首)
@@ -160,16 +162,14 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   和平和浪: ['Heping He Lang'], // 和平和浪 (1首)
   コシュニエ: ['Cö shu Nie', 'Cö Shu Nie', 'koshunie'], // Cö shu Nie (コシュニエ) (1首)
   寶石: ['宝石'], // 宝石Gem (1首)
-  音闕詩聽趙方婧: ['音阙诗听', '音闕詩聽', '音阙诗听赵方婧'], // 音阙诗听 / 赵方婧 (1首)
   音闕詩聽: ['Interesting', '音阙诗听'], // 音阙诗听 (1首)
   趙方婧: ['Zhao Fangjing', '赵方婧'], // 赵方婧 (1首)
-  顏人中: ['Ele Yan', 'Ele', '颜人中'], // 颜人中 (1首)
+  顏人中: ['Ele Yan', '颜人中'], // 颜人中 (1首)
   許慧欣: ['Evonne Hsu', '许慧欣'], // 许慧欣 (1首)
   鈴木杏奈: ['铃木杏奈'], // 鈴木杏奈 (1首)
   何維健: ['Derrick Hoh', '何维健'], // 何维健 (1首)
   劉柏辛: ['Lexie Liu', '刘柏辛Lexie', '刘柏辛'], // 刘柏辛Lexie (1首)
   三浦透子: ['Toko Miura', 'miura touko'], // 三浦透子 (みうら とうこ) (1首)
-  米津玄師野田洋次郎: ['米津玄师', '米津玄師', '米津玄师野田洋次郎'], // 米津玄師 / 野田洋次郎 (1首)
   宮川大聖: ['宫川大圣', 'miyakawakun'], // 宮川大聖 (みやかわくん) (1首)
   董書含: ['Dong Shuhan', '董书含'], // 董书含 (1首)
   許哲珮: ['Peggy Hsu', '许哲珮'], // 许哲珮 (1首)
@@ -179,7 +179,6 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   平井大: ['hirai dai'], // 平井大 (ひらい だい) (1首)
   安全地帯: ['anzenchitai'], // 安全地帯 (あんぜんちたい) (1首)
   綠蘿組: ['绿萝组', 'MeLo'], // MeLo_绿萝组 (1首)
-  魚椒鹽張戀歌: ['鱼椒盐', '魚椒鹽', '鱼椒盐张恋歌'], // 鱼椒盐 / 张恋歌 (1首)
   魚椒鹽: ['鱼椒盐'], // 鱼椒盐 (1首)
   張戀歌: ['张恋歌'], // 张恋歌 (1首)
   ガルニデリア: ['garunideria', 'GARNiDELiA'], // GARNiDELiA (ガルニデリア) (1首)
@@ -191,7 +190,7 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   ジュジュ: ['juju', 'JUJU'], // JUJU (ジュジュ) (1首)
   謝安琪: ['Kay Tse', '谢安琪'], // 谢安琪 (1首)
   周傳雄: ['Steve Chou', 'Xiao Gang', '小刚', '周传雄'], // 周传雄 (1首)
-  新しい學校のリーダーズ: ['新しい学校のリーダーズ', '新shii学校noriidaazu'], // 新しい学校のリーダーズ (1首)
+  新しい學校のリーダーズ: ['新しい学校のリーダーズ'], // 新しい学校のリーダーズ (1首)
   張傑: ['Jason Zhang', '张杰'], // 张杰 / HOYO-MiX (1首)
   大原ゆい子: ['大原yui子'], // 大原ゆい子 (1首)
   草食考拉: ['Grass Koala'], // 草食考拉 (1首)
@@ -203,69 +202,54 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   於梓貝: ['Yu Zibei', '于梓贝'], // 于梓贝 (1首)
   飛石號: ['Fei Shi Hao', '飞石号'], // 飞石号 (1首)
   白靜晨: ['Bai Jingchen', '白静晨'], // 白静晨 (1首)
-  'ウォン・ウィンツァン': ['uon/uintsuan'], // ウォン・ウィンツァン (1首)
   鍾凱琳: ['Zhong Kailin', '钟凯琳'], // 钟凯琳 (1首)
-  蔡徐坤: ['Kun', 'Cai Xukun'], // 蔡徐坤 (1首)
+  蔡徐坤: ['Cai Xukun'], // 蔡徐坤 (1首)
   松原正樹: ['Masaki Matsubara', '松原正树'], // 松原正樹 (1首)
   楊楚驍: ['Yang Chuxiao', '杨楚骁'], // 杨楚骁 (1首)
   曾軼可: ['Yico Tseng', 'Zeng Yike', '曾轶可'], // 曾轶可 (1首)
   陶喆盧廣仲: ['陶喆', '陶喆卢广仲'], // 陶喆 / 卢广仲 (1首)
-  'ジュディ・アンド・マリー': ['judei/ando/marii', 'JUDY AND MARY'], // JUDY AND MARY (ジュディ・アンド・マリー) (1首)
-  鈴木雅之鈴木愛理: ['铃木雅之', '鈴木雅之', 'suzukimasayuki', '铃木雅之铃木爱理'], // 鈴木雅之 (すずきまさゆき) / 铃木爱理 (すずき あいり) (1首)
+  'ジュディ・アンド・マリー': ['JUDY AND MARY'], // JUDY AND MARY (ジュディ・アンド・マリー) (1首)
   鈴木雅之: ['铃木雅之', 'suzukimasayuki'], // 鈴木雅之 (すずきまさゆき) (1首)
   郭靜: ['Claire Kuo', '郭静'], // 郭静 (1首)
   飛狗: ['Fei Gou', '飞狗MOCO', '飞狗'], // 飞狗MOCO (1首)
-  黃宣范曉萱: ['黄宣', '黃宣', 'YELLOW', '黄宣范晓萱', '黃宣範曉萱'], // YELLOW黄宣 / 范晓萱 (1首)
-  エメ: ['eme', 'Aimer'], // Aimer (エメ) (1首)
-  方大同王力宏: ['方大同'], // 方大同 / 王力宏 (1首)
+  エメ: ['Aimer'], // Aimer (エメ) (1首)
   竇靖童: ['Leah Dou', '窦靖童'], // 窦靖童 (1首)
-  'ミス・オオジャ': ['misu/ooja', 'Ms.OOJA'], // Ms.OOJA (ミス・オオジャ) (1首)
+  'ミス・オオジャ': ['Ms.OOJA'], // Ms.OOJA (ミス・オオジャ) (1首)
   彭佳慧: ['Julia Peng'], // 彭佳慧 (1首)
   戴荃: ['Dai Quan'], // 戴荃 (1首)
-  吳建豪方大同: ['吴建豪', '吳建豪', '吴建豪方大同'], // 吴建豪 / 方大同 (1首)
   逃跑計劃: ['Escape Plan', 'Perdel', '逃跑计划'], // 逃跑计划 (1首)
   三土念遙: ['三土念遥'], // 三土念遥 (1首)
   ノノック: ['nonokku', 'nonoc'], // nonoc (ノノック) (1首)
   劉嘉星: ['刘嘉星'], // 刘嘉星 (1首)
-  朱一龍楊恩又: ['朱一龙', '朱一龍', '朱一龙杨恩又'], // 朱一龙 / 杨恩又 (1首)
   朱一龍: ['朱一龙'], // 朱一龙 (1首)
   楊恩又: ['杨恩又'], // 杨恩又 (1首)
-  張智成: ['张智成'], // 张智成 (1首)
+  張智成: ['张智成', 'Z-Chen'], // 张智成 (1首)
   楊沛宜: ['杨沛宜'], // 杨沛宜 (1首)
-  洛天依言和: ['洛天依'], // 洛天依 / 言和 (1首)
-  聲優小劇場顏笑: ['声优小剧场', '聲優小劇場', '声优小剧场颜笑'], // 声优小剧场 / 颜笑 (1首)
   顏笑: ['颜笑'], // 颜笑 (1首)
-  李昕融樊桐舟李凱稠: ['李昕融', '李昕融樊桐舟李凯稠'], // 李昕融 / 樊桐舟 / 李凯稠 (1首)
   李凱稠: ['李凯稠'], // 李凯稠 (1首)
   超級小可愛: ['超级小可爱'], // 超级小可爱 (1首)
-  蝶: ['一之瀬yuu'], // 蝶々P (一之瀬ユウ) / GUMI (グミ) (1首)
+  蝶: ['一之瀬ユウ', '蝶々P'], // 蝶々P (一之瀬ユウ) / GUMI (グミ) (1首)
   優裡: ['优里', 'yuuri'], // 優里 (ゆうり) (1首)
   そらる: ['soraru'], // そらる (soraru) (1首)
   まふまふ: ['mafumafu'], // まふまふ (mafumafu) (1首)
-  遊助: ['游助'], // 遊助 (上地雄辅) (1首)
-  松本梨香大谷育江: ['松本梨香', 'matsumoto rika'], // 松本梨香 (まつもと りか) / 大谷育江 (おおたに いくえ) (1首)
+  遊助: ['游助', 'Yusuke'], // 遊助 (上地雄辅) (1首)
   大谷育江: ['ootani ikue'], // 大谷育江 (おおたに いくえ) (1首)
   無缺公子: ['无缺公子'], // 无缺公子 (1首)
   コレサワ: ['koresawa'], // コレサワ (koresawa) (1首)
   法蘭黛樂團: ['法兰黛乐团', 'Frand'], // Frandé法兰黛乐团 (1首)
-  李昕融葉嘉: ['李昕融', '李昕融叶嘉'], // 李昕融 / 叶嘉 (1首)
   葉嘉: ['叶嘉'], // 叶嘉 (1首)
-  周杰倫言承旭吳建豪周渝民: ['周杰伦', '周杰倫', '周杰伦言承旭吴建豪周渝民'], // 周杰伦 / 言承旭 / 吴建豪 / 周渝民 (1首)
   純音樂: ['纯音乐'], // 纯音乐 (1首)
-  王一博郭富城: ['王一博'], // 王一博 / 郭富城 (1首)
-  騰格爾徐夢圓: ['腾格尔', '騰格爾', '腾格尔徐梦圆'], // 腾格尔 / 徐梦圆 (1首)
   騰格爾: ['腾格尔'], // 腾格尔 (1首)
   徐夢圓: ['徐梦圆'], // 徐梦圆 (1首)
   回春丹樂隊: ['Hui Chun Dan', '回春丹', '回春丹乐队'], // 回春丹乐队 (1首)
   安良城紅: ['安良城红', 'BENI'], // BENI (安良城红) (1首)
   夏日入侵企畫: ['夏日入侵企画'], // 夏日入侵企画 (1首)
-  薛凱琪: ['薛凯琪'], // 薛凯琪 (1首)
+  薛凱琪: ['薛凯琪', 'Fiona Sit'], // 薛凯琪 (1首)
   絢香: ['绚香', 'ayaka'], // 絢香 (あやか) (1首)
-  'アイナ・ジ・エンド': ['aina/ji/endo', 'AiNA THE END'], // AiNA THE END (アイナ・ジ・エンド) (1首)
+  'アイナ・ジ・エンド': ['AiNA THE END'], // AiNA THE END (アイナ・ジ・エンド) (1首)
   르세라핌: ['LE SSERAFIM'], // LE SSERAFIM (르세라핌) / j-hope (1首)
   葫蘆童聲: ['葫芦童声'], // 葫芦童声 (1首)
   理想混蛋: ['Bestards'], // 理想混蛋 (1首)
-  言承旭五月天阿信: ['言承旭'], // 言承旭 / 五月天 阿信 (1首)
   チョーキューメイ: ['chookyuumei', 'ChoQMay'], // チョーキューメイ (ChoQMay) (1首)
   잭리: ['Jack Lee'], // Jack Lee (잭리) / Bob James / Nathan East / Lewis Pragasam (1首)
   中國交響樂團: ['中国交响乐团'], // 中国交响乐团 (1首)
@@ -273,43 +257,32 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   뉴진스: ['NewJeans'], // NewJeans (뉴진스) (1首)
   今津渉: ['Ayumu Imazu'], // Ayumu Imazu (今津渉) (1首)
   小瀨村晶: ['小濑村晶', 'Akira Kosemura'], // 小濑村晶 (Akira Kosemura) (1首)
-  高橋あず美アトラスサウンドチーム: [
-    '高桥あず美',
-    '高橋あず美',
-    '高橋azu美',
-    '高桥あず美アトラスサウンドチーム',
-  ], // 高橋あず美 / アトラスサウンドチーム / ATLUS GAME MUSIC (1首)
   高橋あず美: ['高桥あず美', '高橋azu美'], // 高橋あず美 (1首)
-  鷺巣詩郎: ['鹭巣诗郎', 'sagisu shirou'], // 鹭巣诗郎 (さぎす しろう) / Claire (1首)
-  清塚信也: ['清冢信也'], // 清塚信也 (Shin'ya Kiyozuka) (1首)
+  鷺巢詩郎: ['鹭巣诗郎', 'sagisu shirou'], // 鹭巣诗郎 (さぎす しろう) / Claire (1首)
+  清冢信也: ['清冢信也', 'Shinya Kiyozuka'], // 清塚信也 (Shin'ya Kiyozuka) (1首)
   죠지: ['George'], // George (죠지) (1首)
   陳致逸: ['Yu-Peng Chen', '陈致逸', 'Chen Zhiyi'], // 陈致逸 / HOYO-MiX (1首)
   蒂姆哈丁三重奏: ['Tim Hardin Trio'], // Tim Hardin Trio (蒂姆·哈丁三重奏) (1首)
   こっちのけんと: ['kotchinokento'], // こっちのけんと (菅生健人) (1首)
   劉洋: ['刘洋'], // 刘 洋 (1首)
   투피엠: ['2PM'], // 2PM (투피엠) (1首)
-  許閣林韓星이무진이진성: ['许阁', '許閣', '许阁林韩星이무진이진성'], // 许阁 (허각) / 林韩星 (임한별) / 이무진 (李茂珍) / 이진성 (李振成) (1首)
   許閣: ['许阁'], // 许阁 (허각) (1首)
-  神前暁內田ましろきしかな子: ['神前暁', 'kousaki satoru', '神前暁内田ましろきしかな子'], // 神前暁 (こうさき さとる) / 内田ましろ / きしかな子 (1首)
   內田ましろ: ['内田ましろ', '内田mashiro'], // 内田ましろ (1首)
   きしかな子: ['kishikana子'], // きしかな子 (1首)
   데이식스: ['DAY6'], // DAY6 (데이식스) (1首)
-  松隆子: ['松taka子'], // 松隆子 (松たか子) (1首)
+  松隆子: ['松taka子', 'Takako Matsu'], // 松隆子 (松たか子) (1首)
   아이유: ['IU'], // IU (아이유) (1首)
   ちゃんみな: ['chanmina', 'CHANMINA'], // CHANMINA (ちゃんみな) (1首)
   黃色魔術交響樂團: ['黄色魔术交响乐团', 'Yellow Magic Orchestra'], // Yellow Magic Orchestra (黄色魔术交响乐团) (1首)
-  金永所: ['YOUNGSO'], // 金永所 (YOUNGSO) (1首)
+  金永所: ['YOUNGSO', 'Youngso Kim'], // 金永所 (YOUNGSO) (1首)
   거미: ['GUMMY'], // GUMMY (거미) (1首)
-  'ジュスカ・グランペール': ['jusuka/guranpeeru', 'Jusqu'], // Jusqu'à Grand-Père (ジュスカ・グランペール) (1首)
-  コーコーヤ: ['kookooya', 'ko'], // ko-ko-ya (コーコーヤ) (1首)
+  コーコーヤ: ['ko-ko-ya', 'kookooya'], // ko-ko-ya (コーコーヤ) (1首)
   샘옥: ['Sam Ock'], // Sam Ock (샘 옥) (1首)
-  二宮愛: ['ri:purasu', 'ripurasu', 'Re', '二宫爱'], // Re:Plus (リ:プラス) / 二宮愛 (にのみや あい) (1首)
+  二宮愛: ['二宫爱'], // 二宮愛 (にのみや あい) (1首)
   에피톤프로젝트: ['Epitone Project'], // Epitone Project (에피톤 프로젝트) (1首)
   杉惠ゆりか: ['suujii', '杉惠yurika'], // 杉惠ゆりか (スージー) (1首)
-  スタァライト九九組: ['スタァライト九九组', 'sutaaraito九九組'], // スタァライト九九組 (Starlight九九组) (1首)
+  スタァライト九九組: ['スタァライト九九组', 'sutaaraito九九組', 'Starlight Kuku Gumi'], // スタァライト九九組 (Starlight九九组) (1首)
   ワッチ: ['watchi', 'wacci'], // wacci (ワッチ) (1首)
-  ねぬゆり: ['ACA'], // ACAね / ぬゆり (Lanndo) (1首)
-  ね: ['ACA'], // ACAね (1首)
   ぬゆり: ['nuyuri', 'Lanndo'], // ぬゆり (Lanndo) (1首)
   かぴ: ['kapi'], // かぴ (1首)
   워너비: ['WSG'], // WSG워너비 (가야G) (WSG WANNBE (Gaya-G)) (1首)
@@ -319,14 +292,11 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   테이: ['Tei'], // 테이 (Tei) (1首)
   西原健一郎: ['Kenichiro Nishihara'], // 西原健一郎 (Kenichiro Nishihara) / Pismo (1首)
   ハルレオ: ['harureo', 'haruleo'], // ハルレオ (haruleo) (1首)
-  桑田佳祐: ['Keisuke Kuwata', 'kuwata keisuke'], // 桑田佳祐 (くわた けいすけ)
   케이시: ['Kassy'], // Kassy (케이시) (1首)
-  崔叡娜비비: ['崔叡娜', 'YENA'], // YENA (崔叡娜) / BIBI (비비) (1首)
   崔叡娜: ['YENA'], // YENA (崔叡娜) (1首)
   비비: ['BIBI'], // BIBI (비비) (1首)
-  경서예지전건호: ['경서예지'], // 경서예지 / 전건호 (全健浩) (1首)
   內田真禮: ['内田真礼', 'uchida maaya'], // 内田真礼 (うちだ まあや) (1首)
-  瀧沢一留: ['泷沢一留', 'Takizawa Ichiru'], // 瀧沢一留 (Takizawa Ichiru) (1首)
+  瀧澤一留: ['泷沢一留', 'Takizawa Ichiru'], // 瀧沢一留 (Takizawa Ichiru) (1首)
   大石昌良: ['ooishimasayoshi'], // 大石昌良 (オーイシマサヨシ) (1首)
   半邊: ['半边'], // 半边 (1首)
   宇多田光: ['宇多田hikaru'], // 宇多田光 (宇多田ヒカル) (1首)
@@ -334,36 +304,25 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   まきちゃんぐ: ['makichangu'], // まきちゃんぐ (makichangu) (1首)
   吉田亞紀子: ['吉田亚纪子', 'KOKIA'], // KOKIA (吉田亚纪子) (1首)
   板野友美: ['itano tomomi'], // 板野友美 (いたの ともみ) (1首)
-  周興哲: ['周兴哲', 'Eric'], // Eric周兴哲 (1首)
-  打首獄門同好會大澤敦史: [
-    '打首狱门同好会',
-    '打首獄門同好會',
-    'uchikubigokumondoukoukai',
-    '打首狱门同好会大泽敦史',
-  ], // 打首狱门同好会 (うちくびごくもんどうこうかい) / 大澤 敦史 (1首)
+  周興哲: ['周兴哲', 'Eric Chou'], // Eric周兴哲 (1首)
   打首獄門同好會: ['打首狱门同好会', 'uchikubigokumondoukoukai'], // 打首狱门同好会 (うちくびごくもんどうこうかい) (1首)
   大澤敦史: ['大泽敦史'], // 大澤 敦史 (1首)
-  'キー・サウンズ・レーベル': ['kii/saunzu/reeberu', 'Key Sounds Label'], // Key Sounds Label (キー・サウンズ・レーベル) (1首)
-  迷悠奈クボタカイ: ['迷悠奈', 'miyuna'], // 迷悠奈 (みゆな) / クボタカイ (1首)
+  'キー・サウンズ・レーベル': ['Key Sounds Label'], // Key Sounds Label (キー・サウンズ・レーベル) (1首)
   クボタカイ: ['kubotakai'], // クボタカイ (1首)
-  家入レオ: ['家入reo'], // 家入レオ (家入莉奥) (1首)
-  'ナオト・インティライミ': ['naoto/inteiraimi'], // ナオト・インティライミ (中村直人) (1首)
+  家入レオ: ['家入reo', 'Leo Ieiri'], // 家入レオ (家入莉奥) (1首)
   フーリン: ['fuurin', 'Foorin'], // Foorin (フーリン) (1首)
-  王俊凱蔡依林: ['王俊凯', '王俊凱', '王俊凯蔡依林'], // 王俊凯 / 蔡依林 (1首)
   王俊凱: ['王俊凯'], // 王俊凯 (1首)
   生物股長: ['生物股长', 'ikimonogakari'], // 生物股长 (いきものがかり) (1首)
-  登坂廣臣: ['登坂广臣'], // ØMI (登坂广臣) (1首)
+  登坂廣臣: ['登坂广臣', 'Hiroomi Tosaka'], // ØMI (登坂广臣) (1首)
   ヘクとパスカル: ['hekutopasukaru', 'Hekuto Pascal'], // ヘクとパスカル (Hekuto Pascal) (1首)
   藤原櫻: ['藤原樱', '藤原sakura'], // 藤原樱 (藤原さくら) (1首)
   ハグ: ['hagu'], // H△G (ハグ) (1首)
   ウルトラタワー: ['urutoratawaa', 'ULTRA TOWER'], // ULTRA TOWER (ウルトラタワー) (1首)
   ワニマ: ['wanima', 'WANIMA'], // WANIMA (ワニマ) (1首)
-  當山みれい: ['当山みれい', '當山mirei'], // 當山みれい (当山真玲) (1首)
-  じーざす鏡音鈴鏡音連: ['ji-zasuP', 'ji-zasu', 'じーざす镜音铃镜音连'], // じーざす (じーざすP) / 镜音铃 (鏡音リン) / 镜音连 (鏡音レン) (1首)
+  當山みれい: ['当山みれい', '當山mirei', 'MIREI'], // 當山みれい (当山真玲) (1首)
   じーざす: ['ji-zasuP', 'ji-zasu'], // じーざす (じーざすP) (1首)
   鏡音鈴: ['镜音铃', '鏡音rin'], // 镜音铃 (鏡音リン) (1首)
   鏡音連: ['镜音连', '鏡音ren'], // 镜音连 (鏡音レン) (1首)
-  팔로알토비와이: ['팔로알토', 'Paloalto'], // Paloalto (팔로알토) / BewhY (비와이) (1首)
   팔로알토: ['Paloalto'], // Paloalto (팔로알토) (1首)
   비와이: ['BewhY'], // BewhY (비와이) (1首)
   쿠기: ['Coogie'], // 쿠기 (Coogie) / SUPERBEE (슈퍼비) (1首)
@@ -371,59 +330,53 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   小洋槐樂隊: ['요조', 'Yozoh', '小洋槐乐队'], // Yozoh (요조) / 小洋槐乐队 (소규모 아카시아 밴드) (1首)
   요조: ['Yozoh'], // Yozoh (요조) (1首)
   神思者: ['S.E.N.S.'], // S.E.N.S. (神思者) (1首)
-  雀斑樂團: ['雀斑乐团'], // 雀斑乐团 (1首)
+  雀斑樂團: ['雀斑', '雀斑乐团'], // 雀斑乐团 (1首)
   龍寬九段: ['Long Kuan Jiu Duan', '龙宽九段'], // 龙宽九段 (1首)
   栗プリン: ['栗purin', 'Kuripurin'], // 栗プリン (Kuripurin) (1首)
   フラワー: ['furawaa', 'Flower'], // Flower (フラワー) (1首)
   ラムジ: ['ramuji', 'Lambsey'], // Lambsey (ラムジ) (1首)
   皇后皮箱: ['Queen Suitcase'], // 皇后皮箱 (1首)
   尤長靖: ['尤长靖'], // 尤长靖 (1首)
-  鄭恩地: ['郑恩地'], // 郑恩地 (정은지) (1首)
+  鄭恩地: ['郑恩地', 'JEONG EUNJI'], // 郑恩地 (정은지) (1首)
   八王子: ['gumi', 'GUMI'], // GUMI (グミ) / 八王子P (8#Prince) (1首)
   宋旻浩: ['MINO'], // 宋旻浩 (MINO) / TAEYANG (太阳) (1首)
-  양승호김하온: ['양승호', 'sokodomo'], // sokodomo (양승호) / HAON (김하온) (1首)
   양승호: ['sokodomo'], // sokodomo (양승호) (1首)
   김하온: ['HAON'], // HAON (김하온) (1首)
   창모: ['CHANGMO'], // CHANGMO (창모) (1首)
   더콰이엇: ['The Quiett'], // The Quiett (더 콰이엇) (1首)
   山本彩: ['yamamoto sayaka'], // 山本彩 (やまもと さやか) (1首)
-  欅坂: ['榉坂'], // 欅坂46 (1首)
-  艾熱李佳隆: ['艾热', '艾熱', '艾热李佳隆'], // 艾热AIR / JelloRio李佳隆 (1首)
+  櫸坂: ['榉坂'], // 欅坂46 (1首)
   艾熱: ['艾热'], // 艾热AIR (1首)
   李佳隆: ['JelloRio'], // JelloRio李佳隆 (1首)
-  吳亦凡: ['吴亦凡'], // 吴亦凡 (1首)
-  橫浜銀蠅: ['横浜银蝇', 'yokohamaginbae'], // 横浜銀蠅 (よこはまぎんばえ) (1首)
-  申容財尹民秀: ['申容财', '申容財', '申容财尹民秀'], // 申容财 (신용재) / 尹民秀 (윤민수) (1首)
+  吳亦凡: ['吴亦凡', 'Kris Wu'], // 吴亦凡 (1首)
+  橫濱銀蠅: ['横浜银蝇', 'yokohamaginbae'], // 横浜銀蠅 (よこはまぎんばえ) (1首)
   申容財: ['申容财'], // 申容财 (신용재) (1首)
   あるふぁきゅん: ['arufuakyun'], // あるふぁきゅん。 (1首)
   人間調教: ['人间调教', 'Mitchie M'], // Mitchie M (人间调教) (1首)
   オスタープロジェクト: ['osutaapurojekuto', 'OSTER project'], // OSTER project (オスタープロジェクト) (1首)
   黃霄雲: ['Huang Xiaoyun', '黄霄雲', '黄霄云'], // 黄霄雲 (1首)
-  袁婭維小宇宋念宇: ['袁娅维', '袁婭維', '袁娅维小宇宋念宇'], // 袁娅维TIA RAY / 小宇-宋念宇 (1首)
   河合奈保子: ['kawai naoko'], // 河合奈保子 (かわい なおこ) (1首)
   モンゴル: ['mongoru800', 'mongoru', 'Mongol800'], // Mongol800 (モンゴル800) (1首)
   周筆暢: ['周笔畅'], // 周笔畅 (1首)
-  阿藤芳史: ['miu'], // miu-clips (阿藤芳史) (1首)
   まるりとりゅうが: ['maruritoryuuga'], // まるりとりゅうが (真瑠梨与隆雅) (1首)
   椎名林檎浮雲: ['椎名林檎', 'shiina ringo', '椎名林檎浮云'], // 椎名林檎 (しいな りんご) / 浮雲 (1首)
   浮雲: ['浮云'], // 浮雲 (1首)
   はるまきごはん: ['harumakigohan'], // はるまきごはん (春卷饭) (1首)
   チャイ: ['chai', 'chay'], // chay (チャイ) (1首)
-  のぼる初音未來: ['noboru', 'のぼる初音未来'], // のぼる↑P / 初音未来 (初音ミク) (1首)
   信澤宣明: ['信泽宣明', 'Nobuaki Nobusawa'], // 信泽宣明 (Nobuaki Nobusawa) (1首)
-  高橋瞳: ['高桥瞳', 'takahashihitomi'], // 高橋瞳 (たかはしひとみ) (1首)
-  日本群星: ['omunibasu'], // 日本群星 (オムニバス) (1首)
+  高橋瞳: ['高桥瞳', 'takahashihitomi', 'Hitomi Takahashi'], // 高橋瞳 (たかはしひとみ) (1首)
+  日本群星: ['V.A.', 'Various Artists', '群星', 'omunibasu'], // 日本群星 (オムニバス) (1首)
   ちびた: ['chibita'], // ちびた (1首)
   ホワイティーン: ['howaiteiin', 'whiteeeen'], // whiteeeen (ホワイティーン) (1首)
-  川瀨智子: ['川濑智子', 'kawase tomoko'], // 川濑智子 (かわせ ともこ) (1首)
+  川瀨智子: ['川濑智子', 'kawase tomoko', 'Tommy heavenly6'], // 川濑智子 (かわせ ともこ) (1首)
   新山詩織: ['新山诗织', 'niiyama shiori'], // 新山詩織 (にいやま しおり) (1首)
-  金範洙: ['金范洙'], // 金范洙 (김범수) (1首)
+  金範洙: ['金范洙', '金范秀'], // 金范洙 (김범수) (1首)
   米希亞: ['米希亚', 'MISIA'], // MISIA (米希亚) (1首)
-  香奈兒: ['香奈儿', 'Che'], // Che'Nelle (香奈儿) (1首)
+  香奈兒: ['香奈儿'], // Che'Nelle (香奈儿) (1首)
   楊穎: ['杨颖'], // 杨颖 (1首)
   南拳媽媽: ['Nan Quan Mama', '南拳妈妈'], // 南拳妈妈 (1首)
   周杰倫: ['Jay Chou'], // 周杰伦
-  蔡依林: ['Jolin Tsai'], // 蔡依林
+  蔡依林: ['Jolin Tsai', 'JOLIN'], // 蔡依林
   林俊傑: ['JJ Lin'], // 林俊杰
   王力宏: ['Wang Leehom', 'Leehom Wang'], // 王力宏
   鄧紫棋: ['G.E.M.', 'Gloria Tang'], // 邓紫棋
@@ -436,9 +389,9 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   陳奕迅: ['Eason Chan'], // 陈奕迅
   薛之謙: ['Joker Xue'], // 薛之谦
   吳青峰: ['Greeny Wu'], // 吴青峰
-  張惠妹: ['A-Mei'], // 张惠妹
+  張惠妹: ['A-Mei', 'A-Mei Chang'], // 张惠妹
   許嵩: ['Vae'], // 许嵩
-  汪蘇瀧: ['Silence Wong'], // 汪苏泷
+  汪蘇瀧: ['Silence Wong', 'Silence Wang'], // 汪苏泷
   徐佳瑩: ['Lala Hsu'], // 徐佳莹
   吳克群: ['Kenji Wu'], // 吴克群
   陶喆: ['David Tao'], // 陶喆
@@ -492,7 +445,7 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   ずっと真夜中でいいのに: ['ZUTOMAYO', 'ZTMY'], // ずっと真夜中でいいのに
   サカナクション: ['Sakanaction'], // サカナクション
   スピッツ: ['Spitz'], // スピッツ
-  スキマスイッチ: ['Sukima Switch'], // スキマスイッチ
+  スキマスイッチ: ['Sukima Switch', '无限开关'], // スキマスイッチ
   バンプオブチキン: ['BUMP OF CHICKEN'], // バンプオブチキン
   ワンオクロック: ['ONE OK ROCK'], // ワンオクロック
   オフィシャルヒゲダンディズム: ['Official HIGE DANDISM'], // オフィシャルヒゲダンディズム
@@ -528,6 +481,27 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   華晨宇: ['Hua Chenyu', '华晨宇'], // 华晨宇
   大森元貴: ['Motoki Ohmori', '大森元贵'], // 大森元贵（Mrs. GREEN APPLE 主唱个人活动）
   大原櫻子: ['Sakurako Ohara', '大原樱子'], // 大原樱子（姓名颠倒罗马音）
+  乃木坂46: ['Nogizaka46', '乃木坂46'], // 乃木坂46（QQ 红心实测：归り道は远回りしたくなる）
+  櫸坂46: ['Keyakizaka46', '榉坂46'], // 欅坂46（黑い羊）
+  ナオト・インティライミ: ['Naoto Inti Raymi'], // ナオト・インティライミ（message）
+  宇多田ヒカル: ['Hikaru Utada', '宇多田光'], // 宇多田ヒカル（pinkblood）
+  オーイシマサヨシ: ['Masayoshi Oishi', '大石昌良'], // オーイシマサヨシ（hands）
+  王以太: ['Yitai Wang'], // 王以太（目不转睛）
+  品冠: ['Victor Wong'], // 品冠（我以为）
+  濱崎あゆみ: ['Ayumi Hamasaki', '滨崎步'], // 浜崎あゆみ（aboutyou / voyage / heaven）
+  松たか子: ['Takako Matsu', '松隆子'], // 松たか子（花のように）
+  黄丽玲: ['A-Lin'], // 黄丽玲（幸福在歌唱）
+  祁奕翔: ['Qi Yi Xiang', '祁奕翔1'], // 祁奕翔（苦海）
+  汪小敏: ['Tracy Wang'], // 汪小敏（不枉）
+  周深: ['Zhou Shen'], // 周深（myonly）
+  任然: ['Ren Ran'], // 任然（一去不回的时光）
+  ChiliChill乐团: ['ChiliChill'], // ChiliChill乐团（屑屑）
+  みゆな: ['迷悠奈', 'miyuna'], // みゆな（ふわふわ / 缶ビル）
+  あいみょん: ['爱缪', 'aimyon'], // あいみょん（満月の夜なら / ハルノヒ）
+  いきものがかり: ['生物股长', 'ikimonogakari'], // いきものがかり（sweetsweetmusic）
+  鏡音レン: ['镜音连', '鏡音ren'], // 鏡音レン（リモコン）
+  鏡音リン: ['镜音铃', '鏡音rin'], // 鏡音リン（リモコン）
+  雀斑: ['雀斑乐团'], // 雀斑（爱的大逃杀；雀斑樂團 条目已含 '雀斑' 值，双保险）
 };
 
 /**
@@ -540,21 +514,31 @@ function stageNameKey(s: string): string | null {
   const stripped = s.replace(/[(（\[【][^)）\]】]*[)）\]】]/g, '');
   let out = '';
   for (const ch of stripped) {
-    if (HAN.test(ch) || KANA.test(ch)) out += ch;
+    if (HAN.test(ch) || KANA.test(ch) || /[0-9]/.test(ch)) out += ch; // 数字保留（乃木坂46 / 欅坂46）
   }
   if (!out) {
     // 剥括号后无汉字剩余 → 整串被括号包裹的**格式标记**（QQ 常用
     // 【范逸臣 Van Fan】包艺人名，括号不是注释）。回退：从原串直接取
     // 汉字（不剥括号），「范逸臣」仍能提取。
     for (const ch of s) {
-      if (HAN.test(ch) || KANA.test(ch)) out += ch;
+      if (HAN.test(ch) || KANA.test(ch) || /[0-9]/.test(ch)) out += ch;
     }
   }
   if (!out) return null;
-  return cn2t(out);
+  // 2026-08-14：输出做「繁→简→繁」往返归一——日文新字体（瀬/緑/桜…）
+  // 经 cjkUnify 归到简体再 cn2t 回繁体，与表 key（旧字体繁体）对齐：
+  // '川瀬智子' → 川濑智子 → 川瀨智子 ✓；'東京事変' → 東京事変 ✓（変 不转换）。
+  return cn2t(cjkUnify(out));
 }
 
-/** 别名值/待比串归一：小写 + 去标点，但**保留汉字**（繁→简统一）。
+/** 别名值/待比串归一：小写 + 去标点，**保留汉字/假名/韩文**（繁→简统一）。
+ *
+ * ⚠️ 2026-08-14 修复（空串碰撞事故）：旧实现 `[^a-z0-9一-鿿]` 把**假名（぀-ヿ）
+ * 和韩文（가-힣）也剥掉**——表值 'ハチ'/'방탄소년단' 归一后变 ''，任何纯假名/
+ * 纯韩文串都满足 '' === '' → 米津玄師↔あいこ、林英雄↔르세라핌 这类完全不同的
+ * 艺人被误并（红心同步到错误歌曲）。现在保留假名/韩文，'ハチ' 只有与 'ハチ'
+ * 相等才命中；归一后为空（纯标点等）的串**不参与比较**（见 stageNameAliasMatch
+ * 的空串守卫）。
  *
  * 2026-08-07 扩展：旧实现 `[^a-z0-9]` 会把汉字全删——别名值只能放拉丁艺名。
  * 现在支持 CJK 别名（马赛克乐队 = 马赛克），汉字经 cjkUnify 繁→简统一后
@@ -562,7 +546,7 @@ function stageNameKey(s: string): string | null {
 function normStageName(s: string): string {
   return cjkUnify(s)
     .toLowerCase()
-    .replace(/[^a-z0-9一-鿿]/g, '');
+    .replace(/[^a-z0-9一-鿿぀-ヿ가-힣]/g, '');
 }
 
 /** 查表：key 简繁双查——表内旧条目（繁体 key）与新条目（简体 key）都命中。
@@ -571,13 +555,34 @@ function aliasEntry(key: string | null): string[] | undefined {
   if (!key) return undefined;
   return STAGE_NAME_ALIASES[key] ?? STAGE_NAME_ALIASES[cjkUnify(key)];
 }
+/**
+ * 拉丁名「词序无关」判等：两侧纯拉丁、词数相等（≥2）且互为排列。
+ *
+ * 2026-08-14 新增：表值多为 wanakana/拼音的**姓先小写**直读（'tokunaga
+ * hideaki' / 'kumaki anri'），平台实际写**名先**（'Hideaki Tokunaga' /
+ * 'Anri Kumaki'）——严格整串永远对不上，renderer 分组把同一艺人拆成两组
+ * （用户实测：レイニブル/虹/イチリンソウ 等大量日音歌曲分裂）。这里对
+ * 「值 vs 对方」加词序无关：词数相等 + 词集互为排列才算（'A B' vs 'B A'）。
+ * 安全：'Jay Chou' vs 'Chou Jay' 这类 2 词排列 = 同人；'Coldplay' vs
+ * 'Cold'（词数不同）/'G.E.M.' vs 'M.E.G.'（单词）都不触发。
+ */
+function latinWordAnagram(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (/[一-鿿぀-ヿ가-힣]/.test(a + b)) return false; // 任一侧含 CJK/假名/韩文 → 不走
+  const wa = a.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const wb = b.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (wa.length !== wb.length || wa.length < 2) return false;
+  const key = (ws: string[]): string => [...ws].sort().join('|');
+  return key(wa) === key(wb);
+}
 
 /**
  * 两个艺人名是否命中**策展别名表**（双向）。
  *
- * 只认表内「key 整串相等 + 值整串相等」——不做子串、不做拼音模糊。
- * 表外名字永远 false（「Coldplay vs Cold」「Taylor vs Taylor Swift」不会
- * 因前缀巧合被并，这是当初删掉 artistPrefixMatch 误并事故后的铁律）。
+ * 只认表内「key 整串相等 + 值整串相等（或拉丁词序无关）」——不做子串、
+ * 不做拼音模糊。表外名字永远 false（「Coldplay vs Cold」「Taylor vs
+ * Taylor Swift」不会因前缀巧合被并，这是当初删掉 artistPrefixMatch 误并
+ * 事故后的铁律）。
  *
  * 2026-08-07 加「汉字名同人」分支：QQ 等平台常写「范逸臣 Van Fan」这种
  * 汉字名 + 英文别名混合串，与网易云「范逸臣」桥不上英文值（原始串含汉字）。
@@ -593,7 +598,22 @@ export function stageNameAliasMatch(a: string, b: string): boolean {
   const aliasHit = (key: string | null, other: string): boolean => {
     const entry = aliasEntry(key);
     if (!entry) return false;
-    if (entry.some((st) => normStageName(st) === normStageName(other))) {
+    // 空串守卫：other 归一后为空（纯标点/纯符号）→ 直接 false。配合
+    // normStageName 保留假名/韩文，杜绝 '' === '' 的跨艺人误并（米津玄師↔
+    // あいこ、林英雄↔르세라핌 曾因此被并）。
+    const no = normStageName(other);
+    if (!no) return false;
+    // other 剥括号注释后再比一次：「无限开关 (スキマスイッチ)」的括号是汉字/
+    // 混排注释（stripFuriganaParens 只剥纯假名括号），剥掉后 == 值「无限开关」。
+    const noBare = normStageName(stripParensContent(other));
+    if (
+      entry.some((st) => {
+        const ns = normStageName(st);
+        if (ns && (ns === no || (noBare && ns === noBare))) return true;
+        // 拉丁词序无关：'tokunaga hideaki'(表值) == 'Hideaki Tokunaga'(平台)
+        return latinWordAnagram(st, other);
+      })
+    ) {
       return true;
     }
     // 汉字名同人分支：other 剥括号取汉字后与 key 整串相等（「范逸臣 Van Fan」
@@ -603,5 +623,99 @@ export function stageNameAliasMatch(a: string, b: string): boolean {
   };
   if (aliasHit(ka, b)) return true;
   if (aliasHit(kb, a)) return true;
+  return false;
+}
+
+/** 「artist·album」/「artist、album」/「artist, album」等复合串 → 段。
+ *
+ * 2026-08-14 加：QQ/网易云 `track.artist` 字段常写「李荣浩·黑马」「Humbert
+ * Humbert·Folk 3」——`<artist>·<album>` 复合串。stageNameAliasMatch 整串走
+ * 时 CJK 部分含「李荣浩黑马」（艺人 + 专辑），与表 key「李榮浩」不等 →
+ * 漏判「李荣浩·黑马」vs「Ronghao Li·黑馬」。
+ *
+ * 切分用 `·`(U+00B7) / `・`(U+30FB) / `、`(U+3001) / `，`(U+FF0C) / 半角
+ * `,` / `&` / `/` / `／` / `;` / `×`——和 `splitArtists` 同套分隔符集，
+ * 共享单一真值源。
+ */
+function splitArtistSegments(s: string): string[] {
+  return s
+    .split(/\s*[·・、，,/／;&;×]\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 宽松艺人同人判定：策展别名表命中 + 「artist·album」/「artist, album」等
+ * 复合串的段段对匹配。
+ *
+ * 2026-08-14 加：弹窗「李荣浩·黑马」vs「Ronghao Li·黑馬」用户场景——整串
+ * `stageNameAliasMatch` 因 album 部分污染 CJK 提取而漏判。这里先做整串别名
+ * 表（保留原 strict 口径），再切段两两配对。段配对也走 `stageNameAliasMatch`
+ * （**只**查策展表）——非表内纯巧合（「Coldplay」vs「Cold」各只剩 1 段、
+ * 表内无）仍拒判，保留 artistPrefixMatch 删除事故后的铁律。
+ *
+ * 2026-08-14 #2 段段配对补 `normalizeKey` 相等：实测「aiko·May Dream」vs
+ * 「aiko」漏判——`stageNameAliasMatch("aiko", "aiko")` 因两侧均无 CJK/KANA
+ * → `stageNameKey` 返回 null → 整串别名查表路径走空 → 返回 false。两段明明
+ * 字面相等却没合并上。补**段对段 normalizeKey 相等**（先剥括号、归一）后即
+ * 命中——同名字面等价（大小写/标点差异由 `normalizeKey` 抹平）属于「同一艺人」
+ * 的最强信号，本就该归一相等。表外纯巧合不会被本路径影响（仍走 `stageNameAliasMatch`
+ * 查表；纯字面相等是真同一）。
+ *
+ * 2026-08-17 加 `stageNameAliasMatch` 查不到的**纯拉丁/拉丁后缀**场景（审计
+ * scripts/audit-same-title.ts）：
+ *   - 「ChiliChill乐团」vs「ChiliChill」：拉丁前缀 + 中文后缀（stageNameKey
+ *     只留汉字 → key=「樂團」，但「樂團」key 已有 Fine 等值，不能把 ChiliChill
+ *     塞进去——否则「Fine乐团」vs「ChiliChill乐团」会因 same key 误并）
+ *   - 「Roy Ayers」vs「Roy Ayers Ubiquity」：纯拉丁乐队全名 vs 短名
+ *   - 「Noel Gallagher」vs「Noel Gallagher's High Flying Birds」
+ *   - 「藤原樱 (藤原さくら)」vs「藤原さくら」：汉字名 + 假名读音注释
+ *   - 「新裤子」vs「新裤子乐队」：带/不带「乐队」后缀
+ *   - 「悠木碧」vs「ターニャ・デグレチャフ(CV:悠木碧)」：声优 vs 角色名(CV:声优)
+ *   - 「松本梨香」vs「サトシ(CV:松本梨香) / Pikachu」：同上
+ * 方案：**全串归一别名表**（`LATIN_FULL_ALIASES`）——key/value 都是
+ * `normStageName`（小写 + 去标点 + 简繁统一 + 保留拉丁/假名/韩文）后的**整串**，
+ * 双向查表，精确整串相等才命中。不拆 key 结构（不碰「樂團」这种过宽 key），
+ * 段段配对时也查这张表。
+ */
+const LATIN_FULL_ALIASES: Record<string, string[]> = {
+  // 2026-08-17 审计确认（用户核对后列入合并）
+  'chilichill乐团': ['chilichill'], // #8 屑屑
+  'fine乐团': ['fine'], // Fine乐团（原「樂團」过宽 key 的精确替代）
+  'royayers': ['royayersubiquity'], // #20 Everybody Loves The Sunshine
+  'noelgallagher': ['noelgallaghershighflyingbirds'], // #21 The Death Of You And Me
+  '藤原さくら': ['藤原樱'], // #27 Soup (汤)
+  '新裤子乐队': ['新裤子'], // #28 别再问我什么是迪斯科
+  'ターニャ・デグレチャフ': ['悠木碧'], // #30 Los! Los! Los!（角色名 = 声优）
+  'サトシ': ['松本梨香'], // #31 アローラ!!（角色名 = 声优）
+};
+
+/** 全串归一别名命中（双向、精确整串）。null 值 / 空串不参与。 */
+function latinFullAliasMatch(a: string, b: string): boolean {
+  const na = normStageName(stripParensContent(a));
+  const nb = normStageName(stripParensContent(b));
+  if (!na || !nb) return false;
+  if ((LATIN_FULL_ALIASES[na] ?? []).includes(nb)) return true;
+  if ((LATIN_FULL_ALIASES[nb] ?? []).includes(na)) return true;
+  return false;
+}
+
+export function artistLooseMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (stageNameAliasMatch(a, b)) return true;
+  if (latinFullAliasMatch(a, b)) return true;
+  const pa = splitArtistSegments(a);
+  const pb = splitArtistSegments(b);
+  for (const x of pa) {
+    for (const y of pb) {
+      if (stageNameAliasMatch(x, y)) return true;
+      if (latinFullAliasMatch(x, y)) return true;
+      // 段对段字面归一相等：「aiko」vs「aiko」、「YOASOBI」vs「Yoasobi」
+      // 之类表外但确实同一艺人的情形。
+      const nx = normalizeKey(stripParensContent(x), '');
+      const ny = normalizeKey(stripParensContent(y), '');
+      if (nx && ny && nx === ny) return true;
+    }
+  }
   return false;
 }

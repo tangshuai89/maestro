@@ -17,11 +17,16 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- Spotify WPS SDK 加载时（不论 defer 多少），一 ready 就调
-         window.onSpotifyWebPlaybackSDKReady() 全局回调——不挂会 throw。
-         我们不挂自动 player（Premium 才接 WPS），只标记 sdkReady 旗位，
-         useSpotifyWpsPlayer 接到旗位后再视 tier 决定是否 connect。 -->
+    <!-- Demo helper: ?demo=qq / ?demo=netease / ?demo=spotify / ?demo=deezer
+         pre-selects a provider via localStorage so design review can skip
+         the source picker. Remove once the picker is gone. -->
     <script>
+      (function () {
+        var m = location.search.match(/[?&]demo=([a-z]+)/);
+        if (m) {
+          try { localStorage.setItem('music-provider', m[1]); } catch (_) {}
+        }
+      })();
       window.onSpotifyWebPlaybackSDKReady = function () {
         window.__wpsSdkReady = true;
       };

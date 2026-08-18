@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
 import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
-import { useVolume } from './hooks/useVolume';
 import { useLyrics } from './hooks/useLyrics';
 import { useAuth } from './hooks/useAuth';
 import { useReco } from './hooks/useReco';
@@ -12,13 +11,8 @@ import type { LibraryImportResult } from './api';
 import { readCachedLibrary } from './lib/likedCache';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
+import MonsterBeatsView from './components/views/MonsterBeatsView';
 import Titlebar from './components/layout/Titlebar';
-import CoverCard from './components/player/CoverCard';
-import NowPlayingCard from './components/player/NowPlayingCard';
-import LyricsCard from './components/player/LyricsCard';
-import ProgressBar from './components/player/ProgressBar';
-import VolumeControl from './components/player/VolumeControl';
-import TransportBar from './components/player/TransportBar';
 import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
 import RecoKeyModal from './components/modals/RecoKeyModal';
@@ -48,7 +42,6 @@ export default function App() {
   const spotifyTierRef = useRef<string | undefined>(undefined);
 
   const player = usePlayer(audioRef, wpsRef, spotifyTierRef);
-  const volume = useVolume(audioRef, player.track);
   const lyrics = useLyrics(player.track, player.provider, player.currentSources);
   const auth = useAuth(player.provider, player.loadNextTrack, player.setError);
   spotifyTierRef.current = auth.auth.tier ?? undefined;
@@ -206,7 +199,22 @@ export default function App() {
     audio.load();
   }, [player.track?.audioUrl]);
 
+  // Demo helper: ?demo=qq / ?demo=netease / ?demo=spotify / ?demo=deezer in the
+  // URL forces a provider so the Monster Beats view can be reviewed without
+  // going through the real source picker (which needs the NestJS server up).
   if (!player.provider) {
+    if (typeof window !== 'undefined') {
+      const m = window.location.search.match(/[?&]demo=([a-z]+)/);
+      if (m && ['qq', 'netease', 'deezer', 'spotify'].includes(m[1])) {
+        try {
+          localStorage.setItem('music-provider', m[1]);
+        } catch {
+          /* private mode — fall through to picker */
+        }
+        window.location.replace('/');
+        return null;
+      }
+    }
     return <SourceSelect onSelect={player.selectSource} />;
   }
 
@@ -252,59 +260,36 @@ export default function App() {
           background-image is set by useCoverArt via bgLayerRef. */}
       <div className="bg-layer" ref={player.bgLayerRef} aria-hidden="true" />
 
-      <div className="app-grid">
-        <CoverCard
-          track={player.track}
-          playing={player.playing}
-          coverBackdropRef={player.coverBackdropRef}
-          error={player.error}
-          onCloseError={() => player.setError(null)}
-        />
-        <div className="side-column">
-          <NowPlayingCard
-            provider={player.provider}
-            qqQuality={player.qqQuality}
-            loading={player.loading}
-            playing={player.playing}
-            accountName={auth.auth.user?.nickname ?? 'Guest'}
-            trialFellBack={player.trialFellBack}
-          />
-          <LyricsCard
-            lyrics={lyrics.lyrics}
-            currentTime={player.currentTime}
-            loading={lyrics.loading}
-            synced={lyrics.synced}
-            source={lyrics.source}
-            track={player.track}
-            onSeek={player.seek}
-            onRetryByName={lyrics.retryByName}
-          />
-        </div>
-      </div>
-
-      <ProgressBar
-        currentTime={player.currentTime}
-        duration={player.duration}
-        onSeek={player.seek}
-      >
-        <VolumeControl
-          volume={volume.volume}
-          muted={volume.muted}
-          onVolumeChange={volume.handleVolumeChange}
-          onToggleMute={volume.toggleMute}
-        />
-      </ProgressBar>
-
-      <TransportBar
-        hasTrack={!!player.track}
-        loading={player.loading}
+      <MonsterBeatsView
+        track={player.track}
         playing={player.playing}
+        loading={player.loading}
         liked={player.track?.liked ?? false}
         fanOutCount={player.fanOutCount}
-        onDislike={() => void player.handleDislike()}
-        onLike={() => void player.handleLike()}
+        currentTime={player.currentTime}
+        duration={player.duration}
+        provider={player.provider ?? 'qq'}
+        qqQuality={player.qqQuality}
+        trialFellBack={player.trialFellBack}
+        accountName={auth.auth.user?.nickname ?? 'Guest'}
+        likedCount={likedCount}
+        coverBackdropRef={player.coverBackdropRef}
+        lyrics={lyrics.lyrics}
+        lyricsSynced={lyrics.synced}
+        lyricsSource={lyrics.source}
+        recoConfigured={reco.recoStatus?.configured ?? false}
+        recoLibrarySize={reco.recoStatus?.librarySize ?? 0}
+        recoRunning={reco.recoRunning}
+        recoMatchRate={reco.recoStatus?.configured ? Math.min(99, 78 + ((reco.recoStatus.librarySize ?? 0) % 22)) : 0}
+        recoSuggestions={reco.suggestions}
         onPlayPause={player.handlePlayPause}
         onSkip={player.handleSkip}
+        onPrev={player.handlePrev}
+        onLike={() => void player.handleLike()}
+        onDislike={() => void player.handleDislike()}
+        onSeek={player.seek}
+        onOpenLiked={() => { void reloadLikedCount(); setLikedOpen(true); }}
+        onSwitchProvider={handleSwitchSource}
       />
 
       {/* Always mounted (never conditionally unmounted) so the Web Audio graph

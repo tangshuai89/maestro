@@ -3,10 +3,13 @@ const {
   stripFeatTags,
   stripParensContent,
   stripFuriganaParens,
+  stripCjkTranslationParens,
+  stripCjkTranslationSuffix,
   normalizeKey,
   displayKey,
   extractVersionTag,
   stripVersionTags,
+  stripTrailingMeta,
 } = require('./normalizer');
 
 let passed = 0;
@@ -260,6 +263,163 @@ check(
   displayKey('Song (feat. B)', 'X'),
 );
 // ↑ 注意：这是 displayKey 的 feature——同歌不同协奏版聚合到同一 group（用户在弹窗展开能看到）
+
+// ── stripTrailingMeta（catalog/display 共用，2026-08-14）────────────────
+// 边界：仅剥「 - 关键词」尾缀；不剥任何不在白名单的内容（防误并）。
+console.log('\n── stripTrailingMeta ──');
+check('空串', stripTrailingMeta(''), '');
+check('无 meta 不动', stripTrailingMeta('Song'), 'Song');
+check('无 dash 不动', stripTrailingMeta('Song 主题曲'), 'Song 主题曲');
+// 中文品牌/CM 关键词
+check('主题曲', stripTrailingMeta('Song - 主题曲'), 'Song');
+check('品牌主题曲（长前缀优先匹配）', stripTrailingMeta('Song - 百事可乐品牌主题曲'), 'Song');
+check('广告曲', stripTrailingMeta('Song - 广告曲'), 'Song');
+check('插片', stripTrailingMeta('Song - 插片'), 'Song');
+check('MV', stripTrailingMeta('Song - MV'), 'Song');
+check('片头曲', stripTrailingMeta('Song - 片头曲'), 'Song');
+check('片尾曲', stripTrailingMeta('Song - 片尾曲'), 'Song');
+check('插曲', stripTrailingMeta('Song - 插曲'), 'Song');
+// 影视版本
+check('电影版', stripTrailingMeta('Song - 电影版'), 'Song');
+check('影版', stripTrailingMeta('Song - 影版'), 'Song');
+check('TV版', stripTrailingMeta('Song - TV版'), 'Song');
+check('电视版', stripTrailingMeta('Song - 电视版'), 'Song');
+check('电视剧版', stripTrailingMeta('Song - 电视剧版'), 'Song');
+check('网剧版', stripTrailingMeta('Song - 网剧版'), 'Song');
+check('动画版', stripTrailingMeta('Song - 动画版'), 'Song');
+check('剧场版', stripTrailingMeta('Song - 剧场版'), 'Song');
+// 录音版本
+check('完整版', stripTrailingMeta('Song - 完整版'), 'Song');
+check('单曲版', stripTrailingMeta('Song - 单曲版'), 'Song');
+check('录音室版', stripTrailingMeta('Song - 录音室版'), 'Song');
+check('配乐版', stripTrailingMeta('Song - 配乐版'), 'Song');
+check('原声版', stripTrailingMeta('Song - 原声版'), 'Song');
+check('现场版', stripTrailingMeta('Song - 现场版'), 'Song');
+check('录音版', stripTrailingMeta('Song - 录音版'), 'Song');
+// 试听
+check('试听', stripTrailingMeta('Song - 试听'), 'Song');
+check('preview', stripTrailingMeta('Song - preview'), 'Song');
+// 用户实测：一百 + 百事可乐品牌主题曲
+check('用户场景：一百 - 百事可乐品牌主题曲', stripTrailingMeta('一百 - 百事可乐品牌主题曲'), '一百');
+// 英文版本/合作尾缀（与原 stripTrailingVersionSuffix 一致）
+check('ver.', stripTrailingMeta('Song - zerokoi ver.'), 'Song');
+check('Remix', stripTrailingMeta('Song - Remix'), 'Song');
+// 裸版本关键词（dash 后只有 Live/Remix 等）——2026-08-14 新增，用于「古怪 (Live)」
+// vs「古怪 - Live」跨平台合并（QQ 走 stripVersionTags 剥括号，Spotify 走本路径剥 dash）
+check('裸 Live', stripTrailingMeta('Song - Live'), 'Song');
+check('裸 Remix', stripTrailingMeta('Song - Remix'), 'Song');
+check('裸 ver.', stripTrailingMeta('Song - ver.'), 'Song');
+check('裸 Mix', stripTrailingMeta('Song - Mix'), 'Song');
+check('裸 Edit', stripTrailingMeta('Song - Edit'), 'Song');
+check('裸 Deluze', stripTrailingMeta('Song - Deluxe'), 'Song');
+check('feat. Y 无 dash 不剥（走 stripFeatTags 路径）', stripTrailingMeta('Song feat. Y'), 'Song feat. Y');
+// 「Song - feat. X」dash 后是 feat+人名（不是裸关键词），不剥
+check('feat. X dash 不剥', stripTrailingMeta('Song - feat. X'), 'Song - feat. X');
+// dash 变体
+check('全角 dash', stripTrailingMeta('Song — 主题曲'), 'Song');
+check('en-dash', stripTrailingMeta('Song – 主题曲'), 'Song');
+// 无意义尾词（stopword）
+check('the', stripTrailingMeta('Song - the'), 'Song');
+// 「Song - Live - the」双层：先剥 - the → "Song - Live"，再剥裸 - Live → "Song"
+check('双层：Live + the → Song（两轮裸剥）', stripTrailingMeta('Song - Live - the'), 'Song');
+// 边界：非关键词不动（防误并铁律）
+check('非关键词不动', stripTrailingMeta('Song - 朋友'), 'Song - 朋友');
+check('关键词不在尾不动', stripTrailingMeta('主题曲 Song'), '主题曲 Song');
+// 边界：双层「朋友 - 主题曲」只剥外层「 - 主题曲」（中间内容不含 dash/space）
+check('双层：朋友 - 主题曲 → 朋友', stripTrailingMeta('Song - 朋友 - 主题曲'), 'Song - 朋友');
+// 边界：尾缀不在白名单不动
+check('(Live) 括号形式不剥（走 stripVersionTags 路径）', stripTrailingMeta('Song (Live)'), 'Song (Live)');
+// 嵌套多次剥
+check('双层：主题曲 + the', stripTrailingMeta('Song - 主题曲 - the'), 'Song');
+// 全角空格
+check('全角空格 + dash', stripTrailingMeta('Song\u3000-\u3000主题曲'), 'Song');
+
+// ── stripCjkTranslationParens（括号内纯 CJK 译名，2026-08-14）─────────
+// 背景：QQ「Lemon (柠檬)」vs 网易云「Lemon」——括号里是中文译名不是版本，
+// catalog 级应剥掉让跨平台合并；但 (Live)/(现场版)/(伴奏) 等版本括号保留。
+console.log('\n── stripCjkTranslationParens ──');
+check('空串', stripCjkTranslationParens(''), '');
+check('无括号不动', stripCjkTranslationParens('Lemon'), 'Lemon');
+check('纯 CJK 译名剥（半角）', stripCjkTranslationParens('Lemon (柠檬)'), 'Lemon');
+check('纯 CJK 译名剥（全角）', stripCjkTranslationParens('たばこ（烟草）'), 'たばこ');
+check('纯 CJK 译名剥（春紫菀）', stripCjkTranslationParens('ハルジオン (春紫菀)'), 'ハルジオン');
+check('纯 CJK 译名剥（向夜晚奔去）', stripCjkTranslationParens('夜に駆ける (向夜晚奔去)'), '夜に駆ける');
+check('含装饰标点也剥（阿罗拉!!）', stripCjkTranslationParens('アローラ!! (阿罗拉!!)'), 'アローラ!!');
+check('(Live) 拉丁不剥', stripCjkTranslationParens('Song (Live)'), 'Song (Live)');
+check('(Explicit) 拉丁不剥', stripCjkTranslationParens('Song (Explicit)'), 'Song (Explicit)');
+check('(Love Lost) 拉丁不剥', stripCjkTranslationParens('我只怪我自己 (Love Lost)'), '我只怪我自己 (Love Lost)');
+check('(现场版) 版本词不剥', stripCjkTranslationParens('Song (现场版)'), 'Song (现场版)');
+check('(真我版) 版本词不剥', stripCjkTranslationParens('我管你 (真我版)'), '我管你 (真我版)');
+check('(国语) 版本词不剥', stripCjkTranslationParens('Song (国语)'), 'Song (国语)');
+check('混合拉丁不剥（Departures~…）', stripCjkTranslationParens('Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)'), 'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)');
+
+// ── stripCjkTranslationSuffix（拉丁主体 + 空格 + CJK 译名尾段）─────────
+// 背景：QQ「Liyue 璃月」vs 网易云/Spotify「Liyue」——空格分隔的中文译名，
+// 剥掉让跨平台合并；纯 CJK 主体不剥（「海阔天空 现场版」保留版本差异）。
+console.log('\n── stripCjkTranslationSuffix ──');
+check('空串', stripCjkTranslationSuffix(''), '');
+check('无空格不动', stripCjkTranslationSuffix('Liyue'), 'Liyue');
+check('拉丁主体 + CJK 译名剥', stripCjkTranslationSuffix('Liyue 璃月'), 'Liyue');
+check('多词拉丁主体 + CJK 译名剥', stripCjkTranslationSuffix('Spinning Globe 地球仪'), 'Spinning Globe');
+check('纯 CJK 主体不剥（版本词尾）', stripCjkTranslationSuffix('海阔天空 现场版'), '海阔天空 现场版');
+check('纯 CJK 主体不剥（普通尾段）', stripCjkTranslationSuffix('夜曲 Nocturne'), '夜曲 Nocturne');
+check('CJK 主体 + 拉丁尾段不剥（反向）', stripCjkTranslationSuffix('爱 Love'), '爱 Love');
+check('尾段含版本词不剥', stripCjkTranslationSuffix('Liyue 主题曲'), 'Liyue 主题曲');
+check('尾段非 CJK 不剥（数字）', stripCjkTranslationSuffix('Song 2024'), 'Song 2024');
+
+// ── 用户实测回归：Liyue / 一百 / 摇滚怎么了（2026-08-14）──────────────
+console.log('\n── 用户实测回归 ──');
+check(
+  'Liyue 璃月 == Liyue（normalizeKey）',
+  normalizeKey('Liyue 璃月', '陈致逸 / HOYO-MiX'),
+  normalizeKey('Liyue', '陈致逸 / HOYO-MiX'),
+);
+check(
+  'Liyue 璃月 == Liyue（displayKey）',
+  displayKey('Liyue 璃月', '陈致逸 / HOYO-MiX'),
+  displayKey('Liyue', '陈致逸 / HOYO-MiX'),
+);
+check(
+  'Lemon (柠檬) == Lemon（normalizeKey）',
+  normalizeKey('Lemon (柠檬)', '米津玄師 (よねづ けんし)'),
+  normalizeKey('Lemon', '米津玄師'),
+);
+check(
+  'ハルジオン (春紫菀) == ハルジオン',
+  normalizeKey('ハルジオン (春紫菀)', 'YOASOBI'),
+  normalizeKey('ハルジオン', 'YOASOBI'),
+);
+check(
+  '一百 - 百事可樂品牌主題曲 == 一百（繁体 meta）',
+  normalizeKey('一百 - 百事可樂品牌主題曲', '李荣浩'),
+  normalizeKey('一百', '李荣浩'),
+);
+check(
+  '摇滚怎么了！！ == 搖滾怎麼了！！（幺/么 归一）',
+  normalizeKey('摇滚怎么了！！', '王力宏'),
+  normalizeKey('搖滾怎麼了！！', '王力宏'),
+);
+// 版本差异必须保留（catalog 保守铁律，spec match-engine 3g）
+check(
+  '海阔天空 (Live) != 海阔天空（版本差异保留）',
+  normalizeKey('海阔天空 (Live)', 'Beyond') === normalizeKey('海阔天空', 'Beyond'),
+  false,
+);
+check(
+  '海阔天空 (现场版) != 海阔天空 (Live)',
+  normalizeKey('海阔天空 (现场版)', 'Beyond') === normalizeKey('海阔天空 (Live)', 'Beyond'),
+  false,
+);
+check(
+  '达拉崩吧（伴奏）!= 达拉崩吧（INSTRUMENTAL 保留）',
+  normalizeKey('达拉崩吧（伴奏）', 'ilem / 洛天依 / 言和') === normalizeKey('达拉崩吧', 'ilem / 洛天依 / 言和'),
+  false,
+);
+check(
+  '我管你 (真我版) != 我管你 (Live)',
+  normalizeKey('我管你 (真我版)', '华晨宇') === normalizeKey('我管你 (Live)', '华晨宇'),
+  false,
+);
 
 console.log(`\n── 总结: ${passed} passed, ${failed} failed ──`);
 if (failed > 0) process.exit(1);

@@ -8,7 +8,11 @@ import {
   itemPlatforms,
   versionTagLabel,
 } from '../../lib/groupLibrary';
-import type { VersionTag } from '@maestro/common';
+import {
+  displayKey,
+  titleAliasMatch,
+  type VersionTag,
+} from '@maestro/common';
 import { placeholderCover } from '../../lib/placeholderCover';
 import {
   readCachedLibrary,
@@ -214,21 +218,35 @@ export default function LikedLibraryModal({
   };
 
   const items = useMemo(() => data?.items ?? [], [data]);
-  // 搜索：按歌名/歌手不区分大小写包含匹配。在分组**之前**过滤 items——
-  // 命中的 item 进分组，天然只显示匹配组。
+  // 搜索：按歌名/歌手不区分大小写包含匹配 + 跨脚本/别名兜底。在分组**之前**
+  // 过滤 items——命中的 item 进分组，天然只显示匹配组。
   // ⚠️ 下标映射：filtered 保留「过滤后在原始 items 里的下标」——groupLibraryItems
   // 返回的 member.index 是 filteredItems 内的位置，onPlay 必须用 originalIndex
   // 在原始 items 里定位，否则搜索过滤后点击播放会错位（播默认列表第 1 首）。
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     const indexed = items.map((item, originalIndex) => ({ item, originalIndex }));
     if (!q) return indexed;
-    return indexed.filter(
-      ({ item }) =>
-        item.title.toLowerCase().includes(q) ||
-        item.artist.toLowerCase().includes(q),
-    );
+    const ql = q.toLowerCase();
+    // 2026-08-14 扩：原来只 substring 包含——导致「motto」搜不到「もっと」
+    // （合并后 title 保留 3 字符的「もっと」，substring 永远不撞）。三道兜底：
+    //  1. substring（最宽松，原行为）
+    //  2. `titleAliasMatch`：跨写法同名（「悲歌」/「애절가」、「もっと」/「Motto」
+    //     等策展表已收录）
+    //  3. `displayKey` 双向包含：归一后 substring（大小写/标点/JP 假名归一差异
+    //     都抹平，「Lemon.」vs「lemon」命中）
+    const qKey = displayKey(q, '');
+    return indexed.filter(({ item }) => {
+      if (item.title.toLowerCase().includes(ql)) return true;
+      if (item.artist.toLowerCase().includes(ql)) return true;
+      if (titleAliasMatch(q, item.title)) return true;
+      if (qKey) {
+        const titleKey = displayKey(item.title, '');
+        if (titleKey && titleKey.includes(qKey)) return true;
+      }
+      return false;
+    });
   }, [items, query]);
   const filteredItems = useMemo(() => filtered.map((f) => f.item), [filtered]);
   // 展示级跨平台分组：把后端没并起来的同名副本（QQ 加了译名括号那种）折叠成

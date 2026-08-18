@@ -271,7 +271,11 @@ export class AuthController {
     // tier 只在已登录时有意义；未登录直接 null（前端据此隐藏 WPS 相关 UI）。
     let tier: string | null = null;
     if (loggedIn) {
-      const me = await this.spotify.getMeInfo(session.providers.spotify!);
+      const ps = session.providers.spotify!;
+      // 绑定 sessionId：让 refresh 走 RefreshCoordinator 单飞（同 session 并发
+      // 只 POST 一次 /api/token），并让 refresh 后的 token 能持久化。
+      this.spotify.bindSessionId(ps, session.id);
+      const me = await this.spotify.getMeInfo(ps);
       tier = me?.tier ?? null;
     }
     return {
@@ -296,6 +300,7 @@ export class AuthController {
     if (!ps) {
       throw new UnauthorizedException('spotify_not_logged_in');
     }
+    this.spotify.bindSessionId(ps, session.id);
     const tok = await this.spotify.getValidTokenForRenderer(ps);
     if (!tok) {
       throw new UnauthorizedException('spotify_token_unavailable');
@@ -316,6 +321,7 @@ export class AuthController {
     if (!ps) {
       throw new UnauthorizedException('spotify_not_logged_in');
     }
+    this.spotify.bindSessionId(ps, session.id);
     const me = await this.spotify.getMeInfo(ps);
     if (!me) {
       throw new UnauthorizedException('spotify_me_unavailable');

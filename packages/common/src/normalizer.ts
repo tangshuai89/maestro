@@ -96,6 +96,143 @@ export function stripFuriganaParens(s: string): string {
   return stripped.replace(/\s+/g, ' ').trim();
 }
 
+// ── 非版本 meta 后缀（品牌/CM/影视/录音版本）─── ─────────────────────
+/**
+ * 阶段 Z：剥掉"非版本"meta 后缀（广告/品牌/影视/录音版本等）——
+ * catalog 级 normalizeKey 与 display 级 displayKey 共用。
+ *
+ * Spotify 经常在 title 尾追加「 - 百事可乐品牌主题曲」「 - 电影《无名》
+ * 宣传曲」「 - 电影版」等品牌/影视/录音版本等元数据；displayKey 不知
+ * 此形式，整段留在 key 尾导致与原版拆桶。
+ *
+ * 与 `stripVersionTags` 的边界：那个只剥**版本/翻唱语义**（LIVE/COVER/
+ * REMIX…），用括号 `(Live)`/`（翻唱）`形式，且命中后改写为 ` LIVE` 等
+ * 尾标保留语义；本函数剥的是**非版本语义**的元数据（品牌/CM/影视版/
+ * 录音版），用 dash 形式 `- 主题曲`/`- 电影版`，剥完直接丢弃。
+ *
+ * 关键词枚举（保守白名单，不在表内的不剥以防误并）：
+ *   - 品牌/广告：主题曲 / 品牌主题曲 / 广告曲 / 插片 / MV / 片头曲 /
+ *     片尾曲 / 插曲
+ *   - 影视版本：电影版 / 影版 / TV版 / 电视版 / 电视剧版 / 网剧版 /
+ *     动画版 / 剧场版
+ *   - 录音版本：完整版 / 单曲版 / 录音室版 / 配乐版 / 原声版 / 现场版 /
+ *     录音版
+ *   - 试听相关：试听 / preview
+ *
+ * 仅剥尾缀 1 次 + STOPWORDS 2 次。安全的「 - 」+ 关键词匹配，非启发。
+ * 中间内容约束（`[^-\s\u3000]+?`）：品牌名内部允许 CJK/拉丁/数字/空格/·
+ * 但不允许再有 `-` 分隔符——避免「Song - 朋友 - 主题曲」被一刀切到「Song」。
+ */
+export function stripTrailingMeta(s: string): string {
+  if (!s) return s;
+  // dash 变体全集合（与 normalizeKey 步骤 3 的替换表一致）：hyphen-minus、
+  // figure/em/en/horizontal-bar、minus、全角 hyphen、片假名长音。
+  // ⚠️ 必须与步骤 3 同一集合——否则「海阔天空 - Live」被剥成「海阔天空」
+  // 而「海阔天空 ‐ Live」（figure-dash）没剥，两边 key 分裂。
+  const DASH = `[\\-\\u2010-\\u2015\\u2212\\uFF0D\\u30FC]`;
+  // 1) 中文/品牌/影视/录音版本/试听 关键词（dash 形式）。
+  //    关键词按从长到短排——「品牌主题曲」必须先于「主题曲」尝试。
+  //    中间 `[^-\s\u3000]*?` 排除含 dash 的「双层」结构误并（「 - 朋友 - 主题曲」
+  //    不会被一刀切到「Song」），但允许空内容（「Song - 主题曲」直接剥）。
+  //    关键词繁简双写（[主题主題]）：QQ 红心实测「一百 - 百事可樂品牌主題曲」
+  //    （繁体「可樂/主題」），Spotify 无后缀——缺繁体变体时 key 不相等、跨平台
+  //    合并失败（2026-08-14 用户场景）。
+  //    ⚠️ 已知边界「Song - 朋友主题曲」会被剥（中间「朋友」无 dash）——这种格式
+  //    在真实数据中罕见（曲名带「主题曲」三字的，QQ/网易云惯用括号非 dash），
+  //    接受这个边角风险，换取主要场景的 strip 能力。
+  const META_RE =
+    new RegExp(`${DASH}[\\s\\u3000]*[^-\\s\\u3000]*?(?:品牌[主题主題]曲|[主题主題]曲|廣告曲|[广告廣告]曲|插片|片[头頭]曲|片[尾尾]曲|插曲|MV|[电影電影]版|影版|TV版|[电视電視]版|[电视電視][剧劇]版|[网網][剧劇]版|[动画動畫]版|[剧场劇場]版|完整版|[单單]曲版|[录錄]音室版|配[乐樂]版|原[声聲]版|[现场現場]版|[录錄]音版|[试試][听聽]|preview)[\\s\\u3000]*$`, 'i');
+  // 2) 英文/版本 **裸关键词**——dash 后只有版本关键词本身（「Song - Live」
+  //    「Song - Remix」），无内容字符。**关键**用于跨平台 LIVE/REMIX 等版本
+  //    标签的形式归一：QQ 写「古怪 (Live)」走 `stripVersionTags` 把括号剥成
+  //    ` LIVE` 再被 `displayKey` 折掉；Spotify 写「古怪 - Live」走本路径把整段
+  //    剥成「古怪」。两边落到同一 key。
+  //    ⚠️ 故意不包含 `feat\.?`/`featuring`——feat + 协奏人名属
+  //    `stripFeatTags` 路径，剥人名而非关键词。
+  const SUFFIX_BARE_RE =
+    new RegExp(`${DASH}[\\s\\u3000]*(?:ver\\.?|version|remix|cover|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\\s\\u3000]*$`, 'i');
+  // 3) 英文版本/合作尾缀（与旧 stripTrailingVersionSuffix 行为对齐）。
+  //    允许中间内容含空格（如「zerokoi ver.」中间的空格）和任意字符。
+  const SUFFIX_RE =
+    new RegExp(`${DASH}[\\s\\u3000]*[^-\\s\\u3000][^]*?\\s*(?:ver\\.?|version|remix|cover|feat\\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\\s\\u3000]*$`, 'i');
+  // 4) 无意义尾词：「 - the」「 - of」之类（最多剥 3 层）。
+  const STOPWORDS = new RegExp(`${DASH}[\\s\\u3000]*(?:the|of|and|a|an)[\\s\\u3000]*$`, 'i');
+  let out = s;
+  for (let i = 0; i < 3; i++) {
+    const prev = out;
+    if (META_RE.test(out)) out = out.replace(META_RE, '').trim();
+    else if (SUFFIX_BARE_RE.test(out)) out = out.replace(SUFFIX_BARE_RE, '').trim();
+    else if (SUFFIX_RE.test(out)) out = out.replace(SUFFIX_RE, '').trim();
+    else if (STOPWORDS.test(out)) out = out.replace(STOPWORDS, '').trim();
+    if (out === prev) break;
+  }
+  return out;
+}
+
+// ── 译名注释剥离（2026-08-14，QQ「Liyue 璃月」用户场景）───────────────
+/**
+ * 剥「拉丁主体 + 空格 + 纯 CJK 译名尾段」——QQ 音乐常见格式：
+ * 「Liyue 璃月」（英文原名 + 空格 + 中文译名），网易云/Spotify 只写
+ * 「Liyue」。剥掉 CJK 尾段后两边 normalizeKey 相等，跨平台合并。
+ *
+ * 安全边界（只动拉丁主体）：
+ *   - 纯 CJK 主体不剥（「海阔天空 现场版」不是拉丁主体 → 版本词尾段保留）
+ *   - 尾段必须是**纯 CJK 汉字串**（≥2 字，避免剥掉「Live」「2024」等）
+ *   - 尾段命中版本词（现场/伴奏/翻唱/混音/重制/完整/单曲/录音室/配乐/
+ *     电影/剧场/动画/主题曲/试听）→ 不剥（版本差异保留）
+ *   - 「爱 Love」（CJK 主体 + 拉丁尾段）反向模式不匹配 → 不剥
+ */
+const CJK_TAIL_VERSION_WORDS =
+  /(现场|伴奏|翻唱|混音|原声|重制|完整|单曲|录音室|配乐|电影|剧场|动画|主题曲|试听)/;
+
+export function stripCjkTranslationSuffix(s: string): string {
+  if (!s) return s;
+  return s.replace(
+    /^([A-Za-z0-9][A-Za-z0-9 .,'!?&()\-]*?)[\s\u3000]+([\u4e00-\u9fff]{2,})$/u,
+    (_m, head: string, tail: string) => {
+      if (!/[A-Za-z]/.test(head)) return _m;
+      if (CJK_TAIL_VERSION_WORDS.test(tail)) return _m;
+      return head.trim();
+    },
+  );
+}
+
+/**
+ * 剥「括号内纯 CJK 译名注释」——QQ 常见「Lemon (柠檬)」「ハルジオン
+ * (春紫菀)」：括号里是中文译名，网易云/Spotify 只写原名。剥掉后两边
+ * normalizeKey 相等。
+ *
+ * 与 `stripParensContent`（displayKey 用）的关系：那个把**所有**括号内容
+ * 剥掉（含 (Live)）；这里是 catalog 级，只剥**纯 CJK 译名**括号——
+ *   - 含拉丁/假名/数字的括号不剥（(Live) / (Explicit) / (かなで) 保留）
+ *   - 含版本词的 CJK 括号不剥（(现场版)/(真我版) 保留版本差异；
+ *     (伴奏)/(翻唱) 等已先被 stripVersionTags 归一成尾巴，到不了这里）
+ *   - 纯 CJK 译名（柠檬/春紫菀/烟草/干花/达尼亚…）→ 剥
+ *
+ * ⚠️ 必须在 `stripVersionTags` **之后**跑（版本括号先归一成 ` LIVE` 尾巴，
+ * 这里就只剩译名括号）；也要在 `stripFuriganaParens` 之后（假名读音注释
+ * 已剥）。
+ */
+const CJK_PAREN_VERSION_WORDS =
+  /(版|现场|伴奏|翻唱|混音|原声|重制|完整|单曲|录音室|配乐|电影|剧场|动画|主题曲|试听|国语|粤语|Live|Remix|Cover|Inst|Demo|Edit|Karaoke|Acoustic|Explicit)/i;
+
+export function stripCjkTranslationParens(s: string): string {
+  if (!s) return s;
+  const out = s.replace(
+    /[(（\[【〔]([^)）\]】〕]*)[)）\]】〕]/g,
+    (m, inner: string) => {
+      const t = inner.trim();
+      if (!t) return '';
+      // 去常见标点后必须**全是** CJK 汉字（允许 !?~ 等装饰标点）
+      const bare = t.replace(/[～~!！?？·・、，,。.．:：;；'’"“”]/g, '');
+      if (!/^[\u4e00-\u9fff]+$/u.test(bare)) return m;
+      if (CJK_PAREN_VERSION_WORDS.test(bare)) return m;
+      return '';
+    },
+  );
+  return out.replace(/\s+/g, ' ').trim();
+}
+
 // ── 版本 / 翻唱 标签识别 ──────────────────────────────────────────────
 /**
  * 版本标签枚举。稳定字符串用于：(a) 在 normalizeKey 末段插入作隔板让跨版本
@@ -240,12 +377,23 @@ const JP_KANJI: Record<string, string> = {
   楽: '乐', // U+697D 新字体（舊 樂→乐）
   実: '实', // U+5B9F 新字体（舊 實→实）
   帰: '归', // U+5E30 新字体（舊 歸→归）
-  団: '团', // U+56E3 新字体（舊 團→团）
   薬: '药', // U+85AC 新字体（舊 藥→药）
+  団: '团', // U+56E3 新字体（舊 團→团）
   駅: '驿', // U+99C5 新字体（舊 驛→驿；「駅」是日文独有的「站」写法）
   // 2026-08-07: 桑田佳祐 vs 桑田佳佑——OpenCC tw→cn 不处理「祐」（U+7950，日
   // 文人名用字），导致 normalizeKey 两边对不上、跨平台匹配全挂。兜底归一。
   祐: '佑', // U+7950 → U+4F51（人名专用，简体「佑」是常用写法）
+  // 2026-08-14: 川瀬智子 vs 川濑智子——「瀬」是日文新字体（U+702C），旧字体
+  // 「瀨」OpenCC 覆盖（瀨→濑），新字体不认 → 库内同艺人的两种写法 split。
+  瀬: '濑', // U+702C 新字体（舊 瀨→濑）
+  // 2026-08-14: 幺/么 分裂——OpenCC tw→cn 把简体「么」(U+4E48) 转成「幺」
+  // (U+5E7A)，而繁体「麼」转成「么」→ 同一首歌两种输入落到不同 key
+  // （「摇滚怎么了」vs「搖滾怎麼了」）。兜底统一回「么」。
+  幺: '么', // U+5E7A → U+4E48（OpenCC tw→cn 怪癖的对称化）
+  // 2026-08-17: 久石让 vs 久石譲——「譲」是日文新字体（U+8B32，舊字體「讓」），
+  // OpenCC tw→cn 认「讓→让」但不认新字体「譲」→ 库内同人两种写法 split。
+  // 与 瀬/祐 同模式：日文新字体 → 中文简体 一对一映射。
+  譲: '让', // U+8B32 新字体（舊 讓→让，OpenCC 已覆盖旧字）
 };
 
 const JP_KANJI_REGEX: RegExp = (() => {
@@ -285,6 +433,9 @@ export function cjkUnify(s: string): string {
  *   0) [阶段 D] 剥 feat 标签
  *   0.5) [阶段 E1] 剥纯假名括号（furigana）
  *   0.7) [阶段 V0] 归一版本/翻唱标签
+ *   0.8) [阶段 Z] 剥「 - 主题曲」等非版本 meta 尾缀（stripTrailingMeta）
+ *   0.9) [阶段 T1] 剥括号内纯 CJK 译名（Lemon (柠檬) → Lemon）
+ *   0.95) [阶段 T2] 剥拉丁主体后的空格 CJK 译名尾段（Liyue 璃月 → Liyue）
  *   1) 全角 ASCII (U+FF01..U+FF5E) → 半角
  *   2) 全角括号 / 方头括号 / 书名号 → 半角
  *   3) 各种 dash 类 → '-'
@@ -295,8 +446,8 @@ export function cjkUnify(s: string): string {
  */
 export function normalizeKey(title: string, artist: string): string {
   const stripped =
-    `${stripFuriganaParens(stripFeatTags(stripVersionTags(title)))} ` +
-    `${stripFuriganaParens(stripFeatTags(stripVersionTags(artist)))}`;
+    `${stripCjkTranslationSuffix(stripCjkTranslationParens(stripTrailingMeta(stripFuriganaParens(stripFeatTags(stripVersionTags(title))))))} ` +
+    `${stripCjkTranslationSuffix(stripCjkTranslationParens(stripTrailingMeta(stripFuriganaParens(stripFeatTags(stripVersionTags(artist))))))}`;
   let raw = stripped
     // 1) 全角 ASCII → 半角
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
@@ -358,4 +509,22 @@ export function normalizeKey(title: string, artist: string): string {
  */
 export function displayKey(title: string, artist: string): string {
   return normalizeKey(stripParensContent(title), stripParensContent(artist));
+}
+
+// ── 多艺人拆分（跨包统一，2026-08-14 从两端收拢）────────────────────
+/**
+ * 把多艺人字符串按常见分隔符切分。collab 场景：「米津玄師 / 野田洋次郎」
+ * → ['米津玄師', '野田洋次郎']；「A, B & C」→ ['A', 'B', 'C']。
+ *
+ * 2026-08-14 加 **× / ×（U+00D7 / U+2715）**：Spotify/Apple 常用
+ * 「Mitchie M×OSTER project」表达合作（不写 & 或 /），缺它会把合作曲的
+ * 拆分配对桥不上（用户实测：歌の栖む家メゾン初音 分裂）。
+ * 只切显式分隔符，不切括号内容里的连字符——括号注释交给
+ * stripFuriganaParens/stripParensContent 处理。
+ */
+export function splitArtists(raw: string): string[] {
+  return raw
+    .split(/\s*[/／,&;×]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

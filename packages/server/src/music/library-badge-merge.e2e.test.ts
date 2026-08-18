@@ -329,6 +329,7 @@ async function main() {
         artist: 'Lefty Hand Cream', album: '', coverUrl: '',
         duration: 215, audioUrl: '', liked: true, provider: 'spotify',
       }],
+      bindSessionId: () => {}, // MusicService 传 session 时会绑 sessionId（refresh 单飞用）
     },
     { getLyrics: async () => null },
     { mergeLibrary: (tracks: any[]) => tracks },

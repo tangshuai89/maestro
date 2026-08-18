@@ -16,3 +16,6 @@ packages/server/.storage/
 
 # TypeScript incremental build artifacts
 *.tsbuildinfo
+
+# Superdesign temp design artifacts
+.superdesign/tmp/

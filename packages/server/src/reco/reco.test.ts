@@ -347,7 +347,109 @@ void (async () => {
     console.log('✅ 19. 版本偏好: rec 点名要某版本则豁免');
   }
 
-  console.log('\n🎉 全部 19 个测试通过');
+  // ── 20. sanitizeBadVersions：模型输出里带 DJ/伴奏/慢摇的预筛丢 ──
+  // 2026-08-14 防御性预筛：实测 prompt 写再多模型仍可能输出"DJ 版晴天"——
+  // 不浪费一次 search 才被扔。sanitize 阶段按 VERSION_BAD 直接打掉。
+  {
+    const items = [
+      { title: '晴天', artist: '周杰伦' },          // 正常 → 留
+      { title: '晴天 (DJ版)', artist: '周杰伦' },   // DJ → 丢
+      { title: '海阔天空 (伴奏)', artist: 'Beyond' }, // 伴奏 → 丢
+      { title: '海阔天空', artist: 'Beyond' },     // 正常 → 留
+      { title: '光年之外 (抖音版)', artist: 'G.E.M.' }, // 抖音 → 丢
+      { title: '光年之外', artist: 'G.E.M.' },     // 正常 → 留
+      { title: '夜曲 (Cover)', artist: '某翻唱' },  // 翻唱 → 丢
+    ];
+    const out = svc['sanitizeBadVersions'](items);
+    assert.deepStrictEqual(
+      out.map((x) => x.title),
+      ['晴天', '海阔天空', '光年之外'],
+      '应只剩 3 条录音室原版',
+    );
+    console.log('✅ 20. sanitizeBadVersions: 模型输出 DJ/伴奏/抖音/翻唱预筛');
+  }
+
+  // ── 21. durationPenalty：< 60s 或 > 600s 强丢（用户场景：长现场/短铃声）─
+  {
+    (fakeMusic as any).searchUnified = async (_s: any, q: string) => {
+      if (q.includes('长现场')) {
+        return { items: [{ ...uItem('live-long', '长现场', 'X'), duration: 720 }] };
+      }
+      if (q.includes('短铃声')) {
+        return { items: [{ ...uItem('short', '短铃声', 'Y'), duration: 30 }] };
+      }
+      if (q.includes('正常')) {
+        return { items: [{ ...uItem('ok', '正常', 'Z'), duration: 240 }] };
+      }
+      return { items: [] };
+    };
+    // 长现场：模型没点名要长版 → 强丢
+    let filled = await svc['fillPlatforms'](
+      {} as any,
+      [{ title: '长现场', artist: 'X' }],
+      5,
+    );
+    assert.strictEqual(filled.length, 0, '720s 长现场没点名 → 丢');
+    // 短铃声：模型没点名要短版 → 强丢
+    filled = await svc['fillPlatforms'](
+      {} as any,
+      [{ title: '短铃声', artist: 'Y' }],
+      5,
+    );
+    assert.strictEqual(filled.length, 0, '30s 短铃声没点名 → 丢');
+    // 正常时长 → 照给
+    filled = await svc['fillPlatforms'](
+      {} as any,
+      [{ title: '正常', artist: 'Z' }],
+      5,
+    );
+    assert.strictEqual(filled.length, 1, '240s 正常 → 照给');
+    assert.strictEqual(filled[0].id, 'ok');
+    console.log('✅ 21. durationPenalty: 720s 长现场/30s 短铃声强丢，240s 正常通过');
+  }
+
+  // ── 22. durationPenalty：模型点名 long version → 720s 也照给 ─────
+  {
+    (fakeMusic as any).searchUnified = async (_s: any, q: string) =>
+      q.includes('某现场')
+        ? { items: [{ ...uItem('ext', '某现场 (Long Version)', 'X'), duration: 720 }] }
+        : { items: [] };
+    const filled = await svc['fillPlatforms'](
+      {} as any,
+      [{ title: '某现场 (Long Version)', artist: 'X' }],
+      5,
+    );
+    assert.strictEqual(filled.length, 1, '点名 long version → 时长约束豁免，照给');
+    assert.strictEqual(filled[0].id, 'ext');
+    console.log('✅ 22. durationPenalty: 点名 long version 豁免时长硬约束');
+  }
+
+  // ── 23. durationPenalty：同 search 结果里长现场 + 录音室，优先录音室 ─
+  // 实测场景：QQ 搜「晴天」第一页返回 720s live 现场 + 240s studio 原版，
+  // 之前没扣时长，720s 会被排前面（搜出来先入数组）。现在 duration 惩罚
+  // 把它压到 100 = PEN_BAD，让 studio 优先。
+  {
+    (fakeMusic as any).searchUnified = async (_s: any, q: string) =>
+      q.includes('晴天')
+        ? {
+            items: [
+              // 故意把长 live 排前面（模拟 QQ 默认排序）
+              { ...uItem('live', '晴天 (Live 全场)', '周杰伦'), duration: 720 },
+              { ...uItem('studio', '晴天', '周杰伦'), duration: 240 },
+            ],
+          }
+        : { items: [] };
+    const filled = await svc['fillPlatforms'](
+      {} as any,
+      [{ title: '晴天', artist: '周杰伦' }],
+      5,
+    );
+    assert.strictEqual(filled.length, 1, '长 live 排前也优先 studio');
+    assert.strictEqual(filled[0].id, 'studio');
+    console.log('✅ 23. durationPenalty: 长 live 排前被压后，studio 优先');
+  }
+
+  console.log('\n🎉 全部 23 个测试通过');
 })().catch((err) => {
   console.error('❌ reco.test 失败:', err);
   process.exit(1);
