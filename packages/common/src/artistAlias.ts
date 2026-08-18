@@ -30,7 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { Converter } from 'opencc-js';
-import { cjkUnify, stripParensContent } from './normalizer'; // 无 .js 后缀：ts-node 源级测试可解析（dist 构建同样兼容）
+import { cjkUnify, normalizeKey, stripParensContent } from './normalizer'; // 无 .js 后缀：ts-node 源级测试可解析（dist 构建同样兼容）
 
 /** 汉字（含扩展 A / 兼容区）。 */
 const HAN = /[㐀-䶿一-鿿豈-﫿]/;
@@ -116,7 +116,10 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   まこ: ['MACO'], // MACO (まこ) (2首)
   金海心: ['Jin Haixin', 'Hannah Jin'], // 金海心 (2首)
   知更鳥: ['Zhi Geng Niao', '知更鸟'], // 知更鸟 / HOYO-MiX / Chevy (2首)
-  樂團: ['乐团', 'Fine'], // Fine乐团 (2首)
+  // 2026-08-17 删：`樂團: ['乐团', 'Fine']` 是**过宽 key**——stageNameKey 只留
+  // 汉字，任何「X乐团」都归到「樂團」，导致「Fine乐团」vs「ChiliChill乐团」
+  // 等不同乐队误并（审计 scripts/audit-same-title.ts 暴露）。Fine 场景改走
+  // 下方 LATIN_FULL_ALIASES 精确全串（'fine乐团' → 'fine'）。
   れをる: ['Reol'], // Reol (れをる) (2首)
   林家謙: ['Terence Lam', '林家谦'], // 林家谦 (2首)
   福祿壽: ['FloruitShow', '福禄寿'], // 福禄寿FloruitShow (2首)
@@ -620,5 +623,99 @@ export function stageNameAliasMatch(a: string, b: string): boolean {
   };
   if (aliasHit(ka, b)) return true;
   if (aliasHit(kb, a)) return true;
+  return false;
+}
+
+/** 「artist·album」/「artist、album」/「artist, album」等复合串 → 段。
+ *
+ * 2026-08-14 加：QQ/网易云 `track.artist` 字段常写「李荣浩·黑马」「Humbert
+ * Humbert·Folk 3」——`<artist>·<album>` 复合串。stageNameAliasMatch 整串走
+ * 时 CJK 部分含「李荣浩黑马」（艺人 + 专辑），与表 key「李榮浩」不等 →
+ * 漏判「李荣浩·黑马」vs「Ronghao Li·黑馬」。
+ *
+ * 切分用 `·`(U+00B7) / `・`(U+30FB) / `、`(U+3001) / `，`(U+FF0C) / 半角
+ * `,` / `&` / `/` / `／` / `;` / `×`——和 `splitArtists` 同套分隔符集，
+ * 共享单一真值源。
+ */
+function splitArtistSegments(s: string): string[] {
+  return s
+    .split(/\s*[·・、，,/／;&;×]\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 宽松艺人同人判定：策展别名表命中 + 「artist·album」/「artist, album」等
+ * 复合串的段段对匹配。
+ *
+ * 2026-08-14 加：弹窗「李荣浩·黑马」vs「Ronghao Li·黑馬」用户场景——整串
+ * `stageNameAliasMatch` 因 album 部分污染 CJK 提取而漏判。这里先做整串别名
+ * 表（保留原 strict 口径），再切段两两配对。段配对也走 `stageNameAliasMatch`
+ * （**只**查策展表）——非表内纯巧合（「Coldplay」vs「Cold」各只剩 1 段、
+ * 表内无）仍拒判，保留 artistPrefixMatch 删除事故后的铁律。
+ *
+ * 2026-08-14 #2 段段配对补 `normalizeKey` 相等：实测「aiko·May Dream」vs
+ * 「aiko」漏判——`stageNameAliasMatch("aiko", "aiko")` 因两侧均无 CJK/KANA
+ * → `stageNameKey` 返回 null → 整串别名查表路径走空 → 返回 false。两段明明
+ * 字面相等却没合并上。补**段对段 normalizeKey 相等**（先剥括号、归一）后即
+ * 命中——同名字面等价（大小写/标点差异由 `normalizeKey` 抹平）属于「同一艺人」
+ * 的最强信号，本就该归一相等。表外纯巧合不会被本路径影响（仍走 `stageNameAliasMatch`
+ * 查表；纯字面相等是真同一）。
+ *
+ * 2026-08-17 加 `stageNameAliasMatch` 查不到的**纯拉丁/拉丁后缀**场景（审计
+ * scripts/audit-same-title.ts）：
+ *   - 「ChiliChill乐团」vs「ChiliChill」：拉丁前缀 + 中文后缀（stageNameKey
+ *     只留汉字 → key=「樂團」，但「樂團」key 已有 Fine 等值，不能把 ChiliChill
+ *     塞进去——否则「Fine乐团」vs「ChiliChill乐团」会因 same key 误并）
+ *   - 「Roy Ayers」vs「Roy Ayers Ubiquity」：纯拉丁乐队全名 vs 短名
+ *   - 「Noel Gallagher」vs「Noel Gallagher's High Flying Birds」
+ *   - 「藤原樱 (藤原さくら)」vs「藤原さくら」：汉字名 + 假名读音注释
+ *   - 「新裤子」vs「新裤子乐队」：带/不带「乐队」后缀
+ *   - 「悠木碧」vs「ターニャ・デグレチャフ(CV:悠木碧)」：声优 vs 角色名(CV:声优)
+ *   - 「松本梨香」vs「サトシ(CV:松本梨香) / Pikachu」：同上
+ * 方案：**全串归一别名表**（`LATIN_FULL_ALIASES`）——key/value 都是
+ * `normStageName`（小写 + 去标点 + 简繁统一 + 保留拉丁/假名/韩文）后的**整串**，
+ * 双向查表，精确整串相等才命中。不拆 key 结构（不碰「樂團」这种过宽 key），
+ * 段段配对时也查这张表。
+ */
+const LATIN_FULL_ALIASES: Record<string, string[]> = {
+  // 2026-08-17 审计确认（用户核对后列入合并）
+  'chilichill乐团': ['chilichill'], // #8 屑屑
+  'fine乐团': ['fine'], // Fine乐团（原「樂團」过宽 key 的精确替代）
+  'royayers': ['royayersubiquity'], // #20 Everybody Loves The Sunshine
+  'noelgallagher': ['noelgallaghershighflyingbirds'], // #21 The Death Of You And Me
+  '藤原さくら': ['藤原樱'], // #27 Soup (汤)
+  '新裤子乐队': ['新裤子'], // #28 别再问我什么是迪斯科
+  'ターニャ・デグレチャフ': ['悠木碧'], // #30 Los! Los! Los!（角色名 = 声优）
+  'サトシ': ['松本梨香'], // #31 アローラ!!（角色名 = 声优）
+};
+
+/** 全串归一别名命中（双向、精确整串）。null 值 / 空串不参与。 */
+function latinFullAliasMatch(a: string, b: string): boolean {
+  const na = normStageName(stripParensContent(a));
+  const nb = normStageName(stripParensContent(b));
+  if (!na || !nb) return false;
+  if ((LATIN_FULL_ALIASES[na] ?? []).includes(nb)) return true;
+  if ((LATIN_FULL_ALIASES[nb] ?? []).includes(na)) return true;
+  return false;
+}
+
+export function artistLooseMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (stageNameAliasMatch(a, b)) return true;
+  if (latinFullAliasMatch(a, b)) return true;
+  const pa = splitArtistSegments(a);
+  const pb = splitArtistSegments(b);
+  for (const x of pa) {
+    for (const y of pb) {
+      if (stageNameAliasMatch(x, y)) return true;
+      if (latinFullAliasMatch(x, y)) return true;
+      // 段对段字面归一相等：「aiko」vs「aiko」、「YOASOBI」vs「Yoasobi」
+      // 之类表外但确实同一艺人的情形。
+      const nx = normalizeKey(stripParensContent(x), '');
+      const ny = normalizeKey(stripParensContent(y), '');
+      if (nx && ny && nx === ny) return true;
+    }
+  }
   return false;
 }

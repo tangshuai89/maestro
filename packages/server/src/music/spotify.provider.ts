@@ -4,6 +4,15 @@ import { ProviderSession } from '../common/session';
 import { StorageService } from '../common/storage';
 import { SessionService } from '../common/session';
 import { RefreshCoordinator } from '../auth/refresh-coordinator';
+import { withTimeout } from '../common/timeout';
+
+/**
+ * token refresh 的超时。元数据类调用按 AGENTS.md 硬约束套 withTimeout
+ * （单平台 5s，超时即缺席不阻塞其他平台）：accounts.spotify.com 网络卡死时
+ * 最多等 5s 就按缺席处理，不拖住 search/like/fetchLiked/WPS token 等所有
+ * 等着 access token 的调用方。
+ */
+const REFRESH_TIMEOUT_MS = 5_000;
 
 /** storage key where AuthController persists the user's Spotify client_id.
  *  Must stay in sync with auth.controller.ts SPOTIFY_CLIENT_ID_KEY. */
@@ -200,20 +209,47 @@ export class SpotifyMusicProvider {
       this.logger.warn('refreshAccessToken: SPOTIFY_CLIENT_ID 未设');
       return null;
     }
+    // 元数据类调用按 AGENTS.md 硬约束套 withTimeout（单平台 5s）。超时后
+    // withTimeout 只 race、不 cancel——fetch 仍在后台跑，结束时自然回收。
+    let res: Response | null = null;
     try {
-      const res = await fetch(`${SPOTIFY_ACCOUNTS}/api/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          client_id: clientId,
-        }),
-      });
-      if (!res.ok) {
-        this.logger.warn(`spotify refresh failed: ${res.status}`);
-        return null;
-      }
+      res = await withTimeout(
+        () =>
+          fetch(`${SPOTIFY_ACCOUNTS}/api/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'refresh_token',
+              refresh_token: refreshToken,
+              client_id: clientId,
+            }),
+          }),
+        REFRESH_TIMEOUT_MS,
+        () =>
+          this.logger.warn(
+            `spotify refresh timeout (>${REFRESH_TIMEOUT_MS}ms)：网络卡死，按缺席处理`,
+          ),
+      );
+    } catch (err) {
+      // fetch 网络层失败（DNS 解析 / 连接被拒 / TLS 证书 / 代理拦截等）时，
+      // message 恒为泛化的 "fetch failed"，真正原因藏在 err.cause 链里。
+      // describeError 把整条链拍平，否则日志只剩一句没用的 "fetch failed"。
+      this.logger.warn(`spotify refresh exception: ${describeError(err)}`);
+      return null;
+    }
+    if (!res) return null; // 超时 → 缺席（与搜索超时同口径）
+    if (!res.ok) {
+      // 带 body 记日志：400 invalid_grant 说明 refresh_token 已被撤销（用户在
+      // Spotify 后台取消了授权），跟断网是两回事，body 能一眼区分。
+      const body = await res.text().catch(() => '');
+      this.logger.warn(
+        `spotify refresh failed: ${res.status}${body ? ` ${body.slice(0, 200)}` : ''}`,
+      );
+      return null;
+    }
+    // 网络失败/超时已在上面的 try/catch 处理。这里只处理响应体解析 +
+    // 写回 session：body 不是合法 JSON 时（罕见）同样按缺席处理，不往外抛。
+    try {
       const data = (await res.json()) as {
         access_token: string;
         expires_in: number;
@@ -232,7 +268,7 @@ export class SpotifyMusicProvider {
         expiresAt: Date.now() + data.expires_in * 1000,
       };
       // 保留旧 token 的 tier / id / displayName（refresh 不会回这些）
-      // 然后通过 setProvider 触发 persist，让 state.json 也保留新 token。
+      // 然后通过 persistSpotify 触发持久化，让 state.json 也保留新 token。
       const sessionId = this.sessionIdFor(session);
       session.spotify = {
         ...session.spotify,
@@ -243,7 +279,7 @@ export class SpotifyMusicProvider {
       }
       return newTok.accessToken;
     } catch (err) {
-      this.logger.warn(`spotify refresh exception: ${(err as Error).message}`);
+      this.logger.warn(`spotify refresh exception: ${describeError(err)}`);
       return null;
     }
   }
@@ -716,4 +752,21 @@ function base64UrlEncode(buf: Buffer): string {
 
 function sha256(input: Buffer): Buffer {
   return createHash('sha256').update(input).digest();
+}
+
+/**
+ * Node built-in fetch 的失败抛的是 `TypeError: fetch failed`——message 恒为
+ * 泛化的 "fetch failed"，真正原因（DNS 解析失败 / 连接被拒 / TLS 证书校验 /
+ * 代理拦截等）藏在 `err.cause` 链里。把整条 cause 链拍平拼成一条可读日志，
+ * 否则只打 "fetch failed" 完全无法定位是断网、被墙还是账号问题。
+ */
+function describeError(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  for (let i = 0; i < 5 && cur instanceof Error; i++) {
+    parts.push(cur.message);
+    cur = (cur as Error & { cause?: unknown }).cause;
+  }
+  if (parts.length === 0) return String(err);
+  return parts.join(' ← cause: ');
 }

@@ -20,14 +20,25 @@ import type { MusicProvider } from '../common/provider';
 // Re-export 给 server 模块用——music.service.ts 等不需要改 import 路径。
 // 实际实现统一在 @maestro/common（单测在 common/src/normalizer.test.ts）。
 // 同时 import 让本文件内部也能调用（re-export 不在 in-scope 里给本文件用）。
-import { normalizeKey } from '@maestro/common';
-export {
-  stripFeatTags,
-  stripParensContent,
-  stripFuriganaParens,
+import {
+  artistLooseMatch,
   cjkUnify,
-  normalizeKey,
   displayKey,
+  normalizeKey,
+  stripFeatTags,
+  stripFuriganaParens,
+  stripParensContent,
+  stripTrailingMeta,
+} from '@maestro/common';
+export {
+  artistLooseMatch,
+  cjkUnify,
+  displayKey,
+  normalizeKey,
+  stripFeatTags,
+  stripFuriganaParens,
+  stripParensContent,
+  stripTrailingMeta,
 } from '@maestro/common';
 
 export type RawSearchEntry = { track: Track; platform: MusicProvider };
@@ -218,9 +229,17 @@ export function isCrossScript(a: string, b: string): boolean {
 }
 
 /**
- * 在已 merge 的 UnifiedSearchItem 上再做一遍 cross-script 合并。
- * 把标题跨文字（Spotify 罗马音 vs QQ 汉字）但艺人+时长相同且文字系统不同的
- * 条目合并成一个——"横顔" + "Yokogao" → 含 qq/netease/spotify 三个 sources。
+ * 在已 merge 的 UnifiedSearchItem 上再做一遍 cross-script / meta-suffix 合并。
+ *
+ * 把跨平台同歌同艺人但写法不同的条目合并成一个，涵盖两类差异：
+ *  - **跨文字**（Spotify 罗马音 vs QQ 汉字）："横顔" + "Yokogao" →
+ *    含 qq/netease/spotify 三个 sources。
+ *  - **品牌/CM/影视元数据尾缀**（catalog 级 normalizeKey 未剥）：
+ *    「一百」+「一百 - 百事可乐品牌主题曲」→ 合并。
+ *
+ * 艺人匹配用 `artistLooseMatch`（@maestro/common）：策展别名表 + 段段配对
+ * （「李荣浩·黑马」vs「Ronghao Li·黑馬」按 `·` 切后段对段再查表）。非表内
+ * 巧合仍拒判（保留「Coldplay vs Cold」铁律）。
  *
  * 仅用于 library import 路径（不做在线搜索合并，那个用严格 normalizeKey）。
  */
@@ -230,18 +249,17 @@ export function mergeCrossScript(items: UnifiedSearchItem[]): UnifiedSearchItem[
   for (let i = 0; i < n; i++) {
     if (dead.has(i)) continue;
     const a = items[i];
-    const aArtist = normalizeKey(a.artist, '');
     for (let j = i + 1; j < n; j++) {
       if (dead.has(j)) continue;
       const b = items[j];
-      // Artist must match (same normalizeKey — not loose, because cross-script
-      // merging is only safe when the artist is exactly the same)
-      const bArtist = normalizeKey(b.artist, '');
-      if (aArtist !== bArtist) continue;
-      // Titles must be cross-script
-      const aTitle = normalizeKey(a.title, '');
-      const bTitle = normalizeKey(b.title, '');
-      if (!isCrossScript(aTitle, bTitle)) continue;
+      // Artist: loose (alias table + per-segment for `·`-separated composite).
+      if (!artistLooseMatch(a.artist, b.artist)) continue;
+      // Title: strip trailing meta (品牌主题曲/电影版/完整版/...) then
+      // either equal or cross-script. `displayKey` 内含 cjkUnify + noise
+      // strip + 小写，与 renderer 端 groupLibrary 同一把 key。
+      const aTitleKey = displayKey(stripTrailingMeta(a.title), '');
+      const bTitleKey = displayKey(stripTrailingMeta(b.title), '');
+      if (aTitleKey !== bTitleKey && !isCrossScript(aTitleKey, bTitleKey)) continue;
       // Duration within 12 s (generous — cross-script already guarantees
       // same-artist same-song, duration variation is version difference)
       if (a.duration > 0 && b.duration > 0 && Math.abs(a.duration - b.duration) > 12) continue;

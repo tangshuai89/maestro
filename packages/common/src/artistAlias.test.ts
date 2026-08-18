@@ -5,8 +5,11 @@
 //  - 韩文/假名值：'방탄소년단'/'임영웅'/'ハチ' 归一后保留，精确相等才命中
 export {}; // 模块作用域：避免顶层 const 与其它测试文件的全局声明冲突
 //  - 数据修复回归：リプラス↔Re:Plus、コーコーヤ↔ko-ko-ya、蝶↔一之瀬ユウ
+//  - 段段字面归一相等（artistLooseMatch 2026-08-14 #2）：「aiko·May Dream」vs
+//    「aiko」必须合并；表外「Cold」vs「Cold」必须合并；「Cold」vs「Coldplay」
+//    不合并。
 const assert = require('node:assert');
-const { stageNameAliasMatch } = require('./artistAlias');
+const { artistLooseMatch, stageNameAliasMatch } = require('./artistAlias');
 
 let passed = 0;
 let failed = 0;
@@ -64,6 +67,21 @@ check('邓紫棋 ↔ G.E.M.', stageNameAliasMatch('邓紫棋', 'G.E.M.'));
 check('马赛克乐队 ↔ 马赛克', stageNameAliasMatch('马赛克乐队', '马赛克'));
 check('范逸臣 ↔ 【范逸臣 Van Fan】', stageNameAliasMatch('范逸臣', '【范逸臣 Van Fan】'));
 check('桑田佳佑 ↔ Keisuke Kuwata', stageNameAliasMatch('桑田佳佑', 'Keisuke Kuwata'));
+
+// ── 7. 段段字面归一相等（artistLooseMatch #2）──
+// 2026-08-14 用户实测「aiko·May Dream」vs「aiko」必须合并（aiko 表内 key 是
+// あいこ，纯拉丁「aiko」stageNameKey 返回 null，整串走表查不到）。段段配对
+// 补 normalizeKey 相等后命中——同名字面等价属于「同一艺人」最强信号。
+console.log('\n── 段段字面归一相等 ──');
+check('aiko·May Dream ↔ aiko（用户实测）', artistLooseMatch('aiko·May Dream', 'aiko'));
+check('aiko ↔ aiko（纯字面）', artistLooseMatch('aiko', 'aiko'));
+check('YOASOBI ↔ Yoasobi（大小写）', artistLooseMatch('YOASOBI', 'Yoasobi'));
+check('YOASOBI, Ayase ↔ YOASOBI·专辑', artistLooseMatch('YOASOBI, Ayase', 'YOASOBI·专辑'));
+// 铁律不破：表外非同一艺人仍拒判
+check('Cold ↔ Coldplay 不并', artistLooseMatch('Cold', 'Coldplay'), false);
+check('Taylor ↔ Taylor Swift 不并', artistLooseMatch('Taylor', 'Taylor Swift'), false);
+// 表内桥接（保留原 strict 口径）
+check('陈绮贞 ↔ Cheer Chen（表内）', artistLooseMatch('陈绮贞', 'Cheer Chen'));
 check('のぼる↑P ↔ Noboru', stageNameAliasMatch('のぼる↑P', 'Noboru'));
 check('蓝井艾露 ↔ Eir Aoi', stageNameAliasMatch('蓝井艾露', 'Eir Aoi'));
 

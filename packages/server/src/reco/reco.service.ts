@@ -154,7 +154,17 @@ export class RecoService {
     });
     const raw = await this.callDeepSeek(apiKey, prompt);
     const rawItems = this.parseRecommendations(raw);
-    const deduped = this.dedupAgainstLibrary(rawItems, lib.items, exclude);
+    // 2026-08-14 防御性预筛：即便 prompt 写得很清楚，模型仍可能输出 DJ/伴奏/
+    // 慢摇这种"二次加工"歌名（实测「推荐 DJ 版晴天」「推荐 XXX 伴奏」）。
+    // 在去重 / fill 之前先按 VERSION_BAD 扫一遍，命中即丢——OVERASK_FACTOR=2
+    // 的余量足够覆盖。
+    const sanitized = this.sanitizeBadVersions(rawItems);
+    if (sanitized.length < rawItems.length) {
+      this.logger.log(
+        `reco: 预筛丢弃 ${rawItems.length - sanitized.length} 条「坏版本」标题`,
+      );
+    }
+    const deduped = this.dedupAgainstLibrary(sanitized, lib.items, exclude);
     const filled = await this.fillPlatforms(session, deduped, count);
 
     // #5 记录本次真正产出的歌进历史（用平台侧规范名；normalizeKey 足够模糊，
@@ -196,16 +206,43 @@ export class RecoService {
 
     // #6 更强的规则：正名/原文歌手/排除翻唱·live·remix·伴奏，降低 fill 阶段
     // 搜到错版本 / 搜不到的概率。
-    const system = `你是一个资深音乐推荐助手。用户会给你他喜欢的 ${library.length} 首歌（口味采样），
-你要据此推荐 ${opts.count} 首他**尚未听过**、**风格/氛围相近但有惊喜**的歌曲。
-硬性要求：
-1. 严格输出 JSON 数组，不要任何解释文字或 markdown 围栏
-2. 每项 { "title": "歌名", "artist": "歌手", "reason": "一句为什么(简短中文)" }
-3. 不要推荐库里已有的歌，不要在本次结果内重复
-4. 只推荐**真实存在、正式发行**的歌，用户能在 QQ音乐/网易云/Deezer 搜到
-5. title 用官方原名、artist 用**原文**（日文/英文歌手别翻译成中文），方便精确搜索
-6. 默认推荐**录音室原版**：不要 live/翻唱/remix/伴奏/纯音乐版本（除非用户库里本就偏好这类）
-7. 宁可少推也不要编造不存在的歌`;
+    //
+    // 2026-08-14 加严「正经歌曲」门槛：实测模型常推 DJ/慢摇/抖音切片
+    // （甚至非歌曲如 BGM/广告），原因是规则散在 system 笼统一句话，没有具体
+    // 「不要什么」清单 + duration 提示。补：
+    //  - 显式 do/don't 列表（不要 DJ/remix/伴奏/慢摇/抖音/翻唱/纯音乐/BGM/广告）
+    //  - 时长硬要求（90-360s 主流流行区间，超出 = 必是 live 现场/长版/慢摇）
+    //  - 「原文名」具体化：日文用汉字/假名原文，英文大小写按发行专辑，
+    //    拉丁字符不要意译/拼音化
+    //  - 加几条具体正/反例，让模型更贴指令
+    const system = `你是一个资深音乐推荐助手。用户给你他喜欢的 ${library.length} 首歌（口味采样），
+请据此推荐 ${opts.count} 首他**尚未听过**、**风格/氛围相近但有惊喜**的歌曲。
+
+# 必须遵守的硬性规则
+1. **严格输出 JSON**，形如 { "items": [ { "title": "歌名", "artist": "歌手", "reason": "一句为什么(简短中文)" } ] }。不要任何解释文字或 markdown 围栏。
+2. 只推**真实存在、正式发行、能在 QQ音乐 / 网易云 / Spotify 搜到**的歌。不确定宁可不推（规则 7）。
+3. **必须录音室原版**——不要以下任何"二次加工"版本：
+   - 不可要：DJ 版 / DJ 加速 / DJ 慢摇 / 慢摇 / 夜店 / club / 抖音版 / 抖音热曲 / remix / 重混 / mashup / bootleg / 翻唱 / cover / 翻自 / 伴奏 / 纯音乐 / 纯享版 / instrumental / karaoke / ktv / 加速 / 减速 / 8-bit / 8D / 3D / slowed / nightcore / 清唱 / a cappella / demo / 钢琴版 / 八音盒版
+   - 可要：录音室原版 / studio / 正式版 / album version
+4. **不是歌**的不要推：BGM / 广告曲 / 背景音乐 / 纯钢琴独奏 / 影视原声大段配乐 / 节日铃声 / 玩具音乐 / 课本朗读 / 朗诵
+5. **时长控制**——主流流行歌时长 90-360 秒（1.5-6 分钟）。除非用户口味档案明显偏好长版/现场，否则：
+   - < 90 秒 = 抖音切片/铃声，禁
+   - > 360 秒 = 现场录音/long version/Medley，禁
+6. **artist 用发行时的官方原文名**（不是译名/拼音/缩写）：
+   - 日文歌手用日文原文（米津玄師 不是 "Kenshi Yonezu"、也不是"米津玄师"）
+   - 英文歌手按发行专辑写法（"The Weeknd" 不是 "the weeknd"）
+   - 中韩歌手用各自官方汉字/原文（"周杰伦" 不是 "Jay Chou"——除非用户库里都是英文名）
+7. **title 用官方原名**：不要自己加"（Live）""（Remix）"等后缀（录音室原版没有这些）；不要意译/拼音化（如 "Lemon" 不要写成"柠檬"，"夜に駆ける"不要写成"夜驾"）。
+8. **不要库里已有的**（下面的口味库）；**不要和本次结果内重复**。
+9. **不要编造**——拿不准的歌手/歌名宁可少推也不要硬凑。
+
+# 风格锚点
+- 风格相近 + 有惊喜：不是同质化刷同一歌手，可以跨语言/跨年代/跨子流派，但核心氛围要"在用户舒适圈内又给点新东西"。
+- 不确定怎么选就推**该歌手最知名、最广为发行的录音室单曲**——比推冷门靠谱。
+
+# 输出格式
+{ "items": [ { "title": "...", "artist": "...", "reason": "..." } ] }
+只输出这一个 JSON 对象。`;
 
     const lang = opts.language && opts.language !== 'auto'
       ? `语言偏好：${opts.language === 'zh' ? '中文' : opts.language === 'en' ? '英文' : opts.language === 'ja' ? '日文' : opts.language}`
@@ -283,7 +320,9 @@ export class RecoService {
           body: JSON.stringify({
             model: DEEPSEEK_MODEL,
             messages,
-            temperature: 0.9,
+            // 2026-08-14 从 0.9 降到 0.7：实测 0.9 太发散，常出 DJ/慢摇/凑数歌。
+            // 0.7 保留"有惊喜"但更贴指令；后续如要更发散可再升。
+            temperature: 0.7,
             response_format: { type: 'json_object' },
           }),
         });
@@ -375,6 +414,22 @@ export class RecoService {
   }
 
   // ── 推荐去重：和库 + 自己内部 ───────────────────────────
+
+  /**
+   * 2026-08-14 新增：模型输出侧的"坏版本"预筛。复用搜索侧同一份
+   * `VERSION_BAD` 关键词表，命中即丢——不再浪费一次 search 才知道这歌是
+   * DJ 伴奏。注意：与 `searchAndMatch` 里的 `waived` 不同，这里
+   * **不豁免**模型自己点名要坏版本（DJ/慢摇 伴奏/翻唱本身就不该被推荐，
+   * 模型点错了也按错处理）——搜索侧的 waived 仍然在，那是为了应付「用户
+   * 真想听 Remix」的合法路径。
+   */
+  private sanitizeBadVersions(items: RecoRawItem[]): RecoRawItem[] {
+    return items.filter((r) => {
+      if (!r.title || !r.artist) return false;
+      if (this.versionPenalty(r.title) >= RecoService.PEN_BAD) return false;
+      return true;
+    });
+  }
 
   private dedupAgainstLibrary(
     raw: RecoRawItem[],
@@ -485,6 +540,10 @@ export class RecoService {
    * "坏版本"标记：DJ/remix/伴奏/加速/抖音/翻唱/纯音乐… 这类**没人想循环听**的
    * 二次加工版本。命中 → 强惩罚（PEN_BAD），除非用户/模型本就点名要这个版本。
    * ⚠️ 只扫 title，不扫 artist——避免误伤 "DJ Okawari" 这类合法艺人名。
+   *
+   * 2026-08-14 扩：补「串烧/夜店/夜场/车载/劲爆/慢嗨/连音/吐司/慢四/快三」
+   * 等中文二次加工标签——这些通常是 8-15 分钟的"非录音室"长版或拼盘，
+   * 用户不会想循环。补「铃声 / 来电铃声 / 闹钟」等"非歌"形态。
    */
   private static readonly VERSION_BAD: RegExp[] = [
     /\bdj\b/i, /re-?mix/i, /mash-?up/i, /bootleg/i, /nightcore/i,
@@ -492,6 +551,11 @@ export class RecoService {
     /伴奏/, /纯音乐|純音樂/, /off ?vocal/i, /instrumental/i, /karaoke/i, /\bktv\b/i,
     /加速/, /减速|減速/, /慢摇|慢搖/, /抖音/, /tik ?tok/i, /钢琴(版|曲)|鋼琴(版|曲)/,
     /八音盒/, /翻唱|翻自|\bcover\b/i, /清唱|a-?ca?pella/i, /\bdemo\b/i, /重混/,
+    // 中文二次加工标签（用户实测常见）
+    /串烧|串燒/, /夜店|夜場|club ?mix/i, /车载|車載/, /劲爆|勁爆|劲嗨|慢嗨/,
+    /连音|連音/, /慢四|快三|快四/, /铃声|鈴聲|来电铃声|鬧鐘|闹钟/,
+    // 网易云/QQ 特殊标签
+    /纯享版|純享版/, /无损|無損|flac/i,
   ];
   /** "可接受但非首选"：live/现场/acoustic。用户认可，但有录音室原版时让原版优先。 */
   private static readonly VERSION_SOFT: RegExp[] = [
@@ -499,6 +563,23 @@ export class RecoService {
   ];
   private static readonly PEN_BAD = 100;
   private static readonly PEN_SOFT = 10;
+  /** 时长硬约束（秒）——2026-08-14 加：实测同名不同版本常以"10 分钟 live 全场"
+   *  形态出现在 QQ 搜索结果第一页，且 normalizeKey/title 双向包含都过得了
+   *  `looseMatch`——只有靠时长把它拦下。用户库若是明显偏好长版/现场/歌剧，
+   *  会通过 LLM 风格锚点反映出来，但**单条判断**这里压死。
+   *
+   *  - 主流流行歌 90-360s 是「录音室单曲」的典型区间
+   *  - <60s = 抖音切片 / 铃声 / 副歌 hook → 必丢
+   *  - >600s = 现场录音 / long version / DJ medley → 必丢
+   *  之外（60-90s / 360-600s）只在「模型点名要长版/短版」时豁免。 */
+  private static readonly DURATION_MIN = 60;
+  private static readonly DURATION_MAX = 600;
+  private static readonly DURATION_NORMAL_MIN = 90;
+  private static readonly DURATION_NORMAL_MAX = 360;
+
+  /** 模型侧标题里明确点名要长/短版本的关键词（豁免上面的硬约束）。 */
+  private static readonly LONG_HINT = /\b(long ?ver(?:sion)?|extended|全长|加长|完整版?|演唱会|concert|live ?album|现场专辑|medley)/i;
+  private static readonly SHORT_HINT = /\b(edit|radio ?edit|single ?edit|剪辑|副歌|hook|抖音|60s|30s)/i;
 
   /** 版本纯净度惩罚：录音室原版 0 < live/现场 10 << DJ/remix/伴奏… 100。 */
   private versionPenalty(title: string): number {
@@ -508,6 +589,33 @@ export class RecoService {
     }
     if (RecoService.VERSION_SOFT.some((re) => re.test(t))) {
       return RecoService.PEN_SOFT;
+    }
+    return 0;
+  }
+
+  /**
+   * 时长合理性判断。返回 0 = 正常区间（不加惩罚），>0 = 偏离越大惩罚越重。
+   * 模型自己点名要 long/short 版本时硬约束豁免；normal 区间（90-360）始终
+   * 加 0 惩罚，<60 或 >600 硬丢（> PEN_BAD 即被 searchAndMatch 当作坏版本
+   * 丢弃）。
+   */
+  private durationPenalty(
+    duration: number,
+    recTitle: string,
+  ): number {
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
+    // 模型点名要长/短版本 → 硬约束豁免，但仍按 normal 区间打分
+    const allowLong = RecoService.LONG_HINT.test(recTitle);
+    const allowShort = RecoService.SHORT_HINT.test(recTitle);
+    if (duration < RecoService.DURATION_MIN && !allowShort) return RecoService.PEN_BAD;
+    if (duration > RecoService.DURATION_MAX && !allowLong) return RecoService.PEN_BAD;
+    if (duration < RecoService.DURATION_NORMAL_MIN) {
+      // 60-90s 区间：仅在「模型点名短版」时 0 惩罚，否则 50 强惩罚
+      return allowShort ? 0 : 50;
+    }
+    if (duration > RecoService.DURATION_NORMAL_MAX) {
+      // 360-600s 区间：仅在「模型点名长版」时 0 惩罚，否则 50
+      return allowLong ? 0 : 50;
     }
     return 0;
   }
@@ -546,7 +654,12 @@ export class RecoService {
       const scored = candidates
         .map((it) => ({
           it,
-          pen: waived ? 0 : this.versionPenalty(it.title),
+          // 2026-08-14 把 duration 惩罚也合进来：实测同名不同版本常以
+          // "10 分钟 live 全场"形态被搜索出来（normalizeKey 相等、title
+          // 双向包含都过得了 looseMatch）——只有靠时长把它扣下。
+          pen:
+            (waived ? 0 : this.versionPenalty(it.title)) +
+            this.durationPenalty(it.duration, r.title),
           notExact: normalizeKey(it.title, it.artist) === wantKey ? 0 : 1,
           len: normalizeKey(it.title, '').length,
         }))
@@ -554,7 +667,8 @@ export class RecoService {
           (a, b) => a.pen - b.pen || a.notExact - b.notExact || a.len - b.len,
         );
       const best = scored[0];
-      // 最优仍是坏版本（DJ/remix/伴奏…）且没被豁免 → 丢弃，换一首正常歌。
+      // 最优仍是坏版本（DJ/remix/伴奏…）或时长离谱且没被豁免 → 丢弃，
+      // 换一首正常歌。PEN_BAD 阈值同时覆盖 VERSION_BAD 和 DURATION_BAD。
       if (best.pen >= RecoService.PEN_BAD) return null;
       return {
         ...best.it,

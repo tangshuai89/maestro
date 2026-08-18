@@ -30,6 +30,10 @@ export function useReco(
   const [recoStatus, setRecoStatus] = useState<RecoStatus | null>(null);
   const [recoStatusVersion, setRecoStatusVersion] = useState(0);
   const [recoRunning, setRecoRunning] = useState(false);
+  // Monster Beats 图鉴（ENCOUNTER LOG）用的推荐卡数据。
+  const [suggestions, setSuggestions] = useState<
+    Array<{ title: string; artist: string; coverColor: string; type: string; match: number }>
+  >([]);
   const [recoKeyOpen, setRecoKeyOpen] = useState(false);
 
   // Fetch reco status on mount + after every key save (version bump).
@@ -98,6 +102,21 @@ export function useReco(
         }
         return next.items;
       };
+      // Monster Beats 图鉴卡：前三首派生（稳定 seed，跨渲染不变）
+      setSuggestions(
+        result.items.slice(0, 3).map((it, i) => {
+          const h = (it.title.length * 31 + it.artist.length * 7 + i * 13) % 100;
+          const prov = it.bestSource ?? 'qq';
+          const typeMap: Record<string, string> = { qq: 'FIRE', netease: 'GRASS', deezer: 'WATER', spotify: 'ELEC' };
+          return {
+            title: it.title,
+            artist: it.artist,
+            coverColor: ['#FF3B3B', '#FFD60A', '#4CD964', '#2D7FFF', '#FF2D87'][i % 5],
+            type: typeMap[prov] ?? 'WILD',
+            match: Math.max(35, h),
+          };
+        }),
+      );
       // Reuse the same playback link as the search queue, plus the next-batch
       // loader so playback continues past the last recommendation.
       playSearch(result.items, 0, loadMore);
@@ -131,6 +150,7 @@ export function useReco(
   return {
     recoStatus,
     recoRunning,
+    suggestions,
     recoKeyOpen,
     setRecoKeyOpen,
     handleReco,

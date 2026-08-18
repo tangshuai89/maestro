@@ -328,6 +328,12 @@ export class MusicService {
     if (!ps) {
       throw new NotFoundException(`Not logged in to ${provider}`);
     }
+    if (provider === 'spotify') {
+      // ProviderSession 本身不带 sessionId——在这里把 id 绑上去，refresh 才能
+      // 走 RefreshCoordinator 单飞（同 session 并发只 POST 一次 /api/token）
+      // 并且 refresh 后的新 token 才能持久化到 state.json。
+      this.spotify.bindSessionId(ps, session.id);
+    }
     return ps;
   }
 
@@ -909,6 +915,7 @@ export class MusicService {
     }
     if (provider === 'spotify') {
       if (!ps?.spotify) return;
+      this.spotify.bindSessionId(ps, session.id);
       const res = liked
         ? await this.spotify.like(ps, trackId)
         : await this.spotify.unlike(ps, trackId);
@@ -1459,6 +1466,7 @@ export class MusicService {
       if (platform === 'spotify') {
         const ps = session.providers.spotify;
         if (!ps?.spotify) return Promise.resolve([]);
+        this.spotify.bindSessionId(ps, session.id);
         return this.spotify.search(ps, kw, limit);
       }
       return Promise.resolve([]); // deezer 匿名无收藏，不参与
@@ -2148,6 +2156,7 @@ export class MusicService {
         const tracks = await this.netease.fetchLiked(ps, 2000);
         set = new Set(tracks.map((t) => t.id));
       } else if (provider === 'spotify' && ps?.spotify) {
+        this.spotify.bindSessionId(ps, session.id);
         const tracks = await this.spotify.fetchLiked(ps, 2000);
         set = new Set(tracks.map((t) => t.id));
       }
@@ -2624,6 +2633,7 @@ export class MusicService {
           error: 'not_logged_in',
         });
       } else {
+        this.spotify.bindSessionId(ps, session.id);
         const tracks = await this.spotify.fetchLiked(ps, 1000);
         sourceResults.push({ provider: 'spotify', count: tracks.length });
         allTracks.push(...tracks);

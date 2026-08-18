@@ -62,6 +62,7 @@ const spotify = {
   },
   unlike: async () => ({ success: true }),
   fetchLiked: async () => [],
+  bindSessionId: () => {}, // MusicService 在传 session 时会绑 sessionId（refresh 单飞用）
 };
 const match = {};
 const lyricsOvh = { getLyrics: async () => null };

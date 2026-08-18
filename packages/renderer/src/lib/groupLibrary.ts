@@ -2,12 +2,14 @@
 // 同一条流水线，确保 server 端合并的「UnifiedSearchItem」在弹窗里不会被重新
 // 拆开 / 错并（前后端 fuzzy key 漂移是「合并不利索」的根因）。
 import {
+  artistLooseMatch,
   displayKey,
   extractVersionTag,
   normalizeKey,
   splitArtists,
   stageNameAliasMatch,
   stripParensContent,
+  stripTrailingMeta,
   titleAliasKey,
   type VersionTag,
 } from '@maestro/common';
@@ -90,45 +92,27 @@ interface MutableGroup extends LibraryGroup {
 }
 
 /**
- * 弹窗分组「title 尾缀宽容」：Spotify 偶尔给歌名追加版本/合作信息但不加括号
- * （如「... - zerokoi ver.」「... - Remix」），displayKey 不知此形式而把整串
- * 留在 key 尾——分桶后与原版不同桶 → 拆开。**先**剥常见版本/合作尾缀再做分桶：
- * 「 - xxx ver./remix/cover/feat/live」+ 一些无意义词（the/of/and）。
- * 严格白名单——不在白名单的不剥，避免误并。
- */
-function stripTrailingVersionSuffix(s: string): string {
-  if (!s) return s;
-  // 1) 版本/合作尾缀：「 - xxx ver./remix/cover/feat/live」+ 长度 0~N（仅剥一次）
-  //    关键词作尾部、前面非空白/非- 字符——直接列关键词，不用 \b（中文边界不灵）。
-  const SUFFIX_RE =
-    /[\s\u3000]*[-—–][\s\u3000]*[^-\s\u3000][^]*?\s*(?:ver\.?|version|remix|cover|feat\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\s\u3000]*$/i;
-  // 2) 无意义尾词：「 - the」「 - of」之类（最多剥 3 层）。
-  const STOPWORDS = /[\s\u3000]*[-—–][\s\u3000]*(?:the|of|and|a|an)[\s\u3000]*$/i;
-  let out = s;
-  for (let i = 0; i < 3; i++) {
-    const prev = out;
-    if (SUFFIX_RE.test(out)) out = out.replace(SUFFIX_RE, '').trim();
-    else if (STOPWORDS.test(out)) out = out.replace(STOPWORDS, '').trim();
-    if (out === prev) break;
-  }
-  return out;
-}
-
-/**
  * 弹窗分组的「艺人同人」判定（2026-08-07 多艺人兜底，2026-08-14 增强）：
  *  1) 归一相等（cjkUnify 简繁统一 + noise strip）
  *  2) 策展别名表整串命中（陈绮贞 = Cheer Chen）
- *  3) 多艺人拆分配对：任一方 ≥2 人时，按分隔符拆开逐对匹配
+ *  3) 「artist·album」/「artist, album」复合串段段配对（@maestro/common
+ *     `artistLooseMatch`）：「李荣浩·黑马」vs「Ronghao Li·黑馬」按
+ *     `·`/`,` 切后段对段再查别名表。
+ *  4) 多艺人拆分配对：任一方 ≥2 人时，按分隔符拆开逐对匹配
  *     （归一相等 或 表别名），命中 ≥ ceil(多侧/2) 即同人——
  *     Vocaloid「のぼる↑P / 初音未来」vs「Noboru」这类组合写法差异。
- * 单艺人对单艺人仍只走 1/2——Coldplay vs Cold、Taylor vs Taylor Swift
- * 这类巧合前缀不因拆分放宽而误并（双方都单艺人，不触发 3）。
+ * 单艺人对单艺人仍只走 1/2/3——Coldplay vs Cold、Taylor vs Taylor Swift
+ * 这类巧合前缀不因拆分放宽而误并（双方都单艺人且无表内别名）。
  */
 function artistsEquivalent(a: string, b: string): boolean {
   const na = normalizeKey(stripParensContent(a), '');
   const nb = normalizeKey(stripParensContent(b), '');
   if (na && nb && na === nb) return true;
   if (stageNameAliasMatch(a, b)) return true;
+  // 「artist·album」/「artist, album」复合串段段配对（@maestro/common
+  // `artistLooseMatch` 内部做：先整串 stageNameAliasMatch 再段段配对）。
+  // 这里单独调一次：哪怕整串未命中（含 album 段），段段配对也能桥上。
+  if (artistLooseMatch(a, b)) return true;
   const pa = splitArtists(a);
   const pb = splitArtists(b);
   if (pa.length < 2 && pb.length < 2) return false;
@@ -165,7 +149,7 @@ export function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
   const enriched = items.map((item, index) => ({
     item,
     index,
-    titleKey: titleAliasKey(displayKey(stripTrailingVersionSuffix(item.title), '')),
+    titleKey: titleAliasKey(displayKey(stripTrailingMeta(item.title), '')),
     artistKey: normalizeKey(item.artist, ''),
     versionTag: extractVersionTag(item.title),
   }));

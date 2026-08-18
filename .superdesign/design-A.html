@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maestro | 聚合音乐体验</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <meta name="view-transition" content="same-origin">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=Bespoke+Serif:wght@400;700&display=swap');
+
+        @view-transition { navigation: auto; }
+
+        :root {
+            --background: #fafaf9;
+            --foreground: #1c1917;
+            --muted: #a8a29e;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', 'PingFang SC', sans-serif;
+            background-color: var(--background);
+            color: var(--foreground);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .serif {
+            font-family: 'Bespoke Serif', 'Source Han Serif SC', serif;
+        }
+
+        .album-shadow {
+            box-shadow: 0 40px 80px -20px rgba(0,0,0,0.1);
+        }
+
+        .lyrics-line {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes fade-out {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        ::view-transition-old(root) { animation: fade-out 0.4s ease; }
+        ::view-transition-new(root) { animation: fade-in 0.4s ease; }
+    </style>
+</head>
+<body class="bg-[#fafaf9]">
+    <div class="min-h-screen flex flex-col relative text-[#1c1917]">
+        <!-- 顶部窗口栏 -->
+        <header class="h-14 flex items-center px-6 border-b border-stone-200 sticky top-0 z-50 bg-[#fafaf9] flex-none">
+            <div class="flex items-center gap-8 w-full">
+                <div class="w-20 shrink-0"><!-- macOS 控制按钮区域 --></div>
+                
+                <nav class="flex items-center gap-10">
+                    <button id="nav-search-btn" class="text-sm font-medium hover:text-stone-500 transition-colors flex items-center gap-2">
+                        <iconify-icon icon="lucide:search"></iconify-icon>
+                        <span>搜索</span>
+                    </button>
+                    <button id="nav-reco-btn" class="text-sm font-medium hover:text-stone-500 transition-colors flex items-center gap-2">
+                        <iconify-icon icon="lucide:sparkles"></iconify-icon>
+                        <span>DeepSeek 推荐</span>
+                    </button>
+                    <a href="#" id="nav-library-link" class="text-sm font-medium hover:text-stone-500 transition-colors flex items-center gap-1">
+                        <span>红心库</span>
+                        <span class="text-[10px] mono text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded-sm ml-1">1,402</span>
+                    </a>
+                </nav>
+
+                <div class="ml-auto flex items-center gap-6">
+                    <div class="flex items-center gap-4 border-r border-stone-200 pr-6">
+                        <span class="text-[11px] mono text-stone-400">当前音源</span>
+                        <div class="flex gap-3">
+                            <iconify-icon icon="simple-icons:neteasecloudmusic" class="text-sm text-stone-900" title="网易云音乐"></iconify-icon>
+                            <iconify-icon icon="simple-icons:tencentqq" class="text-sm text-stone-300 hover:text-stone-400 cursor-pointer" title="QQ音乐"></iconify-icon>
+                            <iconify-icon icon="simple-icons:spotify" class="text-sm text-stone-300 hover:text-stone-400 cursor-pointer" title="Spotify"></iconify-icon>
+                            <iconify-icon icon="simple-icons:deezer" class="text-sm text-stone-300 hover:text-stone-400 cursor-pointer" title="Deezer"></iconify-icon>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <button id="quality-selector" class="text-[10px] mono border border-stone-300 px-1.5 py-0.5 rounded hover:border-stone-900">SQ / 无损</button>
+                        <button id="nav-account-btn" class="text-sm font-medium opacity-60 hover:opacity-100">未登录</button>
+                        <button id="nav-settings-btn" class="hover:rotate-45 transition-transform">
+                            <iconify-icon icon="lucide:settings-2" class="text-xl"></iconify-icon>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 grid grid-cols-12 min-h-0">
+            <!-- 左侧：封面与元数据 -->
+            <section class="col-span-12 lg:col-span-4 p-12 lg:p-16 border-r border-stone-200 flex flex-col">
+                <div class="sticky top-28">
+                    <!-- 封面容器 -->
+                    <div class="aspect-square w-full album-shadow bg-stone-100 mb-12 relative group">
+                        <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=800&h=800" alt="封面图" class="w-full h-full object-cover">
+                        <div class="absolute top-4 right-4">
+                            <span class="bg-stone-900/10 backdrop-blur-md text-[10px] text-white px-2 py-1 rounded-sm">试听 30s 模式</span>
+                        </div>
+                    </div>
+
+                    <!-- 轨道信息 -->
+                    <div class="flex flex-col gap-8">
+                        <div class="space-y-2">
+                            <h1 class="serif text-4xl font-light tracking-tight leading-tight">走钢丝的人</h1>
+                            <p class="text-xl text-stone-400 font-light">The Tightrope Walker</p>
+                        </div>
+                        
+                        <div class="flex items-baseline gap-4">
+                            <span class="text-xs font-medium tracking-wider text-stone-400">演唱</span>
+                            <span class="text-sm font-medium">谢安琪 (Kay Tse)</span>
+                        </div>
+
+                        <div class="pt-8 border-t border-stone-100 flex flex-col gap-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[11px] mono text-stone-400">同步状态</span>
+                                <span class="text-[11px] mono">3/4 平台 <span class="text-stone-400 font-light">待同步: Deezer</span></span>
+                            </div>
+                            <div class="flex gap-4 items-center">
+                                <div class="relative group">
+                                    <iconify-icon icon="simple-icons:neteasecloudmusic" class="text-lg text-stone-900"></iconify-icon>
+                                    <div class="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-500 rounded-full border border-white"></div>
+                                </div>
+                                <div class="relative group">
+                                    <iconify-icon icon="simple-icons:tencentqq" class="text-lg text-stone-900"></iconify-icon>
+                                    <div class="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-500 rounded-full border border-white"></div>
+                                </div>
+                                <div class="relative group">
+                                    <iconify-icon icon="simple-icons:spotify" class="text-lg text-stone-900"></iconify-icon>
+                                    <div class="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-500 rounded-full border border-white"></div>
+                                </div>
+                                <div class="relative group">
+                                    <iconify-icon icon="simple-icons:deezer" class="text-lg text-stone-200"></iconify-icon>
+                                    <div class="absolute -top-1 -right-1 w-1.5 h-1.5 bg-stone-300 rounded-full border border-white"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 右侧：歌词与推荐 -->
+            <section class="col-span-12 lg:col-span-8 flex flex-col h-full">
+                <div class="flex-1 px-12 lg:px-16 pt-8 pb-12 overflow-y-auto scrollbar-hide flex flex-col justify-between">
+                    <!-- 歌词区域 -->
+                    <div class="max-w-2xl flex flex-col gap-8 mb-8">
+                        <div class="flex items-center gap-4">
+                            <span class="text-[10px] mono border border-stone-200 px-2 py-1 text-stone-500">音轨 01</span>
+                            <span class="text-[10px] mono text-stone-400">歌词源: 网易云音乐</span>
+                        </div>
+
+                        <div class="flex flex-col gap-6">
+                            <p class="text-xl text-stone-300 font-light lyrics-line">我只想过简单的生活</p>
+                            <div class="relative py-2">
+                                <p class="text-4xl font-medium tracking-tight leading-tight serif">我就像个走钢丝的人</p>
+                                <div class="absolute -left-12 top-1/2 -translate-y-1/2 w-8 h-[1px] bg-stone-900"></div>
+                            </div>
+                            <p class="text-xl text-stone-300 font-light lyrics-line">不愿去想太多</p>
+                            <p class="text-xl text-stone-300 font-light lyrics-line">我只想找回那个真我</p>
+                        </div>
+                        
+                        <!-- 降级态设计: 无歌词展示 -->
+                        <!-- 
+                        <div class="py-20 flex flex-col items-center justify-center text-center opacity-30">
+                            <iconify-icon icon="lucide:file-x-2" class="text-4xl mb-4"></iconify-icon>
+                            <p class="text-sm">暂无歌词数据</p>
+                        </div>
+                        -->
+                    </div>
+
+                    <!-- 智能推荐区域 -->
+                    <div class="border-t border-stone-200 pt-8">
+                        <div class="flex justify-between items-end mb-10">
+                            <div class="space-y-1">
+                                <span class="text-[11px] mono text-stone-400">DeepSeek 智能推荐</span>
+                                <h3 class="serif text-2xl font-light">为你推荐</h3>
+                            </div>
+                            <button id="discovery-refresh" class="text-xs font-medium border-b border-stone-900 pb-1">换一批</button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <!-- 推荐卡片 -->
+                            <a href="#" id="reco-item-1" class="group block">
+                                <div class="aspect-square bg-stone-100 mb-3 overflow-hidden relative">
+                                    <img src="https://api.dicebear.com/7.x/shapes/svg?seed=1" class="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700">
+                                    <div class="absolute top-3 left-3 text-[9px] mono bg-white px-2 py-0.5 shadow-sm font-medium">92% 匹配</div>
+                                </div>
+                                <p class="text-sm font-medium leading-tight mb-1 group-hover:underline">Wave Rider</p>
+                                <p class="text-[11px] text-stone-400">Artist Name</p>
+                            </a>
+                            <a href="#" id="reco-item-2" class="group block">
+                                <div class="aspect-square bg-stone-100 mb-3 overflow-hidden relative">
+                                    <img src="https://api.dicebear.com/7.x/shapes/svg?seed=2" class="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700">
+                                    <div class="absolute top-3 left-3 text-[9px] mono bg-white px-2 py-0.5 shadow-sm font-medium">88% 匹配</div>
+                                </div>
+                                <p class="text-sm font-medium leading-tight mb-1 group-hover:underline">Urban Solitude</p>
+                                <p class="text-[11px] text-stone-400">Artist Name</p>
+                            </a>
+                            <!-- DeepSeek 未配置引导态插槽 -->
+                            <div class="aspect-square border border-dashed border-stone-200 flex flex-col items-center justify-center p-6 text-center group hover:border-stone-400 transition-colors cursor-pointer">
+                                <iconify-icon icon="lucide:key-round" class="text-2xl text-stone-300 mb-3"></iconify-icon>
+                                <p class="text-xs text-stone-400 leading-relaxed">配置 DeepSeek API Key<br>开启智能推荐</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 播放控制底部条 -->
+        <footer class="h-24 px-12 lg:px-16 flex items-center border-t border-stone-200 sticky bottom-0 z-50 bg-[#fafaf9] flex-none">
+            <div class="grid grid-cols-12 w-full items-center gap-10">
+                <!-- 播放进度控制 -->
+                <div class="col-span-5 flex flex-col gap-2">
+                    <div class="flex justify-between items-end mb-0.5">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] mono text-stone-400 leading-none">01:42</span>
+                        </div>
+                        <span class="text-[10px] mono text-stone-400 leading-none">04:18</span>
+                    </div>
+                    <div class="w-full h-1 bg-stone-100 relative group cursor-pointer">
+                        <div class="absolute top-0 left-0 h-full w-[40%] bg-stone-900 group-hover:bg-stone-700 transition-colors"></div>
+                        <div class="absolute top-1/2 left-[40%] -translate-y-1/2 w-2 h-2 rounded-full bg-stone-900 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    </div>
+                </div>
+
+                <!-- 核心操作 -->
+                <div class="col-span-3 flex justify-center items-center gap-10">
+                    <button id="prev-btn" class="text-stone-400 hover:text-stone-900 transition-colors">
+                        <iconify-icon icon="lucide:skip-back" class="text-xl"></iconify-icon>
+                    </button>
+                    <button id="main-play-btn" class="w-12 h-12 rounded-full bg-stone-900 text-white flex items-center justify-center hover:scale-105 transition-all shadow-lg">
+                        <iconify-icon icon="lucide:play" class="text-xl ml-1"></iconify-icon>
+                    </button>
+                    <button id="next-btn" class="text-stone-400 hover:text-stone-900 transition-colors">
+                        <iconify-icon icon="lucide:skip-forward" class="text-xl"></iconify-icon>
+                    </button>
+                </div>
+
+                <!-- 辅助功能 -->
+                <div class="col-span-4 flex justify-end items-center gap-8">
+                    <div class="flex items-center gap-6 border-r border-stone-200 pr-8">
+                         <button id="dislike-btn" class="text-stone-300 hover:text-stone-900 transition-colors" title="不喜欢">
+                            <iconify-icon icon="lucide:heart-off" class="text-lg"></iconify-icon>
+                        </button>
+                        <button id="like-btn" class="text-rose-500 hover:scale-110 transition-transform" title="已收藏">
+                            <iconify-icon icon="lucide:heart" class="text-xl" style="--iconify-color: currentColor"></iconify-icon>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-3 w-32">
+                        <iconify-icon icon="lucide:volume-2" class="text-stone-400 text-sm"></iconify-icon>
+                        <div class="flex-1 h-0.5 bg-stone-100 relative">
+                            <div class="h-full w-3/4 bg-stone-400"></div>
+                        </div>
+                    </div>
+                    
+                    <button id="queue-btn" class="flex items-center gap-2 hover:text-stone-500 transition-colors">
+                        <iconify-icon icon="lucide:list-music" class="text-xl"></iconify-icon>
+                        <span class="text-[10px] mono text-stone-400">24</span>
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const playBtn = document.getElementById('main-play-btn');
+        let playing = false;
+        
+        playBtn.addEventListener('click', () => {
+            playing = !playing;
+            const icon = playBtn.querySelector('iconify-icon');
+            icon.setAttribute('icon', playing ? 'lucide:pause' : 'lucide:play');
+            icon.classList.toggle('ml-1', !playing);
+            
+            playBtn.style.transform = 'scale(0.95)';
+            setTimeout(() => playBtn.style.transform = playing ? 'scale(1.05)' : 'scale(1)', 100);
+        });
+
+        // 模拟横向滑动切换源效果
+        document.querySelectorAll('.provider-dot').forEach(dot => {
+            dot.addEventListener('click', function() {
+                document.querySelectorAll('.provider-dot').forEach(d => d.classList.replace('bg-stone-900', 'bg-stone-300'));
+                this.classList.replace('bg-stone-300', 'bg-stone-900');
+            });
+        });
+    </script>
+</body>
+</html>

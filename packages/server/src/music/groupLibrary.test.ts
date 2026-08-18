@@ -9,30 +9,16 @@
 export {};
 const assert = require('node:assert');
 const {
+  artistLooseMatch,
   displayKey,
   extractVersionTag,
   normalizeKey,
   splitArtists,
   stageNameAliasMatch,
   stripParensContent,
+  stripTrailingMeta,
   titleAliasKey,
 } = require('@maestro/common');
-
-/** 弹窗分组 title 尾缀宽容——与 renderer groupLibrary 同步（2026-08-07
- *  Spotify 偶给歌名加版本标签但不加括号：あの頃～ジンジンバオヂュオニー～ - zerokoi ver.）。 */
-function stripTrailingVersionSuffix(s: string): string {
-  if (!s) return s;
-  const SUFFIX_RE = /[\s　]*[-—–][\s　]*[^-\s　][^]*?\s*(?:ver\.?|version|remix|cover|feat\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\s　]*$/i;
-  const STOPWORDS = /[\s　]*[-—–][\s　]*(?:the|of|and|a|an)[\s　]*$/i;
-  let out = s;
-  for (let i = 0; i < 3; i++) {
-    const prev = out;
-    if (SUFFIX_RE.test(out)) out = out.replace(SUFFIX_RE, '').trim();
-    else if (STOPWORDS.test(out)) out = out.replace(STOPWORDS, '').trim();
-    if (out === prev) break;
-  }
-  return out;
-}
 
 // ── 复制的实现（与 packages/renderer/src/lib/groupLibrary.ts 同步） ──────
 type MusicProvider = 'qq' | 'netease' | 'spotify' | 'deezer';
@@ -73,12 +59,16 @@ interface MutableGroup extends LibraryGroup {
 
 // splitArtists 来自 @maestro/common（与 renderer 同口径，含 × 分隔符）。
 
-/** 弹窗分组的「艺人同人」判定：归一相等 / 策展别名整串 / 多艺人拆分配对。 */
+/** 弹窗分组的「艺人同人」判定：归一相等 / 策展别名整串 / 「artist·album」
+ *  段段配对 / 多艺人拆分配对。 */
 function artistsEquivalent(a: string, b: string): boolean {
   const na = normalizeKey(stripParensContent(a), '');
   const nb = normalizeKey(stripParensContent(b), '');
   if (na && nb && na === nb) return true;
   if (stageNameAliasMatch(a, b)) return true;
+  // 「artist·album」/「artist, album」复合串段段配对（@maestro/common
+  // `artistLooseMatch` 内部做：先整串 stageNameAliasMatch 再段段配对）。
+  if (artistLooseMatch(a, b)) return true;
   const pa = splitArtists(a);
   const pb = splitArtists(b);
   if (pa.length < 2 && pb.length < 2) return false;
@@ -98,10 +88,11 @@ function artistsEquivalent(a: string, b: string): boolean {
 }
 
 function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
-  // 2026-08-07 分两级：
-  //  1) title 桶：displayKey(title, '') 归一（剥括号/feat/简繁/大小写）+
-  //     titleAliasKey 等价类（悲歌 = 韩语 애절가）
-  //  2) artist 判等：桶内 artistsEquivalent（归一相等 / 策展别名 /
+  // 2026-08-07 分两级 + 2026-08-14 stripTrailingMeta 品牌/CM/影视/录音版本
+  //  尾缀宽容：
+  //  1) title 桶：displayKey(stripTrailingMeta(title), '') 归一（剥括号/feat/
+  //     简繁/大小写 + 品牌/CM/影视/录音版本元数据尾缀）+ titleAliasKey 等价类
+  //  2) artist 判等：桶内 artistsEquivalent（归一相等 / 策展别名 / 段段配对 /
   //     多艺人拆分配对）；表外不同人拆开。
   const byTitle = new Map<string, MutableGroup[]>();
   const order: MutableGroup[] = [];
@@ -109,7 +100,7 @@ function groupLibraryItems(items: UnifiedSearchItem[]): LibraryGroup[] {
   const enriched = items.map((item, index) => ({
     item,
     index,
-    titleKey: titleAliasKey(displayKey(stripTrailingVersionSuffix(item.title), '')),
+    titleKey: titleAliasKey(displayKey(stripTrailingMeta(item.title), '')),
     artistKey: normalizeKey(item.artist, ''),
     versionTag: extractVersionTag(item.title),
   }));
@@ -635,7 +626,164 @@ function main() {
     assert.strictEqual(groups.length, 4, '翻唱/不同歌手同标题 → 保持 4 组不误并');
     console.log('✅ 29. 正确分裂保持：周杰伦≠Jason Chen、曾沛慈≠董书含 不误并');
   }
-  console.log('\n🎉 groupLibrary.test 全部 29 项通过');
+
+  // ── 30. ★ 用户实测（2026-08-14）：「一百」品牌主题曲尾缀 + 段段配对合并 ──
+  // 弹窗原始场景：QQ+网易云「一百」by 李荣浩·黑马（QQ 字段带专辑）+ Spotify
+  // 「一百 - 百事可乐品牌主题曲」by Ronghao Li·黑馬 拆成 2 组。两层修：
+  //  (a) stripTrailingMeta 剥掉「 - 百事可乐品牌主题曲」（品牌/CM 元数据不在
+  //      原 stripTrailingVersionSuffix 英文关键词表内）→ 两边 titleKey 同。
+  //  (b) artistLooseMatch 按 `·` 切「李荣浩·黑马」→「李荣浩」+「黑马」，
+  //      与「Ronghao Li·黑馬」→「Ronghao Li」+「黑馬」段对段再查别名表，
+  //      「李榮浩」表项含 'Ronghao Li' → 命中。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: '一百', artist: '李荣浩·黑马', duration: 252, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: '一百', artist: '李荣浩·黑马', duration: 252, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: '一百 - 百事可乐品牌主题曲', artist: 'Ronghao Li·黑馬', duration: 252, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '一百 三平台写法（品牌主题曲尾缀 + 段段配对）合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3, '三成员同 group');
+    assert.deepStrictEqual(
+      groups[0].platforms.sort(),
+      ['netease', 'qq', 'spotify'],
+      '徽章 = 三平台并集',
+    );
+    console.log('✅ 30. 一百三平台合并：QQ+网易云「李荣浩·黑马」+ Spotify「Ronghao Li·黑馬 - 百事可乐品牌主题曲」');
+  }
+
+  // ── 31. 段段配对铁律不破：表外巧合 prefix 仍拒判（防御）─────────
+  // 复合串段段配对后，「Coldplay·专辑」vs「Cold」也得拒判。pa=['Coldplay','专辑']
+  // pb=['Cold'] → 段段配 stageNameAliasMatch → 表内无 → 不命中。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'a', title: 'Song', artist: 'Coldplay·X&Y', duration: 260, sources: [{ platform: 'qq', trackId: 'q1' }] }),
+      item({ id: 'b', title: 'Song', artist: 'Cold', duration: 260, sources: [{ platform: 'netease', trackId: 'n1' }] }),
+    ]);
+    assert.strictEqual(groups.length, 2, 'Coldplay·X&Y vs Cold（段段配对后）仍不合并');
+    console.log('✅ 31. 段段配对铁律不破：Coldplay·X&Y vs Cold 仍拆开');
+  }
+
+  // ── 31.5. ★ 用户实测（2026-08-14 #2）：「古怪 (Live)」vs「古怪 - Live」 ──
+  // 弹窗场景：QQ+网易云「古怪 (Live)」by 汪苏泷（QQ 字段带专辑「我是唱作人
+  // 第2期」）+ Spotify「古怪 - Live」by Silence Wang（Spotify 把 Live 写进 title
+  // dash 形式而不是括号；artist 同样把 album 拼成「·我是唱作人 第2期 (Live)」）。
+  // 两层修：
+  //  (a) `stripTrailingMeta` 新增 SUFFIX_BARE 路径剥「 - Live」（dash 裸版
+  //      本关键词）→ Spotify 标题剥成「古怪」；QQ 走 `displayKey` 内的
+  //      `stripParensContent` 剥「(Live)」括号也成「古怪」→ 两边 titleKey 同。
+  //  (b) 「汪苏泷」表内繁体 key「汪蘇瀧」含 'Silence Wang' → 整串别名命中。
+  //      + `·我是唱作人 第2期` 段段配对。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: '古怪 (Live)', artist: '汪苏泷·我是唱作人 第2期', duration: 254, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: '古怪 (Live)', artist: '汪苏泷·我是唱作人 第2期', duration: 254, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: '古怪 - Live', artist: 'Silence Wang·我是唱作人 第2期 (Live)', duration: 254, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, '古怪 Live 三平台写法（QQ 括号 vs Spotify dash）合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3, '三成员同 group');
+    assert.deepStrictEqual(
+      groups[0].platforms.sort(),
+      ['netease', 'qq', 'spotify'],
+      '徽章 = 三平台并集',
+    );
+    console.log('✅ 31.5. 古怪 (Live) 三平台合并：QQ+网易云「汪苏泷·我是唱作人 第2期」括号 + Spotify「Silence Wang - Live」dash');
+  }
+
+  // ── 31.6. ★ 用户实测（2026-08-14 #3）：aiko「motto / もっと」跨脚本合并 ──
+  // Spotify 罗马音「Motto」by aiko·May Dream（QQ 字段把 album 拼成
+  // 「artist·album」复合串）vs QQ/网易云 平假名「もっと」by aiko。
+  // 两层修：
+  //  (a) `artistLooseMatch` 段段配对补 normalizeKey 相等：「aiko·May Dream」
+  //      切「aiko」段对「aiko」段归一字面相等 → 命中（之前漏判：表 key 是
+  //      あいこ，纯拉丁「aiko」stageNameKey 返回 null）。
+  //  (b) 跨脚本：Motto（Latin）vs もっと（CJK）→ isCrossScript 命中。
+  //  + titleAlias 表新增 motto ↔ もっと（防御性兜底，防跨脚本匹配漏判）。
+  {
+    const groups = groupLibraryItems([
+      item({ id: 'qq', title: 'もっと', artist: 'aiko', duration: 254, sources: [{ platform: 'qq', trackId: 'q1' }], likedPlatforms: ['qq'] }),
+      item({ id: 'ne', title: 'もっと', artist: 'aiko', duration: 254, sources: [{ platform: 'netease', trackId: 'n1' }], likedPlatforms: ['netease'] }),
+      item({ id: 'sp', title: 'Motto', artist: 'aiko·May Dream', duration: 254, sources: [{ platform: 'spotify', trackId: 's1' }], likedPlatforms: ['spotify'] }),
+    ]);
+    assert.strictEqual(groups.length, 1, 'aiko もっと/Motto 三平台写法合并 1 组');
+    assert.strictEqual(groups[0].members.length, 3, '三成员同 group');
+    assert.deepStrictEqual(
+      groups[0].platforms.sort(),
+      ['netease', 'qq', 'spotify'],
+      '徽章 = 三平台并集',
+    );
+    console.log('✅ 31.6. aiko もっと/Motto 三平台合并：QQ+网易云「もっと」+ Spotify「Motto」罗马音');
+  }
+
+  // ── 32. stripTrailingMeta 边界：电影版 + 单曲版 + 试听等中文关键词 ──
+  {
+    const cases: Array<[string, string, string]> = [
+      ['主题曲', 'Song - 主题曲', 'Song'],
+      ['品牌主题曲', 'Song - 百事可乐品牌主题曲', 'Song'],
+      ['广告曲', 'Song - 广告曲', 'Song'],
+      ['电影版', 'Song - 电影版', 'Song'],
+      ['影版', 'Song - 影版', 'Song'],
+      ['TV版', 'Song - TV版', 'Song'],
+      ['完整版', 'Song - 完整版', 'Song'],
+      ['单曲版', 'Song - 单曲版', 'Song'],
+      ['现场版', 'Song - 现场版', 'Song'],
+      ['录音版', 'Song - 录音版', 'Song'],
+      ['配乐版', 'Song - 配乐版', 'Song'],
+      ['插片', 'Song - 插片', 'Song'],
+      ['MV', 'Song - MV', 'Song'],
+      ['片头曲', 'Song - 片头曲', 'Song'],
+      ['片尾曲', 'Song - 片尾曲', 'Song'],
+      ['插曲', 'Song - 插曲', 'Song'],
+      ['试听', 'Song - 试听', 'Song'],
+      ['preview', 'Song - preview', 'Song'],
+      ['无 meta 不动', 'Song', 'Song'],
+      ['英文 ver.', 'Song - zerokoi ver.', 'Song'],
+      ['英文 remix', 'Song - Remix', 'Song'],
+      ['stopword the', 'Song - the', 'Song'],
+      ['双层：Live + the → Song（两轮裸剥）', 'Song - Live - the', 'Song'],
+      ['裸 Live', 'Song - Live', 'Song'],
+      ['裸 Remix', 'Song - Remix', 'Song'],
+      ['裸 ver.', 'Song - ver.', 'Song'],
+      ['feat. X dash 不剥（feat 走 stripFeatTags）', 'Song - feat. X', 'Song - feat. X'],
+    ];
+    for (const [label, input, expected] of cases) {
+      assert.strictEqual(stripTrailingMeta(input), expected, `stripTrailingMeta: ${label}`);
+    }
+    console.log('✅ 32. stripTrailingMeta 关键词表（中/英/stopword）');
+  }
+
+  // ── 33. 同名不同歌手审计合并（2026-08-17，scripts/audit-same-title.ts）──
+  {
+    console.log('\n── 33. 同名不同歌手：LATIN_FULL_ALIASES 合并 + 防误并 ──');
+    // 用户核对后列入合并的 8 组（artistLooseMatch 必须命中）
+    const mergePairs: Array<[string, string]> = [
+      ['ChiliChill乐团', 'ChiliChill'], // 屑屑
+      ['Roy Ayers', 'Roy Ayers Ubiquity'], // Everybody Loves The Sunshine
+      ['Noel Gallagher', "Noel Gallagher's High Flying Birds"], // The Death Of You And Me
+      ['久石让', '久石譲'], // Birthday (生辰) —— JP_KANJI 譲→让
+      ['藤原樱 (藤原さくら)', '藤原さくら'], // Soup (汤)
+      ['新裤子', '新裤子乐队'], // 别再问我什么是迪斯科
+      ['悠木碧', 'ターニャ・デグレチャフ(CV:悠木碧)'], // Los! Los! Los!
+      ['松本梨香', 'サトシ(CV:松本梨香) / Pikachu (Character Voice: Ikue Otani)'], // アローラ!!
+    ];
+    for (const [a, b] of mergePairs) {
+      assert.strictEqual(artistLooseMatch(a, b), true, `应合并: ${a} vs ${b}`);
+      assert.strictEqual(artistLooseMatch(b, a), true, `应合并(反向): ${b} vs ${a}`);
+    }
+    console.log(`✅ 33a. 8 组合并命中（双向 ${mergePairs.length * 2} 断言）`);
+    // 防误并（「樂團」过宽 key 删除后的回归：Fine乐团 不再与任何 X乐团 误并）
+    const rejectPairs: Array<[string, string]> = [
+      ['Fine乐团', 'ChiliChill乐团'],
+      ['Fine乐团', '回春丹乐队'],
+      ['Coldplay', 'Cold'],
+      ['Taylor Swift', 'Taylor'],
+      ['五月天', '五月天乐团'],
+    ];
+    for (const [a, b] of rejectPairs) {
+      assert.strictEqual(artistLooseMatch(a, b), false, `不应合并: ${a} vs ${b}`);
+    }
+    console.log(`✅ 33b. 防误并 ${rejectPairs.length} 组`);
+  }
+  console.log('\n🎉 groupLibrary.test 全部 33 项通过');
 }
 main();
 

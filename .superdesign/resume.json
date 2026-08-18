@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "main-player-view": {
+      "targetKind": "existing-ui",
+      "projectId": "af08cbcd-b2c4-46ef-8eca-409d40c57cdf",
+      "baselineDraftId": "8f1a3d62-3857-4ba2-81b8-b58420e359c1",
+      "activeDraftId": "6ec3515c-2059-41d4-ad23-59133bb5108e",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "packages/renderer/src/components/views/MonsterBeatsView.tsx",
+        "packages/renderer/src/components/layout/Titlebar.tsx",
+        "packages/renderer/src/styles/base/_tokens.scss",
+        "packages/renderer/src/styles/base/_themes.scss"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "cad157152aa898f1a5c485747bbfd37e1a9dbeb275fac64be57189ee6b06106c",
+        "packages/renderer/src/components/views/MonsterBeatsView.tsx": "0c8c85dde4d9c0a689252277bcc40140beebbcca98cf9cf8b8240f17bfd4f105",
+        "packages/renderer/src/components/layout/Titlebar.tsx": "d82bc8c1dd531a42beb4507851951d70e9d04f6d13eb7f06fff9a799cf38a3e2",
+        "packages/renderer/src/styles/base/_tokens.scss": "5624ec7e6f24c9a0a6a593ee8c1672d5d6c1c9b0b4ba5321e91206e239984578",
+        "packages/renderer/src/styles/base/_themes.scss": "3147df7c7d47447d70c2dd6d253294081b571ecf7fb177c635b8a56f8c2d03c2"
+      },
+      "components": [],
+      "drafts": {
+        "8f1a3d62-3857-4ba2-81b8-b58420e359c1": {
+          "title": "MONSTER BEATS | A.I. Collector Music Player",
+          "visualDirection": "current-UI-baseline (cartoon monster collector)",
+          "currentVersion": 1
+        },
+        "6ec3515c-2059-41d4-ad23-59133bb5108e": {
+          "title": "AETHER ENGINE v2.4 | Cosmic Music Command",
+          "visualDirection": "AETHER acid-cyber cosmic console (user-selected direction)",
+          "currentVersion": 1
+        },
+        "06f2a3c1-35b9-44f5-87fd-76f36aae1208": {
+          "title": "AETHER ENGINE v3.0 | Cosmic Command Overdrive",
+          "visualDirection": "cosmic extreme: stronger neon, 3D holographic cube cover, denser starfield, energy-band progress",
+          "parentDraftId": "6ec3515c-2059-41d4-ad23-59133bb5108e",
+          "currentVersion": 1
+        },
+        "8265010e-5477-4f8e-8edd-462bd080ee6c": {
+          "title": "AETHER ENGINE // ACID MAXIMALISM",
+          "visualDirection": "acid maximalism: noise texture, acid gradients, oversized typography, holographic sticker cover, CRT scanlines",
+          "parentDraftId": "6ec3515c-2059-41d4-ad23-59133bb5108e",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-08-14T18:10:00+08:00"
+    }
+  }
+}

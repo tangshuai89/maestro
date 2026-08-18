@@ -256,16 +256,12 @@ const POLL_INTERVAL_MS = 1500;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    // 880×720 hits the Bento sweet spot: wide enough for cover +
-    // side column to coexist at ~16:13, tall enough that the cover
-    // has room to breathe and the transport row doesn't crowd
-    // the progress bar. The user can still resize freely.
-    width: 880,
-    height: 720,
-    minWidth: 640,
-    minHeight: 560,
-    // No maxWidth — let power users size up; UI uses responsive layout.
-    titleBarStyle: 'hiddenInset',
+    // Monster Beats 设计基准 1440×900：默认 1200×800（stage 缩放 ≈0.83），
+    // 视觉完整且留出 macOS 交通灯余量；自由缩放靠 stage transform 适配。
+    width: 1200,
+    height: 800,
+    minWidth: 960,
+    minHeight: 640,
     // macOS traffic-light buttons live in the top-left. The renderer
     // titlebar reserves a 80px safe area on the left so it doesn't
     // overlap the system buttons (or the green fullscreen button when

@@ -43,6 +43,12 @@ const TITLE_ALIASES: Record<string, string[]> = {
   残酷天使的行动纲领: ['残酷な天使のテーゼ'],
   アイドル: ['偶像'],
   偶像: ['アイドル'],
+  // 2026-08-14：aiko「もっと」（QQ/网易云平假名）vs Spotify 罗马音「Motto」
+  // ——同一首歌。跨脚本跨写法，displayKey 不会做罗马音↔假名转换（无通用
+  // 算法可上），策展兜底。仅 1 首歌叫"もっと"，且"Motto"作为标题也
+  // 没有别的主流同名歌，误并风险低。
+  もっと: ['Motto', 'motto'],
+  Motto: ['もっと'],
 };
 
 /** 归一后比较（同 artistAlias 的 normStageName 哲学：精确整串）。 */

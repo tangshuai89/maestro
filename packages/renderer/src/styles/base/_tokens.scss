@@ -78,10 +78,8 @@
   // Mono for digits (time codes). The font files are loaded via a <link>
   // in index.html; these variables just point at them with system
   // fallbacks so the app is usable offline.
-  --font-display: 'Fraunces', 'Songti SC', 'STSong', Georgia, serif;
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
-    'PingFang SC', 'Hiragino Sans GB', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-ui: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont,
+    'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
 
   // Animated period (in seconds) for the cover-card breathing shadow.
   --bass-period: 1.4s;

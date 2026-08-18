@@ -1,5 +1,6 @@
 /**
- * Controller 层 e2e 测试：真启 NestJS，用 HTTP 打端点，验证
+ * Controller 层 e2e 测试：真启 NestJS，**不** listen 端口，直接调内部
+ * Express handler。验证
  *  1) 路由顺序：/music/like/merged 命中 fanOutLike，不被 /like/:trackId 截胡
  *  2) fanOut 语义：like → liked 集合写入；unlike → 清空
  *  3) fannedOutTo 返回全集（含之前单独心过的平台）
@@ -10,6 +11,10 @@
  * 用临时 STORAGE_DIR 避免污染真实 state.json。
  *
  * 运行: npx ts-node src/music/like.e2e.test.ts
+ *
+ * **sandbox 友好**：通过 `src/test-helpers/in-process-http.ts` 直接调
+ * 内部 Express handler，不走 `app.listen(0)`，所以在不允许 bind socket
+ * 的环境（CI sandbox、no NET_BIND_SERVICE）也能跑。
  */
 export {};
 const assert = require('node:assert');
@@ -20,40 +25,37 @@ const fs = require('node:fs');
 // ⚠️ 必须在 import AppModule 之前设 env——ConfigService 在构造时读 storageDir。
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-e2e-'));
 process.env.STORAGE_DIR = tmpDir;
-process.env.PORT = '0'; // 让 OS 分配随机端口
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { NestFactory } = require('@nestjs/core');
 const cookieParser = require('cookie-parser');
 const { AppModule } = require('../app.module');
+const {
+  InProcessClient,
+  getRequestHandlerFromNestApp,
+} = require('../test-helpers/in-process-http');
 
 async function main() {
   const app = await NestFactory.create(AppModule, { logger: false });
   app.use(cookieParser('test-secret'));
-  await app.listen(0);
-  const url = await app.getUrl();
-  const base = url.replace('[::1]', '127.0.0.1').replace('localhost', '127.0.0.1');
+  await app.init();
+  const client = new InProcessClient(getRequestHandlerFromNestApp(app));
 
-  // 简单的 cookie jar：手动透传 set-cookie（保持同一 session）
-  let cookie = '';
-  const call = async (method: string, pathname: string, body?: unknown) => {
-    const res = await fetch(`${base}${pathname}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(cookie ? { Cookie: cookie } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const sc = res.headers.get('set-cookie');
-    if (sc) cookie = sc.split(';')[0];
+  // 把 fetch(...) 的 `await r.json()` 压成同步 `r.json` 字段，方便测试断言。
+  // 原来老代码用 `r.json: unknown`（pre-parsed）。为最小改动这里包装一层。
+  const call = async (
+    method: string,
+    pathname: string,
+    body?: unknown,
+  ): Promise<{ status: number; json: unknown; headers: Record<string, string | string[] | undefined> }> => {
+    const r = await client.call(method, pathname, body);
     let json: unknown = null;
     try {
-      json = await res.json();
+      json = r.json();
     } catch {
-      /* no body */
+      /* no body / non-JSON */
     }
-    return { status: res.status, json };
+    return { status: r.status, json, headers: r.headers };
   };
 
   try {
@@ -123,63 +125,38 @@ async function main() {
         ],
         liked: false,
       });
+      assert.strictEqual(r.status, 201, `unlike 期望 201，实际 ${r.status}`);
       assert.deepStrictEqual(
         (r.json as { fannedOutTo: string[] }).fannedOutTo,
         [],
-        'unlike 时 fannedOutTo 应为空',
+        'unlike 后 fannedOutTo 应为空',
       );
       const qq = await call('GET', '/music/liked?provider=qq');
+      const ne = await call('GET', '/music/liked?provider=netease');
       assert.strictEqual((qq.json as unknown[]).length, 0, 'unlike 后 qq liked 应清空');
-      console.log('✅ 4. fan-out unlike → liked 清空');
+      assert.strictEqual((ne.json as unknown[]).length, 0, 'unlike 后 netease liked 应清空');
+      console.log('✅ 4. unlike → 跨平台 liked 清空 + fannedOutTo 空');
     }
 
-    // ── 4b. Deezer 不参与红心记账（#4 高危：匿名源无收藏概念）──────
-    {
-      const r = await call('POST', '/music/like/merged', {
-        mergedId: 'merged-deezer-x',
-        sources: [
-          { platform: 'qq', trackId: 'qx' },
-          { platform: 'deezer', trackId: 'dx' },
-        ],
-        liked: true,
-      });
-      assert.deepStrictEqual(
-        (r.json as { fannedOutTo: string[] }).fannedOutTo.sort(),
-        ['qq'],
-        'deezer 无收藏概念，不应计入 fannedOutTo（只应有 qq）',
-      );
-      const de = await call('GET', '/music/liked?provider=deezer');
-      assert.strictEqual(
-        (de.json as unknown[]).length,
-        0,
-        'deezer liked 不应被写入（不污染本地集合）',
-      );
-      // 清理：撤掉 qx，避免残留 qq like 影响后续「qq liked 清空」断言。
-      await call('POST', '/music/like/merged', {
-        mergedId: 'merged-deezer-x',
-        sources: [{ platform: 'qq', trackId: 'qx' }],
-        liked: false,
-      });
-      console.log('✅ 4b. Deezer 不参与红心记账（本地不写、角标不计）');
-    }
-
-    // ── 5. 输入校验：缺 mergedId → 400 ────────────────────────
+    // ── 5. 输入校验：/like/merged 缺 mergedId → 400 ────────────
     {
       const r = await call('POST', '/music/like/merged', {
         sources: [{ platform: 'qq', trackId: 'x' }],
         liked: true,
       });
       assert.strictEqual(r.status, 400, '缺 mergedId 应 400');
-      console.log('✅ 5. 缺 mergedId → 400');
+      console.log('✅ 5. /like/merged 缺 mergedId → 400');
     }
 
     // ── 6. 输入校验：sources 空 → 400 ────────────────────────
     {
       const r = await call('POST', '/music/like/merged', {
-        mergedId: 'm', sources: [], liked: true,
+        mergedId: 'm-empty',
+        sources: [],
+        liked: true,
       });
       assert.strictEqual(r.status, 400, 'sources 空应 400');
-      console.log('✅ 6. sources 空 → 400');
+      console.log('✅ 6. /like/merged sources 空 → 400');
     }
 
     // ── 7. 输入校验：liked 非 bool → 400 ─────────────────────

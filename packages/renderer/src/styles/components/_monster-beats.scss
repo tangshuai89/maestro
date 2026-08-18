@@ -1,0 +1,838 @@
+// ═══════════════════════════════════════════════════════════════════
+// Monster Beats — avant-M 怪兽捕捉 UI
+// 第三轮：对照 superdesign 设计稿（MONSTER BEATS | A.I. Collector Music Player）
+//  1. 字体 Fredoka（@fontsource 本地打包）+ 顶栏 HUD 改图标条（❤⚡🗡🛡）
+//  2. 雷达放大到 140px 并从顶栏下缘半挂
+//  3. source badges 放大 96px：斜体粗字母 + QQ ★ 角标 + ♥ 红底角标 + ring 光晕
+//  4. 精灵卡：banner 黑底白字 + 全息 holographic 流动 + Type 彩虹渐变描边白底徽章
+//  5. encounter 卡头像换本地 SVG 机器人 + 选中卡 ✓ 角标
+//  6. 战斗菜单重构为设计稿对称布局：左 2×2（FIGHT/BAG/PKMN/RUN）+ 中巨型 ▶ + 右 2×2
+//  7. 背景 sparkle 四角星闪烁 + 底部彩虹渐变条
+// ═══════════════════════════════════════════════════════════════════
+
+@use '../abstracts' as *;
+
+$sky-top: #5BC0FF;
+$sky-bot: #8FE4FF;
+$cream: #FFF8E7;
+$navy: #0A1F3C;
+$navy-soft: #1F3252;
+$red: #FF3B3B;
+$yellow: #FFD60A;
+$blue: #2D7FFF;
+$green: #4CD964;
+$pink: #FF2D87;
+$orange: #FF8C2A;
+
+.mb-root {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(135deg, $sky-top 0%, $sky-bot 100%);
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.06) 0 1px,
+      transparent 1px 6px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  > * { position: absolute; }
+  // 设计稿 1440x900 固定画布 → 舞台整体缩放适配任意窗口（--mb-scale 由 React 写入）
+  .mb-stage {
+    left: 50%; top: 110px; // 顶栏之下固定（Titlebar 40 + 设计条 70）
+    width: 1440px; height: 900px;
+    transform: translateX(-50%) scale(var(--mb-scale, 1));
+    transform-origin: top center;
+    z-index: 1;
+    > * { position: absolute; }
+  }
+
+  // ── 四角星闪烁（设计稿 .sparkle） ────────────────────────
+  .mb-sparkle {
+    width: 12px; height: 12px;
+    background: #fff;
+    clip-path: polygon(50% 0%, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0% 50%, 40% 40%);
+    animation: mb-twinkle 3s infinite ease-in-out;
+    z-index: 1;
+    pointer-events: none;
+  }
+  @keyframes mb-twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  TOP STRIP — 黑底黄边，雷达半挂 + HUD 图标条 + 同步/收藏
+  // ═══════════════════════════════════════════════════════════════
+  .mb-top-strip {
+    top: 0; left: 0; right: 0;
+    height: 110px; // 40px Electron Titlebar 区（透明按钮浮于其上）+ 70px 设计条
+    background: rgba(0, 0, 0, 0.92);
+    border-bottom: 4px solid $yellow;
+    display: flex;
+    align-items: center;
+    padding: 40px 18px 0 170px; // 左侧给半挂雷达让位；内容从 Titlebar 之下开始
+    gap: 18px;
+    z-index: 5;
+  }
+
+  // ── 大雷达：从顶栏左下缘半挂（设计稿 140px） ─────────────
+  .mb-radar {
+    position: absolute;
+    left: 24px;
+    bottom: -50px; // 半挂：20px 留在顶栏内，视觉上从顶栏下缘长出
+    width: 140px; height: 140px;
+    flex-shrink: 0;
+    border: 4px solid #334155;
+    border-radius: 50%;
+    background: #0F172A;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    z-index: 6;
+    &::before, &::after {
+      content: ''; position: absolute; inset: 0;
+    }
+    &::before {
+      background: linear-gradient(90deg, transparent 49.5%, rgba(76, 217, 100, 0.35) 50%, transparent 50.5%);
+    }
+    &::after {
+      background: linear-gradient(0deg, transparent 49.5%, rgba(76, 217, 100, 0.25) 50%, transparent 50.5%);
+    }
+  }
+  .mb-radar-ring {
+    position: absolute;
+    border: 1px solid rgba(76, 217, 100, 0.4);
+    border-radius: 50%;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    &--1 { width: 30%; height: 30%; }
+    &--2 { width: 58%; height: 58%; }
+    &--3 { width: 88%; height: 88%; }
+  }
+  .mb-radar-sweep {
+    position: absolute; inset: 0;
+    background: conic-gradient(from 0deg, transparent 0deg, rgba(76, 217, 100, 0.5) 30deg, transparent 60deg);
+    animation: mb-radar-spin 3s linear infinite;
+    border-radius: 50%;
+  }
+  .mb-radar-blip {
+    position: absolute;
+    width: 5px; height: 5px;
+    background: $green; border-radius: 50%;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    box-shadow: 0 0 10px $green;
+  }
+  .mb-radar-label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: $green; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 4px rgba(76, 217, 100, 0.8);
+    z-index: 2;
+  }
+  @keyframes mb-radar-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  // ── HUD 图标条（❤/⚡/🗡/🛡 圆形图标 + 进度条） ──────────
+  .mb-hud-stats {
+    flex: 1;
+    display: flex; flex-direction: row; // 设计稿：4 组水平一行
+    align-items: center;
+    gap: 20px;
+  }
+  .mb-hud-stat {
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .mb-hud-stat-icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  }
+  .mb-hud-stat-track {
+    width: 110px; // 设计稿 w-24
+    height: 12px;
+    background: #1E293B;
+    border-radius: 5px;
+    overflow: hidden;
+    border: 2px solid #475569;
+  }
+  .mb-hud-stat-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .mb-top-right {
+    display: flex; align-items: center; gap: 14px;
+    margin-left: auto;
+  }
+  .mb-sync-bar {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  }
+  .mb-sync-bar-text {
+    color: $yellow; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+  .mb-sync-bar-track {
+    position: relative;
+    width: 160px; height: 10px;
+    background: #1E293B;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 214, 10, 0.5);
+  }
+  .mb-sync-bar-fill {
+    position: absolute; left: 1px; top: 1px; bottom: 1px;
+    background: $yellow; border-radius: 999px;
+    transition: width 0.5s ease;
+  }
+  .mb-sync-ball {
+    position: absolute;
+    width: 8px; height: 8px; border-radius: 50%;
+    top: 50%; transform: translateY(-50%);
+    &--start { left: 2px;  background: $red;   box-shadow: 0 0 6px $red; }
+    &--end   { right: 2px; background: $green; box-shadow: 0 0 6px $green; }
+  }
+
+  .mb-bag {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 14px;
+    background: #1E293B;
+    border: 2px solid $yellow;
+    border-radius: 12px;
+    color: #fff;
+    cursor: default;
+  }
+  .mb-bag-count {
+    font-weight: 700; font-size: 15px;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  4 大 source badge — 右上角独立大圆
+  // ═══════════════════════════════════════════════════════════════
+  .mb-source-badges {
+    top: 92px; right: 24px;
+    display: flex; gap: 16px;
+    z-index: 4;
+  }
+  .mb-source-badge {
+    --badge-color: #{$navy};
+    position: relative;
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: var(--badge-color);
+    border: 3px solid $navy;
+    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.25);
+    color: $cream;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    &:hover { transform: scale(1.08); }
+    &.is-active {
+      box-shadow: 0 0 0 4px $yellow, 0 0 0 10px rgba(255, 214, 10, 0.25);
+      transform: scale(1.1);
+    }
+  }
+  .mb-source-badge-star {
+    position: absolute;
+    top: -6px; right: -6px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: $yellow;
+    border: 2px solid $navy;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mb-source-badge-letter {
+    font-size: 44px; font-weight: 900;
+    font-style: italic;
+    line-height: 1;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  }
+  .mb-source-badge-heart {
+    position: absolute;
+    bottom: -8px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 3px;
+    background: $red;
+    color: #fff;
+    font-size: 9px; font-weight: 900;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 2px solid $navy;
+    white-space: nowrap;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  CREATURE CARD (left) — 白底黄边 -3° 全息卡
+  // ═══════════════════════════════════════════════════════════════
+  .mb-creature-card {
+    top: 96px; left: 24px;
+    width: 360px;
+    background: #fff;
+    border: 4px solid $yellow;
+    border-radius: 24px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+    transform: rotate(-3deg);
+    transform-origin: center;
+    animation: mb-card-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 3;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  @keyframes mb-card-pop {
+    from { transform: rotate(-3deg) scale(0.85); opacity: 0; }
+    to   { transform: rotate(-3deg) scale(1);    opacity: 1; }
+  }
+  .mb-creature-banner {
+    background: #000;
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    padding: 10px 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .mb-creature-art {
+    position: relative;
+    margin: 12px 14px 10px;
+    flex: none;
+    height: 220px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #3a3a3a 0%, #1a1a1a 100%);
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
+  }
+  .mb-creature-art-img {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+  }
+  .mb-creature-art-placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: $cream;
+    font-size: 64px;
+    line-height: 1;
+  }
+  .mb-creature-art-shine {
+    position: absolute; inset: 0;
+    background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+    background-size: 200% 200%;
+    animation: mb-shine 3s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes mb-shine {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+  }
+  // 全息流动（设计稿 .holographic-card）
+  .mb-creature-art-holo {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg,
+      rgba(255,255,255,0.22) 0%,
+      rgba(255,0,255,0.10) 25%,
+      rgba(0,255,255,0.10) 50%,
+      rgba(255,255,0,0.10) 75%,
+      rgba(255,255,255,0.22) 100%);
+    background-size: 200% 200%;
+    animation: mb-holo 5s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes mb-holo {
+    0%   { background-position: 0% 0%; }
+    100% { background-position: 200% 200%; }
+  }
+  .mb-creature-nameplate {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 0 14px 12px;
+    padding: 8px 14px;
+    background: $navy;
+    border-radius: 10px;
+    border-bottom: 4px solid rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+  }
+  .mb-creature-name-block {
+    display: flex; flex-direction: column; gap: 1px;
+    min-width: 0;
+  }
+  .mb-creature-album {
+    color: #7DD3FC;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mb-creature-name {
+    color: #fff;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .mb-creature-name-star { color: $yellow; display: flex; }
+
+  .mb-creature-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+    padding: 0 14px;
+    margin-bottom: 14px;
+    flex-shrink: 0;
+  }
+  .mb-creature-stat {
+    display: grid;
+    grid-template-columns: 30px 1fr 44px;
+    align-items: center;
+    gap: 6px;
+  }
+  .mb-creature-stat-label {
+    font-size: 10px; font-weight: 700; color: $navy;
+  }
+  .mb-creature-stat-track {
+    height: 8px;
+    background: rgba(10, 31, 60, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .mb-creature-stat-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .mb-creature-stat-value {
+    font-size: 10px; font-weight: 700;
+    text-align: right;
+  }
+
+  // ── Type 徽章：彩虹渐变描边 + 白底黑字（设计稿 ULTRA-ELEMENTAL） ──
+  .mb-creature-type {
+    padding: 0 14px 14px;
+    display: flex; justify-content: flex-end;
+    flex-shrink: 0;
+  }
+  .mb-creature-type-badge {
+    --type-edge: #{$yellow};
+    --type-fg: #{$navy};
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 10px; font-weight: 900;
+    letter-spacing: 0.08em;
+    border-radius: 8px;
+    background: var(--type-bg, #fff);
+    color: var(--type-fg);
+    border: 2px solid transparent;
+    background-image: linear-gradient(#fff, #fff), var(--type-edge);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  BATTLE DIALOG (right, below source badges)
+  // ═══════════════════════════════════════════════════════════════
+  .mb-battle-dialog {
+    top: 224px; right: 24px;
+    width: 560px;
+    max-height: 380px; // 长歌词内部滚动，底部与 battle-menu（≈640）保持间距
+    background: $cream;
+    border: 4px solid $navy;
+    border-radius: 32px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+    // 2026-08-14: 改 visible——原 hidden 把 position: absolute 的 NEXT
+    // 按钮（bottom: -22px，半挂在 dialog 底边外）直接裁掉一半。长歌词滚动
+    // 已经由内层 .mb-battle-body（overflow-y: auto）独立负责，不依赖此层
+    // hidden 裁圆角。children 都没独立 background，cream 同色也不会透出。
+    overflow: visible;
+    display: flex; flex-direction: column;
+    padding-bottom: 14px; // 给半挂 NEXT 让出空间
+  }
+  .mb-battle-status {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    background: $cream;
+    // 2026-08-14: 顶角圆角——配合 dialog 的 overflow: visible。dialog 自身
+    // 是 32px + 4px 边框，内角约 28px；status bar 作为首个 child 顶角需要
+    // 跟随 dialog 圆角，否则 cream 背景会把 dialog 圆角"啃"出方角（截图
+    // 状态栏红黄绿点飘出 dialog 边外就是这个问题）。底角保持 0（紧贴
+    // border-bottom 装饰线）。
+    border-radius: 28px 28px 0 0;
+    border-bottom: 2px solid rgba(10, 31, 60, 0.1);
+    font-size: 10px; font-weight: 700;
+    color: $navy;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+  .mb-battle-status-left {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .mb-battle-status-item {
+    background: #E2E8F0;
+    color: $navy;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 10px;
+    & + & { margin-left: 0; }
+  }
+  .mb-battle-status-item.dim { opacity: 0.55; }
+  // TYPE 胶囊黄色（设计稿：LV 深蓝 / YEAR 灰 / TYPE 黄）
+  .mb-battle-status-left .mb-battle-status-item:nth-child(3) {
+    background: $yellow;
+  }
+  .mb-battle-status-left .mb-battle-status-item:first-child {
+    background: $navy; color: #fff;
+  }
+  .mb-battle-dots {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .mb-battle-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 1px solid rgba(10, 31, 60, 0.2);
+    &--red    { background: $red; }
+    &--yellow { background: $yellow; }
+    &--green  { background: $green; }
+  }
+  .mb-battle-body {
+    display: flex; gap: 18px;
+    padding: 22px 24px 44px;
+    flex: 1;
+    min-height: 0; // flex 内允许收缩 → overflow 生效
+    overflow-y: auto; // 长歌词滚动
+    scrollbar-width: thin;
+  }
+  .mb-speaker-portrait {
+    flex-shrink: 0;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: #fff;
+    border: 4px solid $navy;
+    box-shadow: inset 0 0 0 2px $cream, 0 4px 0 rgba(0, 0, 0, 0.15);
+    display: flex; align-items: center; justify-content: center;
+    align-self: flex-start;
+  }
+  .mb-battle-text { flex: 1; min-width: 0; padding-top: 4px; }
+  .mb-battle-line {
+    color: $navy;
+    line-height: 1.5;
+    font-weight: 700;
+    &--prev { font-size: 16px; opacity: 0.45; min-height: 1.5em; }
+    &--current {
+      font-size: 34px; font-weight: 900;
+      color: $navy;
+      margin: 6px 0;
+      letter-spacing: -0.01em;
+    }
+    &--next { font-size: 16px; opacity: 0.6; min-height: 1.5em; }
+  }
+  .mb-battle-cursor {
+    color: $red;
+    margin-right: 6px;
+    animation: mb-blink 1s steps(2) infinite;
+  }
+  @keyframes mb-blink {
+    50% { opacity: 0; }
+  }
+  .mb-battle-source,
+  .mb-battle-account {
+    margin-top: 10px;
+    font-size: 11px;
+    color: $navy-soft;
+    opacity: 0.7;
+  }
+  .mb-battle-next {
+    position: absolute;
+    bottom: -22px; right: 48px;
+    z-index: 5; // 2026-08-14: 显式抬高层级——按钮挂在 dialog 底边外，可能压
+                 // 上方被 encounter log / battle menu 的高 z-index 元素遮。
+                 // dialog 自身 z 默认 0，下方元素若设了 z-index > 0 会盖按钮。
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 26px;
+    background: $red;
+    color: $cream;
+    border: 3px solid $navy;
+    border-bottom-width: 6px;
+    border-radius: 16px;
+    font-weight: 900; font-size: 14px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: transform 0.1s, border-bottom-width 0.1s;
+    &:hover:not(:disabled) {
+      transform: translateY(2px);
+      border-bottom-width: 4px;
+    }
+    &:active:not(:disabled) {
+      transform: translateY(5px);
+      border-bottom-width: 1px;
+    }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ENCOUNTER LOG (bottom-left)
+  // ═══════════════════════════════════════════════════════════════
+  .mb-encounter {
+    bottom: 110px; left: 24px;
+    width: 480px;
+    z-index: 2;
+    display: flex; flex-direction: column;
+  }
+  .mb-encounter-banner {
+    background: $red;
+    color: #fff;
+    padding: 7px 16px;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    border: 3px solid $navy;
+    border-bottom: none;
+    border-radius: 14px 14px 0 0;
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+    &-prefix { font-size: 14px; }
+    &-sep { opacity: 0.55; }
+  }
+  .mb-encounter-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    background: rgba(255, 248, 231, 0.85);
+    backdrop-filter: blur(6px);
+    border: 3px solid $navy;
+    border-radius: 0 0 14px 14px;
+    padding: 12px;
+    box-shadow: 0 6px 0 rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
+  }
+  .mb-encounter-empty {
+    grid-column: 1 / -1;
+    padding: 28px 12px;
+    text-align: center;
+    color: $navy-soft;
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0.65;
+  }
+  .mb-mini-card {
+    --card-color: #{$blue};
+    position: relative;
+    background: #fff;
+    border: 2px solid $navy;
+    border-radius: 12px;
+    padding: 10px 6px 8px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+    min-width: 0;
+    &.is-active {
+      border-color: $yellow;
+      border-width: 3px;
+      box-shadow: 0 0 0 3px rgba(255, 214, 10, 0.35), 0 0 12px rgba(255, 214, 10, 0.6);
+      .mb-mini-card-match { background: $yellow; color: $navy; }
+    }
+  }
+  .mb-mini-card-creature {
+    width: 64px; height: 64px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .mb-mini-card-check {
+    position: absolute;
+    top: -8px; right: -8px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: $yellow;
+    border: 2px solid $navy;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mb-mini-card-name {
+    font-size: 10px; font-weight: 700; color: $navy;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+    max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mb-mini-card-type {
+    font-size: 8px; font-weight: 700; color: $navy-soft;
+    text-align: center;
+    letter-spacing: 0.1em;
+    margin-bottom: 2px;
+  }
+  .mb-mini-card-match {
+    align-self: stretch;
+    text-align: center;
+    font-size: 9px; font-weight: 900;
+    color: $navy;
+    background: rgba(10, 31, 60, 0.08);
+    padding: 2px 4px;
+    border-radius: 4px;
+    margin-top: 2px;
+  }
+  .mb-encounter-foot {
+    align-self: center;
+    margin-top: 8px;
+    font-size: 11px; font-weight: 700;
+    color: $navy;
+    background: $yellow;
+    padding: 3px 10px;
+    border: 2px solid $navy;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  BATTLE MENU (bottom-right) — 设计稿对称布局：左2×2 + 中▶ + 右2×2
+  // ═══════════════════════════════════════════════════════════════
+  .mb-battle-menu {
+    bottom: 110px; right: 24px;
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    z-index: 3;
+  }
+  .mb-menu-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 264px;
+  }
+  .mb-menu-btn {
+    --btn-color: #{$navy};
+    border: 3px solid $navy;
+    border-radius: 14px;
+    background: var(--btn-color);
+    color: $cream;
+    font-size: 14px; font-weight: 900;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    box-shadow: 0 5px 0 $navy;
+    transition: transform 0.08s, box-shadow 0.08s;
+    height: 70px;
+    min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    gap: 4px;
+    &:hover:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 3px 0 $navy;
+    }
+    &:active:not(:disabled) {
+      transform: translateY(5px);
+      box-shadow: 0 0 0 $navy;
+    }
+    &:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: 0 5px 0 rgba(10, 31, 60, 0.4); }
+
+    &--red    { --btn-color: #{$red}; }
+    &--yellow { --btn-color: #{$yellow}; color: $navy; }
+    &--yellow.is-on { --btn-color: #{$red}; color: #fff; }
+    &--green  { --btn-color: #{$green}; }
+    &--blue   { --btn-color: #{$blue}; }
+    &--pink   { --btn-color: #{$pink}; }
+    &--white  { --btn-color: #fff; color: $navy; }
+  }
+  // 巨型播放键（设计稿 mega play：红圆白边 + 光晕）
+  .mb-mega-play {
+    position: relative;
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: $red;
+    border: 6px solid #fff;
+    box-shadow: 0 0 0 8px rgba(10, 31, 60, 0.08), 0 10px 24px rgba(0, 0, 0, 0.35);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -14px;
+      border-radius: 50%;
+      background: rgba(255, 214, 10, 0.2);
+      filter: blur(12px);
+      animation: mb-pulse 2.4s ease-in-out infinite;
+      z-index: -1;
+    }
+    &:hover:not(:disabled) { transform: scale(1.06); }
+    &:active:not(:disabled) { transform: scale(0.95); }
+    &:disabled { opacity: 0.5; cursor: not-allowed; }
+    svg { margin-left: 2px; }
+  }
+  @keyframes mb-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50%      { opacity: 0.9; transform: scale(1.15); }
+  }
+  .mb-mega-play-spinner {
+    color: #fff;
+    font-size: 28px;
+    font-weight: 900;
+    animation: mb-blink 0.8s steps(2) infinite;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PROGRESS BAR (bottom)
+  // ═══════════════════════════════════════════════════════════════
+  .mb-progress {
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    width: 720px;
+    height: 44px;
+    display: flex; align-items: center; gap: 12px;
+    background: $navy;
+    border: 3px solid $yellow;
+    border-radius: 999px;
+    padding: 0 18px;
+    z-index: 3;
+  }
+  .mb-progress-time {
+    color: $yellow; font-size: 11px; font-weight: 700;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    min-width: 36px;
+  }
+  .mb-progress-track {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    position: relative;
+    cursor: pointer;
+  }
+  .mb-progress-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, $yellow 0%, $orange 100%);
+    border-radius: 4px;
+    transition: width 0.2s linear;
+  }
+  .mb-progress-handle {
+    position: absolute;
+    top: 50%;
+    width: 14px; height: 14px;
+    background: $cream;
+    border: 2px solid $yellow;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px $yellow;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  BOTTOM RAINBOW STRIP（设计稿 .bottom-rainbow 8px）
+  // ═══════════════════════════════════════════════════════════════
+  .mb-bottom-rainbow {
+    left: 0; right: 0; bottom: 0;
+    height: 8px;
+    background: linear-gradient(to right, $red, $yellow, $green, $blue, $pink);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 6;
+  }
+}

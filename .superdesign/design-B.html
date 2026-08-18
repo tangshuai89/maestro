@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maestro | 跨平台音乐同步终端</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+        :root {
+            --panel-bg: #EAE8E2;
+            --panel-border: #D1CFCA;
+            --ink: #2C2C2A;
+            --accent: #FF5A00;
+            --accent-dim: #E65100;
+            --lcd-bg: #D4D8CC;
+            --lcd-text: #2A3026;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #DAD8D1;
+            color: var(--ink);
+            margin: 0;
+        }
+
+        .mono-data {
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .lcd-display {
+            background-color: var(--lcd-bg);
+            border-radius: 2px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+            color: var(--lcd-text);
+        }
+
+        .btn-hardware {
+            background-color: #F5F4F0;
+            border: 1px solid var(--panel-border);
+            border-bottom-width: 3px;
+            transition: all 0.1s ease;
+        }
+
+        .btn-hardware:active {
+            border-bottom-width: 1px;
+            transform: translateY(2px);
+        }
+
+        @view-transition {
+            navigation: auto;
+        }
+
+        .indicator-sync-active {
+            background-color: var(--accent);
+            box-shadow: 0 0 4px var(--accent);
+        }
+
+        .loading-pulse {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .3; }
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen bg-[#EAE8E2] flex flex-col p-4 md:p-6 relative">
+        <!-- 顶部系统栏 -->
+        <header class="flex items-center gap-8 mb-6 z-40 h-12">
+            <div class="flex gap-2 items-center mr-auto">
+                <div class="flex gap-1.5">
+                    <div class="w-3 h-3 rounded-full bg-[#D1CFCA]"></div>
+                    <div class="w-3 h-3 rounded-full bg-[#D1CFCA]"></div>
+                    <div class="w-3 h-3 rounded-full bg-[#D1CFCA]"></div>
+                </div>
+                <span class="ml-4 text-[10px] mono-data font-bold tracking-tight opacity-40">MAESTRO / 统一音频引擎</span>
+            </div>
+
+            <nav class="flex bg-white/50 rounded p-1 border border-[#D1CFCA] shadow-sm">
+                <a href="#" id="nav-netease-link" class="px-4 py-1 text-xs font-bold mono-data flex items-center gap-2 hover:bg-[#EAE8E2] transition-colors rounded">
+                    <span class="w-2 h-2 rounded-full bg-red-600"></span> 网易云
+                </a>
+                <a href="#" id="nav-qq-link" class="px-4 py-1 text-xs font-bold mono-data flex items-center gap-2 bg-[#EAE8E2] rounded">
+                    <span class="w-2 h-2 rounded-full indicator-sync-active"></span> QQ音乐
+                </a>
+                <a href="#" id="nav-spotify-link" class="px-4 py-1 text-xs font-bold mono-data flex items-center gap-2 hover:bg-[#EAE8E2] transition-colors rounded">
+                    <span class="w-2 h-2 rounded-full bg-green-500"></span> Spotify
+                </a>
+                <a href="#" id="nav-deezer-link" class="px-4 py-1 text-xs font-bold mono-data flex items-center gap-2 hover:bg-[#EAE8E2] transition-colors rounded">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> Deezer
+                </a>
+            </nav>
+
+            <div class="flex items-center gap-4">
+                <button id="cta-search-btn" class="btn-hardware px-3 py-1.5 rounded flex items-center gap-2">
+                    <iconify-icon icon="lucide:search" class="text-lg"></iconify-icon>
+                    <span class="text-[10px] font-bold tracking-widest">搜索库</span>
+                </button>
+                <button id="cta-ai-btn" class="btn-hardware px-3 py-1.5 rounded flex items-center gap-2">
+                    <iconify-icon icon="lucide:sparkles" class="text-lg"></iconify-icon>
+                    <span class="text-[10px] font-bold tracking-widest">AI 推荐</span>
+                    <span class="w-1.5 h-1.5 rounded-full indicator-sync-active"></span>
+                </button>
+                <div class="h-8 w-px bg-[#D1CFCA]"></div>
+                <div class="flex flex-col items-end">
+                    <span class="text-[10px] font-bold mono-data uppercase">未登录</span>
+                    <a href="#" id="nav-login-link" class="text-[9px] text-accent font-bold mono-data underline underline-offset-2">立即登录</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主工作区 -->
+        <main class="flex-1 grid grid-cols-12 gap-8 relative z-0">
+            
+            <!-- 左侧：视觉反馈与同步矩阵 -->
+            <div class="col-span-4 flex flex-col gap-6">
+                <!-- 封面容器 -->
+                <div class="bg-[#D1CFCA] p-1 rounded shadow-lg aspect-square relative group overflow-hidden">
+                    <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&q=80&w=800" alt="Artwork" class="w-full h-full object-cover rounded-[1px]">
+                    <div class="absolute bottom-3 left-3">
+                        <span class="bg-black/80 text-white text-[9px] mono-data font-bold px-2 py-1 flex items-center gap-2 rounded-sm">
+                            <span class="w-1.5 h-1.5 rounded-full bg-accent loading-pulse"></span>
+                            数据流加载中...
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 跨平台同步状态矩阵 -->
+                <div class="flex-1 border border-[#D1CFCA] bg-white/30 p-5 rounded flex flex-col gap-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] mono-data font-bold opacity-50">跨平台同步</span>
+                        <span class="text-[9px] font-bold px-1.5 py-0.5 bg-accent text-white rounded-sm">红心同步激活</span>
+                    </div>
+                    <div class="flex-1 grid grid-rows-4 gap-2">
+                        <!-- 每一行代表一个平台同步状态 -->
+                        <div class="flex items-center gap-3 border-b border-black/5 pb-2">
+                            <iconify-icon icon="simple-icons:neteasecloudmusic" class="text-red-600 text-lg"></iconify-icon>
+                            <span class="flex-1 text-[11px] font-bold mono-data">网易云音乐</span>
+                            <span class="text-[10px] mono-data font-bold text-green-600 flex items-center gap-1">
+                                <iconify-icon icon="lucide:check-circle"></iconify-icon> 已同步
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-3 border-b border-black/5 pb-2">
+                            <iconify-icon icon="simple-icons:tencentqq" class="text-blue-500 text-lg"></iconify-icon>
+                            <span class="flex-1 text-[11px] font-bold mono-data">QQ 音乐</span>
+                            <span class="text-[10px] mono-data font-bold text-accent flex items-center gap-1">
+                                <iconify-icon icon="lucide:refresh-cw" class="animate-spin"></iconify-icon> 同步中
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-3 border-b border-black/5 pb-2">
+                            <iconify-icon icon="simple-icons:spotify" class="text-green-500 text-lg"></iconify-icon>
+                            <span class="flex-1 text-[11px] font-bold mono-data">Spotify</span>
+                            <span class="text-[10px] mono-data font-bold opacity-30">等待处理</span>
+                        </div>
+                        <div class="flex items-center gap-3 pb-2">
+                            <iconify-icon icon="simple-icons:deezer" class="text-blue-600 text-lg"></iconify-icon>
+                            <span class="flex-1 text-[11px] font-bold mono-data">Deezer</span>
+                            <span class="text-[10px] mono-data font-bold text-red-500">匹配失败</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间：核心元数据与歌词 -->
+            <div class="col-span-5 flex flex-col gap-6">
+                <!-- 播放状态液晶屏 -->
+                <div class="lcd-display p-8 flex flex-col gap-6">
+                    <div class="flex justify-between items-start">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-bold mono-data opacity-60">音源: QQ音乐</span>
+                            <span class="px-1.5 py-0.5 border border-black/20 text-[9px] font-bold mono-data">Hi-Res</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <div class="w-1.5 h-6 bg-black/20"></div>
+                            <div class="w-1.5 h-6 bg-black/20"></div>
+                            <div class="w-1.5 h-6 bg-black/10"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-col">
+                        <h1 class="text-4xl font-bold tracking-tighter leading-tight truncate">走钢丝的人</h1>
+                        <div class="flex items-center gap-3 mt-1">
+                            <span class="text-lg font-medium opacity-80">谢天笑 / The Tightrope Walker</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4 border-t border-black/10 pt-6">
+                        <div class="flex flex-col">
+                            <span class="text-[9px] font-bold opacity-50">红心总数</span>
+                            <span class="mono-data text-xs font-bold">1,284 项</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[9px] font-bold opacity-50">歌词源</span>
+                            <span class="mono-data text-xs font-bold">网易云音乐</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[9px] font-bold opacity-50">推荐库规模</span>
+                            <span class="mono-data text-xs font-bold">4,820 首</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 歌词引擎 -->
+                <div class="flex-1 flex flex-col gap-4 py-2 overflow-hidden">
+                    <div class="flex items-center gap-4 text-[10px] mono-data opacity-20">
+                        <span class="w-10">02:02</span>
+                        <span>在人群之中被淹没</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-[11px] mono-data opacity-25">
+                        <span class="w-10">02:08</span>
+                        <span>这一切我都已习惯</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-xs font-bold mono-data opacity-30">
+                        <span class="w-10">02:14</span>
+                        <span class="flex-1 h-[1px] bg-[#D1CFCA]"></span>
+                        <span>我只想过简单的生活</span>
+                    </div>
+                    <div class="flex items-center gap-6 text-2xl font-bold tracking-tight py-6 border-l-4 border-accent pl-6 bg-white/20">
+                        <span class="text-accent">//</span>
+                        <span>我就像个走钢丝的人</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-sm font-bold mono-data opacity-30">
+                        <span class="w-10">02:22</span>
+                        <span class="flex-1 h-[1px] bg-[#D1CFCA]"></span>
+                        <span>不愿去想太多</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-[11px] mono-data opacity-25">
+                        <span class="w-10">02:28</span>
+                        <span>在恐惧中寻找平衡点</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-[10px] mono-data opacity-20">
+                        <span class="w-10">02:35</span>
+                        <span>直到我坠落</span>
+                    </div>
+                    <div class="mt-4 flex items-center justify-center p-2 border border-dashed border-[#D1CFCA] opacity-40">
+                        <span class="text-[10px] font-bold mono-data">- 试听模式 30S 限制 -</span>
+                    </div>
+                </div>
+
+                <!-- 播控组件 -->
+                <div class="flex flex-col gap-4 mt-auto pt-6">
+                    <div class="flex items-center gap-6">
+                        <div class="flex gap-2">
+                            <button id="ctrl-prev-btn" class="btn-hardware w-11 h-11 rounded-full flex items-center justify-center">
+                                <iconify-icon icon="lucide:skip-back"></iconify-icon>
+                            </button>
+                            <button id="ctrl-play-btn" class="btn-hardware w-14 h-14 rounded-full flex items-center justify-center bg-accent text-white border-accent-dim">
+                                <iconify-icon icon="lucide:play" class="text-2xl ml-1"></iconify-icon>
+                            </button>
+                            <button id="ctrl-next-btn" class="btn-hardware w-11 h-11 rounded-full flex items-center justify-center">
+                                <iconify-icon icon="lucide:skip-forward"></iconify-icon>
+                            </button>
+                            <button id="ctrl-dislike-btn" class="btn-hardware w-11 h-11 rounded-full flex items-center justify-center ml-2">
+                                <iconify-icon icon="lucide:x-circle" class="opacity-40"></iconify-icon>
+                            </button>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-[10px] mono-data font-bold mb-2">
+                                <span class="text-accent">02:18</span>
+                                <span class="opacity-40">04:52</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-[#D1CFCA] rounded-full overflow-hidden relative cursor-pointer">
+                                <div class="absolute inset-y-0 left-0 bg-accent w-[45%]"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：参数矩阵与推荐 -->
+            <div class="col-span-3 flex flex-col gap-8">
+                <!-- 真实控件矩阵 -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="border border-[#D1CFCA] bg-white/40 p-4 rounded flex flex-col items-center gap-3">
+                        <span class="text-[9px] font-bold opacity-50 uppercase tracking-widest">输出音量</span>
+                        <div class="w-12 h-12 rounded-full border-[3px] border-[#D1CFCA] flex items-center justify-center relative">
+                            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center -rotate-45">
+                                <div class="w-px h-3 bg-accent"></div>
+                            </div>
+                        </div>
+                        <span class="mono-data text-xs font-bold">82%</span>
+                    </div>
+                    <div class="border border-[#D1CFCA] bg-white/40 p-4 rounded flex flex-col items-center gap-3">
+                        <span class="text-[9px] font-bold opacity-50 uppercase tracking-widest">库中状态</span>
+                        <div class="w-12 h-12 rounded-full border-[3px] border-accent/20 flex items-center justify-center">
+                             <iconify-icon icon="lucide:check" class="text-xl text-accent"></iconify-icon>
+                        </div>
+                        <span class="mono-data text-[9px] font-bold text-accent">已收藏</span>
+                    </div>
+                </div>
+
+                <!-- AI 推荐序列 -->
+                <div class="h-[300px] border border-[#D1CFCA] bg-white/20 rounded flex flex-col overflow-hidden">
+                    <div class="bg-[#D1CFCA] px-3 py-1.5 flex justify-between items-center">
+                        <span class="text-[10px] font-bold mono-data">DeepSeek 智能推荐 (3)</span>
+                        <iconify-icon icon="lucide:cpu" class="text-xs opacity-50"></iconify-icon>
+                    </div>
+                    <div class="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
+                        <a href="#" id="reco-item-1" class="p-3 hover:bg-white/50 border border-transparent hover:border-[#D1CFCA] rounded transition-all">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[9px] font-bold mono-data opacity-50 uppercase">推荐来自: SPOTIFY</span>
+                                <span class="text-[10px] font-bold text-accent">99% 匹配</span>
+                            </div>
+                            <p class="text-xs font-bold truncate mt-1">Thunder Peak - Hybrid Beats</p>
+                        </a>
+                        <a href="#" id="reco-item-2" class="p-3 hover:bg-white/50 border border-transparent hover:border-[#D1CFCA] rounded transition-all">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[9px] font-bold mono-data opacity-50 uppercase">推荐来自: DEEZER</span>
+                                <span class="text-[10px] font-bold">88% 匹配</span>
+                            </div>
+                            <p class="text-xs font-bold truncate mt-1">Wave Rider - Soul Flow</p>
+                        </a>
+                        <a href="#" id="reco-item-3" class="p-3 hover:bg-white/50 border border-transparent hover:border-[#D1CFCA] rounded transition-all">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[9px] font-bold mono-data opacity-50 uppercase">推荐来自: QQ</span>
+                                <span class="text-[10px] font-bold">42% 匹配</span>
+                            </div>
+                            <p class="text-xs font-bold truncate mt-1 opacity-50">Leaf Blade - Acoustic</p>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 全局操作面板 -->
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="cta-heart-btn" class="btn-hardware p-4 rounded flex flex-col items-center gap-2">
+                        <iconify-icon icon="lucide:heart" class="text-accent text-xl"></iconify-icon>
+                        <span class="text-[9px] font-bold">同步收藏</span>
+                    </button>
+                    <button id="cta-settings-btn" class="btn-hardware p-4 rounded flex flex-col items-center gap-2">
+                        <iconify-icon icon="lucide:settings-2" class="text-xl"></iconify-icon>
+                        <span class="text-[9px] font-bold">系统偏好</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- 状态页脚 -->
+        <footer class="mt-6 flex items-center justify-between border-t border-[#D1CFCA] pt-4">
+            <div class="flex gap-6">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                    <span class="text-[10px] font-bold mono-data uppercase">所有平台连接正常</span>
+                </div>
+                
+            </div>
+            <div class="text-[9px] font-bold mono-data opacity-30 tracking-widest">
+                MAESTRO CORE / 稳定版驱动 / AI 驱动同步引擎
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const playBtn = document.getElementById('ctrl-play-btn');
+        let playing = false;
+        
+        playBtn.addEventListener('click', () => {
+            playing = !playing;
+            const icon = playBtn.querySelector('iconify-icon');
+            icon.setAttribute('icon', playing ? 'lucide:pause' : 'lucide:play');
+            icon.classList.toggle('ml-1', !playing);
+            
+            if(playing) {
+                playBtn.classList.add('bg-accent/80');
+            } else {
+                playBtn.classList.remove('bg-accent/80');
+            }
+        });
+    </script>
+</body>
+</html>
