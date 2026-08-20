@@ -1,0 +1,912 @@
+// ─────────────────────────────────────────────────────────────────
+// AETHER THEATER — 宇宙剧场主视图样式（1440×900 等比缩放版）
+//
+// 架构：固定尺寸设计画布 + transform: scale() 整体缩放。
+//   .th-root    fixed inset 0，背景层铺满窗口（星云/星尘不缩放）
+//   .th-canvas  固定 1440×900，transform: scale(var(--canvas-scale))
+//               居中于可用区域（窗口顶部 40px 是 Titlebar 拖拽区）
+//               —— 画布内全部用 1440 设计稿的绝对坐标，窗口任意
+//               拖拽缩放时整个画布（含动效）等比缩放，不会歪。
+//   scale = min(winW/1440, (winH-40)/900)，由 TheaterView 的
+//   resize 监听计算后写入 --canvas-scale。
+//
+// 画布内坐标（对应 Figma frame "AETHER THEATER — 宇宙剧场"）：
+//   HUD y24 / 封面中心 (430,420) / 星轨同心 / 歌名 (430,590) /
+//   歌词 (820,320) / 核心 (300,700) / 推荐 (1000,700)
+// ─────────────────────────────────────────────────────────────────
+
+.th-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #02020a;
+  color: #f5f0e8;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  user-select: none;
+  --neon: #00e5ff;
+  --violet: #5b2bff;
+  --acid: #b57bff;
+  --heart: #ff3b5c;
+  --green: #3dffa2;
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-stroke: rgba(255, 255, 255, 0.12);
+}
+
+// ── 背景层（铺满窗口，不随画布缩放） ────────────────────────────
+
+.th-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.th-bg-radial {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, #0a0518 0%, #060311 55%, #02020a 100%);
+}
+
+// 星云（Figma 导出值：纯色圆 + 大高斯模糊 + screen 混合）
+.th-nebula {
+  position: absolute;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+// Electric Violet：500px @ (40,-55)，#5B2BFF，opacity .25，blur 60
+.th-nebula--violet {
+  width: 34.7vw; height: 34.7vw;
+  left: 2.8vw; top: -6.1vh;
+  background: #5b2bff;
+  opacity: 0.25;
+  filter: blur(60px);
+}
+// Neon Cyan：450px @ (825,455)，#00E5FF，opacity .2，blur 60
+.th-nebula--cyan {
+  width: 31.3vw; height: 31.3vw;
+  left: 57.3vw; top: 50.5vh;
+  background: #00e5ff;
+  opacity: 0.2;
+  filter: blur(60px);
+}
+// Acid Violet：400px @ (460,-50)，#B57BFF，opacity .12，blur 50
+.th-nebula--acid {
+  width: 27.8vw; height: 27.8vw;
+  left: 32vw; top: -5.5vh;
+  background: #b57bff;
+  opacity: 0.12;
+  filter: blur(50px);
+}
+
+// 星空整层慢速漂移（Figma proto A→B→C 循环：(0,0)→(+6,-4)→(-6,+4)）
+// —— 行星固定、星空平移，产生"延迟摄影"式视差：星球看起来从左到右
+// 再从右到左缓慢摇摆。
+.th-stardust {
+  position: absolute;
+  inset: 0;
+  animation: th-sky-drift 9s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes th-sky-drift {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(6px, -4px); }
+  66%  { transform: translate(-6px, 4px); }
+  100% { transform: translate(0, 0); }
+}
+.th-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  animation: th-star-drift 9s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes th-star-drift {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(var(--drift, 18px), calc(var(--drift, 18px) * -0.6)); }
+}
+
+.th-horizon {
+  position: absolute;
+  left: 0; right: 0; top: 91.1vh; // 设计稿 y=820/900
+  height: 1px;
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0), rgba(0, 229, 255, 0.2) 50%, rgba(0, 229, 255, 0));
+}
+
+// ── 1440×900 设计画布（等比缩放） ───────────────────────────────
+
+.th-canvas {
+  position: absolute;
+  left: 50%;
+  top: calc(40px + (100vh - 40px) / 2);
+  width: 1440px;
+  height: 900px;
+  transform: translate(-50%, -50%) scale(var(--canvas-scale, 1));
+  transform-origin: center center;
+  z-index: 5;
+}
+
+// ── 顶部 HUD（1440 稿 y 24） ────────────────────────────────────
+
+.th-hud {
+  position: absolute;
+  top: 24px; left: 0; right: 0;
+  height: 40px;
+  padding: 0 64px;
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  z-index: 10;
+}
+
+.th-hud-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.th-hud-kicker {
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(245, 240, 232, 0.25);
+}
+.th-hud-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(245, 240, 232, 0.85);
+  letter-spacing: -0.2px;
+}
+
+.th-hud-badges {
+  display: flex;
+  gap: 12px;
+}
+.th-badge {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid var(--badge);
+  color: var(--badge);
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.th-badge:hover { transform: scale(1.12); }
+.th-badge.is-active {
+  background: color-mix(in srgb, var(--badge) 25%, transparent);
+  box-shadow: 0 0 8px var(--badge);
+  cursor: default;
+}
+
+.th-hud-telemetry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  margin-left: auto;
+  margin-right: 16px;
+}
+.th-hud-buff {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 10px;
+  color: var(--neon);
+}
+.th-hud-sync {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.th-hud-heart { color: var(--heart); }
+.th-hud-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: th-dot-blink 2.4s ease-in-out infinite;
+}
+@keyframes th-dot-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+// ── 封面行星系统（1440 稿中心 430,420） ─────────────────────────
+
+.th-cover-stage {
+  position: absolute;
+  left: 430px; top: 420px;
+  width: 0; height: 0;
+  z-index: 5;
+  // 与星空漂移反相的轻微摇摆：行星相对星空左→右→左（延迟摄影视差）
+  animation: th-planet-sway 9s ease-in-out infinite;
+}
+@keyframes th-planet-sway {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(-6px, 4px); }
+  66%  { transform: translate(6px, -4px); }
+  100% { transform: translate(0, 0); }
+}
+
+// 声波环（Figma "03 / Sound Rings"：r240/300/360，青色，向外渐淡）
+.th-ring {
+  position: absolute;
+  left: 50%; top: 50%;
+  border-radius: 50%;
+  border: 1px solid var(--neon);
+  transform: translate(-50%, -50%);
+  animation: th-ring-pulse 4s ease-in-out infinite;
+  pointer-events: none;
+}
+.th-ring--outer { width: 720px; height: 720px; opacity: 0.08; border-width: 1px; animation-delay: 1.6s; }
+.th-ring--mid   { width: 600px; height: 600px; opacity: 0.12; border-width: 1.5px; animation-delay: 0.8s; }
+.th-ring--inner { width: 480px; height: 480px; opacity: 0.18; border-width: 2px; animation-delay: 0s; }
+@keyframes th-ring-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.08); }
+}
+
+.th-orbit {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 390px; height: 390px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 229, 255, 0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+// 刻度：13×3 圆头短横线，沿轨道切向分布，金/青交替（Figma 导出值）
+.th-orbit-tick {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 13px; height: 3px;
+  transform-origin: 0 0; // rotate 后再 translate(-6.5, -196.5)，即切向贴在轨道上
+  background: rgba(0, 229, 255, 0.85);
+  border-radius: 1.5px;
+}
+.th-orbit-tick.is-gold { background: rgba(255, 210, 74, 0.85); }
+
+// 流星飞线（Figma A 帧 progress-arc 矢量：细青线束扫过行星）
+// 设计稿位置：canvas (430,271)，即相对舞台中心 (0,-149)，尺寸 358.78×452.77。
+// 动效：整束线左→右→左往返扫动 + 描边流动（延迟摄影拖尾感）。
+// 300×324 裁切容器 = 设计稿 star-orbit frame（canvas 280,270 → 相对中心 -150,-150）
+// 飞线只露出容器内的片段——原型里"短线段扫过"的关键就是这个 overflow 裁切。
+.th-streaks-clip {
+  position: absolute;
+  left: -150px; top: -150px;
+  width: 300px; height: 324px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.th-streaks {
+  position: absolute;
+  left: 150px; top: 1px; // 设计稿 progress-arc 在 star-orbit 内的偏移
+  width: 358.78px; height: 452.77px;
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0.5;
+  transform-origin: center;
+  // Figma 实测补间（progress-arc 68:2）：1.2s ease-in-out，
+  // translate 0→-447px / rotate 1.571rad→3.142rad / 尺寸 358.78×452.77→298×298。
+  // 用 CSS 独立属性（应用顺序 translate→rotate→scale，与 Figma 一致），
+  // alternate 往返 = 从左到右、又从右到左。
+  translate: 0 0;
+  rotate: 90deg;
+  scale: 1 1;
+  animation: th-streaks-sweep 1.2s ease-in-out infinite alternate;
+  z-index: 1;
+}
+.th-streaks-path {
+  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.6));
+}
+@keyframes th-streaks-sweep {
+  from { translate: 0 0; rotate: 90deg; scale: 1 1; }
+  to   { translate: -447px 0; rotate: 180deg; scale: 0.831 0.658; }
+}
+
+// 扫描光弧：绕轨道缓慢旋转的青色光弧（明显持续动效）
+.th-scan {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 390px; height: 390px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  overflow: visible;
+  animation: th-scan-spin 5s linear infinite;
+  z-index: 1;
+}
+.th-scan-arc {
+  filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.8));
+}
+@keyframes th-scan-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+// 全息封面（Figma 导出：280px，径向 #5B2BFF→#1A0B3E→边缘 #00E5FF 提亮）
+.th-cover {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 280px; height: 280px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    #5b2bff 0%,
+    #1a0b3e 38%,
+    #1a0b3e 95%,
+    #00e5ff 100%
+  );
+  background-size: cover;
+  background-position: center;
+  border: 2px solid rgba(0, 229, 255, 0.6);
+  box-shadow:
+    0 0 60px 8px rgba(0, 229, 255, 0.35),
+    0 0 96px rgba(91, 43, 255, 0.32),
+    0 0 50px rgba(0, 229, 255, 0.25),
+    inset 0 0 30px rgba(0, 229, 255, 0.3);
+  transition: box-shadow 0.4s ease;
+}
+.th-cover-symbol {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 90px;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 0 15px rgba(0, 229, 255, 0.3);
+}
+
+// LIVE 标签（1440 稿 513,292 → 相对中心 +83,-128）
+.th-live-tag {
+  position: absolute;
+  left: 83px; top: -128px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(4px);
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--neon);
+  z-index: 2;
+}
+
+// ♥ 数值（1440 稿 560,330 → 相对中心 +130,-90）
+.th-heart-stat {
+  position: absolute;
+  left: 130px; top: -90px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  z-index: 2;
+  pointer-events: none;
+}
+.th-heart-stat-icon { color: var(--heart); }
+.th-live-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--heart);
+  animation: th-dot-blink 1.6s ease-in-out infinite;
+}
+
+// ── 星轨进度环（同心套在封面外，300px） ─────────────────────────
+
+.th-orbit-progress {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 300px; height: 300px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.th-orbit-svg {
+  width: 100%; height: 100%;
+  cursor: pointer;
+  overflow: visible;
+  pointer-events: auto;
+}
+.th-orbit-track {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 2;
+}
+.th-orbit-arc {
+  stroke: var(--neon);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.7));
+  transition: stroke-dashoffset 0.3s linear;
+}
+// Figma orbit-dot 辉光：dilate2+blur6 青(1) + dilate1+blur2 青(.8)
+.th-orbit-dot {
+  filter: drop-shadow(0 0 2px rgba(0, 229, 255, 0.8)) drop-shadow(0 0 6px rgba(0, 229, 255, 1));
+  transition: transform 0.3s linear;
+}
+.th-orbit-times {
+  position: absolute;
+  bottom: -26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 16px;
+  pointer-events: auto;
+}
+.th-time--cur { color: var(--neon); }
+.th-time--total { color: rgba(255, 255, 255, 0.3); }
+.th-time-divider {
+  width: 1px; height: 20px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+// ── 歌名信息（1440 稿 430,590） ─────────────────────────────────
+
+.th-track-info {
+  position: absolute;
+  left: 430px; top: 590px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 5;
+  text-align: center;
+  pointer-events: none;
+  max-width: 460px;
+}
+.th-track-title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: rgba(255, 255, 255, 0.95);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.th-track-sub {
+  margin: 0;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.45);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.th-track-hires {
+  margin: 10px 0 0; // title-group 与 HI-RES 行间距 18（8+10）
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: rgba(0, 229, 255, 0.6);
+}
+
+// ── 歌词面板（1440 稿 820,320） ─────────────────────────────────
+
+// 纯文字流，无面板 chrome（对应 Figma lyric-stream 820,320，gap 24）
+.th-lyrics-panel {
+  position: absolute;
+  left: 820px; top: 320px;
+  width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  z-index: 6;
+}
+
+.th-lyric {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.18);
+  white-space: nowrap;
+  transition: color 0.5s ease, opacity 0.5s ease;
+}
+
+.th-lyric-active {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 20px;
+  padding: 16px 0;
+}
+.th-lyric-bar {
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--neon);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.7);
+  flex-shrink: 0;
+}
+.th-lyric--current {
+  font-size: 44px;
+  font-weight: 600;
+  letter-spacing: -1px;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow:
+    0 0 12px rgba(0, 229, 255, 0.25),
+    0 0 28px rgba(0, 229, 255, 0.35);
+  animation: th-lyric-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: normal;
+  word-break: break-word;
+}
+@keyframes th-lyric-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// ── 左下：能量核心（1440 稿 300,700） ───────────────────────────
+
+.th-core-cluster {
+  position: absolute;
+  left: 236px; top: 700px;
+  width: 200px; height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  z-index: 8;
+}
+
+.th-ctrl {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  color: rgba(245, 240, 232, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.th-ctrl:hover:not(:disabled) { color: #fff; transform: scale(1.08); }
+.th-ctrl:disabled { opacity: 0.3; cursor: default; }
+
+.th-core {
+  position: relative;
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  border: none;
+  background: radial-gradient(circle, #ffffff 0%, #80f2ff 24%, var(--neon) 48%, #2d88ff 74%, var(--violet) 100%);
+  color: #02020a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  animation: th-core-breathe 3.2s ease-in-out infinite;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.th-core:hover:not(:disabled) { transform: scale(1.06); }
+.th-core:disabled { opacity: 0.4; cursor: default; }
+@keyframes th-core-breathe {
+  0%, 100% { box-shadow: 0 0 30px rgba(0, 229, 255, 0.6), 0 0 60px rgba(0, 229, 255, 0.3); }
+  50% { box-shadow: 0 0 44px rgba(0, 229, 255, 0.8), 0 0 80px rgba(0, 229, 255, 0.4); }
+}
+.th-core.is-playing {
+  animation: th-core-breathe-playing 3.2s ease-in-out infinite;
+}
+@keyframes th-core-breathe-playing {
+  0%, 100% { box-shadow: 0 0 40px rgba(0, 229, 255, 0.75), 0 0 90px rgba(91, 43, 255, 0.4); }
+  50% { box-shadow: 0 0 56px rgba(0, 229, 255, 0.9), 0 0 110px rgba(91, 43, 255, 0.55); }
+}
+.th-core-inner {
+  position: absolute;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+.th-core-spinner {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(2, 2, 10, 0.3);
+  border-top-color: #02020a;
+  animation: th-spin 0.8s linear infinite;
+}
+@keyframes th-spin { to { transform: rotate(360deg); } }
+
+// ── 右下：DeepSeek 推荐（1440 稿 1000,700） ─────────────────────
+
+.th-reco {
+  position: absolute;
+  left: 1000px; top: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 7;
+}
+.th-reco-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.th-reco-label {
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--acid);
+}
+.th-reco-running {
+  font-size: 10px;
+  color: var(--acid);
+  animation: th-dot-blink 1s ease-in-out infinite;
+}
+.th-reco-cards {
+  display: flex;
+  gap: 16px;
+}
+// 120×120 玻璃卡（bg 白 6% / 描边白 12% / 圆角 16 / 顶部 70px 渐变色块）
+.th-reco-card {
+  width: 120px; height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.2s ease;
+}
+.th-reco-card:hover {
+  transform: translateY(-3px);
+}
+.th-reco-art {
+  height: 70px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: linear-gradient(180deg, var(--card-color), #0a0518);
+  margin-bottom: 6px;
+}
+.th-reco-name {
+  font-size: 11px;
+  line-height: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 0 10px;
+  margin-bottom: 2px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.th-reco-artist {
+  font-size: 9px;
+  line-height: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 0 10px;
+  margin-bottom: 2px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.th-reco-match {
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  line-height: 10px;
+  color: var(--neon);
+  padding: 0 10px;
+}
+.th-reco-empty {
+  width: 392px;
+  padding: 20px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(181, 123, 255, 0.16), rgba(0, 229, 255, 0.08) 60%, rgba(2, 2, 10, 0.4));
+  border: 1px solid rgba(181, 123, 255, 0.18);
+  font-size: 12px;
+  color: rgba(245, 240, 232, 0.5);
+  text-align: center;
+}
+.th-reco-foot {
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  color: rgba(245, 240, 232, 0.25);
+}
+
+// ── 版本行（1440 稿右下） ───────────────────────────────────────
+
+.th-footer-version {
+  position: absolute;
+  right: 64px; bottom: 20px;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  color: rgba(245, 240, 232, 0.1);
+  letter-spacing: 1px;
+  z-index: 9;
+}
+
+
+
+// ═════════════════════════════════════════════════════════════════
+// 动效增强（对应 Figma Smart Animate 循环，2026-08-19）
+// ═════════════════════════════════════════════════════════════════
+
+// ── 1. 星尘：漂移 + 闪烁（双层动画） ─────────────────────────────
+.th-star {
+  animation:
+    th-star-drift 7s ease-in-out infinite alternate,
+    th-star-twinkle 3.2s ease-in-out infinite;
+}
+@keyframes th-star-twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+// 大星（3px+）额外有辉光
+.th-star {
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+// ── 2. 星云：缓慢漂移 + 呼吸（宇宙感） ───────────────────────────
+.th-nebula {
+  animation: th-nebula-breathe 12s ease-in-out infinite alternate;
+}
+.th-nebula--violet { animation-delay: 0s; }
+.th-nebula--cyan   { animation-delay: 3s; }
+.th-nebula--acid   { animation-delay: 6s; }
+// 注意：不动 opacity——各星云的静态透明度（.25/.2/.12）来自 Figma 导出值
+@keyframes th-nebula-breathe {
+  0%   { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(48px, -32px) scale(1.1); }
+}
+
+// ── 3. 声波环：脉冲幅度增强 + 辉光呼吸 ───────────────────────────
+.th-ring {
+  animation:
+    th-ring-pulse 3.6s ease-in-out infinite,
+    th-ring-glow 3.6s ease-in-out infinite;
+}
+@keyframes th-ring-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 229, 255, 0); }
+  50% { box-shadow: 0 0 24px rgba(0, 229, 255, 0.25); }
+}
+
+// ── 4. 封面：缓慢自转 + 光效呼吸（播放时） ───────────────────────
+.th-cover {
+  animation: th-cover-breathe 5s ease-in-out infinite;
+}
+@keyframes th-cover-breathe {
+  0%, 100% { box-shadow:
+    0 0 60px 8px rgba(0, 229, 255, 0.35),
+    0 0 96px rgba(91, 43, 255, 0.32),
+    0 0 50px rgba(0, 229, 255, 0.25),
+    inset 0 0 30px rgba(0, 229, 255, 0.3); }
+  50% { box-shadow:
+    0 0 72px 10px rgba(0, 229, 255, 0.45),
+    0 0 120px rgba(91, 43, 255, 0.42),
+    0 0 60px rgba(0, 229, 255, 0.32),
+    inset 0 0 40px rgba(0, 229, 255, 0.4); }
+}
+// 封面自转：整个圆旋转（唱片感），♪ 符号反向补偿保持水平
+.th-cover.is-playing,
+.th-root.is-playing .th-cover {
+  animation:
+    th-cover-breathe 5s ease-in-out infinite,
+    th-cover-spin 40s linear infinite;
+}
+.th-root.is-playing .th-cover-symbol {
+  animation: th-cover-symbol-counter 40s linear infinite;
+}
+@keyframes th-cover-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes th-cover-symbol-counter {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+// ── 5. 星轨：进度点呼吸脉冲（暂停时也活） ────────────────────────
+.th-orbit-dot {
+  animation: th-dot-pulse 1.8s ease-in-out infinite;
+}
+@keyframes th-dot-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.8)); }
+  50% { filter: drop-shadow(0 0 12px rgba(0, 229, 255, 1)); }
+}
+// hover 整环暗示可点
+.th-orbit-svg { transition: transform 0.18s ease-out; }
+.th-orbit-svg:hover { transform: scale(1.015); }
+.th-orbit-svg:hover .th-orbit-track { stroke: rgba(255, 255, 255, 0.22); }
+
+// ── 6. 歌词：当前行滑入 + 旧行上滑淡出 ───────────────────────────
+.th-lyric {
+  transition:
+    color 0.5s ease,
+    opacity 0.5s ease,
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.th-lyric--prev {
+  animation: th-lyric-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.th-lyric--next {
+  animation: th-lyric-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
+}
+@keyframes th-lyric-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+// 当前行：从下方发光滑入
+.th-lyric--current {
+  animation: th-lyric-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes th-lyric-in {
+  from { opacity: 0; transform: translateY(18px); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+// ── 7. 播放键：辉光呼吸增强 + hover 核心亮度 ─────────────────────
+.th-core {
+  animation: th-core-breathe 2.8s ease-in-out infinite;
+}
+.th-core:hover:not(:disabled) {
+  box-shadow:
+    0 0 50px rgba(0, 229, 255, 0.9),
+    0 0 100px rgba(91, 43, 255, 0.5);
+}
+
+// ── 8. 顶部绿点 + LIVE：闪烁节奏微调 ─────────────────────────────
+.th-hud-dot { animation-duration: 2s; }
+.th-live-dot { animation-duration: 1.4s; }
+
+// ── 9. 推荐卡：入场依次滑入（stagger） ───────────────────────────
+.th-reco-card {
+  animation: th-reco-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.th-reco-card:nth-child(1) { animation-delay: 0s; }
+.th-reco-card:nth-child(2) { animation-delay: 0.08s; }
+.th-reco-card:nth-child(3) { animation-delay: 0.16s; }
+@keyframes th-reco-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// ── 可访问性：reduced-motion 下保留功能性动效，关闭装饰性 ────────
+// base/_reset.scss 有一个全局 `* { animation-duration: .01ms !important }`
+// 会压掉一切动画。这里对 theater 选择性恢复：
+//   功能动画（进度、歌词切换、播放键状态）恢复原时长；
+//   纯装饰动画（星尘闪烁/星云漂移/封面自转/声波环/推荐入场）保持关闭。
+@media (prefers-reduced-motion: reduce) {
+  // 桌面播放器是用户主动打开的沉浸体验，动效是设计核心（对应 Figma
+  // Smart Animate 循环）。base/_reset.scss 的 `* { animation-duration:
+  // .01ms !important }` 会压掉一切——这里逐类恢复 theater 的动画时长
+  // （选择器特异性高于 `*`，`!important` 对 `!important` 时特异性胜出）。
+  .th-star { animation-duration: 7s, 3.2s !important; }
+  .th-nebula { animation-duration: 12s !important; }
+  .th-ring { animation-duration: 3.6s, 3.6s !important; }
+  .th-cover { animation-duration: 5s !important; }
+  .th-root.is-playing .th-cover { animation-duration: 5s, 40s !important; }
+  .th-root.is-playing .th-cover-symbol { animation-duration: 40s !important; }
+  .th-orbit-dot { animation-duration: 1.8s !important; }
+  .th-reco-card { animation-duration: 0.5s !important; }
+  .th-core { animation-duration: 2.8s !important; }
+  .th-core-spinner { animation-duration: 0.8s !important; }
+  .th-hud-dot { animation-duration: 2s !important; }
+  .th-live-dot { animation-duration: 1.4s !important; }
+  .th-lyric--current, .th-lyric--prev, .th-lyric--next { animation-duration: 0.5s !important; }
+  .th-orbit-arc, .th-orbit-dot { transition-duration: 0.3s !important; }
+}

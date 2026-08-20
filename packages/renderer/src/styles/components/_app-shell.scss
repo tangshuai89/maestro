@@ -131,3 +131,18 @@
     gap: 12px;
   }
 }
+
+// ── AETHER THEATER mode：宇宙剧场全屏布局 ─────────────────────────
+// TheaterView 是 position:fixed 全屏；此模式下清掉旧 Bento 布局的
+// padding/网格/背景装饰，避免重叠。Titlebar 保留为顶部悬浮条。
+.app.theater-mode {
+  padding: 0;
+  gap: 0;
+  background: #02020a;
+}
+.app.theater-mode::before {
+  display: none; // 胶片颗粒在剧场模式下不需要
+}
+.app.theater-mode .bg-layer {
+  display: none; // 剧场用自己的星云背景
+}
