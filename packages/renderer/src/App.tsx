@@ -11,7 +11,7 @@ import type { LibraryImportResult } from './api';
 import { readCachedLibrary } from './lib/likedCache';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
-import MonsterBeatsView from './components/views/MonsterBeatsView';
+import TheaterView from './components/views/TheaterView';
 import Titlebar from './components/layout/Titlebar';
 import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
@@ -221,7 +221,7 @@ export default function App() {
   return (
     // search-open adds a class the CSS uses to freeze the cover animations
     // behind the search overlay's backdrop-filter (avoids flicker).
-    <div className={`app${player.searchOpen ? ' search-open' : ''}`}>
+    <div className={`app theater-mode${player.searchOpen ? ' search-open' : ''}`}>
       <Titlebar
         provider={player.provider}
         onSwitchProvider={player.switchToProvider}
@@ -260,7 +260,7 @@ export default function App() {
           background-image is set by useCoverArt via bgLayerRef. */}
       <div className="bg-layer" ref={player.bgLayerRef} aria-hidden="true" />
 
-      <MonsterBeatsView
+      <TheaterView
         track={player.track}
         playing={player.playing}
         loading={player.loading}
