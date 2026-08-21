@@ -1,0 +1,62 @@
+// ============================================================
+// AETHER tokens — 由 Figma 变量自动导出（figma-export-tokens.mjs）
+// 请勿手改此文件；设计变更后重新导出
+// ============================================================
+:root {
+  // ---- Color/primitive ----
+  --primitive-bg-top: #0a0518;
+  --primitive-bg-bottom: #02020a;
+  --primitive-neon-cyan: #00e5ff;
+  --primitive-electric-purple: #5b2bff;
+  --primitive-acid-purple: #b57bff;
+  --primitive-off-white: #f5f0e8;
+  --primitive-heart-red: #ff3b5c;
+  --primitive-neon-green: #3dffa2;
+  --primitive-warning-yellow: #ffd93d;
+  --primitive-info-blue: #3d9bff;
+  // ---- Color/semantic ----
+  --accent: #00e5ff;
+  --accent-purple: #5b2bff;
+  --ai: #b57bff;
+  --text-main: #f5f0e8;
+  --text-dim: rgba(245, 240, 232, 0.4);
+  --text-muted: rgba(245, 240, 232, 0.1);
+  --glass-fill: rgba(255, 255, 255, 0.06);
+  --glass-fill-strong: rgba(255, 255, 255, 0.08);
+  --glass-stroke: rgba(255, 255, 255, 0.12);
+  --track: rgba(255, 255, 255, 0.2);
+  --white: #ffffff;
+  --status-liked: #ff3b5c;
+  --status-sync: #3dffa2;
+  --platform-qq: #ffd93d;
+  --platform-netease: #ff3b5c;
+  --platform-deezer: #3d9bff;
+  --platform-spotify: #3dffa2;
+  // ---- Spacing ----
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-64: 64px;
+  --space-96: 96px;
+  // ---- Radius ----
+  --radius-8: 8px;
+  --radius-10: 10px;
+  --radius-12: 12px;
+  --radius-14: 14px;
+  --radius-16: 16px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+  // ---- Motion ----
+  --motion-duration-fast: 120;
+  --motion-duration-base: 240;
+  --motion-duration-slow: 400;
+  --motion-duration-xslow: 700;
+  --ease-out: "cubic-bezier(0.16,1,0.3,1)";
+  --ease-spring: "cubic-bezier(0.34,1.56,0.64,1)";
+  --ease-in-out: "ease-in-out";
+}

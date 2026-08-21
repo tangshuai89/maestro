@@ -1,0 +1,394 @@
+{
+ "variables": [
+  {
+   "name": "Color/primitive/bg-top",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.039,
+    "g": 0.02,
+    "b": 0.094,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/bg-bottom",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.008,
+    "g": 0.008,
+    "b": 0.039,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/neon-cyan",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0,
+    "g": 0.898,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/electric-purple",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.357,
+    "g": 0.169,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/acid-purple",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.71,
+    "g": 0.482,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/off-white",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.961,
+    "g": 0.941,
+    "b": 0.91,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/heart-red",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 0.231,
+    "b": 0.361,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/neon-green",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.239,
+    "g": 1,
+    "b": 0.635,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/warning-yellow",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 0.851,
+    "b": 0.239,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/primitive/info-blue",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.239,
+    "g": 0.608,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/accent",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0,
+    "g": 0.898,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/accent-purple",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.357,
+    "g": 0.169,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/ai",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.71,
+    "g": 0.482,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/text-main",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.961,
+    "g": 0.941,
+    "b": 0.91,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/text-dim",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.961,
+    "g": 0.941,
+    "b": 0.91,
+    "a": 0.4
+   }
+  },
+  {
+   "name": "Color/semantic/text-muted",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.961,
+    "g": 0.941,
+    "b": 0.91,
+    "a": 0.1
+   }
+  },
+  {
+   "name": "Color/semantic/glass-fill",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 1,
+    "b": 1,
+    "a": 0.06
+   }
+  },
+  {
+   "name": "Color/semantic/glass-fill-strong",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 1,
+    "b": 1,
+    "a": 0.08
+   }
+  },
+  {
+   "name": "Color/semantic/glass-stroke",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 1,
+    "b": 1,
+    "a": 0.12
+   }
+  },
+  {
+   "name": "Color/semantic/track",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 1,
+    "b": 1,
+    "a": 0.2
+   }
+  },
+  {
+   "name": "Color/semantic/white",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 1,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/status-liked",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 0.231,
+    "b": 0.361,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/status-sync",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.239,
+    "g": 1,
+    "b": 0.635,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/platform-qq",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 0.851,
+    "b": 0.239,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/platform-netease",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 0.231,
+    "b": 0.361,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/platform-deezer",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.239,
+    "g": 0.608,
+    "b": 1,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/platform-spotify",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.239,
+    "g": 1,
+    "b": 0.635,
+    "a": 1
+   }
+  },
+  {
+   "name": "Spacing/2",
+   "resolvedType": "FLOAT",
+   "value": 2
+  },
+  {
+   "name": "Spacing/4",
+   "resolvedType": "FLOAT",
+   "value": 4
+  },
+  {
+   "name": "Spacing/8",
+   "resolvedType": "FLOAT",
+   "value": 8
+  },
+  {
+   "name": "Spacing/12",
+   "resolvedType": "FLOAT",
+   "value": 12
+  },
+  {
+   "name": "Spacing/16",
+   "resolvedType": "FLOAT",
+   "value": 16
+  },
+  {
+   "name": "Spacing/24",
+   "resolvedType": "FLOAT",
+   "value": 24
+  },
+  {
+   "name": "Spacing/32",
+   "resolvedType": "FLOAT",
+   "value": 32
+  },
+  {
+   "name": "Spacing/48",
+   "resolvedType": "FLOAT",
+   "value": 48
+  },
+  {
+   "name": "Spacing/64",
+   "resolvedType": "FLOAT",
+   "value": 64
+  },
+  {
+   "name": "Spacing/96",
+   "resolvedType": "FLOAT",
+   "value": 96
+  },
+  {
+   "name": "Radius/8",
+   "resolvedType": "FLOAT",
+   "value": 8
+  },
+  {
+   "name": "Radius/10",
+   "resolvedType": "FLOAT",
+   "value": 10
+  },
+  {
+   "name": "Radius/12",
+   "resolvedType": "FLOAT",
+   "value": 12
+  },
+  {
+   "name": "Radius/14",
+   "resolvedType": "FLOAT",
+   "value": 14
+  },
+  {
+   "name": "Radius/16",
+   "resolvedType": "FLOAT",
+   "value": 16
+  },
+  {
+   "name": "Radius/20",
+   "resolvedType": "FLOAT",
+   "value": 20
+  },
+  {
+   "name": "Radius/24",
+   "resolvedType": "FLOAT",
+   "value": 24
+  },
+  {
+   "name": "Motion/duration-fast",
+   "resolvedType": "FLOAT",
+   "value": 120
+  },
+  {
+   "name": "Motion/duration-base",
+   "resolvedType": "FLOAT",
+   "value": 240
+  },
+  {
+   "name": "Motion/duration-slow",
+   "resolvedType": "FLOAT",
+   "value": 400
+  },
+  {
+   "name": "Motion/duration-xslow",
+   "resolvedType": "FLOAT",
+   "value": 700
+  },
+  {
+   "name": "Motion/ease-out",
+   "resolvedType": "STRING",
+   "value": "cubic-bezier(0.16,1,0.3,1)"
+  },
+  {
+   "name": "Motion/ease-spring",
+   "resolvedType": "STRING",
+   "value": "cubic-bezier(0.34,1.56,0.64,1)"
+  },
+  {
+   "name": "Motion/ease-in-out",
+   "resolvedType": "STRING",
+   "value": "ease-in-out"
+  }
+ ]
+}
