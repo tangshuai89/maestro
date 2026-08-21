@@ -491,8 +491,13 @@ const SEG3 = `
 const page = figma.root.children.find(p => p.type === 'PAGE' && p.name === '03 · Screens') || figma.currentPage;
 await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
 await figma.loadFontAsync({ family: 'Inter', style: 'Semi Bold' });
+await figma.loadFontAsync({ family: 'JetBrains Mono', style: 'Regular' });
 
 const SOL = (r, g, b, a = 1) => (/** @type {SolidPaint} */ ({ type: 'SOLID', color: { r, g, b, a } }));
+const bindVar = (node, prop, varName) => {
+  const v = figma.variables.getLocalVariables().find(x => x.name === varName);
+  if (v) node.setBoundVariable(prop, v);
+};
 const varFill = (name) => {
   const vv = figma.variables.getLocalVariables().find(x => x.name === name);
   let raw = null, cur = vv, depth = 0;
@@ -534,15 +539,39 @@ const bdInst = findComp('Scene/Backdrop').createInstance();
 bdInst.name = 'backdrop';
 screen.appendChild(bdInst);
 
+// 顶部 kicker（剧场风格标签，对齐 Playing 屏 TRANSCRIBING 语言）
+// 用 1440 全宽容器 + auto-layout 居中：沙箱里 text 节点带 letterSpacing 时
+// width 读取不准确（偏差 = 中文字符数×letterSpacing），手算 x 会偏右——
+// 容器内居中是引擎排版，无缓存偏差
+const kickerRow = figma.createFrame();
+kickerRow.name = 'kicker-row';
+kickerRow.layoutMode = 'HORIZONTAL';
+kickerRow.primaryAxisAlignItems = 'CENTER';
+kickerRow.counterAxisAlignItems = 'CENTER';
+kickerRow.primaryAxisSizingMode = 'FIXED';
+kickerRow.counterAxisSizingMode = 'FIXED';
+kickerRow.resize(1440, 24);
+kickerRow.x = 0; kickerRow.y = 112;
+kickerRow.fills = [];
+screen.appendChild(kickerRow);
+const kicker = figma.createText();
+kicker.name = 'kicker';
+kicker.characters = 'SOURCE SELECT // 选择你的音源';
+kicker.fontSize = 10;
+kicker.fontName = { family: 'JetBrains Mono', style: 'Regular' };
+kicker.fills = [varFill('Color/semantic/accent')];
+kickerRow.appendChild(kicker);
+kicker.letterSpacing = (/** @type {LetterSpacing} */ ({ value: 2, unit: 'PIXELS' })); // 挂载后再设
+
 const titleBox = figma.createFrame();
 titleBox.name = 'title-box';
 titleBox.layoutMode = 'VERTICAL';
-titleBox.itemSpacing = 12;
+titleBox.itemSpacing = 10;
 titleBox.counterAxisAlignItems = 'CENTER';
 titleBox.primaryAxisSizingMode = 'AUTO';
 titleBox.counterAxisSizingMode = 'AUTO';
-titleBox.x = 0; titleBox.y = 160;
 titleBox.fills = [];
+screen.appendChild(titleBox);
 const t1 = figma.createText();
 t1.name = 'heading';
 t1.characters = '选择音乐来源';
@@ -557,40 +586,61 @@ t2.fontName = { family: 'Inter', style: 'Regular' };
 t2.fills = [DIM];
 titleBox.appendChild(t1);
 titleBox.appendChild(t2);
-screen.appendChild(titleBox);
+// 居中定位：标题/卡片组水平居中（kicker/hint 已由全宽容器引擎居中）
+titleBox.x = Math.round((1440 - titleBox.width) / 2);
+titleBox.y = 150;
+const titleY = titleBox.y;
+
+// 品牌色顶部光条色板（与 Badge/Platform 平台色一致）
+const PF = {
+  qq: varFill('Color/semantic/platform-qq'),
+  netease: varFill('Color/semantic/platform-netease'),
+  deezer: varFill('Color/semantic/platform-deezer'),
+  spotify: varFill('Color/semantic/platform-spotify'),
+};
 
 const badgeSet = findSet('Badge/Platform');
 const cards = figma.createFrame();
 cards.name = 'platform-cards';
 cards.layoutMode = 'HORIZONTAL';
-cards.itemSpacing = 32;
+cards.itemSpacing = 28;
 cards.counterAxisAlignItems = 'CENTER';
 cards.primaryAxisSizingMode = 'AUTO';
 cards.counterAxisSizingMode = 'AUTO';
-cards.x = 0; cards.y = 340;
 cards.fills = [];
 screen.appendChild(cards);
 const PLATFORMS = [
-  ['qq', 'QQ 音乐', '高品质音源'],
-  ['netease', '网易云', '华语曲库'],
-  ['deezer', 'Deezer', '国际曲库'],
-  ['spotify', 'Spotify', '海外曲库'],
+  ['qq', 'QQ 音乐', '高品质音源', 'SQ 无损 · 华语全覆盖'],
+  ['netease', '网易云', '华语曲库', '320K 高码率 · 歌单生态'],
+  ['deezer', 'Deezer', '国际曲库', 'FLAC 无损 · 全球电台'],
+  ['spotify', 'Spotify', '海外曲库', 'AAC 320 · 推荐算法'],
 ];
-for (const [pf, name, desc] of PLATFORMS) {
+for (const [pf, name, desc, meta] of PLATFORMS) {
   const card = figma.createFrame();
   card.name = 'card-' + pf;
   card.layoutMode = 'VERTICAL';
-  card.itemSpacing = 16;
+  card.itemSpacing = 14;
   card.counterAxisAlignItems = 'CENTER';
   card.primaryAxisSizingMode = 'FIXED';
   card.counterAxisSizingMode = 'FIXED';
-  card.resize(200, 220);
-  card.cornerRadius = 12;
+  card.resize(220, 280);
+  card.cornerRadius = 16;
+  bindVar(card, 'cornerRadius', 'Radius/16');
   card.fills = [GLASS_FILL];
   card.strokes = [GLASS_STROKE];
   card.strokeWeight = 1;
-  card.paddingTop = 36;
-  const badgeInst = findVariant(badgeSet, { platform: pf, state: 'idle' }).createInstance();
+  card.paddingTop = 34;
+  card.clipsContent = true;
+  // 品牌色顶部光条（3px，随平台色亮起——剧场霓虹识别）
+  const bar = figma.createFrame();
+  bar.name = 'accent-bar';
+  bar.resize(220, 3);
+  bar.x = 0; bar.y = 0;
+  bar.fills = [PF[pf]];
+  bar.cornerRadius = 2;
+  bindVar(bar, 'cornerRadius', 'Radius/8');
+  card.appendChild(bar);
+  const badgeInst = findVariant(badgeSet, { platform: pf, state: 'active' }).createInstance();
   badgeInst.name = 'badge';
   card.appendChild(badgeInst);
   const n1 = figma.createText();
@@ -607,9 +657,50 @@ for (const [pf, name, desc] of PLATFORMS) {
   n2.fills = [DIM];
   card.appendChild(n1);
   card.appendChild(n2);
+  // 平台规格（mono 小字）
+  const n3 = figma.createText();
+  n3.name = 'meta';
+  n3.characters = meta;
+  n3.fontSize = 10;
+  n3.fontName = { family: 'JetBrains Mono', style: 'Regular' };
+  n3.fills = [DIM];
+  card.appendChild(n3);
+  // 底部「进入」提示（hover/点击由代码实现，设计稿标注交互语义）
+  const n4 = figma.createText();
+  n4.name = 'enter';
+  n4.characters = 'ENTER →';
+  n4.fontSize = 10;
+  n4.fontName = { family: 'JetBrains Mono', style: 'Regular' };
+  n4.letterSpacing = (/** @type {LetterSpacing} */ ({ value: 1, unit: 'PIXELS' }));
+  n4.fills = [varFill('Color/semantic/accent')];
+  card.appendChild(n4);
   cards.appendChild(card);
   created.push(card.id);
 }
+// 卡片组水平居中（4×220 + 3×28 = 964 → x=(1440-964)/2=238）
+cards.x = Math.round((1440 - cards.width) / 2);
+cards.y = titleY + 240;
+
+// 底部操作提示（全宽容器居中，理由同 kicker）
+const hintRow = figma.createFrame();
+hintRow.name = 'hint-row';
+hintRow.layoutMode = 'HORIZONTAL';
+hintRow.primaryAxisAlignItems = 'CENTER';
+hintRow.counterAxisAlignItems = 'CENTER';
+hintRow.primaryAxisSizingMode = 'FIXED';
+hintRow.counterAxisSizingMode = 'FIXED';
+hintRow.resize(1440, 20);
+hintRow.x = 0; hintRow.y = cards.y + 344;
+hintRow.fills = [];
+screen.appendChild(hintRow);
+const hint = figma.createText();
+hint.name = 'hint';
+hint.characters = '点击卡片接入音源 · TAB 切换 · 支持多平台同时在线';
+hint.fontSize = 10;
+hint.fontName = { family: 'JetBrains Mono', style: 'Regular' };
+hint.fills = [DIM];
+hintRow.appendChild(hint);
+hint.letterSpacing = (/** @type {LetterSpacing} */ ({ value: 1, unit: 'PIXELS' })); // 挂载后再设
 return { createdNodeIds: created, screen: 'Screen/SourceSelect' };
 `;
 

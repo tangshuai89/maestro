@@ -164,7 +164,7 @@ const ringSet = figma.combineAsVariants(rs, page);
 ringSet.name = 'Ring/Sound';
 layoutRow(ringSet, 780, 780);
 placeSet(ringSet, 1540, 1100); // 声环宽度 1540，放下方空白行
-ringSet.description = 'Sound visualization rings 720×720. Variants: state=idle|playing (playing = cyan tint + outer glow). Motion: playing pulse ∞ 2.4s ease-in-out driven by playing state. Tokens: accent, glass-stroke.';
+ringSet.description = 'Sound visualization rings 720×720. Variants: state=idle|playing (playing = cyan tint + outer glow). Motion: playing pulse ∞ 2.4s ease-in-out driven by playing state；Archive 实测关键帧：240 环 480→504→480 尺寸脉动 + 透明度 0.18→0.20→0.15（300/360 环恒定尺寸、透明度微变）。Tokens: accent, glass-stroke.';
 created.push(ringSet.id);
 
 // ---- Ring/Progress：state=idle|hover|dragging（环形进度 + 时间戳） ----
@@ -182,6 +182,22 @@ for (const st of ['idle', 'hover', 'dragging']) {
   track.strokes = [SOL(1, 1, 1, 0.15)];
   track.strokeWeight = 2;
   c.appendChild(track);
+  // 流星飞线束（代码 _theater.scss th-streaks 同源，来自 Archive A 帧 progress-arc 矢量）：
+  // 裁切容器 300×324 只露出线束片段，内部矢量 360.781×454.773 青色曲线
+  // 动效：1.2s ease-in-out infinite alternate 往返扫动（translate/rotate/scale 补间），见 MOTION SPEC
+  const streaksClip = figma.createFrame();
+  streaksClip.name = 'streaks-clip';
+  streaksClip.resize(300, 324);
+  streaksClip.x = 0; streaksClip.y = 0;
+  streaksClip.fills = [];
+  streaksClip.clipsContent = true;
+  c.appendChild(streaksClip);
+  const streaks = figma.createNodeFromSvg('<svg width="360.781" height="454.773" viewBox="0 0 360.781 454.773"><path d="M1 1C199.613 2 367.224 89.2524 123.054 64.5371C422.991 168.896 447.655 356.24 141.014 200.961C414.402 447.604 275.085 575.264 39.564 293.923" fill="none" stroke="#00E5FF" stroke-width="2" stroke-linecap="round"/></svg>');
+  streaks.name = 'streaks';
+  streaks.x = 150; streaks.y = 1; // 代码 th-streaks: left 150 top 1
+  streaks.opacity = 0.5;
+  streaks.strokes = [ACCENT];
+  streaksClip.appendChild(streaks);
   // 45% 进度弧：用 SVG 路径生成矢量弧（EllipseNode 无虚线支持；原剧场稿 progress-arc 即 VECTOR）
   const arc = figma.createNodeFromSvg('<svg width="300" height="300" viewBox="0 0 300 300"><path d="M 296 150 A 146 146 0 0 1 11.15 195.12" fill="none" stroke="#00E5FF" stroke-width="2"/></svg>');
   arc.name = 'progress-arc';
@@ -190,6 +206,24 @@ for (const st of ['idle', 'hover', 'dragging']) {
   arc.strokeWeight = st === 'dragging' ? 3 : 2;
   if (st !== 'idle') arc.effects = glow(0, 0.898, 1, 0.6, 10, 2);
   c.appendChild(arc);
+  // ── Archive 三帧关键帧还原（A/B/C 三帧是同一动效的补间关键帧）──
+  // A 帧 = streaks 飞线束（上方 streaks 层，容器内 150,1）
+  // B 帧 = 收缩成弧 198°（298×298，扫出容器到 -297,1）
+  // C 帧 = 弧增长到 234°，dot 沿轨道移到 (25,234)
+  // 完整动效：飞线扫过 → 收缩成弧 → 弧增长 → 循环（1.2s ease-in-out）
+  // 以下两层为 B/C 关键帧弧线（visible=false，AI 还原时按层名+弧长参数重建）
+  const kfB = figma.createNodeFromSvg('<svg width="300" height="300" viewBox="0 0 300 300"><path d="M 296 150 A 146 146 0 1 1 11.15 104.88" fill="none" stroke="#00E5FF" stroke-width="2"/></svg>');
+  kfB.name = 'arc-kf-b'; // Archive B 帧：198° 弧（圆心 150,150 r146，从 0° 顺时针 198°）
+  kfB.x = -297; kfB.y = 1; // 扫出容器（与 A 帧 translate -447px 一致：150→-297）
+  kfB.strokes = [ACCENT];
+  kfB.visible = false;
+  c.appendChild(kfB);
+  const kfC = figma.createNodeFromSvg('<svg width="300" height="300" viewBox="0 0 300 300"><path d="M 296 150 A 146 146 0 1 1 64.18 31.9" fill="none" stroke="#00E5FF" stroke-width="2"/></svg>');
+  kfC.name = 'arc-kf-c'; // Archive C 帧：234° 弧（圆心 150,150 r146，从 0° 顺时针 234°）
+  kfC.x = -297; kfC.y = 1;
+  kfC.strokes = [ACCENT];
+  kfC.visible = false;
+  c.appendChild(kfC);
   const dotSize = st === 'idle' ? 8 : st === 'hover' ? 10 : 12;
   const dot = figma.createEllipse();
   dot.name = 'orbit-dot';
@@ -230,7 +264,7 @@ const progSet = figma.combineAsVariants(rp, page);
 progSet.name = 'Ring/Progress';
 layoutRow(progSet, 380, 420);
 placeSet(progSet, 3200, 1100);
-progSet.description = 'Circular seek progress 300×300 (arc = 45% via strokeDashes; adjust per instance). Variants: state=idle|hover|dragging (dot 8→10→12). TEXT props tCur/tTotal. Motion: hover/drag arc glow + dot scale 120/100ms. Tokens: accent, white.';
+progSet.description = 'Circular seek progress 300×300 (arc = 45% via strokeDashes; adjust per instance). Variants: state=idle|hover|dragging (dot 8→10→12). TEXT props tCur/tTotal. 内含 streaks-clip(300×324 裁切) + streaks 矢量（青色线束，代码 _theater.scss th-streaks 同源）+ 关键帧弧 arc-kf-b(198°)/arc-kf-c(234°)（visible=false）。Archive A/B/C 三帧动效：A=飞线束扫过(容器内 150,1) → B=收缩成弧 198°(扫出到 -297,1) → C=弧增长 234° + dot 移轨(25,234)，1.2s ease-in-out 循环。Motion: hover/drag arc glow + dot scale 120/100ms。Tokens: accent, white.';
 created.push(progSet.id);
 
 return { createdNodeIds: created, sets: ['Scene/Backdrop', 'Ring/Sound', 'Ring/Progress'] };
@@ -770,8 +804,8 @@ for (const { pf, letter, r, g, b } of PLATFORMS) {
     t.fontName = { family: 'Inter', style: 'Semi Bold' };
     t.fills = [PF_COLOR[pf]];
     c.appendChild(t);
-    const key = c.addComponentProperty('letter', 'TEXT', letter);
-    t.componentPropertyReferences = { characters: key };
+    // 不给 letter 建 TEXT 属性：combineAsVariants 合并同名属性默认值取第一个
+    // 变体（全部变 Q），字母是平台固定视觉（Q/N/D/S），直接写死字符
     bcomps.push(c);
     created.push(c.id);
   }
@@ -780,7 +814,7 @@ const badgeSet = figma.combineAsVariants(bcomps, page);
 badgeSet.name = 'Badge/Platform';
 layoutGrid(badgeSet, 'platform', PLATFORMS.map(p => p.pf), 'state', ['idle', 'active'], 80, 70);
 placeSet(badgeSet, 3200, 1980);
-badgeSet.description = 'Platform badge 28×28. Variants: platform=qq|netease|deezer|spotify × state=idle|active. TEXT prop letter. Tokens: platform-* semantic colors.';
+badgeSet.description = 'Platform badge 28×28. Variants: platform=qq|netease|deezer|spotify × state=idle|active. letter 为平台固定首字母（无 TEXT prop，避免变体合并默认值串位）。Tokens: platform-* semantic colors.';
 created.push(badgeSet.id);
 
 // ---- Tag/Stat：tone=cyan|purple|dim|muted|red|green × live=false|true ----

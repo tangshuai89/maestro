@@ -117,6 +117,7 @@ if (motionPage) {
     ['Core/Play', 'tap', 'scale 0.96 → 1', '100ms', 'ease-in', '-'],
     ['Core/Play', 'playing', 'ring glow pulse（循环）', '2400ms', 'ease-in-out', 'playing state'],
     ['Ring/Progress', 'hover/drag', 'arc 亮起 + dot 放大', '120/100ms', 'ease-out', 'pointer'],
+    ['Ring/Progress streaks', 'loop', 'Archive 三帧动效：A 飞线束扫过(150,1) → B 收缩成弧 198°(扫出至 -297,1) → C 弧增长 234° + dot 移轨(25,234) → 循环（代码 th-streaks 已还原 A→B 扫动部分）', '1200ms', 'ease-in-out', 'loop'],
     ['Card/Neural', 'hover', 'lift + 描边亮起', '160ms', 'cubic-bezier(.16,1,.3,1)', '-'],
     ['Button/Icon', 'hover', 'fill 亮起', '120ms', 'cubic-bezier(.16,1,.3,1)', '-'],
     ['Scene/Backdrop', 'audio', '星尘漂移（循环）', '30s', 'linear', 'audio-reactive (bass-intensity)'],
