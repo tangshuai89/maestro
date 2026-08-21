@@ -37,6 +37,13 @@
 > **Figma 限制：同一起点节点 + 同一触发只能有一条交互**——第 10 条已占用
 > transport 实例的 ON_CLICK，第 11 条同起点只剩 ON_DRAG；因此第 11 条起点
 > 改用进度环 `star-orbit` 实例（点击进度条 seek → 缓冲，语义自然）。
+> **2026-08-21 实弹确认（REST 读回 81 条，12 条目标全部命中）**：
+> - 第 2 条 Core/Play idle→pressed 实际触发为 **MOUSE_DOWN**（按下即反馈，
+>   语义等价于 tap；操作时若 Figma 只给 MOUSE_DOWN 属正常）
+> - 第 10/12 条实际从**整帧**连线（Screen 帧级触发），REST 读回同时存在
+>   controls 实例级连线——两种写法都成立，AI 都能拿到动效
+> - 02 页 Controls/Transport 内部 btn/core 的 hover/pressed 连线为
+>   motion SEG1 写入的继承连线（属预期）
 > Button/Like 的 liked/fanout 是数据态而非交互态，无需连线（MOTION SPEC 标注 tap 100ms 由代码实现）。
 
 ## 验证（连完后）
