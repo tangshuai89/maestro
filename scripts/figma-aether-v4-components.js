@@ -182,6 +182,22 @@ for (const st of ['idle', 'hover', 'dragging']) {
   track.strokes = [SOL(1, 1, 1, 0.15)];
   track.strokeWeight = 2;
   c.appendChild(track);
+  // 流星飞线束（代码 _theater.scss th-streaks 同源，来自 Archive A 帧 progress-arc 矢量）：
+  // 裁切容器 300×324 只露出线束片段，内部矢量 360.781×454.773 青色曲线
+  // 动效：1.2s ease-in-out infinite alternate 往返扫动（translate/rotate/scale 补间），见 MOTION SPEC
+  const streaksClip = figma.createFrame();
+  streaksClip.name = 'streaks-clip';
+  streaksClip.resize(300, 324);
+  streaksClip.x = 0; streaksClip.y = 0;
+  streaksClip.fills = [];
+  streaksClip.clipsContent = true;
+  c.appendChild(streaksClip);
+  const streaks = figma.createNodeFromSvg('<svg width="360.781" height="454.773" viewBox="0 0 360.781 454.773"><path d="M1 1C199.613 2 367.224 89.2524 123.054 64.5371C422.991 168.896 447.655 356.24 141.014 200.961C414.402 447.604 275.085 575.264 39.564 293.923" fill="none" stroke="#00E5FF" stroke-width="2" stroke-linecap="round"/></svg>');
+  streaks.name = 'streaks';
+  streaks.x = 150; streaks.y = 1; // 代码 th-streaks: left 150 top 1
+  streaks.opacity = 0.5;
+  streaks.strokes = [ACCENT];
+  streaksClip.appendChild(streaks);
   // 45% 进度弧：用 SVG 路径生成矢量弧（EllipseNode 无虚线支持；原剧场稿 progress-arc 即 VECTOR）
   const arc = figma.createNodeFromSvg('<svg width="300" height="300" viewBox="0 0 300 300"><path d="M 296 150 A 146 146 0 0 1 11.15 195.12" fill="none" stroke="#00E5FF" stroke-width="2"/></svg>');
   arc.name = 'progress-arc';
@@ -230,7 +246,7 @@ const progSet = figma.combineAsVariants(rp, page);
 progSet.name = 'Ring/Progress';
 layoutRow(progSet, 380, 420);
 placeSet(progSet, 3200, 1100);
-progSet.description = 'Circular seek progress 300×300 (arc = 45% via strokeDashes; adjust per instance). Variants: state=idle|hover|dragging (dot 8→10→12). TEXT props tCur/tTotal. Motion: hover/drag arc glow + dot scale 120/100ms. Tokens: accent, white.';
+progSet.description = 'Circular seek progress 300×300 (arc = 45% via strokeDashes; adjust per instance). Variants: state=idle|hover|dragging (dot 8→10→12). TEXT props tCur/tTotal. 内含 streaks-clip(300×324 裁切) + streaks 矢量（青色线束，代码 _theater.scss th-streaks 同源）。Motion: streaks 1.2s ease-in-out infinite alternate 往返扫动（translate 0→-447 / rotate 90°→180° / scale 1→0.831,0.658）；hover/drag arc glow + dot scale 120/100ms。Tokens: accent, white.';
 created.push(progSet.id);
 
 return { createdNodeIds: created, sets: ['Scene/Backdrop', 'Ring/Sound', 'Ring/Progress'] };

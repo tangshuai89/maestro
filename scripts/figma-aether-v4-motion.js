@@ -117,6 +117,7 @@ if (motionPage) {
     ['Core/Play', 'tap', 'scale 0.96 → 1', '100ms', 'ease-in', '-'],
     ['Core/Play', 'playing', 'ring glow pulse（循环）', '2400ms', 'ease-in-out', 'playing state'],
     ['Ring/Progress', 'hover/drag', 'arc 亮起 + dot 放大', '120/100ms', 'ease-out', 'pointer'],
+    ['Ring/Progress streaks', 'loop', '飞线束往返扫动（translate 0→-447 / rotate 90°→180° / scale 1→0.831,0.658）', '1200ms', 'ease-in-out alternate', 'loop（代码 th-streaks 已实现）'],
     ['Card/Neural', 'hover', 'lift + 描边亮起', '160ms', 'cubic-bezier(.16,1,.3,1)', '-'],
     ['Button/Icon', 'hover', 'fill 亮起', '120ms', 'cubic-bezier(.16,1,.3,1)', '-'],
     ['Scene/Backdrop', 'audio', '星尘漂移（循环）', '30s', 'linear', 'audio-reactive (bass-intensity)'],
