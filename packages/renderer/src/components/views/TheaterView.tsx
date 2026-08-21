@@ -265,7 +265,12 @@ export default function TheaterView(props: TheaterViewProps) {
   // 进度/时间：真实曲目用真实值，否则用演示循环
   const effTime = hasTrack ? currentTime : demo.demoTime;
   const effDuration = hasTrack ? duration : demo.demoDuration;
-  const pct = effDuration > 0 ? Math.min(100, (effTime / effDuration) * 100) : 0;
+  // pct 驱动弧长 + dot 轨道位置（Archive B→C 弧增长阶段）：
+  // 真实播放随播放进度；demo 用 demoPct（4.5s 一圈循环增长，见 useDemoLoop），
+  // 使飞线扫过（streaks）与弧增长（arc）时序联动 —— 完整还原 Archive 三帧动效
+  const pct = hasTrack
+    ? (effDuration > 0 ? Math.min(100, (effTime / effDuration) * 100) : 0)
+    : demo.demoPct;
   // 播放状态：真实曲目用真实状态，否则演示切换
   const effPlaying = hasTrack ? playing : demo.demoPlaying;
 
