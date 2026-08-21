@@ -35,6 +35,9 @@ const toCss = (e) => {
     return a >= 1 ? `#${r}${g}${b}` : `rgba(${Math.round(v.r * 255)}, ${Math.round(v.g * 255)}, ${Math.round(v.b * 255)}, ${Number(a.toFixed(3))})`;
   }
   if (e.resolvedType === 'FLOAT') return `${v}`;
+  // Motion/ease-* 是 STRING（如 cubic-bezier(0.16,1,0.3,1) / ease-in-out）——
+  // 必须裸输出，带引号会让 var(--ease-*) 在 transition/animation 里整条失效
+  if (e.name.includes('/ease-') || e.name.startsWith('ease-')) return `${v}`;
   return `"${v}"`;
 };
 const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[./]/g, '-').toLowerCase();
