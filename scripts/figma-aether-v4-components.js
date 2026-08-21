@@ -560,7 +560,6 @@ created.push(lyricSet.id);
 // ---- Core/Play：state=idle|hover|pressed|playing（能量核心播放键） ----
 clearOld('Core/Play');
 const cp = [];
-let iconKey = null; // INSTANCE_SWAP 属性只建一次（同名属性合并会丢后续变体默认值）
 for (const st of ['idle', 'hover', 'pressed', 'playing']) {
   const c = figma.createComponent();
   c.name = 'state=' + st;
@@ -595,8 +594,10 @@ for (const st of ['idle', 'hover', 'pressed', 'playing']) {
     // 默认值统一为第一个变体（idle→Icon/Play），playing 会被拉回 Play。
     // 保持实例级 override（mainComponent 天然 = Icon/Pause），视觉正确。
   } else {
-    if (!iconKey) iconKey = c.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp.id);
-    icon.componentPropertyReferences = { mainComponent: iconKey };
+    // 沙箱实证：属性必须每变体自建（addComponentProperty 返回 name#属主ID 格式键，
+    // 绑定只认属主组件自己的定义），跨变体复用同一个 key 会失败。
+    const key = c.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp.id);
+    icon.componentPropertyReferences = { mainComponent: key };
   }
   // fitIcon 必须在属性绑定之后：绑定会重置实例内 override，先调会被清掉
   fitIcon(icon, 30);
