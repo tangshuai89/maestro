@@ -46,6 +46,25 @@
 >   motion SEG1 写入的继承连线（属预期）
 > Button/Like 的 liked/fanout 是数据态而非交互态，无需连线（MOTION SPEC 标注 tap 100ms 由代码实现）。
 
+## 自动轮播动效（Archive 同款，03 页屏幕循环流转）
+
+恢复 Archive「宇宙剧场 A→B→C→A」的自动轮播：给 03 页三个播放状态屏连
+AFTER_TIMEOUT 链式循环，进入原型播放后自动流转、周而复始（与手动 12 条
+ON_CLICK 连线共存——不同触发类型互不冲突，同一节点只占一条 AFTER_TIMEOUT）。
+
+| # | 起点 | 终点 | 触发 | 间隔 | 动画 |
+|---|---|---|---|---|---|
+| A | 03/Screen/NowPlaying/Playing | 03/Screen/NowPlaying/Paused | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
+| B | 03/Screen/NowPlaying/Paused | 03/Screen/NowPlaying/Buffering | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
+| C | 03/Screen/NowPlaying/Buffering | 03/Screen/NowPlaying/Playing | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
+
+操作：选中起点屏幕帧 → Prototype 面板 → **+ 添加交互**（不是拖拽圆点）→
+Trigger 选 **After timeout**，间隔 3000ms → 动效 Smart Animate 1200ms +
+ease in-out → 目标帧选终点。三条连完形成闭环，点播放即自动轮播。
+
+> 若只想演示两屏往返（Playing↔Paused），连 A 即可；B/C 可后续补。
+> 间隔/时长可在 Prototype 面板随时改，AI 读 REST 时取到的是最终参数。
+
 ## 验证（连完后）
 
 ```bash
