@@ -770,8 +770,8 @@ for (const { pf, letter, r, g, b } of PLATFORMS) {
     t.fontName = { family: 'Inter', style: 'Semi Bold' };
     t.fills = [PF_COLOR[pf]];
     c.appendChild(t);
-    const key = c.addComponentProperty('letter', 'TEXT', letter);
-    t.componentPropertyReferences = { characters: key };
+    // 不给 letter 建 TEXT 属性：combineAsVariants 合并同名属性默认值取第一个
+    // 变体（全部变 Q），字母是平台固定视觉（Q/N/D/S），直接写死字符
     bcomps.push(c);
     created.push(c.id);
   }
@@ -780,7 +780,7 @@ const badgeSet = figma.combineAsVariants(bcomps, page);
 badgeSet.name = 'Badge/Platform';
 layoutGrid(badgeSet, 'platform', PLATFORMS.map(p => p.pf), 'state', ['idle', 'active'], 80, 70);
 placeSet(badgeSet, 3200, 1980);
-badgeSet.description = 'Platform badge 28×28. Variants: platform=qq|netease|deezer|spotify × state=idle|active. TEXT prop letter. Tokens: platform-* semantic colors.';
+badgeSet.description = 'Platform badge 28×28. Variants: platform=qq|netease|deezer|spotify × state=idle|active. letter 为平台固定首字母（无 TEXT prop，避免变体合并默认值串位）。Tokens: platform-* semantic colors.';
 created.push(badgeSet.id);
 
 // ---- Tag/Stat：tone=cyan|purple|dim|muted|red|green × live=false|true ----
