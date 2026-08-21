@@ -211,10 +211,10 @@ lyricBox.appendChild(mkLyric('next', '不曾想过退路'));
 lyricBox.appendChild(mkLyric('next', '平衡这孤独'));
 lyricBox.appendChild(mkTag('cyan', 'false', 'T: 02:14 / S: 0.82'));
 screen.appendChild(lyricBox);
-// 播放控制（左下）
+// 播放控制（左下）：x=266 使播放键中心(266+164=430)与全息封面中心(190+240)同心
 const transInst = findVariant(findSet('Controls/Transport'), { state: 'playing' }).createInstance();
 transInst.name = 'controls';
-transInst.x = 236; transInst.y = 700;
+transInst.x = 266; transInst.y = 700;
 screen.appendChild(transInst);
 // 神经推荐（右下）
 const neuralBox = figma.createFrame();
@@ -444,7 +444,7 @@ function buildScreen(name, x, coverState, ringState, transportState, extra) {
   screen.appendChild(lyricBox);
   const transInst = findVariant(findSet('Controls/Transport'), { state: transportState }).createInstance();
   transInst.name = 'controls';
-  transInst.x = 236; transInst.y = 700;
+  transInst.x = 266; transInst.y = 700; // 播放键中心与封面中心(430)同心（含红心后右移 30）
   screen.appendChild(transInst);
   const neuralBox = figma.createFrame();
   neuralBox.name = 'neural-suggestions';
@@ -751,7 +751,7 @@ function buildDegraded(name, x, opts) {
   // 播放控制
   const transInst = findVariant(findSet('Controls/Transport'), { state: 'paused' }).createInstance();
   transInst.name = 'controls';
-  transInst.x = 236; transInst.y = 700;
+  transInst.x = 266; transInst.y = 700; // 与全息封面同心（含红心后右移 30）
   screen.appendChild(transInst);
   // 神经推荐区（RecoUnconfigured 时换引导组件）
   if (opts.recoUnconfigured) {
