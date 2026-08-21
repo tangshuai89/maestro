@@ -196,12 +196,15 @@ export function buildUnifiedItems(
           cluster.find((e) => e.track.provider === p),
         ).find(Boolean)?.track ?? cluster[0].track;
       const bestSource = selectBestSource(sources);
+      // 封面抽取（跨源）：主平台可能没封面（如 QQ 搜索偶发空 albummid / 网易云 picUrl
+      // 缺失），同簇其他平台有封面就用它的——避免「AI 推荐 / 搜索结果无封面」。
+      const clusterCover = main.coverUrl || cluster.map((e) => e.track.coverUrl).find(Boolean) || '';
       items.push({
         id: `merged-${main.provider}-${main.id}`,
         title: main.title,
         artist: main.artist,
         album: main.album,
-        coverUrl: main.coverUrl,
+        coverUrl: clusterCover,
         duration: main.duration,
         sources,
         bestSource,

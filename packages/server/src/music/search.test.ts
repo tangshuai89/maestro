@@ -702,4 +702,37 @@ function makeTrack(
   console.log('✅ 16. 全部平台都锁 → 退回平台优先级（QQ 试听 best-effort）');
 }
 
-console.log('\n🎉 全部 17 个测试通过');
+// ── 9. 封面跨源抽取：main 平台无封面时取同簇其他平台的封面 ──
+{
+  const all = [
+    { track: makeTrack('qq', 'qq-001', '夜曲', '周杰伦'), platform: 'qq' },
+    {
+      track: makeTrack('deezer', 'de-001', '夜曲', '周杰伦', { coverUrl: 'https://cover.example/de.jpg' }),
+      platform: 'deezer',
+    },
+  ];
+  const deduped = dedupTracks(all);
+  const items = buildUnifiedItems(deduped, all);
+  const it = items.find((x) => x.title === '夜曲');
+  assert.ok(it, '应有"夜曲"条目');
+  assert.strictEqual(
+    it.coverUrl,
+    'https://cover.example/de.jpg',
+    'main(QQ) 无封面时应取同簇 deezer 的封面（跨源抽取）',
+  );
+  console.log('✅ 9. 封面跨源抽取');
+}
+
+// ── 10. 全平台无封面 → coverUrl 空串（留给上层兜底） ──
+{
+  const all = [
+    { track: makeTrack('qq', 'qq-002', '七里香', '周杰伦'), platform: 'qq' },
+    { track: makeTrack('netease', 'ne-002', '七里香', '周杰伦'), platform: 'netease' },
+  ];
+  const deduped = dedupTracks(all);
+  const items = buildUnifiedItems(deduped, all);
+  assert.strictEqual(items[0].coverUrl, '', '全平台无封面时应为空串');
+  console.log('✅ 10. 全平台无封面透传空串');
+}
+
+console.log('\n🎉 全部 19 个测试通过');

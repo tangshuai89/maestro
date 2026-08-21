@@ -13,3 +13,6 @@
       queueRef.loadMore + useReco loadMore；服务端 exclude 去重（reco.test #13）
 - [x] 13. 推荐质量调优 v1.1（#1~#7）：填源匹配校验 + 并行补位 + 库随机采样 +
       超额要 + session 历史去重 + prompt 强化 + 统一 normalizeKey（reco.test #14~16）
+- [x] 14. 封面抽取兜底：候选无封面 → 跨平台探测（MusicService.fetchCoverFallback）+
+      normalizeKey 缓存；合并层跨源抽取（search.util buildUnifiedItems 同簇取首个有封面）
+      ——reco.test #24/#25 + search.test #9/#10 覆盖
