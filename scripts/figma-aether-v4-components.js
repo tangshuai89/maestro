@@ -64,6 +64,15 @@ function bindVar(node, prop, varName) {
   const v = figma.variables.getLocalVariables().find(x => x.name === varName);
   if (v) node.setBoundVariable(prop, v);
 }
+// 实例 resize 不会缩放内部绝对定位的 SVG 矢量（保持 24×24 锚左上）——
+// 必须同步 resize 矢量并把锚点归零，图标才会真正居中
+function fitIcon(inst, size) {
+  inst.resize(size, size);
+  try {
+    const vec = inst.findAllWithCriteria({ types: ['VECTOR'] })[0];
+    if (vec) { vec.resize(size, size); vec.x = 0; vec.y = 0; }
+  } catch (e) { /* 实例内 override 失败时降级为仅实例 resize */ }
+}
 function layoutRow(set, colW, rowH) {
   let maxX = 0, maxY = 0;
   set.children.forEach((ch, i) => {
@@ -286,6 +295,15 @@ function placeSet(set, x, y) {
 function bindVar(node, prop, varName) {
   const v = figma.variables.getLocalVariables().find(x => x.name === varName);
   if (v) node.setBoundVariable(prop, v);
+}
+// 实例 resize 不会缩放内部绝对定位的 SVG 矢量（保持 24×24 锚左上）——
+// 必须同步 resize 矢量并把锚点归零，图标才会真正居中
+function fitIcon(inst, size) {
+  inst.resize(size, size);
+  try {
+    const vec = inst.findAllWithCriteria({ types: ['VECTOR'] })[0];
+    if (vec) { vec.resize(size, size); vec.x = 0; vec.y = 0; }
+  } catch (e) { /* 实例内 override 失败时降级为仅实例 resize */ }
 }
 function layoutRow(set, colW, rowH) {
   let maxX = 0, maxY = 0;
@@ -569,11 +587,20 @@ for (const st of ['idle', 'hover', 'pressed', 'playing']) {
   const iconComp = page.findAllWithCriteria({ types: ['COMPONENT'] }).find(n => n.name === iconName);
   const icon = iconComp.createInstance();
   icon.name = 'icon';
-  icon.resize(30, 30);
   icon.x = 36 - 15; icon.y = 36 - 15; // ring 中心 (36,36)
   c.appendChild(icon);
-  const key = c.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp.id);
-  icon.componentPropertyReferences = { mainComponent: key };
+  if (st === 'playing') {
+    // playing 变体：不绑定 INSTANCE_SWAP 属性——combineAsVariants 合并同名属性时
+    // 默认值统一为第一个变体（idle→Icon/Play），playing 会被拉回 Play。
+    // 保持实例级 override（mainComponent 天然 = Icon/Pause），视觉正确。
+  } else {
+    // 沙箱实证：属性必须每变体自建（addComponentProperty 返回 name#属主ID 格式键，
+    // 绑定只认属主组件自己的定义），跨变体复用同一个 key 会失败。
+    const key = c.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp.id);
+    icon.componentPropertyReferences = { mainComponent: key };
+  }
+  // fitIcon 必须在属性绑定之后：绑定会重置实例内 override，先调会被清掉
+  fitIcon(icon, 30);
   cp.push(c);
   created.push(c.id);
 }
@@ -642,6 +669,15 @@ function bindVar(node, prop, varName) {
   const v = figma.variables.getLocalVariables().find(x => x.name === varName);
   if (v) node.setBoundVariable(prop, v);
 }
+// 实例 resize 不会缩放内部绝对定位的 SVG 矢量（保持 24×24 锚左上）——
+// 必须同步 resize 矢量并把锚点归零，图标才会真正居中
+function fitIcon(inst, size) {
+  inst.resize(size, size);
+  try {
+    const vec = inst.findAllWithCriteria({ types: ['VECTOR'] })[0];
+    if (vec) { vec.resize(size, size); vec.x = 0; vec.y = 0; }
+  } catch (e) { /* 实例内 override 失败时降级为仅实例 resize */ }
+}
 function layoutRow(set, colW, rowH) {
   let maxX = 0, maxY = 0;
   set.children.forEach((ch, i) => {
@@ -680,10 +716,11 @@ for (const { sz, d, fs } of SIZES) {
     const iconComp = page.findAllWithCriteria({ types: ['COMPONENT'] }).find(n => n.name === 'Icon/Play');
     const icon = iconComp.createInstance();
     icon.name = 'icon';
-    icon.resize(fs, fs);
     c.appendChild(icon);
     const key = c.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp.id);
     icon.componentPropertyReferences = { mainComponent: key };
+    // fitIcon 必须在属性绑定之后（绑定会重置实例内 override）
+    fitIcon(icon, fs);
     comps.push(c);
     created.push(c.id);
   }
@@ -860,6 +897,15 @@ function bindVar(node, prop, varName) {
   const v = figma.variables.getLocalVariables().find(x => x.name === varName);
   if (v) node.setBoundVariable(prop, v);
 }
+// 实例 resize 不会缩放内部绝对定位的 SVG 矢量（保持 24×24 锚左上）——
+// 必须同步 resize 矢量并把锚点归零，图标才会真正居中
+function fitIcon(inst, size) {
+  inst.resize(size, size);
+  try {
+    const vec = inst.findAllWithCriteria({ types: ['VECTOR'] })[0];
+    if (vec) { vec.resize(size, size); vec.x = 0; vec.y = 0; }
+  } catch (e) { /* 实例内 override 失败时降级为仅实例 resize */ }
+}
 function layoutRow(set, colW, rowH) {
   let maxX = 0, maxY = 0;
   set.children.forEach((ch, i) => {
@@ -899,8 +945,7 @@ for (const st of ['default', 'hover']) {
   art.fills = [ART_GRADIENT];
   art.cornerRadius = 8;
   bindVar(art, 'cornerRadius', 'Radius/8');
-  // 推荐卡封面图片挂载点（AI 还原时替换为封面 URL 图片；渐变 + 字母为占位）
-  art.description = '推荐卡封面图片挂载点（AI 还原时替换为封面 URL 图片；渐变占位，缺失时保留）';
+  // 推荐卡封面图片挂载点语义写在组件集 description（沙箱不支持节点级 description）
   c.appendChild(art);
   const meta = figma.createFrame();
   meta.name = 'meta';
@@ -1036,13 +1081,13 @@ for (const st of LIKE_STATES) {
   if (liked) c.effects = glow(1, 0.231, 0.361, 0.4, 10, 1);
   const icon = heartIconComp.createInstance();
   icon.name = 'icon';
-  icon.resize(18, 18);
   if (liked) {
     // liked 态：实例内覆盖 heart 描边为红（Icon/Heart 默认白）
     const vec = icon.findAllWithCriteria({ types: ['VECTOR'] })[0];
     if (vec) vec.strokes = [SOL(1, 0.231, 0.361)];
   }
   c.appendChild(icon);
+  fitIcon(icon, 18);
   // fan-out 徽章（右上角，fanOutCount=已同步平台数 0-4；非 fanout 变体隐藏但属性一致）
   const badge = figma.createFrame();
   badge.name = 'fanout-badge';

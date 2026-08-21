@@ -74,6 +74,16 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
 5. **`PageNode` 无 index 属性**：重排页面用 `figma.root.insertChild(target, page)`。
 6. **interactions 无法通过插件 API 写入**（COMPONENT/FRAME/INSTANCE 均无该属性，平台限制）：
    原型连线只能在 Figma UI 原型模式手动完成（见「完成后」节清单）。
+7. **INSTANCE_SWAP 属性必须每变体自建**（2026-08 实弹实证）：`addComponentProperty` 返回
+   `name#属主ID` 格式的 key，`componentPropertyReferences` 绑定只认**属主组件自己的定义**——
+   跨变体复用同一个 key 会静默失败（该变体不生效）。同名属性由 `combineAsVariants` 合并，
+   合并后默认值统一取**第一个变体**的值；因此需要"变体间不同默认值"时（如 Core/Play 的
+   playing→Icon/Pause），**不要绑定属性**，用实例级 override（`createInstance` 时直接选
+   对应组件，mainComponent 天然指向它），其余变体各自 `addComponentProperty` + 绑定。
+8. **实例内矢量不随实例 resize 缩放**（已修复）：图标组件用 auto-layout 容器（FIXED 尺寸 +
+   CENTER/CENTER）+ SVG 根节点 `layoutSizingHorizontal/Vertical='FILL'`（先 appendChild 再设
+   FILL），实例 resize 时容器缩放、矢量等比跟随，天然居中。旧方案（绝对定位矢量 + 脚本
+   fitIcon 手动 resize 内部矢量）在属性绑定后会被重置，弃用。
 
 ## 执行注意（官方 use_figma 规则，已固化到 smoke 校验）
 

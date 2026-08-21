@@ -46,9 +46,18 @@ let x = 40, y = 2300; // 图标放在组件集下方空白区
 for (const [name, svg, desc] of ICONS) {
   const comp = figma.createComponent();
   comp.name = name;
-  const vec = figma.createNodeFromSvg(svg);
-  comp.appendChild(vec);
   comp.resize(24, 24);
+  // auto-layout 容器 + 矢量 FILL：实例 resize 时容器缩放、矢量跟随填满——
+  // 绝对定位矢量不随容器缩放（导致图标锚左上不居中），FILL 是正确姿势
+  comp.layoutMode = 'HORIZONTAL';
+  comp.primaryAxisSizingMode = 'FIXED';
+  comp.counterAxisSizingMode = 'FIXED';
+  comp.primaryAxisAlignItems = 'CENTER';
+  comp.counterAxisAlignItems = 'CENTER';
+  const vec = figma.createNodeFromSvg(svg);
+  comp.appendChild(vec); // 先挂到 auto-layout 容器，再设 FILL（沙箱规则）
+  vec.layoutSizingHorizontal = 'FILL';
+  vec.layoutSizingVertical = 'FILL';
   // 描边重绑 TEXT_MAIN（变量绑定）
   const vector = comp.findAllWithCriteria({ types: ['VECTOR'] })[0] || vec;
   vector.strokes = [TEXT_MAIN];
