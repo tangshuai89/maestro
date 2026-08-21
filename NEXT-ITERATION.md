@@ -6,11 +6,17 @@
 ## 当前状态（基线）
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）
-+ **版本标签 + 别名表合并**（PR #52：castLabs fork v31.7.7→v43.2.0+wvcus、
-QA 全绿、80+ 个测试）+ **WPS 诊断 + 设备 404 重试 + WPS 优先 Spotify 源 + EME 探测**
-（PR #53）均已合入 `master` / `fix/fanout`。四大平台能力**端到端可用**：
-登录、搜索、radio、跨平台 match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、
-visionOS 风 Bento UI、Spotify WPS 路径完整。
++ **版本标签 + 别名表合并**（PR #52：castLabs fork v31.7.7→v43.2.0+wvcus、QA 全绿、
+80+ 个测试）+ **WPS 诊断 + 设备 404 重试 + WPS 优先 Spotify 源 + EME 探测**（PR #53）
++ **❤ 角标按歌数显示**（PR #54：慢 discover 时 ❤ 计数仍正确）+ **红心合并修复 +
+艺人/歌名归一 + 松散匹配收紧**（PR #55）+ **AETHER 剧场视图**（PR #56：Figma-driven
+酸性赛博宇宙风主界面，替换原 visionOS Bento 玻璃风；新增 `.superdesign/` 简报 +
+`scripts/figma-aether-v4-*.mjs` 构建脚本 + `.mcp.json` figma-remote 通道 +
+`docs/aether-theater-v4-spec.md` + `docs/figma-driven-frontend.md`）+ **歌词解析修复**
+（`d014cf4`：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 白盒覆盖）
+均已合入 `master` / `fix/fanout`。四大平台能力**端到端可用**：登录、搜索、radio、
+跨平台 match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、**AETHER 剧场主界面**、
+Spotify WPS 路径完整。
 
 **已知阻塞**：Spotify Premium 全曲播放卡在 **Widevine license server 500**——
 castLabs fork 的免费 `+wvcus` 构建是 **dev VMP 签名**（README 原话：
@@ -287,13 +293,60 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 - **依赖**：与 #1 打包（`specs/packaging`）一起做，图标资源同时进 electron-builder 配置。
 - **估时**：1 天
 
+### 6.5 AETHER 剧场视图 + Figma 驱动设计管线 — ✅ **已交付（PR #56，2026-08-20）**
+
+> **现状**：visionOS Bento 玻璃风虽然「看得见」，但歌词 + 卡片 + 网格的组合没有把
+> "四个平台 / 一份心情"的产品张力立起来。PR #56 用 AETHER 系列设计稿（`.superdesign/`
+> A/B 草稿 → Figma prototype `FtbRZXvzlCp4Sq9e322cQQ`）重做了主界面——1440×900 设计
+> 画布 + `transform: scale` 整体等比缩放（窗口拖动不歪斜），全息封面轨道环 + 歌词
+> 流 + 能量核心播放键 + 紫/青/绿星云背景，配 prefers-reduced-motion 降级。
+
+- **Spec / 设计稿**：
+  - `docs/aether-theater-v4-spec.md` — 剧场稿 AI 驱动重建规格（页面结构 / 组件清单 /
+    MOTION SPEC / 审计期望）
+  - `docs/figma-driven-frontend.md` — Figma 驱动前端改造方案（4 页分层 + 变量别名链 +
+    组件变体 + MOTION SPEC；目标是让 Figma 设计稿 AI 可消费）
+  - `.superdesign/design-system.md` — 设计简报（中立项）
+  - `.superdesign/design-{A,B}.html` + `shot-{A,B}*.png` — A/B 草稿
+- **构建 / 审计脚本**（`scripts/`）：
+  - `figma-aether-v4-foundations.js` · `-components.js` · `-screens.js` ·
+    `-motion.js` · `-icons.js` · `-cleanup.js` · `-audit.mjs` · `-snapshot.js` ·
+    `-smoke.mjs` · `-typecheck.mjs` · `figma-v4-build-prompt.md` · `figma-v4-command.md`
+- **CI / MCP**：`.mcp.json` 启用官方 `figma-remote` MCP（AI 经此直接消费 / 校对 Figma）
+- **代码侧**：
+  - `packages/renderer/src/components/views/TheaterView.tsx`（502 行）— 主界面
+  - `packages/renderer/src/styles/components/_theater.scss`（912 行）— 剧场样式
+  - `packages/renderer/src/styles/components/_app-shell.scss` 加 `.theater-mode`
+    切换：剧场视图全屏 fixed，清掉旧 Bento 网格；非剧场态继续走 glass 卡片
+  - `App.tsx` 直接挂 `<TheaterView/>`（Bento 网格路径保留在 SCSS 注释里，便于回退）
+  - 字体换成 Inter / JetBrains Mono / Noto Sans SC
+- **验收**：
+  - [x] 1440×900 设计画布 + 任意窗口尺寸下 transform:scale 等比缩放（含动效）
+  - [x] 全息封面行星系统（轨道环 + 12 刻度 + 扫描光弧 + 星轨进度环可点击 seek）
+  - [x] 歌词流（当前行巨大发光 + 前后行渐隐，无玻璃底/边框）
+  - [x] 能量核心播放键（径向渐变 + 双层辉光 + ▶/⏸ 切换）
+  - [x] DeepSeek 推荐卡（无边框无背景，渐变卡面）+ 顶部 HUD
+  - [x] 星云背景 + 星尘漂移 + 地平线（带呼吸动效）
+  - [x] demo 模式自动循环（歌词/进度/播放键）——复刻 Figma prototype 的 A→B→C
+  - [x] `prefers-reduced-motion` 降级（动画时长逐类恢复，不被全局 `1ms` 压掉）
+- **不在本节范围**：
+  - A/B 草稿里"卡通怪兽 / 像素 RPG"那一支被设计评审否掉，不进 `.superdesign/init/`；
+    评审意见已落 `.superdesign/design-system.md` 顶部
+  - Figma 商业 license / 团队 seat 管理 —— 个人开发足够
+- **下一步衔接**：
+  - 设计稿成为 AI 可消费源（变量绑定 + 组件变体 + MOTION SPEC）后，下一轮视觉迭代
+    可以走"改 Figma → `figma-remote` MCP 拉 diff → PR 自动覆盖 SCSS + tsx"路径
+  - 与 #5 Settings、#6.3 Lite 模式：Lite 模式**复用** TheaterView 的 ✨ 入口接
+    `reco-deepseek`，不进 Settings
+
 ---
 
 ## 7. 播放体验 & AI 深化（2026-07-13 竞品分析新增）
 
 > 来自一轮竞品扫描（MusicFree / 洛雪 lx-music / Listen1 / YesPlayMusic / Feishin /
-> Spotify AI DJ / Apple AutoMix）。结论：Maestro 在 **AI 推荐 + 跨平台 ❤ 同步 + Bento UI**
-> 上已领先同类开源播放器；缺的是老牌桌面播放器的"基本功"（音效/桌面歌词/桌面集成）。
+> Spotify AI DJ / Apple AutoMix）。结论：Maestro 在 **AI 推荐 + 跨平台 ❤ 同步 +
+> AETHER 剧场主界面** 上已领先同类开源播放器；缺的是老牌桌面播放器的"基本功"
+> （音效/桌面歌词/桌面集成）。
 > 本章前三项补基本功，7.4 深化 AI 护城河。详细分析只在 Notion 维护（个人重要，本地不留副本）→ https://app.notion.com/p/musicbox-2026-07-39c9be628711800b86f1daff4e05ad6b
 
 ### 7.1 均衡器 EQ + 交叉淡入淡出 + ReplayGain 音量均衡 — **未开始**
@@ -400,6 +453,11 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 > - ✅ **v2.2 调试链**（PR #53）：`?wpsDebug=1` 日志 + 设备 404 退避重试 + WPS 优先 Spotify 源 + EME 探测——定位到 **license 500** 是 castLabs dev VMP 签名被 Spotify 生产 license server 拒
 > - ✅ #3.1 加密备份 + 每日自动备份 + Electron 端 STORAGE_DIR 修正
 > - ✅ #6.1 红心点播核实（无需改动）
+> - ✅ **PR #54** ❤ 角标按歌数（detect 等 discover 落定 + 同曲兄弟版本并账）
+> - ✅ **PR #55** 红心合并修复 + 艺人/歌名归一 + 松散匹配收紧（`music.service` `mergeLibrary` 链路）
+> - ✅ **PR #56 AETHER 剧场视图**：替换 visionOS Bento 主界面（详见下 #6.5 节）
+> - ✅ **歌词解析修复**（`d014cf4`）：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 覆盖
+> - ✅ `.codex/config.toml` + `.opencode/command` 模板 + `.superdesign/` 设计简报 + Figma 驱动管线落档
 >
 > **不在本期范围**：
 > - 6.x 全部不再做独立 PR（6.2 并入 #5、6.3 单做、6.4 已合、6.1 已合）

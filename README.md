@@ -11,12 +11,14 @@
 
 Built with **Electron + React + NestJS** as a desktop-first client.
 
-> 🟢 **Phase 0–5 done; Phase 6 (frontend refactor + packaging) shipping.**
+> 🟢 **Phase 0–6 done; Phase 7 (AETHER Theater + production packaging) shipping.**
 > All four platform adapters, the unified search, the cross-platform
 > match engine, the importable unified library, DeepSeek recommendations,
-> heart fan-out, the visionOS-style Bento glass UI, Spotify OAuth PKCE
-> with heart-write-back, and Premium full-track playback (via Web
-> Playback SDK + Widevine, run on the castLabs Electron fork) are
+> heart fan-out, the **AETHER Theater view** (酸性赛博宇宙剧场 — 1440×900
+> holographic orbit cover + lyric stream + energy-core transport + nebula
+> backdrop, Figma-driven via the official `figma-remote` MCP), Spotify
+> OAuth PKCE with heart-write-back, and Premium full-track playback (via
+> Web Playback SDK + Widevine, run on the castLabs Electron fork) are
 > wired up end-to-end in dev. **Premium full-track is currently blocked
 > at `POST /v1/widevine-license/v1/audio/license 500`** — the castLabs fork
 > is dev VMP-signed and Spotify's production license server rejects it.
@@ -99,16 +101,17 @@ Legend: ✅ done · 🚧 partial / in progress · 📋 planned
 | Multi-source player shell (Electron / React / Nest) | ✅ |
 | Per-platform login & session persistence | ✅ |
 | Server-side audio proxy (URLs never reach the UI) | ✅ |
-| **VisionOS-style Bento glass UI** (cover-driven accent, bass-reactive breathing, lyrics panel) | ✅ |
+| **AETHER Theater view** (1440×900 holographic orbit cover + lyric stream + energy-core transport + nebula backdrop, Figma-driven) | ✅ (PR #56) |
 | Light / dark / system theme | ✅ |
 | **Unified multi-source search & playback fallback** | ✅ |
-| **Cross-platform track matching** (ISRC + fuzzy title/artist/duration) | ✅ |
-| **Unified liked-songs library** (import + de-dup) | ✅ |
+| **Cross-platform track matching** (ISRC + fuzzy title/artist/duration; artist aliases bridged via `@maestro/common`) | ✅ |
+| **Unified liked-songs library** (import + de-dup; badge counts aligned end-to-end via shared normalizer) | ✅ |
 | **DeepSeek BYO-key AI recommendations** | ✅ |
 | **Heart fan-out to all licensed platforms** | ✅ |
 | **Spotify adapter** (OAuth PKCE + read + ❤ write-back + WPS full-track for Premium) | ⚠️ dev done · **license 500** in prod |
 | Frontend architecture: CSS/tsx 解耦 + SCSS 7-1 + 拆巨石 | ✅ (PR #13) |
 | **castLabs Electron fork** (Widevine CDM + dev VMP — **prod VMP via EVS** required) | ✅ (PR #39) / upgraded v31→v43 (PR #52) |
+| **Figma-driven design pipeline** (`.superdesign/` brief → `scripts/figma-aether-v4-*.mjs` build → `figma-remote` MCP audit → PR #56) | ✅ (PR #56) |
 | **Production packaging** (NestJS sidecar + prod API base + **Apple Dev + castLabs EVS VMP signing**) | 🚧 in progress |
 
 **Rough completion: ~85%.** The defining product features (unified search,
@@ -172,35 +175,59 @@ and liked/disliked state persist to `packages/server/.storage/state.json`
 packages/
   electron/   Electron main process
               src/main.ts, src/preload.ts, src/recorder.ts
-  renderer/   React front-end (UI, player, source switcher, search)
+              + castLabs fork (v43.2.0+wvcus) for Widevine CDM + VMP signing
+  renderer/   React front-end
               src/
-                App.tsx                  composition layer
+                App.tsx                  composition layer (mounts <TheaterView/>)
                 main.tsx                 entry
                 api.ts                   data layer
-                hooks/                   8 hooks (usePlayer owns the audio core)
-                components/              19 components
-                  common/   Modal · ErrorPanel
-                  layout/   Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
-                  player/   CoverCard · NowPlayingCard · LyricsCard · LyricsPanel
-                            ProgressBar · VolumeControl · VolumeIcon · TransportBar
-                  search/   SearchPanel · SourceChip
-                  modals/   NeteaseCookieModal · RecoKeyModal
+                hooks/                   8 hooks (usePlayer owns the audio core,
+                                          useSpotifyWpsPlayer for Premium 全曲)
+                components/
+                  common/     Modal · ErrorPanel
+                  layout/     Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
+                  player/     CoverCard · NowPlayingCard · LyricsCard · LyricsPanel
+                              ProgressBar · VolumeControl · VolumeIcon · TransportBar
+                  search/     SearchPanel · SourceChip
+                  modals/     NeteaseCookieModal · RecoKeyModal
+                              LikedLibraryModal · SettingsModal
                   source-select/SourceSelect
-                lib/         format · storage · coverColor
-                styles/      main.scss + 7-1 partials
+                  views/      TheaterView       ← AETHER 剧场主界面（PR #56）
+                lib/         format · storage · coverColor · lyrics cache
+                              · likedCache · spotify-wps · debug (wpsLog/Error)
+                styles/      main.scss + SCSS 7-1 partials
+                              components/_theater.scss (剧场视图样式，~900 行)
+                              components/_app-shell.scss (含 .theater-mode 切换)
   server/     NestJS back-end
               src/
-                common/   config · storage · session · provider registry · timeout
+                common/   config · storage · session · provider registry
+                          · timeout (withTimeout, 5s 单平台) · lyrics
+                          · normalizer (fuzzyKey/stripFeatTags/cjkUnify,
+                            与 renderer groupLibraryItems 共用)
                 auth/     auth controller + QQ / NetEase / Spotify strategies
                 music/    music controller + 4 providers + audio / cover proxy
-                          + netease-crypto (weapi AES/RSA)
-                library/  liked-songs import + unified library
-                match/    cross-platform track resolution
+                          + netease-crypto (weapi AES/RSA) + 策展别名表
+                          + library-import + lyrics aggregate + WPS source picker
+                library/  liked-songs import + unified library (read / write)
+                match/    cross-platform track resolution (ISRC + fuzzy)
                 reco/     DeepSeek recommendation engine
                 like/     heart fan-out
-specs/        Phase-level spec files (one per P0–P5 + packaging)
+  common/     @maestro/common — 跨包类型 / normalizer / artistAlias / 接口
+specs/        Phase-level spec files (one per P0–P6 + packaging + cross-cutting)
               + tasks.md under each
-.env.example  Dev env vars (all optional, sensible defaults)
+
+# Tooling & design pipeline
+.mcp.json          figma-remote MCP（AI 可读 / 写 Figma 设计稿）
+.codex/            Codex CLI 配置 (config.toml)
+.opencode/         OpenCode 命令模板 + node_modules
+.superdesign/      设计简报 + 设计稿（A/B 草稿 HTML + PNG） — AETHER 视觉来源
+docs/              阶段性长文档：aether-theater-v4-spec.md · figma-driven-frontend.md
+                   · audit-2026-07-30.md · ISSUES.md · interview-questions-2026.md
+scripts/           test.sh · lint.sh · figma-aether-v4-{foundations,components,
+                   screens,motion,icons,cleanup,audit,snapshot,smoke,typecheck}.mjs
+                   · final-merge · export-qq-artists · audit-liked · 等等
+
+.env.example       Dev env vars (all optional, sensible defaults)
 ```
 
 ---
