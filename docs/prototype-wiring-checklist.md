@@ -29,11 +29,14 @@
 | 8 | 02/Lyrics/Line `state=prev` | 02/Lyrics/Line `state=current` | ON_CLICK | 240ms | cubic-bezier(.16,1,.3,1) |
 | 9 | 02/Lyrics/Line `state=current` | 02/Lyrics/Line `state=next` | ON_CLICK | 240ms | cubic-bezier(.16,1,.3,1) |
 | 10 | 03/Screen/NowPlaying/Playing（transport `controls` 实例） | 03/Screen/NowPlaying/Paused | ON_CLICK | 200ms | ease-out |
-| 11 | 03/Screen/NowPlaying/Playing（transport `controls` 实例） | 03/Screen/NowPlaying/Buffering | ON_CLICK | 200ms | ease-out |
+| 11 | 03/Screen/NowPlaying/Playing（进度环 `star-orbit` 实例） | 03/Screen/NowPlaying/Buffering | ON_CLICK | 200ms | ease-out |
 | 12 | 03/Screen/SourceSelect（任意推荐卡 `suggestion-card` 实例） | 03/Screen/NowPlaying/Playing | ON_CLICK | 240ms | ease-out |
 
 > 说明：条目 1-9 在 02 · Components 页组件集上连（组件集连线会被所有实例继承）；
 > 条目 10-12 在 03 · Screens 页屏幕帧上连（触发元素用屏幕内实例）。
+> **Figma 限制：同一起点节点 + 同一触发只能有一条交互**——第 10 条已占用
+> transport 实例的 ON_CLICK，第 11 条同起点只剩 ON_DRAG；因此第 11 条起点
+> 改用进度环 `star-orbit` 实例（点击进度条 seek → 缓冲，语义自然）。
 > Button/Like 的 liked/fanout 是数据态而非交互态，无需连线（MOTION SPEC 标注 tap 100ms 由代码实现）。
 
 ## 验证（连完后）
