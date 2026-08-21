@@ -449,7 +449,44 @@ void (async () => {
     console.log('✅ 23. durationPenalty: 长 live 排前被压后，studio 优先');
   }
 
-  console.log('\n🎉 全部 23 个测试通过');
+
+// ── 24. 封面兜底：候选无封面 → 跨平台抽取 + 缓存 ──
+{
+  const music = {
+    getLibrary: () => null,
+    searchUnified: async () => ({
+      items: [
+        { title: '晴天', artist: '周杰伦', album: '', coverUrl: '', duration: 269, bestSource: 'qq', sources: [] },
+      ],
+    }),
+    fetchCoverFallback: async () => 'https://cover.example/sunny.jpg',
+  };
+  const svc2 = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+  const item = await (svc2 as any).searchAndMatch({}, { title: '晴天', artist: '周杰伦', reason: '' });
+  assert.ok(item, '应匹配到晴天');
+  assert.strictEqual(
+    item.coverUrl,
+    'https://cover.example/sunny.jpg',
+    '候选无封面时应从平台抽取封面（fetchCoverFallback）',
+  );
+  console.log('✅ 24. 封面兜底：跨平台抽取');
+}
+
+// ── 25. 封面缓存：同歌不重复探测 ──
+{
+  let calls = 0;
+  const music = {
+    getLibrary: () => null,
+    fetchCoverFallback: async () => { calls++; return 'https://cover.example/x.jpg'; },
+  };
+  const svc3 = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+  await (svc3 as any).fetchCoverCached({}, { title: '晴天', artist: '周杰伦' });
+  await (svc3 as any).fetchCoverCached({}, { title: '晴天', artist: '周杰伦' });
+  assert.strictEqual(calls, 1, '缓存命中后不再跨平台探测');
+  console.log('✅ 25. 封面缓存');
+}
+
+  console.log('\n🎉 全部 25 个测试通过');
 })().catch((err) => {
   console.error('❌ reco.test 失败:', err);
   process.exit(1);

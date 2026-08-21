@@ -589,6 +589,23 @@ export class MusicService {
     return { q: kw, total, page: safePage, pageSize: effectivePageSize, items: paged };
   }
 
+  /**
+   * 封面抽取兜底（reco 推荐用）：为"搜索无封面"的歌跨平台探测封面。
+   * 并行查各平台（单平台失败/超时不阻塞），取首个有 coverUrl 的 track。
+   * 全失败返回空串——调用方保留占位图。
+   */
+  async fetchCoverFallback(session: Session, keyword: string): Promise<string> {
+    const results = await Promise.all(
+      MUSIC_PROVIDERS.map((p) => this.searchOneProvider(session, p, keyword)),
+    );
+    for (const r of results) {
+      for (const t of r.tracks) {
+        if (t.coverUrl) return t.coverUrl;
+      }
+    }
+    return '';
+  }
+
   /** 查单个平台，带 5 秒超时。失败返回空 track + error。 */
   private async searchOneProvider(
     session: Session,

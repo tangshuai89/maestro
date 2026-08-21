@@ -670,8 +670,18 @@ export class RecoService {
       // 最优仍是坏版本（DJ/remix/伴奏…）或时长离谱且没被豁免 → 丢弃，
       // 换一首正常歌。PEN_BAD 阈值同时覆盖 VERSION_BAD 和 DURATION_BAD。
       if (best.pen >= RecoService.PEN_BAD) return null;
+      // 封面兜底（AI 推荐易缺封面）：① 合并时已跨源抽取（search.util）；
+      // ② 候选里其他版本有封面就用；③ 仍无 → 跨平台探测 + 缓存。
+      let cover = best.it.coverUrl;
+      if (!cover) {
+        cover = candidates.find((c) => c.coverUrl)?.coverUrl ?? '';
+      }
+      if (!cover) {
+        cover = await this.fetchCoverCached(session, r);
+      }
       return {
         ...best.it,
+        ...(cover ? { coverUrl: cover } : {}),
         // reason 塞进 album 字段是 hack，UI 在 source 描述里看。
         album: r.reason ? `${best.it.album} · ${r.reason}` : best.it.album,
       };
@@ -679,6 +689,31 @@ export class RecoService {
       this.logger.warn(`reco fill failed for "${q}": ${(err as Error).message}`);
       return null;
     }
+  }
+
+  /** 封面探测缓存：normalizeKey → coverUrl（上限 300，防膨胀）。 */
+  private coverCache = new Map<string, string>();
+
+  /**
+   * 无封面时跨平台抽取：调 MusicService.fetchCoverFallback（各平台并行探测，
+   * 取首个有封面的 track），按 normalizeKey 缓存避免翻页重复请求。
+   */
+  private async fetchCoverCached(session: Session, r: RecoRawItem): Promise<string> {
+    const key = normalizeKey(r.title, r.artist);
+    const hit = this.coverCache.get(key);
+    if (hit !== undefined) return hit;
+    let cover = '';
+    try {
+      cover = await this.musicService.fetchCoverFallback(
+        session,
+        `${r.title} ${r.artist}`,
+      );
+    } catch (err) {
+      this.logger.warn(`cover fallback failed for "${r.title}": ${(err as Error).message}`);
+    }
+    if (this.coverCache.size > 300) this.coverCache.clear();
+    this.coverCache.set(key, cover);
+    return cover;
   }
 
   /** 宽松匹配：歌名双向包含（"感電" vs "感電 (…)"）+ 歌手双向包含（放宽 feat/
