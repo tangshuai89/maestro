@@ -30,6 +30,10 @@ import {
   stripParensContent,
   stripTrailingMeta,
 } from '@maestro/common';
+// 音译佐证：跨脚本艺人（Spotify 罗马音 vs QQ/网易云 汉字/假名）的判等。
+// mergeCrossScript（库导入合并）与 searchEquivalent（搜索匹配）共用同一套
+// 音译逻辑，避免库导入对跨脚本艺人「合并不上」而搜索却「能匹配」的口径分裂。
+import { artistTransliterationMatch } from './translit';
 export {
   artistLooseMatch,
   cjkUnify,
@@ -215,15 +219,22 @@ export function buildUnifiedItems(
 }
 
 /**
- * 两个 key（歌名 / 艺人）是否属于不同文字系统：一方纯 CJK（无拉丁字母）、
+ * 两个 key（歌名 / 艺人）是否属于不同文字系统：一方纯 CJK（含假名）、
  * 另一方纯拉丁字母（无 CJK）。用来在 library 合并阶段把「横顔」和「Yokogao」
  * 这类 Spotify 罗马音与 QQ/网易云日语原文的对齐处理掉。
+ *
+ * ⚠️ 假名（平/片假名，U+3040-U+30FF）也算「CJK 侧」——只在汉字范围（U+4E00-
+ * U+9FFF）会把「もっと」「はなび」这类假名标题当既非 CJK 也算不上 latin，
+ * 导致「はなび ↔ Hanabi」「もっと ↔ Motto」跨脚本合并漏掉。2026-08-14 已在对
+ * 齐 music.service.isCrossScript 时补上假名；这里务必保持一致（否则两端 key
+ * 口径分裂）。
  *
  * 注意：不对内容做翻译/映射——只判定"是同一首歌的两个不同写法，应该合"。
  */
 export function isCrossScript(a: string, b: string): boolean {
-  const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
-  const hasLatin = (s: string) => /[a-z]/.test(s);
+  const hasCjk = (s: string) =>
+    /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(s);
+  const hasLatin = (s: string) => /[a-z]/i.test(s);
   const aCjk = hasCjk(a);
   const bCjk = hasCjk(b);
   if (aCjk && !bCjk && hasLatin(b)) return true;
@@ -255,8 +266,16 @@ export function mergeCrossScript(items: UnifiedSearchItem[]): UnifiedSearchItem[
     for (let j = i + 1; j < n; j++) {
       if (dead.has(j)) continue;
       const b = items[j];
-      // Artist: loose (alias table + per-segment for `·`-separated composite).
-      if (!artistLooseMatch(a.artist, b.artist)) continue;
+      // Artist: loose (alias table + per-segment for `·`-separated composite)
+      // OR cross-script via transliteration（Spotify 罗马音 vs QQ/网易云 汉字/
+      // 假名）。artistLooseMatch 只认字面/别名表，桥不上「黒うさP ↔ Kurousa P」
+      // 这类跨脚本写法——跨脚本必须音译佐证才有真实依据（见 translit.ts）。
+      if (
+        !artistLooseMatch(a.artist, b.artist) &&
+        !artistTransliterationMatch(a.artist, b.artist)
+      ) {
+        continue;
+      }
       // Title: strip trailing meta (品牌主题曲/电影版/完整版/...) then
       // either equal or cross-script. `displayKey` 内含 cjkUnify + noise
       // strip + 小写，与 renderer 端 groupLibrary 同一把 key。

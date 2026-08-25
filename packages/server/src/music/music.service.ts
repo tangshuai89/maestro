@@ -2683,6 +2683,10 @@ export class MusicService {
     // Cross-script merge: "横顔" (QQ kanji) + "Yokogao" (Spotify romaji)
     // → 相同的 normalizeKey(artist) + cross-script title + same duration →
     // one entry with all three platform sources.
+    // 先 warmup kuromoji：mergeCrossScript 里的 artistTransliterationMatch 需要
+    // 它来读日文汉字艺名的读音（「黒うさP」→ kurousa）。未 warmup 时降级走拼音/
+    // 假名路线——不误并，但会漏一些日文汉字艺人（漏合并比误合并安全）。
+    await warmupJa();
     const merged = mergeCrossScript(items);
 
     const importedAt = Date.now();
