@@ -1,5 +1,5 @@
 /**
- * 回归测试：「我的喜欢」导入的曲目必须带可播放的 audioUrl。
+ * 回归测试 1：「我的喜欢」导入的曲目必须带可播放的 audioUrl。
  *
  * 背景 bug：provider.fetchLiked() 返回的 track.audioUrl 是空字符串（QQ/网易云
  * 的取流 URL 短期过期，播放时再拿）。统一搜索路径会把 audioUrl 归一成后端代理
@@ -122,11 +122,89 @@ async function main() {
     `带 mediaMid 的曲目应透传 mm，实际: "${withMm.audioUrl}"`,
   );
   console.log('✅ 3. mediaMid 透传进代理路径（?mm=...）');
-
-  console.log('\n🎉 library-import.e2e 全部 3 项通过');
 }
 
-main().catch((err) => {
-  console.error('❌ library-import.e2e 失败:', err);
-  process.exit(1);
-});
+/**
+ * 回归测试 2：单平台 fetchLiked 卡住时，整个 import 不能挂死。
+ *
+ * 背景 bug：fetchLiked 内部的所有 fetch 都没有 withTimeout；music.163.com /
+ * c.y.qq.com / api.spotify.com 任一端点挂死时，importLiked 一直 await 着，
+ * POST /music/library/import 永不 resolve。客户端「导入中…」永久转圈。
+ * 修复：music.service.ts 加 IMPORT_FETCH_TIMEOUT_MS（30s）+ fetchLikedWithTimeout
+ * 包装每个平台的 fetchLiked；超时按 absent 处理（sources[].error='timeout'），
+ * 其他平台继续。
+ *
+ * 本测试用 stub provider 让 NetEase.fetchLiked 永远 pending，验证：
+ *  1. importLiked 在合理时间内 resolve（≤ 35s，给 5s 余量）
+ *  2. NetEase sources[].error === 'timeout'，count === 0
+ *  3. 其他平台不受影响——QQ 正常返回的数据进 items
+ *
+ * 运行: npx ts-node src/music/library-import.e2e.test.ts
+ */
+async function importTimeoutRegression() {
+  // 永不 resolve 的 NetEase fetchLiked——模拟上游挂死
+  const hangingNetease = {
+    fetchLiked: () => new Promise<any[]>(() => {}),
+  };
+  // 正常的 QQ——返回两条
+  const okQq = {
+    fetchLiked: async () => [
+      makeLikedTrack('q1', '晴天'),
+      makeLikedTrack('q2', '稻香'),
+    ],
+  };
+  const svc2 = new MusicService(
+    fakeStorage,
+    okQq,
+    hangingNetease,
+    deezer,
+    spotify,
+    lyricsOvh,
+    match,
+    likeSync,
+  );
+  const session2 = {
+    id: 'sess-hang',
+    createdAt: Date.now(),
+    providers: {
+      qq: { qqCookie: 'ck' },
+      netease: { musicU: 'mu' },
+    },
+  };
+
+  const t0 = Date.now();
+  const res = await svc2.importLiked(session2);
+  const elapsed = Date.now() - t0;
+
+  // 1. 在合理时间内返回（30s 超时 + 5s 余量）
+  assert.ok(
+    elapsed <=  35_000,
+    `import 必须在 ≤35s 内返回；实测 ${elapsed}ms`,
+  );
+  console.log(`✅ 4. importLiked 在 hang 下 ${elapsed}ms 内 resolve（≤ 35s）`);
+
+  // 2. NetEase sources[].error='timeout'，count=0
+  const neteaseSource = res.sources.find((s: any) => s.provider === 'netease');
+  assert.ok(neteaseSource, 'netease sources 条目必须存在');
+  assert.strictEqual(neteaseSource!.count, 0, 'netease count 必须是 0');
+  assert.strictEqual(neteaseSource!.error, 'timeout', 'netease error 必须是 timeout');
+  console.log('✅ 5. hang 平台 sources[].error="timeout"、count=0');
+
+  // 3. QQ 不受影响——2 条入库
+  const qqSource = res.sources.find((s: any) => s.provider === 'qq');
+  assert.ok(qqSource, 'qq sources 条目必须存在');
+  assert.strictEqual(qqSource!.count, 2, 'qq count 必须是 2');
+  assert.strictEqual(qqSource!.error, undefined, 'qq 不该有 error');
+  assert.ok(res.items.length >= 1, 'items 应包含 QQ 那 2 首');
+  console.log('✅ 6. 其他平台不受 hang 影响，正常入库');
+}
+
+main()
+  .then(importTimeoutRegression)
+  .then(() => {
+    console.log('\n🎉 library-import.e2e 全部 6 项通过');
+  })
+  .catch((err) => {
+    console.error('❌ library-import.e2e 失败:', err);
+    process.exit(1);
+  });

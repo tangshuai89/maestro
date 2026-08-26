@@ -18,6 +18,29 @@ QQ 收藏，Deezer user tracks），合并去重后存到 `.storage/library.json
 - [x] QQ: 已登录用户 import 后 `sources[qq].count > 0`（前提：cookie 有效且有 ≥1 首收藏）
 - [x] QQ: 未登录（`qqCookie` 缺失）时 `sources[qq].error === 'not_logged_in'`，不阻塞其他平台
 - [x] QQ: cookie 失效（favorites endpoint 返回 `code === 1000`）→ `sources[qq].error` 反映登录失效，不抛 500
+- [x] **单平台 fetchLiked 硬超时**：任一平台 fetchLiked 卡死（`music.163.com` /
+      `c.y.qq.com` / `api.spotify.com` 上游挂）不阻塞整个 import——`POST
+      /music/library/import` 在单平台 30s 兜底后 resolve（`IMPORT_FETCH_TIMEOUT_MS`
+      常量）；该平台 `sources[].error='timeout'`、`count=0`；其余平台照常合并。
+      同样兜底覆盖 `getLikedSet`（❤ 检测 / fanOut 走这条路径，单平台 hang
+      也会卡用户点 ❤）。
+- [x] **mergeCrossScript 性能（导入卡死根因）**：n=987 时 O(n²) 内每对都跑
+      artistTransliterationMatch（cn2t/cjkUnify OpenCC 转换 ~0.2ms/次 × 475k 对
+      = 实测 95s，即用户看到的「导入卡死」）。修法：① 判定顺序重排为
+      时长(±12s) → 标题 → 艺人（AND 条件顺序无关，语义不变，把最贵的
+      transliteration 压到最后）；② `translit.ts` memoize
+      cn2t/romanizeJaTokens/romanizeVariants；③ `normalizer.ts` memoize
+      cjkUnify（server 与 renderer 两端共用）。实测 987 条：95s → ~4s；
+      1352 条（QQ 1216 + 网易云 987 合并）~6.6s，合并结果与优化前完全一致
+      （cross-script-merge.test 全绿）。
+- [x] **QQ fetchLiked 换 CgiGetDiss（2026-08-26）**：旧两步走
+      （fcg_user_created_diss 找 dirid=201 → fcg_ucc_getcdinfo_byids_cp）在 QQ
+      新登录体系下失效——实测 created_diss 里「我喜欢」不再是 dirid=201
+      （返回 1/31~57/205），旧代码恒 `return []`，导入 QQ 恒 0 首。新实现走
+      y.qq.com 现网 web 端自己的 `CgiGetDiss`（`music.srfDissInfo.DissInfo`，
+      `disstid=0 + dirid=201 + enc_host_uin=<euin>`，euin 从 cookie jar 取），
+      一次直达、song_begin/song_num 翻页、hasmore 判末页（QQ 会过滤失效歌曲，
+      短页不判末）。实测用户 1216 首全量拉回。
 - [ ] 弹窗 UX：见下方「UI / 体验（LikedLibraryModal）」节
 
 ## 接口规格
@@ -46,13 +69,14 @@ QQ 收藏，Deezer user tracks），合并去重后存到 `.storage/library.json
 
 - ✅ NetEase: `fetchLiked` 走 `/api/nuser/account/get` → `/api/user/playlist` →
   `/api/v6/playlist/detail` 三步拉取"我喜欢的音乐"歌单
-- ✅ QQ: 走 `c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss?hostuin=<uin>`
-  拿用户创建的歌单列表，find `dirid===201`（"我喜欢" 魔法值）拿其 `tid`
-  → `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?disstid=<tid>`
-  拿歌曲列表（老接口，扁平字段 songmid/songname/albummid/interval/strMediaMid）；
-  硬上限 1000 首（song_num 精确分页）。g_tk 用字面 `'5381'`（cookie 才是真鉴权）。
-  ⚠️ 注意：`fcg_musiclist_getmyfav` 返回的是 songid 收藏位图，不是歌单，
-  不能用来拿"我喜欢"的 dissid。
+- ✅ QQ: 走 y.qq.com 现网 web 端同款 `CgiGetDiss`（u.y.qq.com musicu.fcg，
+  `module=music.srfDissInfo.DissInfo`，`disstid=0 + dirid=201 +
+  enc_host_uin=<euin>`，euin 从登录窗口捕获的 cookie jar 拿）一次直达「我喜欢」
+  歌单，`song_begin`/`song_num` 翻页（每页 1000，上限 2000），`hasmore` 判末页。
+  QQ 会过滤失效歌曲（filtered_song），短页不判末、偏移按请求页大小推进。
+  2026-08-26 前的老两步走（fcg_user_created_diss 找 dirid=201 →
+  fcg_ucc_getcdinfo_byids_cp）已废弃——QQ 新登录体系下「我喜欢」不再是
+  dirid=201，恒返回 []（实测用户 1216 首漏导）。
 - ❌ Deezer: 匿名模式无 user 概念；返回 `error: 'deezer_anonymous_no_user_likes'`
 - ✅ 跨平台合并：复用 P3 的 MatchService.mergeLibrary
 

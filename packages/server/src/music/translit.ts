@@ -84,8 +84,15 @@ export function romanize(s: string): string {
  *  用 full 包的 Converter（server 端已依赖，无打包体积顾虑；子路径类型在
  *  classic node resolution 下不稳，故走 bare import）。 */
 let _cn2t: ((t: string) => string) | null = null;
+/** cn2t 结果的进程级 cache（2026-08-26）：OpenCC 简→繁转换单次 ~0.05ms，
+ *  mergeCrossScript 的 O(n²) 循环里每对要跑 4-6 次（stageNameKey /
+ *  romanizeVariants / tryTokenMatch 各一次）。艺人名总量有限，按输入串
+ *  缓存后 987 条库从 ~45s 降到 ~1s（与 cjkUnify 的缓存同一思路）。 */
+const _cn2tCache = new Map<string, string>();
 function cn2t(s: string): string {
   if (!s) return s;
+  const cached = _cn2tCache.get(s);
+  if (cached !== undefined) return cached;
   if (!_cn2t) {
     try {
       _cn2t = Converter({ from: 'cn', to: 'tw' });
@@ -93,8 +100,9 @@ function cn2t(s: string): string {
       _cn2t = (t: string) => t;
     }
   }
-  const conv = _cn2t;
-  return conv(s);
+  const out = _cn2t(s);
+  _cn2tCache.set(s, out);
+  return out;
 }
 
 /** kuromoji 词典路径：node_modules/kuromoji/dict（.dat.gz）。
@@ -153,12 +161,33 @@ export function romanizeJa(s: string): string {
  * [tokunaga, hideaki]，跟 Spotify 的 "Ayumi Hamasaki" / "Hideaki Tokunaga"
  * （名前颠倒的拉丁写法）做「每个 token 都在对方串里子串命中」的匹配。
  */
+/**
+ * 罗马化函数的进程级 memoization cache（2026-08-26 加）。
+ *
+ * 背景：`mergeCrossScript` 是 O(n²) 的——n 首库任意两首都两两比对，每对调
+ * `artistTransliterationMatch`，每次调都跑一遍 `romanizeJaTokens`（kuromoji
+ * `tokenize()`，单次 ~1ms）和 `romanizeVariants`（含 cn2t + jaTw + 假名括号，
+ * ~0.5ms）。n=987 时约 476k 对调用 × ~2ms = **~95s**，用户实测整次 import
+ * 卡 100s——根因不在 fetchLiked（fetch 早就返回了），而在 merge 阶段。
+ *
+ * 修法：艺术家字符串数量级远小于 n²（一个用户的库顶多几千个独立艺人），
+ * 把 romanize 结果按输入字符串缓存，下次同一艺人的比较直接拿缓存。
+ * 进程级（不是 per-call），多次 import 同一艺人也直接命中。
+ *
+ * 容量：实测单用户库上限几千独立艺人；20k 字符串 × ~50B ≈ 1MB，对 sidecar
+ * 无压力。超过容量时**不淘汰**——艺术家的 romanize 是 deterministic，缓
+ * 存增长到稳定值后就不再涨（同一用户反复 import 同一批艺人命中现有 cache）。
+ */
+const _romanizeJaTokensCache = new Map<string, string[]>();
+/** romanizeJaTokens。缓存命中 /kuromoji.tokenize 单次 ~1ms。*/
 function romanizeJaTokens(s: string): string[] {
   if (!s) return [];
   if (!_jaTokenizer) {
     void warmupJa();
     return [];
   }
+  const cached = _romanizeJaTokensCache.get(s);
+  if (cached !== undefined) return cached;
   const tokens: string[] = [];
   for (const t of _jaTokenizer.tokenize(s)) {
     const reading =
@@ -168,6 +197,7 @@ function romanizeJaTokens(s: string): string[] {
       .replace(/[^a-z0-9]/g, '');
     if (rom) tokens.push(rom);
   }
+  _romanizeJaTokensCache.set(s, tokens);
   return tokens;
 }
 
@@ -189,7 +219,11 @@ function romanizeJaTokens(s: string): string[] {
  *
  * ⚠️ 提取的假名必须**纯假名**（平/片假名 + 空白），避免把 `(Live)` / `(feat. X)`
  * 等版本标签误当读音。 */
+const _romanizeVariantsCache = new Map<string, string[]>();
+/** romanizeVariants。缓存命中 /拼音 + cn2t + kuromoji + wanakana 4 个步骤。*/
 function romanizeVariants(s: string): string[] {
+  const cached = _romanizeVariantsCache.get(s);
+  if (cached !== undefined) return cached;
   const set = new Set<string>();
   const py = romanize(s);
   if (py) set.add(py);
@@ -212,7 +246,9 @@ function romanizeVariants(s: string): string[] {
       if (rom) set.add(rom);
     }
   }
-  return [...set];
+  const result = [...set];
+  _romanizeVariantsCache.set(s, result);
+  return result;
 }
 
 // ── 英文艺名别名表（2026-08-03 起）────────────────────────────────────

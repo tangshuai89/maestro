@@ -53,9 +53,24 @@ export type AuthAction =
 export function reducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'set_provider':
-      // Provider switched → drop any in-flight attempt and clear error. The
-      // snapshot (loggedIn/user) is reset by the hook in the same effect.
-      return { ...state, provider: action.provider, phase: { kind: 'idle' }, error: null };
+      // Provider switched → drop any in-flight attempt, clear error AND clear
+      // the login snapshot (loggedIn/user/tier). The hook re-fetches via
+      // refreshStatus() and dispatches set_status, but until that roundtrip
+      // resolves the snapshot belongs to the *previous* provider — showing it
+      // here would leave the right-side titlebar account button displaying the
+      // old provider's nickname (e.g. QQ's "唐帅" while the source menu now
+      // says NetEase), which makes the user think they're still logged in and
+      // triggers spurious "login is broken" reports. Reset synchronously so
+      // the UI never lies about the current provider's auth state.
+      return {
+        ...state,
+        provider: action.provider,
+        loggedIn: false,
+        user: null,
+        tier: undefined,
+        phase: { kind: 'idle' },
+        error: null,
+      };
 
     case 'set_status':
       return {

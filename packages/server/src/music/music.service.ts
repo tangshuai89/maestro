@@ -40,6 +40,12 @@ import { LyricsOvhProvider } from './lyricsovh.provider';
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
 const UNIFIED_SEARCH_TIMEOUT_MS = 5_000;
 
+/** 「我的喜欢」导入的单平台预算——30s。覆盖 Spotify 分页拉 1000 首
+ * （limit=50，20 页 × ~1s）和 NetEase 三步拉 1k+ 首；超时就视为该平台
+ * 缺席（sources[].error='timeout'），不阻塞其他平台，也不让 POST 永远不返。
+ * 此前没有这个兜底，单平台 fetch 卡住时整个 import 会一直挂着。 */
+const IMPORT_FETCH_TIMEOUT_MS = 30_000;
+
 /** fanOut 状态上限——超过这个数 loadState 时按插入顺序淘汰最早的。
  *  5000 对应重度用户 1-2 年的累计 ❤ 量，再多就是滥用。 */
 const FANOUT_MAX = 5_000;
@@ -2154,6 +2160,11 @@ export class MusicService {
   /**
    * 取某平台「已红心 trackId 集合」（带 TTL 缓存）。只对已登录平台有效，
    * 未登录 / Deezer 返回 null。
+   *
+   * 同样的硬超时兜底（IMPORT_FETCH_TIMEOUT_MS）：detectLiked/fanOutLike 走这
+   * 条路径，单个 ❤ 检测要等所有平台 fetchLiked 跑完，不超时的话用户点 ❤ 也
+   * 会卡住。超时就视为该平台空集合（不是 false——避免 reconcileLiked 的
+   * 「空远端 + 非空本地 → skip」保守保护误触发）。
    */
   private async getLikedSet(
     session: Session,
@@ -2167,16 +2178,35 @@ export class MusicService {
     const ps = session.providers[provider];
     let set: Set<string> | null = null;
     try {
-      if (provider === 'qq' && ps?.qqCookie) {
-        set = await this.qq.fetchLikedMidSet(ps);
-      } else if (provider === 'netease' && ps?.musicU) {
-        const tracks = await this.netease.fetchLiked(ps, 2000);
-        set = new Set(tracks.map((t) => t.id));
-      } else if (provider === 'spotify' && ps?.spotify) {
-        this.spotify.bindSessionId(ps, session.id);
-        const tracks = await this.spotify.fetchLiked(ps, 2000);
-        set = new Set(tracks.map((t) => t.id));
+      // 同一硬超时兜底（详见 importLiked.fetchLikedWithTimeout 注释）：单平台
+      // hang 不应阻塞 ❤ 检测。QQ 走 fetchLikedMidSet（返 Set<string>），其他
+      // 平台走 fetchLiked（返 Track[]）——统一转成 Set<string> 后再 reconcile。
+      const fetchResult = await withTimeout(
+        async (): Promise<Set<string>> => {
+          if (provider === 'qq' && ps?.qqCookie) {
+            return await this.qq.fetchLikedMidSet(ps);
+          } else if (provider === 'netease' && ps?.musicU) {
+            const tracks = await this.netease.fetchLiked(ps, 2000);
+            return new Set(tracks.map((t) => t.id));
+          } else if (provider === 'spotify' && ps?.spotify) {
+            this.spotify.bindSessionId(ps, session.id);
+            const tracks = await this.spotify.fetchLiked(ps, 2000);
+            return new Set(tracks.map((t) => t.id));
+          }
+          return new Set<string>();
+        },
+        IMPORT_FETCH_TIMEOUT_MS,
+        () =>
+          this.logger.warn(
+            `getLikedSet(${provider}) timed out (>${IMPORT_FETCH_TIMEOUT_MS}ms); returning empty set without reconciling`,
+          ),
+      );
+      if (fetchResult === null) {
+        // 超时分支：返回空集（不 reconcile——保守起见）
+        return new Set<string>();
       }
+      // set 已经是 Set<string> 了（来自 fetchLikedMidSet 或上面手工构造）
+      set = fetchResult;
     } catch (err) {
       this.logger.warn(
         `getLikedSet(${provider}) failed: ${(err as Error).message}`,
@@ -2597,10 +2627,22 @@ export class MusicService {
           error: 'not_logged_in',
         });
       } else {
-        const tracks = await this.netease.fetchLiked(ps, 1000);
-        sourceResults.push({ provider: 'netease', count: tracks.length });
-        allTracks.push(...tracks);
-        this.primeLikedCache(session, 'netease', tracks.map((t) => t.id));
+        // 单平台硬超时（IMPORT_FETCH_TIMEOUT_MS）。music.163.com 风控严、
+        // 单个端点偶尔挂几十秒——不兜底整个 import 会一直等着。单平台失败按
+        // absent 处理，sources[].error='timeout'，不阻塞其他平台也不抛 5xx。
+        const tracks = await this.fetchLikedWithTimeout(
+          () => this.netease.fetchLiked(ps, 1000),
+          'netease',
+        );
+        sourceResults.push({
+          provider: 'netease',
+          count: tracks.tracks.length,
+          ...(tracks.tracks.length === 0 && tracks.error ? { error: tracks.error } : {}),
+        });
+        allTracks.push(...tracks.tracks);
+        if (tracks.tracks.length > 0) {
+          this.primeLikedCache(session, 'netease', tracks.tracks.map((t) => t.id));
+        }
       }
     } catch (err) {
       this.logger.warn(
@@ -2626,10 +2668,19 @@ export class MusicService {
       } else {
         // 上限 2000（fetchLiked 内部按 1000/页分页）—— 覆盖绝大多数用户的
         // 收藏规模；1093 首的用户不会被 1000 截断。
-        const tracks = await this.qq.fetchLiked(ps, 2000);
-        sourceResults.push({ provider: 'qq', count: tracks.length });
-        allTracks.push(...tracks);
-        this.primeLikedCache(session, 'qq', tracks.map((t) => t.id));
+        const tracks = await this.fetchLikedWithTimeout(
+          () => this.qq.fetchLiked(ps, 2000),
+          'qq',
+        );
+        sourceResults.push({
+          provider: 'qq',
+          count: tracks.tracks.length,
+          ...(tracks.tracks.length === 0 && tracks.error ? { error: tracks.error } : {}),
+        });
+        allTracks.push(...tracks.tracks);
+        if (tracks.tracks.length > 0) {
+          this.primeLikedCache(session, 'qq', tracks.tracks.map((t) => t.id));
+        }
       }
     } catch (err) {
       this.logger.warn(`qq fetchLiked failed: ${(err as Error).message}`);
@@ -2651,10 +2702,19 @@ export class MusicService {
         });
       } else {
         this.spotify.bindSessionId(ps, session.id);
-        const tracks = await this.spotify.fetchLiked(ps, 1000);
-        sourceResults.push({ provider: 'spotify', count: tracks.length });
-        allTracks.push(...tracks);
-        this.primeLikedCache(session, 'spotify', tracks.map((t) => t.id));
+        const tracks = await this.fetchLikedWithTimeout(
+          () => this.spotify.fetchLiked(ps, 1000),
+          'spotify',
+        );
+        sourceResults.push({
+          provider: 'spotify',
+          count: tracks.tracks.length,
+          ...(tracks.tracks.length === 0 && tracks.error ? { error: tracks.error } : {}),
+        });
+        allTracks.push(...tracks.tracks);
+        if (tracks.tracks.length > 0) {
+          this.primeLikedCache(session, 'spotify', tracks.tracks.map((t) => t.id));
+        }
       }
     } catch (err) {
       this.logger.warn(
@@ -2720,6 +2780,44 @@ export class MusicService {
     }
 
     return { items: enrichedItems, sources: sourceResults, importedAt };
+  }
+
+  /**
+   * 单平台 fetchLiked 的硬超时包装。约定：
+   *  - 正常返回：{ tracks: Track[]; error: undefined }
+   *  - 超时（IMPORT_FETCH_TIMEOUT_MS 内没 resolve）：{ tracks: []; error: 'timeout' }
+   *  - 抛错（fetch 5xx / BadRequestException 等）：不被这里吞，由外层 try/catch
+   *    走标准 catch 路径（error message 透传）。
+   *
+   * 为什么需要这个：fetchLiked 内部所有 fetch 调用都没有超时（QQ/Netease/
+   * Spotify 均如此——见 providers/ 内的 fetch）。`music.163.com` 风控严，单个
+   * 端点偶尔挂 60s+；之前没兜底，POST /music/library/import 会一直挂到客户端
+   * 超时（甚至可能更久），用户看到「导入中…」永远转圈。30s 覆盖 1k+ 首的
+   * Spotify 分页（limit=50 × 20 ≈ 1s/页 = 20s）和 NetEase 三步拉。
+   *
+   * 超时分支只 race 不 cancel（withTimeout 的契约）：被丢弃的 promise 仍
+   * 在后台跑、结束时 GC 自然回收；不会拖垮 sidecar。error='timeout' 走
+   * sources[].error 路径，前端能看到「网易云/QQ/Spotify 拉取超时」提示，
+   * 用户可重试（30s 通常足够，单次 hang 是上游偶发）。
+   */
+  private async fetchLikedWithTimeout(
+    fn: () => Promise<Track[]>,
+    provider: MusicProvider,
+  ): Promise<{ tracks: Track[]; error?: string }> {
+    const result = await withTimeout(
+      fn,
+      IMPORT_FETCH_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `${provider} fetchLiked timed out (>${IMPORT_FETCH_TIMEOUT_MS}ms); treating as absent`,
+        ),
+    );
+    if (result === null) {
+      // withTimeout 解析为 null = 超时。底层 promise 仍可能在 background settle，
+      // 但我们这里已经决定按 absent 算，丢弃其结果。
+      return { tracks: [], error: 'timeout' };
+    }
+    return { tracks: result };
   }
 
   /** 读取最近一次 import 的库（无则返回 null）。

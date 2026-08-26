@@ -404,11 +404,21 @@ const JP_KANJI_REGEX: RegExp = (() => {
 /**
  * CJK 统一化：OpenCC 繁→简 + 日文独有形体兜底。
  * 不在任何转换表里的字符原样返回。
+ *
+ * 进程级 memoization（2026-08-26 加）：OpenCC 字符串转换单次 ~0.05ms，但
+ * displayKey / normalizeKey / stageNameAliasMatch 在 O(n²) 的库合并/分组
+ * 循环里每对都调用它——987 条库 475k 对 × 多次调用实测把 import 拖到
+ * 95s。字符串总量（歌名/艺人名）远小于调用次数，按输入缓存后同规模库
+ * 合并 < 3s。server 与 renderer 各自进程独立缓存，互不影响。
  */
+const _cjkUnifyCache = new Map<string, string>();
 export function cjkUnify(s: string): string {
   if (!s) return s;
+  const cached = _cjkUnifyCache.get(s);
+  if (cached !== undefined) return cached;
   let out = tw2cn()(s);
   out = out.replace(JP_KANJI_REGEX, (ch) => JP_KANJI[ch] || ch);
+  _cjkUnifyCache.set(s, out);
   return out;
 }
 

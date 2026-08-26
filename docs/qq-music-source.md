@@ -30,6 +30,13 @@ QQ 音乐 Web 端的非公开接口。实现见
   - 少量老接口走 `c.y.qq.com` / `i.y.qq.com` 的独立 fcgi
 - 通用 Header：`Referer: https://y.qq.com/` + 浏览器 `User-Agent`
 - 取播放直链：`vkey.GetVkeyServer` / `CgiGetVkey`
+- 「我喜欢」列表（2026-08 起，现网 web 端同款）：
+  `music.srfDissInfo.DissInfo/CgiGetDiss`，param `disstid=0` + `dirid=201` +
+  `enc_host_uin=<euin>`（euin 在 cookie jar 里，形如 `Ne6ANK4s7KE*`），
+  `song_begin`/`song_num` 翻页、`hasmore` 判末页。
+  ⚠️ 旧路 `fcg_user_created_diss` 里找 `dirid=201` 的 dissid 已失效——QQ 新
+  登录体系下「我喜欢」的 dirid 不再是 201（实测返回 1/31~57/205），旧实现
+  恒拿 0 首；CgiGetDiss 用 `disstid=0` 让服务端直接解析 201，不需要 dissid。
 
 ### 2.2 鉴权
 

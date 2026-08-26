@@ -115,23 +115,21 @@ export class QqMusicProvider {
   /**
    * 拉取用户的"我喜欢"收藏歌曲。
    *
-   * 两步走（endpoint + 字段名都对着真实响应验证过，见 2026-07 排查）：
-   *  1. `c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss?hostuin=<uin>`
-   *     → 拿用户「创建的歌单」列表，find `dirid === 201`（"我喜欢" 的魔法值）
-   *     拿它的 `tid`（真正的歌单 dissid）。
-   *     ⚠️ 之前误用 `fcg_musiclist_getmyfav` —— 那个返回的是"哪些 songid 被
-   *     收藏"的位图（给红心态用），没有 dissid，所以永远拿不到歌。
-   *  2. `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?disstid=<tid>`
-   *     → 拿歌单内歌曲。这是老接口，字段是**扁平**的（songmid / songname /
-   *     albummid / interval / strMediaMid 直接挂歌对象上，不是嵌套 file）。
-   *     支持 `song_begin` + `song_num` 分页，实测 song_num=1000 精确返回 1000。
+   * 2026-08-26 重写：旧的两步走（fcg_user_created_diss 找 dirid=201 的 tid →
+   * fcg_ucc_getcdinfo_byids_cp 拉歌）在 QQ 音乐 2025+ 的新登录体系下已不可靠：
+   * 实测用户的 created_diss 列表里「我喜欢」不再是 dirid=201（返回 1/31~57/205
+   * 等编号），旧代码直接 `return []` → 导入 QQ 恒 0 首。
    *
-   * 两个端点都用字面 `g_tk=5381`（cookie 才是真鉴权；与现有 `getLyrics` 一致），
-   * 但保留 `computeGtk(skey)` 备用。
+   * 新实现走 y.qq.com 现网 web 端自己用的 `CgiGetDiss`（musicu.fcg）：
+   * `disstid=0 + dirid=201 + enc_host_uin=<euin>` 一次直达「我喜欢」歌单，
+   * 不需要先找 dissid。参考 l-1124/QQMusicApi 的 UserApi.get_fav_song。
+   * 实测用户 1216 首全量可翻页拉回（song_begin/song_num + hasmore）。
+   *
+   * euin 从登录窗口捕获的 cookie jar 里拿（`euin` cookie，形如 Ne6ANK4s7KE*）。
+   * 老 session 没有 qqCookies 时从 qqCookie 字符串抠。
    *
    * 失败模式：
-   *  - step1 `code === 1000` → cookie 失效 → `throw 'not_logged_in'`
-   *  - 找不到 dirid===201 → 返回 `[]`（用户没有"我喜欢"歌单，罕见）
+   *  - req_0.code === 1000 / 301 → cookie 失效 → `throw 'not_logged_in'`
    *  - 其他非零 code → 抛错让上层兜底
    *
    * 硬上限 maxTracks（默认 1000，与 NetEase 对齐）。
@@ -143,98 +141,106 @@ export class QqMusicProvider {
     if (!this.isConfigured(session)) return [];
 
     const cookie = session.qqCookie ?? '';
-    const gtk = this.getGtk(session);
-    const uin = session.qqUin ?? '';
+    const euin =
+      session.qqCookies?.euin ??
+      /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ??
+      '';
 
-    // Step 1: 用户创建的歌单列表 → 找 "我喜欢"（dirid=201）的 tid
-    const dissUrl =
-      'https://c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss' +
-      `?hostuin=${encodeURIComponent(uin)}&hostUin=0&sin=0&size=200` +
-      `&g_tk=${encodeURIComponent(gtk)}&format=json&inCharset=utf8` +
-      '&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0';
-    const r1 = await fetch(dissUrl, {
-      headers: {
-        'User-Agent': QqMusicProvider.UA,
-        Referer: 'https://y.qq.com/',
-        Cookie: cookie,
-      },
-    });
-    const j1 = (await r1.json()) as {
-      code: number;
-      data?: {
-        disslist?: Array<{ dirid?: number; tid?: number; song_cnt?: number }>;
-      };
-    };
-    if (j1.code === 1000) {
-      throw new BadRequestException('not_logged_in');
-    }
-    if (j1.code !== 0) {
-      throw new BadRequestException(`QQ created_diss failed: code=${j1.code}`);
-    }
-    const fav = (j1.data?.disslist ?? []).find((d) => d.dirid === 201);
-    const dissid = fav?.tid;
-    if (!dissid) {
-      this.logger.warn('QQ fetchLiked: no "我喜欢"(dirid=201) playlist found');
-      return [];
+    interface CgiGetDissSong {
+      mid?: string;
+      name?: string;
+      title?: string;
+      singer?: { name: string; mid: string }[];
+      album?: { name: string; mid: string };
+      interval?: number;
+      file?: { media_mid?: string; strMediaMid?: string };
+      pay?: { pay_play?: number; payplay?: number };
     }
 
-    // Step 2: 分页拉歌曲（扁平字段）
     const PAGE = 1000;
     const collected: Track[] = [];
-    for (let begin = 0; begin < maxTracks; begin += PAGE) {
-      const num = Math.min(PAGE, maxTracks - begin);
-      const detailUrl =
-        'https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg' +
-        `?type=1&utf8=1&disstid=${dissid}&loginUin=0&format=json` +
-        `&song_begin=${begin}&song_num=${num}`;
-      const r2 = await fetch(detailUrl, {
-        headers: {
-          'User-Agent': QqMusicProvider.UA,
-          Referer: 'https://y.qq.com/n/yqq/playlist',
-          Cookie: cookie,
+    let begin = 0;
+    for (;;) {
+      if (collected.length >= maxTracks) break;
+      const num = Math.min(PAGE, maxTracks - collected.length);
+      const body = {
+        comm: { ct: 24, cv: 0 },
+        req_0: {
+          module: 'music.srfDissInfo.DissInfo',
+          method: 'CgiGetDiss',
+          param: {
+            disstid: 0,
+            dirid: 201,
+            tag: true,
+            song_begin: begin,
+            song_num: num,
+            userinfo: true,
+            orderlist: true,
+            enc_host_uin: euin,
+          },
         },
-      });
-      const j2 = (await r2.json()) as {
-        code: number;
-        cdlist?: Array<{
-          songlist?: Array<{
-            songmid?: string;
-            songname?: string;
-            singer?: { name: string; mid: string }[];
-            albumname?: string;
-            albummid?: string;
-            interval?: number;
-            strMediaMid?: string;
-            media_mid?: string;
-          }>;
-        }>;
       };
-      if (j2.code !== 0) {
+      const r = await fetch(
+        'https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&inCharset=utf8&outCharset=utf-8',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': QqMusicProvider.UA,
+            Referer: 'https://y.qq.com/',
+            Cookie: cookie,
+          },
+          body: JSON.stringify(body),
+        },
+      );
+      const j = (await r.json()) as {
+        code?: number;
+        req_0?: {
+          code?: number;
+          data?: {
+            songlist?: CgiGetDissSong[];
+            hasmore?: boolean;
+            total_song_num?: number;
+          };
+        };
+      };
+      const reqCode = j.req_0?.code ?? j.code;
+      if (reqCode === 1000 || reqCode === 301) {
+        throw new BadRequestException('not_logged_in');
+      }
+      if (reqCode !== 0) {
         throw new BadRequestException(
-          `QQ songlist detail failed: code=${j2.code}`,
+          `QQ CgiGetDiss failed: code=${reqCode}`,
         );
       }
-      const songlist = j2.cdlist?.[0]?.songlist ?? [];
+      const songlist = j.req_0?.data?.songlist ?? [];
       if (songlist.length === 0) break;
       collected.push(
         ...songlist
-          .filter((s) => s.songmid)
+          .filter((s) => s.mid)
           .map((s) => ({
-            id: s.songmid as string,
+            id: s.mid as string,
             provider: 'qq' as const,
-            title: s.songname ?? '未知歌曲',
+            title: s.name ?? s.title ?? '未知歌曲',
             artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
-            album: s.albumname ?? '',
-            coverUrl: s.albummid
-              ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${s.albummid}.jpg`
+            album: s.album?.name ?? '',
+            coverUrl: s.album?.mid
+              ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${s.album.mid}.jpg`
               : '',
             audioUrl: '', // 由 getStreamPath 在播放时动态获取
             duration: s.interval ?? 0,
             liked: true, // 来源就是"我喜欢"，全部视为已 ❤
-            mediaMid: s.strMediaMid ?? s.media_mid ?? '',
+            mediaMid: s.file?.media_mid ?? s.file?.strMediaMid ?? '',
           })),
       );
-      if (songlist.length < num) break; // 末页
+      const hasmore = j.req_0?.data?.hasmore ?? false;
+      // 注意：不能用 `songlist.length < num` 判末页——QQ 会过滤失效歌曲
+      // （响应里的 filtered_song / invalid_song），请求 1000 可能只回几百首但
+      // hasmore 仍为 true。只信 hasmore + 空页两个信号。
+      if (songlist.length === 0 || !hasmore) break; // 末页
+      // song_begin 是按「请求页大小」推进的偏移（与 l-1124/QQMusicApi 的
+      // OffsetStrategy 同口径），不是按实际返回数——否则过滤后再翻页会漏歌。
+      begin += num;
     }
 
     this.logger.log(`QQ fetchLiked → ${collected.length} 首`);

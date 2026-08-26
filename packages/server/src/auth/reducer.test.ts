@@ -108,7 +108,15 @@ function newAttempt(provider: MusicProvider): AuthAttempt {
 function reducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'set_provider':
-      return { ...state, provider: action.provider, phase: { kind: 'idle' }, error: null };
+      return {
+        ...state,
+        provider: action.provider,
+        loggedIn: false,
+        user: null,
+        tier: undefined,
+        phase: { kind: 'idle' },
+        error: null,
+      };
     case 'set_status':
       return { ...state, loggedIn: action.loggedIn, user: action.user, tier: action.tier ?? state.tier };
     case 'start': {
@@ -178,9 +186,18 @@ function attempt(provider: MusicProvider, id = 'a1'): AuthAttempt {
   console.log('✅ 1. initial state: idle, logged out, no error');
 }
 
-// ── 2. set_provider resets phase + error ────────────────────
+// ── 2. set_provider resets phase + error AND clears snapshot ──────────
+//
+// Regression: previously set_provider kept the previous provider's
+// loggedIn/user/tier, so the titlebar account button kept showing the old
+// nickname (e.g. "唐帅" for QQ) after switching source to NetEase. The hook
+// re-fetches via refreshStatus(), but the snapshot is now stale until the
+// roundtrip completes — and if the fetch fails the snapshot is stale
+// forever. Reset synchronously so the UI never lies about the current
+// provider's auth state.
 {
   let s = initialAuthState('qq');
+  s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: '唐帅', avatarUrl: '' }, tier: undefined });
   s = reducer(s, {
     type: 'fail',
     error: { code: 'AUTH_INVALID', message: 'x', provider: 'qq', attemptId: 'a1', at: 1 },
@@ -189,7 +206,9 @@ function attempt(provider: MusicProvider, id = 'a1'): AuthAttempt {
   assert.strictEqual(s.provider, 'netease');
   assert.strictEqual(s.phase.kind, 'idle');
   assert.strictEqual(s.error, null);
-  console.log('✅ 2. set_provider: phase=idle, error cleared');
+  assert.strictEqual(s.loggedIn, false, 'snapshot must reset on provider switch');
+  assert.strictEqual(s.user, null, 'snapshot.user must reset on provider switch');
+  console.log('✅ 2. set_provider: phase=idle, error cleared, snapshot reset');
 }
 
 // ── 3. start -> starting ───────────────────────────────────
@@ -322,4 +341,25 @@ function attempt(provider: MusicProvider, id = 'a1'): AuthAttempt {
   console.log('✅ 13. ATTEMPT_TIMEOUT_MS = 120_000');
 }
 
-console.log('\n🎉 reducer.test.ts: all 13 cases passed');
+// ── 14. switch providers never leaks snapshot ───────────────
+//
+// Regression for the "right-side account doesn't update on switch" bug.
+// Before the fix, going QQ (logged in as 唐帅) → Netease would keep the QQ
+// snapshot in state until refreshStatus()'s async roundtrip completed; if
+// the network call failed silently, the snapshot stayed stale and the
+// titlebar kept showing "唐帅" while the source menu said NetEase.
+{
+  let s = initialAuthState('qq');
+  s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: '唐帅', avatarUrl: '' }, tier: undefined });
+  s = reducer(s, { type: 'set_provider', provider: 'netease' });
+  assert.strictEqual(s.provider, 'netease');
+  assert.strictEqual(s.loggedIn, false, 'switch must clear loggedIn even before refreshStatus lands');
+  assert.strictEqual(s.user, null, 'switch must clear user even before refreshStatus lands');
+  // Then a fresh set_status for the new provider fills in the real value.
+  s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: 'konanco', avatarUrl: 'https://...' } });
+  assert.strictEqual(s.user?.nickname, 'konanco');
+  assert.strictEqual(s.loggedIn, true);
+  console.log('✅ 14. set_provider clears snapshot synchronously; set_status refills it');
+}
+
+console.log('\n🎉 reducer.test.ts: all 14 cases passed');
