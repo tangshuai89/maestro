@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import Modal from '../common/Modal';
 import { getLibrary, importLibrary } from '../../api';
 import type { LibraryImportResult, UnifiedSearchItem, MusicProvider } from '../../api';
-import { formatDuration } from '../../lib/format';
+import { formatDuration, clampText } from '../../lib/format';
 import {
   groupLibraryItems,
   itemPlatforms,
@@ -332,11 +332,11 @@ export default function LikedLibraryModal({
             </div>
           )}
           <div className="liked-modal-meta">
-            <div className="liked-modal-track">{rep.title}</div>
+            <div className="liked-modal-track">{clampText(rep.title, 40)}</div>
             <div className="liked-modal-artist">
-              {rep.artist}
+              {clampText(rep.artist, 30)}
               {rep.album && (
-                <span className="liked-modal-album"> · {rep.album}</span>
+                <span className="liked-modal-album"> · {clampText(rep.album, 25)}</span>
               )}
             </div>
           </div>
@@ -390,7 +390,7 @@ export default function LikedLibraryModal({
                 <span className="liked-modal-subrow-dot" aria-hidden />
                 <div className="liked-modal-meta">
                   <div className="liked-modal-track">
-                    {m.item.title}
+                    {clampText(m.item.title, 40)}
                     {m.versionTag && (
                       <span className={`liked-modal-version-tag liked-modal-version-tag--${m.versionTag.toLowerCase()}`}>
                         {versionTagLabel(m.versionTag)}
@@ -398,9 +398,9 @@ export default function LikedLibraryModal({
                     )}
                   </div>
                   <div className="liked-modal-artist">
-                    {m.item.artist}
+                    {clampText(m.item.artist, 30)}
                     {m.item.album && (
-                      <span className="liked-modal-album"> · {m.item.album}</span>
+                      <span className="liked-modal-album"> · {clampText(m.item.album, 25)}</span>
                     )}
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality } from '../../api';
+import { clampText } from '../../lib/format';
 
 /**
  * AETHER THEATER — 宇宙剧场主视图（v4 设计稿落地）。
@@ -370,7 +371,7 @@ export default function TheaterView(props: TheaterViewProps) {
         {/* 歌名信息（1440 稿 430,590） */}
         <div className="th-track-info">
           <div className="th-track-header">
-            <h1 className="th-track-title">{track?.title ?? '等待播放'}</h1>
+            <h1 className="th-track-title">{clampText(track?.title ?? '等待播放', 18)}</h1>
             {track && (
               <div className="th-more-wrap">
                 <button type="button" className="th-more-btn" onClick={() => setMoreOpen(v => !v)} title="更多" aria-label="更多" aria-expanded={moreOpen}>
@@ -391,7 +392,7 @@ export default function TheaterView(props: TheaterViewProps) {
             )}
           </div>
           <p className="th-track-sub">
-            {track ? `${track.artist} // ${track.album || '未知专辑'}` : '点击搜索或从红心库选一首歌'}
+            {track ? clampText(`${track.artist} // ${track.album || '未知专辑'}`, 40) : '点击搜索或从红心库选一首歌'}
           </p>
           {track && (
             <p className="th-track-hires">
@@ -470,8 +471,8 @@ export default function TheaterView(props: TheaterViewProps) {
               <button key={i} type="button" className="th-reco-card"
                 style={{ ['--card-color' as string]: s.coverColor }} title={`${s.title} · ${s.artist}`}>
                 <span className="th-reco-art" aria-hidden="true" />
-                <span className="th-reco-name">{s.title}</span>
-                <span className="th-reco-artist">{s.artist}</span>
+                <span className="th-reco-name">{clampText(s.title, 12)}</span>
+                <span className="th-reco-artist">{clampText(s.artist, 14)}</span>
                 <span className="th-reco-match">{s.match}%</span>
               </button>
             ))}

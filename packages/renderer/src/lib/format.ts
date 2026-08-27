@@ -17,3 +17,16 @@ export function formatDuration(s: number): string {
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Clamp a string to `max` characters, appending an ellipsis if truncated.
+ * CJK chars are counted as 1 each (same as Latin) — this is a visual
+ * heuristic, not a pixel-width measurement. CSS `text-overflow: ellipsis`
+ * remains the ultimate guard; this just prevents half-character cuts at
+ * large font sizes and keeps tooltips/titles tidy.
+ */
+export function clampText(text: string, max: number): string {
+  if (!text) return text;
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + '…';
+}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { searchUnified, searchOne, fetchLyricsAvailability } from '../../api';
 import type { MusicProvider, UnifiedSearchItem } from '../../api';
 import { PROVIDER_LABELS } from '../../api';
-import { formatDuration } from '../../lib/format';
+import { formatDuration, clampText } from '../../lib/format';
 import Modal from '../common/Modal';
 import SourceChip from './SourceChip';
 
@@ -324,10 +324,10 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                 </div>
               )}
               <div className="search-row-meta">
-                <div className="search-row-title">{it.title}</div>
+                <div className="search-row-title">{clampText(it.title, 40)}</div>
                 <div className="search-row-sub">
-                  {it.artist}
-                  {it.album ? ` · ${it.album}` : ''}
+                  {clampText(it.artist, 30)}
+                  {it.album ? ` · ${clampText(it.album, 20)}` : ''}
                   {it.duration > 0 ? ` · ${formatDuration(it.duration)}` : ''}
                 </div>
               </div>
