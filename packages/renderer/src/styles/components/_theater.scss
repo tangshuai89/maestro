@@ -563,7 +563,7 @@
 .th-core-cluster {
   position: absolute;
   left: 266px; top: 700px;
-  width: 264px; height: 72px;
+  width: 328px; height: 72px;
   display: flex;
   align-items: center;
   gap: 24px;
@@ -584,6 +584,11 @@
 }
 .th-ctrl:hover:not(:disabled) { color: #fff; transform: scale(1.08); }
 .th-ctrl:disabled { opacity: 0.3; cursor: default; }
+// 踩按钮 hover 偏红（区别于普通 ctrl 的白色 hover）
+.th-ctrl--dislike:hover:not(:disabled) {
+  color: var(--status-liked);
+  border-color: color-mix(in srgb, var(--status-liked) 50%, transparent);
+}
 
 // ── 红心按钮（Button/Like: state=unliked|liked|fanout，组件集 263:106） ──
 // 三态心形均只有 strokes、无 fills（fill=none），只用 color 切描边色；
