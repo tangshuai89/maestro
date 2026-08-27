@@ -25,7 +25,7 @@ body {
     ),
     radial-gradient(
       ellipse 55% 50% at 88% 92%,
-      color-mix(in oklab, var(--accent) 32%, transparent) 0%,
+      color-mix(in oklab, var(--accent-ui) 32%, transparent) 0%,
       transparent 60%
     ),
     radial-gradient(

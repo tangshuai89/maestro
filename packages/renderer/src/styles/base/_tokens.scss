@@ -16,7 +16,9 @@
   // Brand accent — cool iOS blue-violet (visionOS accent). Used for the
   // login button, focus rings, section-label ticks — UI chrome where a
   // stable brand identity matters more than matching the artwork.
-  --accent: #6b8cff;
+  // NOTE: --accent (无后缀) 已由 _tokens.generated.scss 的 AETHER 体系接管
+  // （#00e5ff 霓虹青，theater 用）。非 theater 的 Plexamp 组件改用 --accent-ui。
+  --accent-ui: #6b8cff;
   --accent-soft: rgba(107, 140, 255, 0.18);
   --accent-hover: #5678ee;
   --accent-deep: #3f5bd0;
@@ -34,11 +36,12 @@
   --error-border: rgba(198, 40, 40, 0.18);
   --error-action-bg: rgba(198, 40, 40, 0.08);
 
-  // Spacing scale
+  // Spacing scale — Plexamp 组件用 -ui 后缀，AETHER 的 --space-2(2px)/--space-4(4px)
+  // 由 _tokens.generated.scss 接管（theater 用）。
   --space-1: 4px;
-  --space-2: 8px;
+  --space-2-ui: 8px;
   --space-3: 12px;
-  --space-4: 16px;
+  --space-4-ui: 16px;
   --space-5: 24px;
   --space-6: 32px;
 
