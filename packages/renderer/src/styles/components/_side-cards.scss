@@ -89,11 +89,11 @@
   transform: scale(1.02);
   padding-left: 10px;
   // Subtle left border accent on the active line, tinted to the cover colour.
-  border-left: 2px solid color-mix(in oklab, var(--cover-accent) 70%, var(--accent));
+  border-left: 2px solid color-mix(in oklab, var(--cover-accent) 70%, var(--accent-ui));
 }
 
 .lyrics-line:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--accent-ui);
   outline-offset: -1px;
 }
 
@@ -219,7 +219,7 @@
 
 .lyrics-submit-link {
   font-size: 11px;
-  color: var(--accent);
+  color: var(--accent-ui);
   text-decoration: none;
   margin-top: 4px;
 
@@ -244,7 +244,7 @@
 
   &:hover {
     background: var(--surface-2);
-    border-color: var(--accent);
+    border-color: var(--accent-ui);
   }
 
   &:active {
@@ -274,7 +274,7 @@
   width: 3px;
   height: 10px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--accent-ui);
 }
 
 .now-playing-grid {

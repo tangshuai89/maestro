@@ -32,7 +32,7 @@
   font-size: 11px;
   line-height: 1.4;
   color: var(--error-fg-soft);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-2-ui);
   word-break: break-all;
 }
 
@@ -46,9 +46,9 @@
   font-size: 11px;
   padding: 4px 10px;
   border-radius: var(--radius-sm);
-  background: var(--accent);
+  background: var(--accent-ui);
   color: #fff;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-ui);
   cursor: pointer;
   transition: background 0.15s ease;
   -webkit-app-region: no-drag;

@@ -67,9 +67,9 @@
 }
 
 .login-btn {
-  background: var(--accent);
+  background: var(--accent-ui);
   color: #fff;
-  border-color: var(--accent);
+  border-color: var(--accent-ui);
   // Push login to the right edge of the titlebar; everything before it
   // clusters on the left.
   margin-left: auto;
@@ -96,7 +96,7 @@
 }
 
 .reset-btn:hover {
-  color: var(--accent);
+  color: var(--accent-ui);
   background: var(--bg-overlay-strong);
   border-color: var(--border-strong);
 }

@@ -85,5 +85,15 @@ check('陈绮贞 ↔ Cheer Chen（表内）', artistLooseMatch('陈绮贞', 'Che
 check('のぼる↑P ↔ Noboru', stageNameAliasMatch('のぼる↑P', 'Noboru'));
 check('蓝井艾露 ↔ Eir Aoi', stageNameAliasMatch('蓝井艾露', 'Eir Aoi'));
 
+// ── 8. 幾田りら ↔ Lilas（Spotify 个人项目名，非音译）──────────
+// 2026-08-27 用户报障：百花繚乱 在喜欢列表出现两条——QQ/网易云写「幾田りら」、
+// Spotify 写「Lilas」（她的 Spotify solo 项目名）。romaji りら→rira 桥不上
+// Lilas（日文 r≈l 但 wanakana 出 r），kuromoji 也不认「幾田」人名读音。
+// 策展表兜底。
+console.log('\n── 幾田りら ↔ Lilas（Spotify 项目名）──');
+check('幾田りら ↔ Lilas', stageNameAliasMatch('幾田りら', 'Lilas'));
+check('幾田りら ↔ Lilas Ikuta', stageNameAliasMatch('幾田りら', 'Lilas Ikuta'));
+check('幾田りら (ikura) ↔ Lilas（带括号注释）', stageNameAliasMatch('幾田りら (ikura)', 'Lilas'));
+
 console.log(`\n🎉 artistAlias.test 通过 ${passed} 项，失败 ${failed} 项`);
 if (failed > 0) process.exit(1);
