@@ -4,6 +4,7 @@ export {
   stripFuriganaParens,
   stripCjkTranslationParens,
   stripCjkTranslationSuffix,
+  stripLatinTranslationSuffix,
   cjkUnify,
   normalizeKey,
   displayKey,

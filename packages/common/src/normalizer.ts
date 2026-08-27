@@ -233,6 +233,51 @@ export function stripCjkTranslationParens(s: string): string {
   return out.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * **展示级专用**：剥「CJK 主体 + 空格 + 拉丁译名尾段」——
+ * `stripCjkTranslationSuffix` 的反向模式。
+ *
+ * 场景（2026-08-27 用户实测「月食」）：同一首歌，QQ/网易云写
+ * 「月食 (The Weeping Woman)」（英译放括号里），Spotify 写
+ * 「月食 The Weeping Woman」（英译裸跟在后面）。`displayKey` 对前者
+ * `stripParensContent` 剥成「月食」，对后者原样保留 → 两边 title 桶分裂，
+ * server `mergeCrossScript` 和 renderer `groupLibraryItems` 都合不上。
+ *
+ * 为什么只在 display 级、不进 catalog 级 `normalizeKey`：catalog 要保守，
+ * 「夜曲」与「夜曲 Nocturne」在跨平台匹配里得靠别的证据（时长/来源）确认，
+ * 不能仅凭"尾段是拉丁文"就断言同曲（见 stripCjkTranslationSuffix 的
+ * 「CJK 主体 + 拉丁尾段（反向）不剥」用例）。展示级本来就把括号内容全剥、
+ * 把版本聚到一组，多剥这一层与它的口径一致。
+ *
+ * 安全边界：
+ *   - 主体**必须以 CJK 字符收尾**——「袁娅维TIA RAY」「揽佬SKAI ISYOURGOD」
+ *     这类 CJK+拉丁连写的名字，主体尾字是拉丁，直接不匹配（否则会被腰斩成
+ *     「袁娅维TIA」）
+ *   - 主体的 CJK 判定不含「・」(U+30FB)——它是分隔标点不是文字，否则
+ *     「LA・LA・LA LOVE SONG」会被剥成「LA・LA・LA」
+ *   - 尾段必须是纯拉丁串且含 ≥2 个字母（挡掉「Song 2024」「X II」）
+ *   - 尾段是分集/卷号（Part 2 / Vol.3 / Ep.1 …）→ 不剥（那是不同曲目，
+ *     不是译名）
+ */
+const CJK_LETTER = '\\u3041-\\u309f\\u30a1-\\u30fa\\u30fc\\u4e00-\\u9fff\\uac00-\\ud7a3';
+const LATIN_TAIL_RE = new RegExp(
+  `^(.*[${CJK_LETTER}])[\\s\\u3000]+([A-Za-z][A-Za-z0-9 .,'’!?&()\\-]*)$`,
+);
+/** 分集/卷号尾段：不是译名，剥了会把不同曲目并成一首。 */
+const LATIN_TAIL_PART_RE =
+  /^(?:pt\.?|part|vol\.?|volume|no\.?|chapter|ch\.?|act|ep\.?|episode|season|disc|cd)\b/i;
+
+export function stripLatinTranslationSuffix(s: string): string {
+  if (!s) return s;
+  const m = s.match(LATIN_TAIL_RE);
+  if (!m) return s;
+  const tail = m[2].trim();
+  if (tail.length < 2) return s;
+  if (!/[A-Za-z]{2}/.test(tail)) return s;
+  if (LATIN_TAIL_PART_RE.test(tail)) return s;
+  return m[1].trim();
+}
+
 // ── 版本 / 翻唱 标签识别 ──────────────────────────────────────────────
 /**
  * 版本标签枚举。稳定字符串用于：(a) 在 normalizeKey 末段插入作隔板让跨版本
@@ -514,11 +559,18 @@ export function normalizeKey(title: string, artist: string): string {
  * 展示级聚类反过来再 stripParensContent 让它们同组（用户要的：弹窗里能看到
  * studio / live 两个版本在同一 group 里展开）。
  *
- * pipeline：stripParensContent → normalizeKey（已含 stripVersionTags 但
- * 此时已无括号）。
+ * pipeline：stripParensContent → stripLatinTranslationSuffix → normalizeKey
+ * （已含 stripVersionTags 但此时已无括号）。
+ *
+ * `stripLatinTranslationSuffix` 必须排在 `stripParensContent` **之后**：
+ * 「梦の夜会(ソワレ) Invitation to Enchantment」要先剥掉括号，尾段才贴到
+ * CJK 主体后面被识别出来。
  */
 export function displayKey(title: string, artist: string): string {
-  return normalizeKey(stripParensContent(title), stripParensContent(artist));
+  return normalizeKey(
+    stripLatinTranslationSuffix(stripParensContent(title)),
+    stripLatinTranslationSuffix(stripParensContent(artist)),
+  );
 }
 
 // ── 多艺人拆分（跨包统一，2026-08-14 从两端收拢）────────────────────
