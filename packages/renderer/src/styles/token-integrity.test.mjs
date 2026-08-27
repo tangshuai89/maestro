@@ -1,6 +1,9 @@
 // Token integrity test — 验证 _tokens.generated.scss 的关键 token 存在且格式正确。
 // 这不是视觉回归测试，但能防止 token 文件意外损坏或 drift。
 // 完整的 Figma ↔ SCSS drift 检测见 scripts/check-token-drift.mjs。
+//
+// 注意：renderer 包用 ESM (module: ESNext)，ts-node 不认 .ts 扩展名，
+// 所以这个测试用 .mjs（纯 JS），被 scripts/test.sh 的 find 自动发现。
 
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -9,24 +12,27 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const scssPath = resolve(__dirname, 'base/_tokens.generated.scss');
 
-function test(name: string, fn: () => void) {
+let failures = 0;
+
+function test(name, fn) {
   try {
     fn();
-    console.log(`  ✓ ${name}`);
+    console.log(`  \u2713 ${name}`);
   } catch (e) {
-    console.error(`  ✗ ${name}`);
-    console.error(`    ${(e as Error).message}`);
+    console.error(`  \u2717 ${name}`);
+    console.error(`    ${e.message}`);
+    failures++;
     process.exitCode = 1;
   }
 }
 
-function assert(cond: boolean, msg: string) {
+function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
 // Parse generated SCSS
 const scss = readFileSync(scssPath, 'utf8');
-const tokens: Record<string, string> = {};
+const tokens = {};
 for (const line of scss.split('\n')) {
   const m = line.match(/^\s*--([\w-]+):\s*(.+?);/);
   if (m) tokens[m[1]] = m[2].trim();
@@ -34,7 +40,7 @@ for (const line of scss.split('\n')) {
 
 test('generated tokens file is non-empty', () => {
   assert(Object.keys(tokens).length > 0, 'no tokens parsed');
-  assert(Object.keys(tokens).length >= 30, `expected ≥30 tokens, got ${Object.keys(tokens).length}`);
+  assert(Object.keys(tokens).length >= 30, `expected >=30 tokens, got ${Object.keys(tokens).length}`);
 });
 
 test('color semantic tokens present', () => {
@@ -95,4 +101,4 @@ test('spacing values are numeric', () => {
   }
 });
 
-console.log('── token integrity tests done ──');
+console.log(`\u2500\u2500 token integrity tests done (${failures} failures) \u2500\u2500`);

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/test.sh — auto-discover and run every *.test.ts under packages/*/src.
+# scripts/test.sh — auto-discover and run every *.test.ts / *.test.mjs under packages/*/src.
 # Usage:
 #   npm test                 one-shot run
-#   npm test -- --watch      re-run whenever any *.test.ts or src/** changes
+#   npm test -- --watch      re-run whenever any *.test.* or src/** changes
 set -euo pipefail
 
 WATCH=0
@@ -16,17 +16,24 @@ run_pkg() {
   local pkg="$1"
   local root="$2"
   # ts-node runs ONE script at a time and treats subsequent positional
-  # args as process.argv — so we loop, not batch. `find -print0` + the
-  # while-read idiom handles filenames with spaces (none today, but free).
-  local files
-  files=$(find "$root/packages/$pkg/src" -type f -name '*.test.ts' | sort)
+  # args as process.argv — so we loop, not batch.
+  # .test.ts → ts-node (CommonJS packages: common/server/electron)
+  # .test.mjs → node (ESM packages: renderer)
+  local ts_files mjs_files files
+  ts_files=$(find "$root/packages/$pkg/src" -type f -name '*.test.ts' 2>/dev/null | sort)
+  mjs_files=$(find "$root/packages/$pkg/src" -type f -name '*.test.mjs' 2>/dev/null | sort)
+  files="${ts_files}${mjs_files:+$'\n'${mjs_files}}"
   if [ -z "$files" ]; then return; fi
   local count
-  count=$(printf '%s\n' "$files" | wc -l | tr -d ' ')
+  count=$(printf '%s\n' "$files" | grep -c . | tr -d ' ')
   echo "── ${pkg} (${count} test files) ──"
   local f
   for f in $files; do
-    ( cd "$root/packages/$pkg" && npx ts-node "$f" )
+    if [[ "$f" == *.mjs ]]; then
+      ( cd "$root/packages/$pkg" && node "$f" )
+    else
+      ( cd "$root/packages/$pkg" && npx ts-node "$f" )
+    fi
   done
 }
 
@@ -54,7 +61,7 @@ echo "── watching for changes (Ctrl-C to exit) ──"
 
 while true; do
   sleep 1
-  if [ -n "$(find packages -type f \( -name '*.test.ts' -o -path '*/src/*' \) -newer "$SENTINEL" -print -quit)" ]; then
+  if [ -n "$(find packages -type f \( -name '*.test.ts' -o -name '*.test.mjs' -o -path '*/src/*' \) -newer "$SENTINEL" -print -quit)" ]; then
     touch "$SENTINEL"
     echo
     echo "── change detected, re-running tests ──"
