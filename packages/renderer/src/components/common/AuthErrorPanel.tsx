@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AuthError, AuthErrorCode } from '../../auth/types';
 import type { MusicProvider } from '../../api';
 
@@ -21,6 +22,16 @@ const FRIENDLY: Record<AuthErrorCode, string> = {
   AUTH_UNKNOWN: '登录失败',
 };
 
+const SEVERITY: Record<AuthErrorCode, 'FATAL' | 'WARN' | 'INFO'> = {
+  AUTH_CANCELLED: 'INFO',
+  AUTH_TIMEOUT: 'WARN',
+  AUTH_INVALID: 'FATAL',
+  AUTH_EXPIRED: 'FATAL',
+  AUTH_PROTOCOL_MISSING: 'WARN',
+  AUTH_BACKEND_DOWN: 'FATAL',
+  AUTH_UNKNOWN: 'FATAL',
+};
+
 /**
  * Recovery panel shown when an auth attempt fails. Always surfaces typed
  * actions; never just a raw error string. Mounts at App level so it stays
@@ -36,15 +47,37 @@ export default function AuthErrorPanel({
   onPasteCookie,
   onDismiss,
 }: Props) {
+  const [expanded, setExpanded] = useState(false);
   if (!error) return null;
   const title = FRIENDLY[error.code];
+  const severity = SEVERITY[error.code];
   const showPaste = (provider === 'qq' || provider === 'netease') && Boolean(onPasteCookie);
+  // stack trace: error.message often contains multi-line stack info
+  const hasStack = error.message.includes('\n');
   return (
     <div className="auth-error-panel" role="alert">
+      <div className="auth-error-header">
+        <span className={`auth-error-severity auth-error-severity--${severity.toLowerCase()}`}>{severity}</span>
+        <span className="auth-error-code">{error.code}</span>
+        <button
+          className="auth-error-expand"
+          onClick={() => setExpanded(v => !v)}
+          aria-expanded={expanded}
+          aria-label={expanded ? '收起详情' : '展开详情'}
+          title={expanded ? '收起' : '展开'}
+        >
+          {expanded ? '▾' : '▸'}
+        </button>
+      </div>
       <div className="auth-error-title">{title}</div>
-      <div className="auth-error-detail">{error.message}</div>
+      {expanded && hasStack && (
+        <pre className="auth-error-stack">{error.message}</pre>
+      )}
+      {expanded && !hasStack && (
+        <div className="auth-error-detail">{error.message}</div>
+      )}
       <div className="auth-error-actions">
-        <button className="auth-error-btn" onClick={onRetry} title="用相同方式重试">
+        <button className="auth-error-btn auth-error-btn--primary" onClick={onRetry} title="用相同方式重试">
           重试
         </button>
         <button className="auth-error-btn" onClick={onReLogin} title="从头开始登录">

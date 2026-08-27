@@ -128,6 +128,7 @@ export default function SettingsModal({ onClose }: Props) {
     <Modal onClose={onClose} panelClassName="settings-modal-panel">
       <div className="settings-modal-header">
         <span className="settings-modal-title">设置</span>
+        <span className="settings-modal-kicker">CONFIG</span>
         <button
           className="settings-modal-close"
           onClick={onClose}
@@ -155,7 +156,10 @@ export default function SettingsModal({ onClose }: Props) {
             >
               {backupStatus.kind === 'busy' ? '备份中…' : '立即备份'}
             </button>
-            <span className="settings-count">当前 {backupCount} 份</span>
+            <span className="settings-stat-tag" title={`本地备份目录共 ${backupCount} 份`}>
+              <span className="settings-stat-tag-label">BACKUPS</span>
+              <span className="settings-stat-tag-value">{backupCount}</span>
+            </span>
           </div>
           <StatusLine status={backupStatus} />
         </section>

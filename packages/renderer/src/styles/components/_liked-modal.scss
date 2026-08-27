@@ -61,12 +61,50 @@
 }
 
 .liked-modal-count {
-  flex: 1;
   font-size: 12px;
   color: $overlay-text-dim;
-  text-align: right;
+  padding-right: 4px;
+}
+
+// 平台计数徽章行：对应 Figma Library 屏顶部 Q 1,284 / N 892 / S 347 / D 156
+.liked-modal-platform-stats {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  justify-content: flex-end;
   padding-right: 8px;
 }
+
+.liked-modal-platform-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.liked-modal-platform-letter {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.liked-modal-platform-num {
+  color: $overlay-text-dim;
+  font-variant-numeric: tabular-nums;
+}
+
+// Per-platform accent colors (matching Badge/Platform in Figma)
+.liked-modal-platform-stat--qq .liked-modal-platform-letter { color: #31c27c; }
+.liked-modal-platform-stat--netease .liked-modal-platform-letter { color: #c20c0c; }
+.liked-modal-platform-stat--spotify .liked-modal-platform-letter { color: #1db954; }
+.liked-modal-platform-stat--deezer .liked-modal-platform-letter { color: #a238ff; }
 
 .liked-modal-count-detail {
   color: $overlay-text-faint;
@@ -346,6 +384,16 @@
 
 .liked-modal-album {
   color: $overlay-text-faint;
+}
+
+// 行内时长（对应 Figma Library 屏右侧的 4:29 / 5:25 等）
+.liked-modal-duration {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: $overlay-text-faint;
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-family: var(--font-mono, monospace);
 }
 
 .liked-modal-sources {

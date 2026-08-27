@@ -280,7 +280,7 @@ export default function App() {
         recoConfigured={reco.recoStatus?.configured ?? false}
         recoLibrarySize={reco.recoStatus?.librarySize ?? 0}
         recoRunning={reco.recoRunning}
-        recoMatchRate={reco.recoStatus?.configured ? Math.min(99, 78 + ((reco.recoStatus.librarySize ?? 0) % 22)) : 0}
+        recoMatchRate={0}
         recoSuggestions={reco.suggestions}
         onPlayPause={player.handlePlayPause}
         onSkip={player.handleSkip}
