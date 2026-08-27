@@ -190,6 +190,7 @@ const ICONS: Record<string, string[]> = {
   skipForward: ['M5 4l10 8-10 8z', 'M19 5v14'],
   heart: ['M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.51 4.04 3 5.5l7 7Z'],
   thumbsDown: ['M7 10v12', 'M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 16.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z'],
+  more: ['M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z'],
   shuffle: ['M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22', 'm18 2 4 4-4 4', 'M2 6h1.9c1.5 0 2.9.9 3.6 2.2', 'M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8', 'm18 14 4 4-4 4'],
   repeat: ['m17 2 4 4-4 4', 'M3 11v-1a4 4 0 0 1 4-4h14', 'm7 22-4-4 4-4', 'M21 13v1a4 4 0 0 1-4 4H3'],
   swap: ['M8 3 4 7l4 4', 'M4 7h16', 'm16 21 4-4-4-4', 'M20 17H4'],
@@ -218,7 +219,7 @@ export default function TheaterView(props: TheaterViewProps) {
     coverBackdropRef,
     lyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
-    onPlayPause, onSkip, onPrev, onSeek, onLike,
+    onPlayPause, onSkip, onPrev, onSeek, onLike, onDislike,
     onSwitchProvider,
   } = props;
 
@@ -283,6 +284,8 @@ export default function TheaterView(props: TheaterViewProps) {
 
   // 播放键脉冲：playing 时核心辉光更强
   const [hover, setHover] = useState(false);
+  // 更多菜单（dislike 入口）
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // 封面渐变主色（从 track 派生，稳定）
   const coverHue = useMemo(() => (track ? seededFromString(track.id, 99) % 360 : 265), [track]);
@@ -382,8 +385,8 @@ export default function TheaterView(props: TheaterViewProps) {
             )}
           </div>
           <span className="th-live-tag"><span className="th-live-dot" />LIVE</span>
-          <span className="th-heart-stat">
-            <span className="th-heart-stat-icon" aria-hidden="true">♥</span>
+          <span className="th-heart-stat" aria-hidden="true">
+            <span className="th-heart-stat-icon">♥</span>
             <span>{likedCount > 0 ? likedCount.toLocaleString() : '1,284'}</span>
           </span>
           {/* 星轨进度环（同心套在封面外） */}
@@ -425,7 +428,27 @@ export default function TheaterView(props: TheaterViewProps) {
 
         {/* 歌名信息（1440 稿 430,590） */}
         <div className="th-track-info">
-          <h1 className="th-track-title">{track?.title ?? '走钢丝的人'}</h1>
+          <div className="th-track-header">
+            <h1 className="th-track-title">{track?.title ?? '走钢丝的人'}</h1>
+            {track && (
+              <div className="th-more-wrap">
+                <button type="button" className="th-more-btn" onClick={() => setMoreOpen(v => !v)} title="更多" aria-label="更多" aria-expanded={moreOpen}>
+                  <ThIcon icon="more" size={16} />
+                </button>
+                {moreOpen && (
+                  <>
+                    <div className="th-more-backdrop" onClick={() => setMoreOpen(false)} />
+                    <div className="th-more-menu" role="menu">
+                      <button type="button" className="th-more-item th-more-item--danger" onClick={() => { setMoreOpen(false); onDislike(); }} role="menuitem">
+                        <ThIcon icon="thumbsDown" size={14} />
+                        <span>不感兴趣（取消红心 + 跳过）</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <p className="th-track-sub">
             {track ? `${track.artist} // ${track.album || '未知专辑'}` : '李泉 // 2001 · 寓言'}
           </p>

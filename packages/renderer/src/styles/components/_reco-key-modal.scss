@@ -60,7 +60,7 @@
   outline: none;
 }
 
-.reco-modal-input:focus {
+.reco-modal-input:focus-visible {
   border-color: $overlay-field-border-hi;
 }
 
