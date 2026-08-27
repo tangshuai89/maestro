@@ -100,3 +100,16 @@
   background: var(--bg-overlay-strong);
   border-color: var(--border-strong);
 }
+
+// Compact: ≤ 1100px — 隐藏次要按钮，保留 source-switch + login
+@media (max-width: 1100px) {
+  .titlebar { gap: 4px; padding-right: 8px; }
+  .titlebar-btn { padding: 4px 8px; }
+}
+
+// Ultra-compact: ≤ 960px (min window width) — 只留核心控件
+@media (max-width: 960px) {
+  .titlebar { padding-left: 80px; gap: 2px; }
+  .preset-select { display: none; }
+  .reset-btn { display: none; }
+}

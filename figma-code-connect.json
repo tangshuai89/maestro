@@ -1,0 +1,111 @@
+{
+  "$comment": "Figma Code Connect 映射 — 组件 → React 实现。未来导入 Figma Dev Mode。",
+  "$figmaFileKey": "FtbRZXvzlCp4Sq9e322cQQ",
+  "mappings": [
+    {
+      "figmaComponent": "Button/Like",
+      "figmaNodeId": "263:106",
+      "reactComponent": "LikeButton",
+      "reactPath": "packages/renderer/src/components/player/TransportBar.tsx",
+      "props": {
+        "liked": { "figmaProp": "state", "map": { "liked": true, "unliked": false, "fanout": true } },
+        "fanOutCount": { "figmaProp": "fanOutCount", "type": "number" }
+      }
+    },
+    {
+      "figmaComponent": "Button/Icon",
+      "figmaNodeId": "295:98",
+      "reactComponent": "ThIcon",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum" },
+        "size": { "figmaProp": "size", "map": { "sm": 16, "md": 20 } },
+        "disabled": { "figmaProp": "state", "map": { "disabled": true, "default": false, "hover": false, "active": false } }
+      }
+    },
+    {
+      "figmaComponent": "Badge/Platform",
+      "figmaNodeId": "295:115",
+      "reactComponent": "PlatformBadge",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "platform": { "figmaProp": "provider", "type": "enum" },
+        "active": { "figmaProp": "state", "map": { "active": true, "inactive": false } }
+      }
+    },
+    {
+      "figmaComponent": "Card/Neural",
+      "figmaNodeId": "263:81",
+      "reactComponent": "RecoCard",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "type": { "figmaProp": "type", "type": "enum" },
+        "match": { "figmaProp": "match", "type": "number" }
+      }
+    },
+    {
+      "figmaComponent": "Controls/Transport",
+      "figmaNodeId": "263:158",
+      "reactComponent": "TransportBar",
+      "reactPath": "packages/renderer/src/components/player/TransportBar.tsx",
+      "props": {
+        "playing": { "figmaProp": "state", "map": { "playing": true, "paused": false } }
+      }
+    },
+    {
+      "figmaComponent": "Hologram/Cover",
+      "figmaNodeId": "257:174",
+      "reactComponent": "CoverCard",
+      "reactPath": "packages/renderer/src/components/cover/CoverCard.tsx",
+      "props": {
+        "coverUrl": { "figmaProp": "coverUrl", "type": "string" }
+      }
+    },
+    {
+      "figmaComponent": "Lyrics/Line",
+      "figmaNodeId": "257:184",
+      "reactComponent": "LyricsLine",
+      "reactPath": "packages/renderer/src/components/lyrics/LyricsView.tsx",
+      "props": {
+        "state": { "figmaProp": "state", "type": "enum" }
+      }
+    },
+    {
+      "figmaComponent": "Core/Play",
+      "figmaNodeId": "257:206",
+      "reactComponent": "PlayButton",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "playing": { "figmaProp": "state", "map": { "playing": true, "paused": false } }
+      }
+    },
+    {
+      "figmaComponent": "Ring/Sound",
+      "figmaNodeId": "313:139",
+      "reactComponent": "SoundRing",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "playing": { "figmaProp": "state", "map": { "playing": true, "idle": false } }
+      }
+    },
+    {
+      "figmaComponent": "Ring/Progress",
+      "figmaNodeId": "313:182",
+      "reactComponent": "ProgressRing",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "progress": { "figmaProp": "progress", "type": "number" }
+      }
+    },
+    {
+      "figmaComponent": "Tag/Stat",
+      "figmaNodeId": "295:152",
+      "reactComponent": "StatTag",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "tone": { "figmaProp": "tone", "type": "enum" },
+        "label": { "figmaProp": "label", "type": "string" }
+      }
+    }
+  ]
+}
