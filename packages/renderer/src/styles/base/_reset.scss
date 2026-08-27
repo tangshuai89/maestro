@@ -32,13 +32,23 @@ button {
   color: inherit;
 }
 
-button:focus-visible {
+// Unified focus-visible ring for all interactive elements.
+// Uses --accent-ui (#6b8cff) for non-theater chrome; theater controls
+// override with cyan in _theater.scss.
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--accent-ui);
   outline-offset: 2px;
 }
 
 input,
-select {
+select,
+textarea {
   font-family: inherit;
 }
 

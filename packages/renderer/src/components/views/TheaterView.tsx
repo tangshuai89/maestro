@@ -385,8 +385,8 @@ export default function TheaterView(props: TheaterViewProps) {
             )}
           </div>
           <span className="th-live-tag"><span className="th-live-dot" />LIVE</span>
-          <span className="th-heart-stat">
-            <span className="th-heart-stat-icon" aria-hidden="true">♥</span>
+          <span className="th-heart-stat" aria-hidden="true">
+            <span className="th-heart-stat-icon">♥</span>
             <span>{likedCount > 0 ? likedCount.toLocaleString() : '1,284'}</span>
           </span>
           {/* 星轨进度环（同心套在封面外） */}

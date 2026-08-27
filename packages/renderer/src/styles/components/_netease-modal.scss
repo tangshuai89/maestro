@@ -150,8 +150,7 @@
   -webkit-app-region: no-drag;
 }
 
-.qr-input:focus {
-  outline: none;
+.qr-input:focus-visible {
   border-color: var(--accent-hover);
 }
 

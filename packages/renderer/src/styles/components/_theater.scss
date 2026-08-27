@@ -451,7 +451,7 @@
   pointer-events: auto;
 }
 .th-time--cur { color: var(--neon); }
-.th-time--total { color: rgba(255, 255, 255, 0.3); }
+.th-time--total { color: rgba(255, 255, 255, 0.5); }
 .th-time-divider {
   width: 1px; height: 20px;
   background: rgba(255, 255, 255, 0.15);
@@ -648,6 +648,18 @@
 }
 .th-ctrl:hover:not(:disabled) { color: #fff; transform: scale(1.08); }
 .th-ctrl:disabled { opacity: 0.3; cursor: default; }
+.th-ctrl:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.th-more-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.th-more-item:focus-visible {
+  outline: 2px solid var(--accent-ui);
+  outline-offset: -2px;
+}
 
 // ── 红心按钮（Button/Like: state=unliked|liked|fanout，组件集 263:106） ──
 // 三态心形均只有 strokes、无 fills（fill=none），只用 color 切描边色；

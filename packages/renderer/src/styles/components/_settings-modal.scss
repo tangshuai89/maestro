@@ -96,7 +96,7 @@
   font-size: 13px;
   outline: none;
 
-  &:focus {
+  &:focus-visible {
     border-color: $overlay-field-border-hi;
   }
 }

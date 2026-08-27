@@ -90,4 +90,8 @@
   // Live bass intensity in 0..1, written by the bass RAF loop reading the
   // AnalyserNode's low-frequency bins. Drives the cover-card breathing.
   --bass-intensity: 0;
+
+  // Contrast overrides — generated tokens have --text-dim at 0.4 which is
+  // below WCAG AA on dark backgrounds. Bump to 0.55 for legibility.
+  --text-dim: rgba(245, 240, 232, 0.55);
 }
