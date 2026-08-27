@@ -17,11 +17,11 @@
 
 ## 架构约束（硬性，违反即被打回）
 
-- 每个音乐平台一个 provider 类，实现 `MusicProvider` 接口（`packages/common/src/provider.ts`）
+- 每个音乐平台一个 provider 类，实现 `MusicProvider` 接口（`packages/server/src/common/provider.ts`）
 - provider 放对应包的 `music/` 目录（如 `packages/server/src/music/qq.provider.ts`）
-- 去重/合并/业务逻辑放 `music/music.service.ts`，**不放** controller
+- 去重/合并/业务逻辑放 `packages/server/src/music/music.service.ts`，**不放** controller
 - 外部 API 调用统一用内置 `fetch`（不引 axios）。搜索/元数据类调用套
-  `packages/common/src/timeout.ts` 的 `withTimeout`（单平台 5s，超时即缺席
+  `packages/server/src/common/timeout.ts` 的 `withTimeout`（单平台 5s，超时即缺席
   不阻塞其他平台）；音频/封面字节代理是**流式**的，**不设整体超时**（否则
   会掐断正在播放的歌）
 - 类型定义放各自模块的 `types.ts`，共用类型放 `packages/common/src/`
@@ -67,7 +67,7 @@
 |---|---|
 | 跨包归一工具 | `packages/common/src/normalizer.ts` |
 | 跨包统一类型/接口 | `packages/common/src/` |
-| Provider 接口 | `packages/common/src/provider.ts` |
+| Provider 接口 | `packages/server/src/common/provider.ts` |
 | Provider 实现 | `packages/server/src/music/*.provider.ts` |
 | 业务合并/去重 | `packages/server/src/music/music.service.ts` |
 | 前端分组展示 | `packages/renderer/src/lib/groupLibrary.ts` |
