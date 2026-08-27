@@ -562,8 +562,8 @@
 
 .th-core-cluster {
   position: absolute;
-  left: 236px; top: 700px;
-  width: 200px; height: 72px;
+  left: 266px; top: 700px;
+  width: 264px; height: 72px;
   display: flex;
   align-items: center;
   gap: 24px;
@@ -584,6 +584,53 @@
 }
 .th-ctrl:hover:not(:disabled) { color: #fff; transform: scale(1.08); }
 .th-ctrl:disabled { opacity: 0.3; cursor: default; }
+
+// ── 红心按钮（Button/Like: state=unliked|liked|fanout，组件集 263:106） ──
+// 三态心形均只有 strokes、无 fills（fill=none），只用 color 切描边色；
+// liked/fanout 加 18% 红底 + 红描边 + 红晕。
+// unliked/liked：icon 居中 x=11,y=11；fanout：icon 左移 x=5.5 给右下徽章腾位，
+// 徽章内嵌右下角（设计稿 x=23.5,y=13.5,11x13），非右上悬出。
+.th-like {
+  position: relative;
+  width: 40px; height: 40px;
+  border-radius: var(--radius-8);
+  border: 1px solid var(--glass-stroke);
+  background: var(--glass-fill);
+  color: var(--primitive-off-white);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 100ms var(--ease-spring), color 0.2s ease,
+    background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.th-like:hover:not(:disabled) { transform: scale(1.08); }
+.th-like:active:not(:disabled) { transform: scale(0.96); }
+.th-like:disabled { opacity: 0.3; cursor: default; }
+.th-like.is-liked,
+.th-like.is-fanout {
+  background: color-mix(in srgb, var(--status-liked) 18%, transparent);
+  border-color: var(--status-liked);
+  box-shadow: 0 0 10px 1px color-mix(in srgb, var(--status-liked) 40%, transparent);
+  color: var(--status-liked);
+}
+// fanout 态 icon 左移（设计稿 x 11→5.5），给右下徽章腾位
+.th-like.is-fanout svg { transform: translateX(-5.5px); }
+.th-like-badge {
+  position: absolute;
+  right: 3px; bottom: 3px;
+  min-width: 11px; height: 13px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-8);
+  background: color-mix(in srgb, var(--accent) 90%, transparent);
+  color: #05051a;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+}
 
 .th-core {
   position: relative;

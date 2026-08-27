@@ -134,7 +134,7 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   天炫男孩: ['Tension'], // 天炫男孩 (2首)
   'ユニゾン・スクエア・ガーデン': ['UNISON SQUARE GARDEN'], // UNISON SQUARE GARDEN (ユニゾン・スクエア・ガーデン) (2首)
   'クリス・ハート': ['Chris Hart'], // クリス・ハート (Chris Hart) (2首)
-  幾田りら: ['几田りら', '幾田rira', 'ikura'], // 幾田りら (ikura) (2首)
+  幾田りら: ['几田りら', '幾田rira', 'ikura', 'Lilas', 'Lilas Ikuta'], // 幾田りら (ikura) (2首) — Lilas/Lilas Ikuta = Spotify 个人项目名
   エゴイスト: ['EGOIST'], // EGOIST (エゴイスト) (2首)
   林韓星: ['Lim Han-byul', 'Onestar', '林韩星'], // 林韩星 (임한별) (2首)
   女團: ['女团', 'SING'], // SING女团 (2首)

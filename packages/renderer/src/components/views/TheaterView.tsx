@@ -211,13 +211,13 @@ function ThIcon({ icon, size = 16, color, fill }: { icon: string; size?: number;
 
 export default function TheaterView(props: TheaterViewProps) {
   const {
-    track, playing, loading, fanOutCount,
+    track, playing, loading, liked, fanOutCount,
     currentTime, duration,
     provider, qqQuality, trialFellBack, likedCount,
     coverBackdropRef,
     lyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
-    onPlayPause, onSkip, onPrev, onSeek,
+    onPlayPause, onSkip, onPrev, onSeek, onLike,
     onSwitchProvider,
   } = props;
 
@@ -448,10 +448,19 @@ export default function TheaterView(props: TheaterViewProps) {
           ))}
         </section>
 
-        {/* 左下：能量核心（1440 稿 300,700） */}
+        {/* 左下：能量核心（1440 稿 266,700；顺序 prev|like|play|next） */}
         <div className="th-core-cluster">
           <button type="button" className="th-ctrl th-ctrl--prev" onClick={onPrev} disabled={!track} title="上一首">
             <ThIcon icon="skipBack" size={18} />
+          </button>
+          <button type="button"
+            className={`th-like${liked ? ' is-liked' : ''}${liked && fanOutCount > 1 ? ' is-fanout' : ''}`}
+            onClick={onLike} disabled={!track}
+            title={liked ? (fanOutCount > 0 ? `已心动 ${fanOutCount} 个平台，再点取消红心` : '再点取消红心') : '红心'}
+            aria-pressed={liked}
+          >
+            <ThIcon icon="heart" size={18} />
+            {liked && fanOutCount > 1 && <span className="th-like-badge">{fanOutCount}</span>}
           </button>
           <button type="button" className={`th-core${effPlaying ? ' is-playing' : ''}${hover ? ' is-hover' : ''}`}
             onClick={onPlayPause} disabled={!track || loading} title={effPlaying ? '暂停' : '播放'}
