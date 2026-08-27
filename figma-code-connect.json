@@ -106,6 +106,15 @@
         "tone": { "figmaProp": "tone", "type": "enum" },
         "label": { "figmaProp": "label", "type": "string" }
       }
+    },
+    {
+      "figmaComponent": "Icon/Dislike",
+      "figmaNodeId": "431:66",
+      "reactComponent": "ThIcon",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "icon": { "figmaProp": "icon", "map": { "dislike": "thumbsDown" } }
+      }
     }
   ]
 }
