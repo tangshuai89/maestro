@@ -12,13 +12,13 @@
 
 ## 架构约束
 
-- 每个音乐平台一个 provider 类，实现 `MusicProvider` 接口（`common/provider.ts`）
-- provider 放 `music/` 目录（如 `qq.provider.ts`, `netease.provider.ts`, `deezer.provider.ts`, `spotify.provider.ts`）
-- 去重/合并/业务逻辑放 `music/music.service.ts`，不放 controller
+- 每个音乐平台一个 provider 类，实现 `MusicProvider` 接口（`packages/server/src/common/provider.ts`）
+- provider 放 `packages/server/src/music/` 目录（如 `qq.provider.ts`, `netease.provider.ts`, `deezer.provider.ts`, `spotify.provider.ts`）
+- 去重/合并/业务逻辑放 `packages/server/src/music/music.service.ts`，不放 controller
 - 外部 API 调用统一用内置 `fetch`（不引 axios，减少打包依赖）。搜索/元数据类
-  调用套 `common/timeout.ts` 的 `withTimeout`（单平台 5s，超时即缺席不阻塞其他
+  调用套 `packages/server/src/common/timeout.ts` 的 `withTimeout`（单平台 5s，超时即缺席不阻塞其他
   平台）；音频/封面字节代理是流式的，**不设整体超时**（否则会掐断正在播放的歌）
-- 类型定义放各自模块的 `types.ts`，共用类型放 `common/`
+- 类型定义放各自模块的 `types.ts`，共用类型放 `packages/common/src/`
 - 前端状态管理用 React hooks + context，不引入 Redux
 - 所有平台凭据和 API Key 存在本地，不上传任何服务器（也没有服务器）
 - 日志用 NestJS Logger，不用 `console.log`

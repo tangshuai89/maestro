@@ -13,15 +13,15 @@
 - [x] 13. 单测：qq.provider.test.ts 验证 computeGtk DJB2 实现
 - [x] 14. 根 package.json test 脚本加入 qq.provider.test.ts
 - [x] 15. spec.md 验收标准 + 范围段更新；tasks.md 7 → 15 项
-- [ ] 16. LikedLibraryModal: sessionStorage SWR（packages/renderer/src/lib/likedCache.ts）— 二次打开首帧渲染旧库
-- [ ] 17. LikedLibraryModal: 首次打开 skeleton 占位（6 行瀑布错开）
-- [ ] 18. LikedLibraryModal: 「重新导入」中顶部渐变同步条 + 中央心形脉动 overlay + 列表降亮度
-- [ ] 19. LikedLibraryModal: 「现在导入」/「重新导入」按钮内嵌 spinner，文案换为「…中」
-- [ ] 20. App.tsx 注入 onImportSettled → reloadLikedCount 刷新 ❤ 角标
-- [ ] 21. _liked-modal.scss 加 skeleton-pulse / syncbar-slide / heart-pulse / btn-spin 动画 + overlay 模糊背景
-- [ ] 22. spec.md 增加「UI / 体验（LikedLibraryModal）」节，验收标准覆盖以上
-- [ ] 23. 修 bug：modal 关闭前 fetch 未 resolve → 关闭后 cache 未更新 → 下次打开看老数据。把 writeCachedLibrary 提到 cancelled 检查之前；后台拉新时标题右侧绿色脉动小点指示
-- [ ] 24. 修 bug：fanOut key (QQ main) 与 library item.id (netease main) 不一致时 getLibrary 漏算 → 弹窗 badge 只显示 1 平台。加 (platform, trackId) → fanOut key 反向索引，命中后**取整组 entries** 而不是只加匹配的那一条。**二次兜底**：healLibraryItem 异步后台用 searchEquivalent（4-tier：normalizeKey / 双向 includes / 跨脚本 / JW fuzzy）搜索补全缺失平台 source + 写 fanOut。新增 library-badge-merge.e2e #7（反向索引）和 #8（healLibraryItem + 日音罗马字漂移）用例
+- [x] 16. LikedLibraryModal: sessionStorage SWR（packages/renderer/src/lib/likedCache.ts）— 二次打开首帧渲染旧库
+- [x] 17. LikedLibraryModal: 首次打开 skeleton 占位（6 行瀑布错开）
+- [x] 18. LikedLibraryModal: 「重新导入」中顶部渐变同步条 + 中央心形脉动 overlay + 列表降亮度
+- [x] 19. LikedLibraryModal: 「现在导入」/「重新导入」按钮内嵌 spinner，文案换为「…中」
+- [x] 20. App.tsx 注入 onImportSettled → reloadLikedCount 刷新 ❤ 角标
+- [x] 21. _liked-modal.scss 加 skeleton-pulse / syncbar-slide / heart-pulse / btn-spin 动画 + overlay 模糊背景
+- [x] 22. spec.md 增加「UI / 体验（LikedLibraryModal）」节，验收标准覆盖以上
+- [x] 23. 修 bug：modal 关闭前 fetch 未 resolve → 关闭后 cache 未更新 → 下次打开看老数据。把 writeCachedLibrary 提到 cancelled 检查之前；后台拉新时标题右侧绿色脉动小点指示
+- [x] 24. 修 bug：fanOut key (QQ main) 与 library item.id (netease main) 不一致时 getLibrary 漏算 → 弹窗 badge 只显示 1 平台。加 (platform, trackId) → fanOut key 反向索引，命中后**取整组 entries** 而不是只加匹配的那一条。**二次兜底**：healLibraryItem 异步后台用 searchEquivalent（4-tier：normalizeKey / 双向 includes / 跨脚本 / JW fuzzy）搜索补全缺失平台 source + 写 fanOut。新增 library-badge-merge.e2e #7（反向索引）和 #8（healLibraryItem + 日音罗马字漂移）用例
 - [x] 25. 修事故：跨平台等价匹配用**裸 isCrossScript**判艺人（只看「一边 CJK、一边拉丁」就判同一人）→ 同名不同艺人的翻唱链（wacci 原唱 / 铃木爱理 / Lefty Hand Cream 翻唱「別の人の彼女になったよ」）被 CJK 名当桥传递性并入同一 fanOut 组，badge 虚报 3❤ + 平台计数虚高 + 错误红心被同步远端。修复：① 新增 `music/translit.ts`（pinyin-pro + wanakana）`artistTransliterationMatch`——跨脚本艺人必须**音译对得上**才认；② `artistLooseMatch` + Tier 2 内联 + `patchLibraryWithSources` 的裸 isCrossScript 全部换成音译佐证；③ 删掉忽略艺人的旧 Tier 4（full-key 跨脚本），改为「跨脚本**标题** + 艺人 artistLooseMatch + 时长 ±3s」；④ 新增 Tier 3b：纯汉字日文名（藤井风↔Fujii Kaze，拼音≠日文读音）走「标题完全相等 + 时长 ±3s 严格 + 艺人跨脚本」强佐证通道兜底。新增 cross-platform-match.e2e #17（翻唱链拒绝，含同时长）+ #18（藤井风 Tier 3b 命中）
 - [x] 26. 修问题3：简繁跨平台被拆开。前端 `lib/groupLibrary.ts` 的 `stripForFuzzy`/`normalizeNoStrip` 补 OpenCC 繁→简（cjkUnify，与后端 search.util 同口径）——后端因时长差拆成两条的简繁版本，前端分组 key 收敛后合并。同步更新 whitebox 副本 `music/groupLibrary.test.ts` + 新增 #13（龍捲風↔龙卷风）
 - [x] 27. 重建本地 fanOut：`importLiked` 全量导入后清空 session fanOut（import 已是各平台真实红心的 artist-strict 快照），让收紧后的 detect 逻辑重新积累，冲掉历史误并组；远端红心不动
@@ -29,10 +29,10 @@
 
 ## 性能：库打开秒开（≥ 3000 首）
 
-- [ ] 29. server `getLibrary` 加内存缓存 + fanOut 增量合并：libraryCache: Map<sessionId, { result, fanOutSignature }>；fanOutSignature 用 `keys.length` + 头/尾各几个 key 拼字符串（fanOut mutate 时签名必变）；命中直接 return。增量合并：先构建 (platform, trackId) → library item indices 反向索引一次，再对受 fanOut 影响的 item 重算 likedPlatforms，未受影响的直接用 storage 值。
-- [ ] 30. server fanOut mutate 处 invalidate 缓存：fanOutLike / detectLikedAndSync / dislikeMerged / patchLibraryWithSources / importLiked（清空 fanOut 那步）→ 集中 `private invalidateLibraryCache(sessionId)`；fanOutSignature 用 fanOut 的 `keys.length` + `Object.keys(fanOut).join(',').length` + 第一条 entry 的 platform/trackId（弱但够用——fanOut 真变更时长度必然变）。
-- [ ] 31. renderer `lib/likedCache.ts`: 升 sessionStorage → localStorage，key `maestro:liked-library-cache`；readCachedLibrary 校验 importedAt ≤ 30 天；写失败（quota/隐私模式）降级为首次打开；接口签名不变。
-- [ ] 32. renderer `components/modals/LikedLibraryModal.tsx`: 装 `@tanstack/react-virtual`；用 useVirtualizer 渲染 group rows；动态行高 measureElement（展开 sublist 时整组高度变化）；expanded Set 变化触发重测；滚动 FPS 不掉。保留原有 skeleton / 重新导入 / syncing dot / fanOut 兜底 / close-不取消-fetch 等全部 UX。
-- [ ] 33. renderer `lib/groupLibrary.ts`: 第二遍扫描里 `fuzzyKey(anchor...)` / `fuzzyKey(cand...)` 提到循环外（用第一遍 enriched 的 repTitleKey/repArtistKey 直接复用）；不再每次 j 循环重算 OpenCC。3000 items 全过程 < 50ms。groupLibrary.test.ts 同步更新。
-- [ ] 34. renderer `App.tsx` `reloadLikedCount`: 先 `readCachedLibrary()` 立即 setLikedCount，后台 `getLibrary()` 拉到后覆盖。复用 likedCache.ts 不重复实现。
-- [ ] 35. spec.md 更新性能段（已完成，验收标准 / 实现 / 不做什么）；tasks.md 28 → 35 项。
+- [x] 29. server `getLibrary` 加内存缓存 + fanOut 增量合并：libraryCache: Map<sessionId, { result, fanOutSignature }>；fanOutSignature 用 `keys.length` + 头/尾各几个 key 拼字符串（fanOut mutate 时签名必变）；命中直接 return。增量合并：先构建 (platform, trackId) → library item indices 反向索引一次，再对受 fanOut 影响的 item 重算 likedPlatforms，未受影响的直接用 storage 值。
+- [x] 30. server fanOut mutate 处 invalidate 缓存：fanOutLike / detectLikedAndSync / dislikeMerged / patchLibraryWithSources / importLiked（清空 fanOut 那步）→ 集中 `private invalidateLibraryCache(sessionId)`；fanOutSignature 用 fanOut 的 `keys.length` + `Object.keys(fanOut).join(',').length` + 第一条 entry 的 platform/trackId（弱但够用——fanOut 真变更时长度必然变）。**实现注**：未用显式 `invalidateLibraryCache()` 方法，改为 `fanOutSignature` + `storedRef` 双 key 自动失效（`music.service.ts:2864-2871`），效果等价。
+- [x] 31. renderer `lib/likedCache.ts`: 升 sessionStorage → localStorage，key `maestro:liked-library-cache`；readCachedLibrary 校验 importedAt ≤ 30 天；写失败（quota/隐私模式）降级为首次打开；接口签名不变。
+- [x] 32. renderer `components/modals/LikedLibraryModal.tsx`: 装 `@tanstack/react-virtual`；用 useVirtualizer 渲染 group rows；动态行高 measureElement（展开 sublist 时整组高度变化）；expanded Set 变化触发重测；滚动 FPS 不掉。保留原有 skeleton / 重新导入 / syncing dot / fanOut 兜底 / close-不取消-fetch 等全部 UX。
+- [x] 33. renderer `lib/groupLibrary.ts`: 第二遍扫描里 `fuzzyKey(anchor...)` / `fuzzyKey(cand...)` 提到循环外（用第一遍 enriched 的 repTitleKey/repArtistKey 直接复用）；不再每次 j 循环重算 OpenCC。3000 items 全过程 < 50ms。groupLibrary.test.ts 同步更新。
+- [x] 34. renderer `App.tsx` `reloadLikedCount`: 先 `readCachedLibrary()` 立即 setLikedCount，后台 `getLibrary()` 拉到后覆盖。复用 likedCache.ts 不重复实现。
+- [x] 35. spec.md 更新性能段（已完成，验收标准 / 实现 / 不做什么）；tasks.md 28 → 35 项。

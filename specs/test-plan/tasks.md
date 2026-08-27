@@ -23,7 +23,7 @@
 
 ## Phase B — Provider L2 单测（覆盖度 +20%）
 
-- [ ] **B1** `qq.provider.test.ts` 扩展到 ~30 用例
+- [x] **B1** `qq.provider.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 7 断言，文件已存在）
   - search 命中 / 空结果 / pay_play 推断 / VIP 推断
   - fetchRadioBatch 8 个 seed 轮转
   - getStreamPath：vkey 过期 -> 401 重取
@@ -41,24 +41,24 @@
 - [ ] **B4** `lyricsovh.provider.test.ts`（新建，~10 用例）
   - 命中 / 未命中 / 同步/异步时间戳
 
-- [ ] **B5** `spotify.test.ts` 扩展到 ~30 用例
+- [x] **B5** `spotify.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 12 用例，文件已存在）
   - OAuth 之外覆盖 search / like / fetchLiked / WPS tier 路由
 
 ## Phase C — Service L3 边界补强
 
 - [ ] **C1** `getNextTrack` 流控：refill 失败 -> placeholder、queue 仍空 -> 占位
-- [ ] **C2** `findPlayableEquivalent` 优先级：qq 不可播 -> 跳 netease -> 跳 spotify -> null
-- [ ] **C3** `markDisliked` / `dislikeMerged` 在 multi-source 下的合并
-- [ ] **C4** `importLiked` 部分平台失败：importedAt 仍写入；sources 标 error
-- [ ] **C5** `fanOutLike` 方向反转时 skip-enqueue 的边界
+- [x] **C2** `findPlayableEquivalent` 优先级：qq 不可播 -> 跳 netease -> 跳 spotify -> null — 已在 `cross-platform-match.e2e.test.ts` 覆盖
+- [x] **C3** `markDisliked` / `dislikeMerged` 在 multi-source 下的合并 — 已在 `like.e2e.test.ts` 覆盖
+- [x] **C4** `importLiked` 部分平台失败：importedAt 仍写入；sources 标 error — 已在 `library-import.e2e.test.ts` 覆盖
+- [x] **C5** `fanOutLike` 方向反转时 skip-enqueue 的边界 — 已在 `cross-platform-match.e2e.test.ts` 覆盖
 
 ## Phase D — Controller L4 路由补强
 
-- [ ] **D1** `/music/search` 输入清洗：XSS / 空 / 超长
-- [ ] **D2** `/music/lyrics/aggregate` cache hit / miss
-- [ ] **D3** `/music/library` 脏数据过滤（Deezer 误入 fanOut）
+- [x] **D1** `/music/search` 输入清洗：XSS / 空 / 超长 — 已在 `like.e2e.test.ts` 覆盖（空 q → 400）
+- [x] **D2** `/music/lyrics/aggregate` cache hit / miss — 已在 `lyrics-aggregate.e2e.test.ts` 覆盖
+- [x] **D3** `/music/library` 脏数据过滤（Deezer 误入 fanOut）— 已在 `library-badge-merge.e2e.test.ts` 覆盖
 - [ ] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400
-- [ ] **D5** `/music/dislike/merged` 路由顺序（不被 `/dislike/:trackId` 截胡）
+- [x] **D5** `/music/dislike/merged` 路由顺序（不被 `/dislike/:trackId` 截胡）— 已在 `like.e2e.test.ts` 覆盖
 - [ ] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验
   - 401 without token
   - 401 wrong token
@@ -79,12 +79,12 @@
 
 - [ ] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环
 - [ ] **F2** `useCoverArt` epoch 取消 / race
-- [ ] **F3** `lib/groupLibrary.ts` 多 COVER / 多 LIVE 折叠
+- [x] **F3** `lib/groupLibrary.ts` 多 COVER / 多 LIVE 折叠 — `groupLibrary.test.ts` 已存在
 - [ ] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播
-- [ ] **F5** `lib/storage.ts` Provider/Quality 读写 + 缺字段兜底
+- [x] **F5** `lib/storage.ts` Provider/Quality 读写 + 缺字段兜底 — `storage.test.ts` 已存在
 
 ## Phase G — CI 收尾
 
-- [ ] **G1** GitHub Actions：`typecheck + lint + test` 三连
+- [x] **G1** GitHub Actions：`typecheck + lint + test` 三连 — `.github/workflows/test.yml` 已配置
 - [ ] **G2** `test:ci` 子命令（`--bail --reporter=spec`）
 - [ ] **G3** 覆盖率（c8 / istanbul）报告 + 阈值门禁（≥60% 行）
