@@ -106,6 +106,45 @@
         "tone": { "figmaProp": "tone", "type": "enum" },
         "label": { "figmaProp": "label", "type": "string" }
       }
+    },
+    {
+      "figmaComponent": "Icon/Dislike",
+      "figmaNodeId": "431:66",
+      "reactComponent": "ThIcon",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "icon": { "figmaProp": "icon", "map": { "dislike": "thumbsDown" } }
+      }
+    },
+    {
+      "figmaComponent": "Button/Text",
+      "figmaNodeId": "440:85",
+      "reactComponent": "button",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "tone": { "figmaProp": "tone", "type": "enum", "map": { "default": "", "accent": "accent", "danger": "danger" } },
+        "state": { "figmaProp": "state", "type": "enum" },
+        "label": { "figmaProp": "label", "type": "string" }
+      }
+    },
+    {
+      "figmaComponent": "Input/Text",
+      "figmaNodeId": "441:72",
+      "reactComponent": "input",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "state": { "figmaProp": "state", "type": "enum" },
+        "placeholder": { "figmaProp": "placeholder", "type": "string" }
+      }
+    },
+    {
+      "figmaComponent": "Card/Skeleton",
+      "figmaNodeId": "441:83",
+      "reactComponent": "SkeletonCard",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "props": {
+        "state": { "figmaProp": "state", "type": "enum" }
+      }
     }
   ]
 }
