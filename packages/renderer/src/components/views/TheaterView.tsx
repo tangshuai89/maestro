@@ -218,7 +218,7 @@ export default function TheaterView(props: TheaterViewProps) {
     coverBackdropRef,
     lyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
-    onPlayPause, onSkip, onPrev, onSeek, onLike, onDislike,
+    onPlayPause, onSkip, onPrev, onSeek, onLike,
     onSwitchProvider,
   } = props;
 
