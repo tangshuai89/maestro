@@ -279,10 +279,13 @@ export function mergeCrossScript(items: UnifiedSearchItem[]): UnifiedSearchItem[
     for (let j = i + 1; j < n; j++) {
       if (dead.has(j)) continue;
       const b = items[j];
-      // 1) Duration within 12 s —— 最便宜的数值比较，先挡掉绝大多数对
-      //    (generous — cross-script already guarantees same-artist same-song,
-      //    duration variation is version difference)
-      if (a.duration > 0 && b.duration > 0 && Math.abs(a.duration - b.duration) > 12) continue;
+      // 1) Duration within 30 s —— 最便宜的数值比较，先挡掉绝大多数对。
+      //    30s 与 DIFFERENT_VERSION_DURATION_TOLERANCE_SEC 对齐：跨平台同歌
+      //    不同版本（intro/outro 差异、single vs album、radio edit）常差
+      //    15-25s，12s 太严会漏合并（用户实测：尘大师 QQ 210s vs Spotify
+      //    195s 差 15s 被跳过）。后续 title displayKey 相等 + artist 别名
+      //    命中是强条件，30s 内不会误并不同歌。
+      if (a.duration > 0 && b.duration > 0 && Math.abs(a.duration - b.duration) > 30) continue;
       // 2) Title: strip trailing meta (品牌主题曲/电影版/完整版/...) then
       //    either equal or cross-script. `displayKey` 内含 cjkUnify + noise
       //    strip + 小写，与 renderer 端 groupLibrary 同一把 key。

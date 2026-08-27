@@ -777,6 +777,94 @@
   color: var(--acid);
   animation: th-dot-blink 1s ease-in-out infinite;
 }
+// 推荐生成中状态指示（对应 Figma RecoLoading 屏的 DEEP.SEEK // RUNNING…）
+.th-reco-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--acid);
+}
+.th-reco-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--acid);
+  box-shadow: 0 0 6px rgba(181, 123, 255, 0.6);
+  animation: th-dot-blink 1.2s ease-in-out infinite;
+}
+// 进度条 + 状态文案（对应 Figma RecoLoading 屏的进度条 + STEP 2/4）
+.th-reco-progress {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.th-reco-progress-bar {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+.th-reco-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--acid), transparent);
+  animation: th-reco-sweep 1.6s ease-in-out infinite;
+}
+@keyframes th-reco-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.th-reco-progress-text {
+  display: block;
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: rgba(245, 240, 232, 0.4);
+}
+// 骨架卡（对应 Figma Card/Skeleton 组件）
+.th-reco-skeletons {
+  display: flex;
+  gap: 16px;
+}
+.th-reco-skeleton {
+  width: 120px;
+  height: 120px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.th-reco-skeleton-art {
+  width: 100%;
+  height: 60px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  animation: th-skeleton-pulse 1.5s ease-in-out infinite;
+}
+.th-reco-skeleton-line {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  animation: th-skeleton-pulse 1.5s ease-in-out infinite;
+}
+.th-reco-skeleton-line--title { width: 70%; }
+.th-reco-skeleton-line--artist { width: 45%; animation-delay: 0.3s; }
+@keyframes th-skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
 .th-reco-cards {
   display: flex;
   gap: 16px;

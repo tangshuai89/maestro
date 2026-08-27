@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { searchUnified, searchOne, fetchLyricsAvailability } from '../../api';
 import type { MusicProvider, UnifiedSearchItem } from '../../api';
 import { PROVIDER_LABELS } from '../../api';
-import { formatDuration } from '../../lib/format';
+import { formatDuration, clampText } from '../../lib/format';
 import Modal from '../common/Modal';
 import SourceChip from './SourceChip';
 
@@ -284,6 +284,13 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
 
       {error && <div className="search-error">{error}</div>}
 
+      {searched && items.length > 0 && (
+        <div className="search-results-header" aria-live="polite">
+          <span className="search-results-label">RESULTS</span>
+          <span className="search-results-count">// {items.length} MATCHES</span>
+        </div>
+      )}
+
       <div className="search-results" ref={scrollerRef} onScroll={handleScroll}>
         {!searched && !loading && (
           <div className="search-empty">输入歌名 / 歌手，回车搜</div>
@@ -312,24 +319,26 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
               {it.coverUrl ? (
                 <img className="search-cover" src={it.coverUrl} alt="" />
               ) : (
-                <div className="search-cover search-cover-ph" />
+                <div className="search-cover search-cover-ph">
+                  <span className="search-cover-note" aria-hidden="true">♪</span>
+                </div>
               )}
               <div className="search-row-meta">
-                <div className="search-row-title">{it.title}</div>
+                <div className="search-row-title">{clampText(it.title, 40)}</div>
                 <div className="search-row-sub">
-                  {it.artist}
-                  {it.album ? ` · ${it.album}` : ''}
+                  {clampText(it.artist, 30)}
+                  {it.album ? ` · ${clampText(it.album, 20)}` : ''}
                   {it.duration > 0 ? ` · ${formatDuration(it.duration)}` : ''}
                 </div>
-                <div className="search-row-sources">
-                  {it.sources.map((s, si) => (
-                    <SourceChip
-                      key={`${s.platform}-${s.trackId}-${si}`}
-                      source={s}
-                      isBest={s.platform === it.bestSource}
-                    />
-                  ))}
-                </div>
+              </div>
+              <div className="search-row-sources">
+                {it.sources.map((s, si) => (
+                  <SourceChip
+                    key={`${s.platform}-${s.trackId}-${si}`}
+                    source={s}
+                    isBest={s.platform === it.bestSource}
+                  />
+                ))}
               </div>
               {lyricsAvail[it.id] && (
                 <span

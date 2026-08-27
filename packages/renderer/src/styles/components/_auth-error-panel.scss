@@ -22,6 +22,66 @@
   @include backdrop-blur(20px, 100%);
 }
 
+// 错误头：severity 标签 + error code + 展开按钮（对应 Figma Error 屏的 FATAL/WARN tag）
+.auth-error-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.auth-error-severity {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.auth-error-severity--fatal {
+  background: rgba(255, 60, 60, 0.2);
+  color: #ff6b6b;
+  border: 1px solid rgba(255, 60, 60, 0.3);
+}
+
+.auth-error-severity--warn {
+  background: rgba(255, 180, 0, 0.2);
+  color: #ffb400;
+  border: 1px solid rgba(255, 180, 0, 0.3);
+}
+
+.auth-error-severity--info {
+  background: rgba(100, 180, 255, 0.15);
+  color: #64b4ff;
+  border: 1px solid rgba(100, 180, 255, 0.25);
+}
+
+.auth-error-code {
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  color: var(--error-fg-soft);
+  flex: 1;
+}
+
+.auth-error-expand {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--error-fg-soft);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1;
+
+  &:hover {
+    color: var(--error-fg);
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
 .auth-error-title {
   font-size: 13px;
   font-weight: 600;
@@ -33,6 +93,23 @@
   line-height: 1.4;
   color: var(--error-fg-soft);
   margin-bottom: var(--space-2-ui);
+  word-break: break-all;
+}
+
+// Stack trace 折叠区（对应 Figma Error 屏的 stack trace 块）
+.auth-error-stack {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--error-fg-soft);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--error-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 var(--space-2-ui);
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
   word-break: break-all;
 }
 
@@ -57,6 +134,11 @@
 .auth-error-btn:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+.auth-error-btn--primary {
+  background: var(--accent-ui);
+  font-weight: 600;
 }
 
 .auth-error-btn-ghost {

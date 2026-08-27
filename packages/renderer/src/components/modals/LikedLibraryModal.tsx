@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import Modal from '../common/Modal';
 import { getLibrary, importLibrary } from '../../api';
 import type { LibraryImportResult, UnifiedSearchItem, MusicProvider } from '../../api';
+import { formatDuration, clampText } from '../../lib/format';
 import {
   groupLibraryItems,
   itemPlatforms,
@@ -331,15 +332,20 @@ export default function LikedLibraryModal({
             </div>
           )}
           <div className="liked-modal-meta">
-            <div className="liked-modal-track">{rep.title}</div>
+            <div className="liked-modal-track">{clampText(rep.title, 40)}</div>
             <div className="liked-modal-artist">
-              {rep.artist}
+              {clampText(rep.artist, 30)}
               {rep.album && (
-                <span className="liked-modal-album"> · {rep.album}</span>
+                <span className="liked-modal-album"> · {clampText(rep.album, 25)}</span>
               )}
             </div>
           </div>
           <PlatformBadges platforms={g.platforms} />
+          {rep.duration > 0 && (
+            <span className="liked-modal-duration" aria-label={`时长 ${formatDuration(rep.duration)}`}>
+              {formatDuration(rep.duration)}
+            </span>
+          )}
           {g.hasCover && (
             <span
               className="liked-modal-cover-warn"
@@ -384,7 +390,7 @@ export default function LikedLibraryModal({
                 <span className="liked-modal-subrow-dot" aria-hidden />
                 <div className="liked-modal-meta">
                   <div className="liked-modal-track">
-                    {m.item.title}
+                    {clampText(m.item.title, 40)}
                     {m.versionTag && (
                       <span className={`liked-modal-version-tag liked-modal-version-tag--${m.versionTag.toLowerCase()}`}>
                         {versionTagLabel(m.versionTag)}
@@ -392,9 +398,9 @@ export default function LikedLibraryModal({
                     )}
                   </div>
                   <div className="liked-modal-artist">
-                    {m.item.artist}
+                    {clampText(m.item.artist, 30)}
                     {m.item.album && (
-                      <span className="liked-modal-album"> · {m.item.album}</span>
+                      <span className="liked-modal-album"> · {clampText(m.item.album, 25)}</span>
                     )}
                   </div>
                 </div>
@@ -423,17 +429,33 @@ export default function LikedLibraryModal({
             />
           )}
         </span>
-        <span className="liked-modal-count">
-          共 {groups.length} 首
-          {qqCount + neCount + spCount + dzCount > 0 && (
-            <span className="liked-modal-count-detail">
-              {qqCount > 0 && ` · QQ ${qqCount}`}
-              {neCount > 0 && ` · 网易云 ${neCount}`}
-              {spCount > 0 && ` · Spotify ${spCount}`}
-              {dzCount > 0 && ` · Deezer ${dzCount}`}
+        <span className="liked-modal-count">共 {groups.length} 首</span>
+        <div className="liked-modal-platform-stats" aria-label="各平台红心数">
+          {qqCount > 0 && (
+            <span className="liked-modal-platform-stat liked-modal-platform-stat--qq" title={`QQ 音乐 ${qqCount} 首`}>
+              <span className="liked-modal-platform-letter">Q</span>
+              <span className="liked-modal-platform-num">{qqCount.toLocaleString()}</span>
             </span>
           )}
-        </span>
+          {neCount > 0 && (
+            <span className="liked-modal-platform-stat liked-modal-platform-stat--netease" title={`网易云 ${neCount} 首`}>
+              <span className="liked-modal-platform-letter">N</span>
+              <span className="liked-modal-platform-num">{neCount.toLocaleString()}</span>
+            </span>
+          )}
+          {spCount > 0 && (
+            <span className="liked-modal-platform-stat liked-modal-platform-stat--spotify" title={`Spotify ${spCount} 首`}>
+              <span className="liked-modal-platform-letter">S</span>
+              <span className="liked-modal-platform-num">{spCount.toLocaleString()}</span>
+            </span>
+          )}
+          {dzCount > 0 && (
+            <span className="liked-modal-platform-stat liked-modal-platform-stat--deezer" title={`Deezer ${dzCount} 首`}>
+              <span className="liked-modal-platform-letter">D</span>
+              <span className="liked-modal-platform-num">{dzCount.toLocaleString()}</span>
+            </span>
+          )}
+        </div>
         <button
           className="liked-modal-close"
           onClick={onClose}

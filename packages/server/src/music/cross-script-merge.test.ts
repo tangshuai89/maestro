@@ -125,5 +125,46 @@ void (async () => {
     console.log('✅ 7. 跨脚本艺人音译对不上不并（铃木爱理 ≠ Lefty Hand Cream，翻唱链事故规避）');
   }
 
-  console.log('\n🎉 cross-script-merge.test 全部 7 项通过');
+  // ── 8. duration 差 >12s 但 ≤30s：简繁 title + 别名艺人 → 合并 ──
+  // 用户实测：尘大师 QQ 210s vs Spotify 195s 差 15s，旧 12s gate 漏合并
+  {
+    assert.strictEqual(
+      mergeCount([
+        T('qq', 'q1', '尘大师', '陈奕迅', 210),
+        T('spotify', 's1', '塵大師', 'Eason Chan', 195),
+      ]),
+      1,
+      '尘大师(简) ↔ 塵大師(繁) duration 差 15s 应合并（12s→30s 修复）',
+    );
+    console.log('✅ 8. 尘大师 简繁 + duration 差 15s 合并（陈奕迅 ↔ Eason Chan 别名）');
+  }
+
+  // ── 9. duration 差 >12s 但 ≤30s：括号 title + 别名艺人 → 合并 ──
+  // 用户实测：月食 QQ 240s vs Spotify 255s 差 15s，旧 12s gate 漏合并
+  {
+    assert.strictEqual(
+      mergeCount([
+        T('qq', 'q2', '月食', '丁世光', 240),
+        T('spotify', 's2', '月食 (Lunar Eclipse)', 'Dean Ting', 255),
+      ]),
+      1,
+      '月食 ↔ 月食(Lunar Eclipse) duration 差 15s 应合并（12s→30s 修复）',
+    );
+    console.log('✅ 9. 月食 括号 + duration 差 15s 合并（丁世光 ↔ Dean Ting 别名）');
+  }
+
+  // ── 10. duration 差 >30s：同歌不同版本不合并（保持版本隔离）──
+  {
+    assert.strictEqual(
+      mergeCount([
+        T('qq', 'q3', '晴天', '周杰伦', 269),
+        T('spotify', 's3', '晴天', 'Jay Chou', 310),
+      ]),
+      2,
+      'duration 差 41s > 30s 不合并（不同版本保持隔离）',
+    );
+    console.log('✅ 10. duration 差 >30s 不合并（版本隔离保持）');
+  }
+
+  console.log('\n🎉 cross-script-merge.test 全部 10 项通过');
 })();

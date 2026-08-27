@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality } from '../../api';
+import { clampText } from '../../lib/format';
 
 /**
  * AETHER THEATER — 宇宙剧场主视图（v4 设计稿落地）。
@@ -112,65 +113,10 @@ function fmtTime(s: number): string {
 /** 进度弧的周长占比（环形进度）。 */
 // (arcPct 已内联为 pct，保留注释说明设计意图)
 
-// ── 演示循环（复刻 Figma prototype 的 A→B→C 自动循环） ─────────
-// 无真实曲目时（track=null，如 demo 模式），用内置示例数据驱动
-// 歌词推进/进度增长/播放键切换，让动效持续可见，对应 Figma
-// prototype 的 ON_FRAME 自动循环。
-const DEMO_LYRICS = [
-  '我就像个走钢丝的人',
-  '在云端漫步',
-  '不曾想过退路',
-  '平衡这孤独',
-];
-
-interface DemoLoop {
-  /** 演示歌词当前行 index（0..n-1，循环） */
-  demoLine: number;
-  /** 演示进度 0-100（4.5s 一圈，循环） */
-  demoPct: number;
-  /** 演示播放状态（1.8s 切换一次 ▶/⏸） */
-  demoPlaying: boolean;
-  /** 演示当前时间（秒，用于时间显示） */
-  demoTime: number;
-  /** 演示总时长（固定 04:52 对应设计稿） */
-  demoDuration: number;
-}
-
-function useDemoLoop(enabled: boolean): DemoLoop {
-  const [demoLine, setDemoLine] = useState(0);
-  const [demoPct, setDemoPct] = useState(0);
-  const [demoPlaying, setDemoPlaying] = useState(true);
-  const [demoTime, setDemoTime] = useState(0);
-  const demoDuration = 292; // 04:52
-
-  useEffect(() => {
-    if (!enabled) return;
-    // 行推进：每 2.8s 换一行（循环）
-    const lineTimer = setInterval(() => {
-      setDemoLine((i) => (i + 1) % DEMO_LYRICS.length);
-    }, 2800);
-    // 进度：每 100ms 推进（4.5s 一圈）
-    const progTimer = setInterval(() => {
-      setDemoTime((t) => {
-        const next = t + 0.1;
-        if (next >= demoDuration) return 0;
-        return next;
-      });
-      setDemoPct((p) => (p >= 100 ? 0 : p + 100 / 45));
-    }, 100);
-    // 播放键切换：1.8s 一次
-    const playTimer = setInterval(() => {
-      setDemoPlaying((p) => !p);
-    }, 1800);
-    return () => {
-      clearInterval(lineTimer);
-      clearInterval(progTimer);
-      clearInterval(playTimer);
-    };
-  }, [enabled]);
-
-  return { demoLine, demoPct, demoPlaying, demoTime, demoDuration };
-}
+// 无曲目时的空态歌词引导（替代旧的 demo 假数据循环）。
+// 不再跑假进度/假播放切换——无 track 时进度环静止、播放键禁用，
+// 歌词区显示一行引导文案。
+const IDLE_LYRIC_HINT = '选一首歌，开始你的宇宙剧场';
 
 // ── platform badges ──────────────────────────────────────────
 
@@ -242,39 +188,33 @@ export default function TheaterView(props: TheaterViewProps) {
 
   const stardust = useStardust(track?.id);
 
-  // 演示循环：无真实曲目时接管（prototype 自动循环效果）
-  const demo = useDemoLoop(!track);
   const hasTrack = Boolean(track);
-  // 歌词：真实曲目用真实歌词，否则用演示歌词循环
-  // （useMemo 必须无条件调用——Hooks 规则）
+  // 歌词：真实曲目用真实歌词；无曲目时显示一行静态引导文案
   const realActiveLine = useMemo(
     () => activeLineIndex(lyrics, currentTime),
     [lyrics, currentTime],
   );
-  const activeLine = hasTrack ? realActiveLine : demo.demoLine;
+  const activeLine = hasTrack ? realActiveLine : -1;
   const currentLine = hasTrack
     ? (activeLine >= 0 ? lyrics?.[activeLine]?.text : null)
-    : DEMO_LYRICS[demo.demoLine];
+    : IDLE_LYRIC_HINT;
   // 当前行之后的 3 行（对应设计稿 lyric-stream 的 3 条渐隐后行）
   const followingLines: string[] = hasTrack
     ? (lyrics ?? [])
         .slice(Math.max(activeLine + 1, 0), Math.max(activeLine + 1, 0) + 3)
         .map((l) => l.text)
-    : [1, 2, 3].map((k) => DEMO_LYRICS[(demo.demoLine + k) % DEMO_LYRICS.length]);
+    : [];
   const prevLine = hasTrack
     ? (activeLine - 1 >= 0 ? lyrics?.[activeLine - 1]?.text : null)
-    : DEMO_LYRICS[(demo.demoLine - 1 + DEMO_LYRICS.length) % DEMO_LYRICS.length];
-  // 进度/时间：真实曲目用真实值，否则用演示循环
-  const effTime = hasTrack ? currentTime : demo.demoTime;
-  const effDuration = hasTrack ? duration : demo.demoDuration;
-  // pct 驱动弧长 + dot 轨道位置（Archive B→C 弧增长阶段）：
-  // 真实播放随播放进度；demo 用 demoPct（4.5s 一圈循环增长，见 useDemoLoop），
-  // 使飞线扫过（streaks）与弧增长（arc）时序联动 —— 完整还原 Archive 三帧动效
+    : null;
+  // 进度/时间：无曲目时归零（进度环静止、时间显示 0:00 / 0:00）
+  const effTime = hasTrack ? currentTime : 0;
+  const effDuration = hasTrack ? duration : 0;
   const pct = hasTrack
     ? (effDuration > 0 ? Math.min(100, (effTime / effDuration) * 100) : 0)
-    : demo.demoPct;
-  // 播放状态：真实曲目用真实状态，否则演示切换
-  const effPlaying = hasTrack ? playing : demo.demoPlaying;
+    : 0;
+  // 播放状态：无曲目时为 false（播放键显示 ▶ 但禁用）
+  const effPlaying = hasTrack ? playing : false;
 
 
   // 进度弧的 SVG 参数：圆周长 2πr，r=149（viewBox 300x300，圆心 150,150）
@@ -324,12 +264,12 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
           <div className="th-hud-telemetry">
             <span className="th-hud-buff">
-              BUFF 99.4% // LAT 47ms
+              {loading ? 'BUFFERING…' : hasTrack ? 'READY' : 'STANDBY'}
               <span className="th-hud-dot" aria-hidden="true" />
             </span>
             <span className="th-hud-sync">
               <span className="th-hud-heart" aria-hidden="true">♥</span>
-              <span>{likedCount > 0 ? likedCount.toLocaleString() : (fanOutCount > 0 ? `${fanOutCount}/4` : '1,284')}</span>
+              <span>{likedCount > 0 ? likedCount.toLocaleString() : (fanOutCount > 0 ? `${fanOutCount}/4` : '—')}</span>
             </span>
           </div>
           <div className="th-hud-badges" role="group" aria-label="平台">
@@ -384,11 +324,13 @@ export default function TheaterView(props: TheaterViewProps) {
               <span className="th-cover-symbol" aria-hidden="true">♪</span>
             )}
           </div>
-          <span className="th-live-tag"><span className="th-live-dot" />LIVE</span>
-          <span className="th-heart-stat" aria-hidden="true">
-            <span className="th-heart-stat-icon">♥</span>
-            <span>{likedCount > 0 ? likedCount.toLocaleString() : '1,284'}</span>
-          </span>
+          {track && <span className="th-live-tag"><span className="th-live-dot" />LIVE</span>}
+          {likedCount > 0 && (
+            <span className="th-heart-stat" aria-hidden="true">
+              <span className="th-heart-stat-icon">♥</span>
+              <span>{likedCount.toLocaleString()}</span>
+            </span>
+          )}
           {/* 星轨进度环（同心套在封面外） */}
           <div className="th-orbit-progress" role="group" aria-label="播放进度">
             <svg viewBox="0 0 300 300" className="th-orbit-svg"
@@ -429,7 +371,7 @@ export default function TheaterView(props: TheaterViewProps) {
         {/* 歌名信息（1440 稿 430,590） */}
         <div className="th-track-info">
           <div className="th-track-header">
-            <h1 className="th-track-title">{track?.title ?? '走钢丝的人'}</h1>
+            <h1 className="th-track-title">{clampText(track?.title ?? '等待播放', 18)}</h1>
             {track && (
               <div className="th-more-wrap">
                 <button type="button" className="th-more-btn" onClick={() => setMoreOpen(v => !v)} title="更多" aria-label="更多" aria-expanded={moreOpen}>
@@ -450,12 +392,14 @@ export default function TheaterView(props: TheaterViewProps) {
             )}
           </div>
           <p className="th-track-sub">
-            {track ? `${track.artist} // ${track.album || '未知专辑'}` : '李泉 // 2001 · 寓言'}
+            {track ? clampText(`${track.artist} // ${track.album || '未知专辑'}`, 40) : '点击搜索或从红心库选一首歌'}
           </p>
-          <p className="th-track-hires">
-            HI-RES {qqQuality === 'lossless' ? '24/96' : qqQuality === 'high' ? '320K' : '24/96'} · DOLBY ATMOS
-            {trialFellBack ? ' · TRIAL' : ''}
-          </p>
+          {track && (
+            <p className="th-track-hires">
+              {qqQuality === 'lossless' ? 'HI-RES 24/96' : qqQuality === 'high' ? '320K' : '标准音质'}
+              {trialFellBack ? ' · TRIAL' : ''}
+            </p>
+          )}
         </div>
 
         {/* 歌词文字流（1440 稿 820,320；无面板 chrome，纯文字流） */}
@@ -507,27 +451,51 @@ export default function TheaterView(props: TheaterViewProps) {
         <div className="th-reco">
           <div className="th-reco-head">
             <span className="th-reco-label">DEEP.SEEK // NEURAL FEED</span>
-            {recoRunning && <span className="th-reco-running" aria-label="推荐生成中">…</span>}
+            {recoRunning && (
+              <span className="th-reco-status" aria-label="推荐生成中">
+                <span className="th-reco-status-dot" aria-hidden="true" />
+                RUNNING…
+              </span>
+            )}
           </div>
+          {recoRunning && (
+            <div className="th-reco-progress" role="status" aria-live="polite">
+              <div className="th-reco-progress-bar" aria-hidden="true" />
+              <span className="th-reco-progress-text">
+                正在分析 {recoLibrarySize > 0 ? recoLibrarySize.toLocaleString() : '…'} 首库内歌曲偏好…
+              </span>
+            </div>
+          )}
           <div className="th-reco-cards">
             {recoSuggestions.slice(0, 3).map((s, i) => (
               <button key={i} type="button" className="th-reco-card"
                 style={{ ['--card-color' as string]: s.coverColor }} title={`${s.title} · ${s.artist}`}>
                 <span className="th-reco-art" aria-hidden="true" />
-                <span className="th-reco-name">{s.title}</span>
-                <span className="th-reco-artist">{s.artist}</span>
+                <span className="th-reco-name">{clampText(s.title, 12)}</span>
+                <span className="th-reco-artist">{clampText(s.artist, 14)}</span>
                 <span className="th-reco-match">{s.match}%</span>
               </button>
             ))}
-            {recoSuggestions.length === 0 && (
+            {recoSuggestions.length === 0 && !recoRunning && (
               <div className="th-reco-empty">
                 {recoConfigured
                   ? `已根据 ${recoLibrarySize} 首库内歌曲生成推荐`
                   : '配置 DEEPSEEK KEY 后开启 AI 推荐'}
               </div>
             )}
+            {recoSuggestions.length === 0 && recoRunning && (
+              <div className="th-reco-skeletons">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="th-reco-skeleton" aria-hidden="true">
+                    <div className="th-reco-skeleton-art" />
+                    <div className="th-reco-skeleton-line th-reco-skeleton-line--title" />
+                    <div className="th-reco-skeleton-line th-reco-skeleton-line--artist" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          {recoConfigured && (
+          {recoConfigured && recoMatchRate > 0 && (
             <div className="th-reco-foot">AI 评估：{recoMatchRate}% MATCH</div>
           )}
         </div>

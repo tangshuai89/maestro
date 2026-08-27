@@ -5,6 +5,7 @@ const {
   stripFuriganaParens,
   stripCjkTranslationParens,
   stripCjkTranslationSuffix,
+  stripLatinTranslationSuffix,
   normalizeKey,
   displayKey,
   extractVersionTag,
@@ -367,6 +368,35 @@ check('CJK 主体 + 拉丁尾段不剥（反向）', stripCjkTranslationSuffix('
 check('尾段含版本词不剥', stripCjkTranslationSuffix('Liyue 主题曲'), 'Liyue 主题曲');
 check('尾段非 CJK 不剥（数字）', stripCjkTranslationSuffix('Song 2024'), 'Song 2024');
 
+// ── stripLatinTranslationSuffix（CJK 主体 + 空格 + 拉丁译名尾段）──────
+// 展示级专用：QQ「月食 (The Weeping Woman)」剥括号后是「月食」，Spotify
+// 「月食 The Weeping Woman」裸写英译——剥掉尾段两边才落到同一 title 桶。
+console.log('\n── stripLatinTranslationSuffix ──');
+check('空串', stripLatinTranslationSuffix(''), '');
+check('无尾段不动', stripLatinTranslationSuffix('月食'), '月食');
+check('CJK 主体 + 拉丁译名剥', stripLatinTranslationSuffix('月食 The Weeping Woman'), '月食');
+check('单词尾段也剥', stripLatinTranslationSuffix('枫丹 Fontaine'), '枫丹');
+check('日文主体 + 拉丁译名剥', stripLatinTranslationSuffix('梦の夜会 Invitation'), '梦の夜会');
+check('纯拉丁主体不剥', stripLatinTranslationSuffix('Spinning Globe Away'), 'Spinning Globe Away');
+check('拉丁主体 + CJK 尾段不剥（反向）', stripLatinTranslationSuffix('Liyue 璃月'), 'Liyue 璃月');
+check('主体尾字是拉丁不剥（袁娅维TIA RAY）', stripLatinTranslationSuffix('袁娅维TIA RAY'), '袁娅维TIA RAY');
+check(
+  '主体尾字是拉丁不剥（揽佬SKAI ISYOURGOD）',
+  stripLatinTranslationSuffix('揽佬SKAI ISYOURGOD'),
+  '揽佬SKAI ISYOURGOD',
+);
+check('中点不算 CJK 字（LA・LA・LA）', stripLatinTranslationSuffix('LA・LA・LA LOVE SONG'), 'LA・LA・LA LOVE SONG');
+check('数字尾段不剥', stripLatinTranslationSuffix('青花瓷 2024'), '青花瓷 2024');
+check('单字母尾段不剥', stripLatinTranslationSuffix('夜曲 A'), '夜曲 A');
+check('分集尾段不剥（Part 2）', stripLatinTranslationSuffix('序曲 Part 2'), '序曲 Part 2');
+check('分卷尾段不剥（Vol.3）', stripLatinTranslationSuffix('序曲 Vol.3'), '序曲 Vol.3');
+// catalog 级必须保持保守：normalizeKey 不吃这一层
+check(
+  'catalog 级不剥（夜曲 Nocturne != 夜曲）',
+  normalizeKey('夜曲 Nocturne', '周杰伦') === normalizeKey('夜曲', '周杰伦'),
+  false,
+);
+
 // ── 用户实测回归：Liyue / 一百 / 摇滚怎么了（2026-08-14）──────────────
 console.log('\n── 用户实测回归 ──');
 check(
@@ -419,6 +449,27 @@ check(
   '我管你 (真我版) != 我管你 (Live)',
   normalizeKey('我管你 (真我版)', '华晨宇') === normalizeKey('我管你 (Live)', '华晨宇'),
   false,
+);
+
+// ── 用户实测回归：月食（2026-08-27）─────────────────────────────────
+// QQ/网易云「月食 (The Weeping Woman)」+ Spotify「月食 The Weeping Woman」
+// ——括号写法 vs 裸写法，displayKey 必须落到同一桶（server mergeCrossScript
+// 与 renderer groupLibraryItems 共用这把 key）。
+console.log('\n── 用户实测回归：月食 ──');
+check(
+  '月食 (The Weeping Woman) == 月食 The Weeping Woman（displayKey）',
+  displayKey('月食 (The Weeping Woman)', ''),
+  displayKey('月食 The Weeping Woman', ''),
+);
+check(
+  '尘大师 Lightly == 塵大師（displayKey，繁简 + 译名尾段）',
+  displayKey('尘大师 Lightly', ''),
+  displayKey('塵大師', ''),
+);
+check(
+  '夢の夜会 (ソワレ Invitation to Enchantment) == 梦の夜会(ソワレ) Invitation to Enchantment',
+  displayKey('夢の夜会 (ソワレ Invitation to Enchantment)', ''),
+  displayKey('梦の夜会(ソワレ) Invitation to Enchantment', ''),
 );
 
 console.log(`\n── 总结: ${passed} passed, ${failed} failed ──`);
