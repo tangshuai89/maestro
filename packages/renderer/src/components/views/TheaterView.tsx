@@ -478,9 +478,6 @@ export default function TheaterView(props: TheaterViewProps) {
           <button type="button" className="th-ctrl th-ctrl--next" onClick={onSkip} disabled={!track} title="下一首">
             <ThIcon icon="skipForward" size={18} />
           </button>
-          <button type="button" className="th-ctrl th-ctrl--dislike" onClick={onDislike} disabled={!track} title="踩（取消红心 + 不再推荐）" aria-label="踩">
-            <ThIcon icon="thumbsDown" size={18} />
-          </button>
         </div>
 
         {/* 右下：DeepSeek 推荐（1440 稿 1000,700） */}

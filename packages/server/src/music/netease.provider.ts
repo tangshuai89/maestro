@@ -32,9 +32,9 @@ import { QqQuality } from './qq.provider';
  *   realIP 是解药，是因为手测的 cookie 恰好带了 appver 把它掩盖了。
  *
  * ⚠️ 写接口"操作频繁"（2026-07 实测）：极快速重复提交时，HTTP 200 但 body 是
- * { code: 405, message: "操作频繁，请稍候再试" } —— 网易云防抖阈值。这里当成
- * 普通失败返回 false，让同步队列按指数退避（见 LikeSyncQueue.BACKOFF_BASE_MS）
- * 重试，不要在 provider 层吞掉。appver + realIP 齐全后正常点击几乎不会触发。
+ * { code: 405, message: "操作频繁，请稍候再试" } —— 网易云防抖阈值。语义是
+ * "目标状态已达成"（歌已在/已不在喜欢列表），视为幂等成功返回 true，避免
+ * LikeSyncQueue 无意义重试 7 次（64s）。appver + realIP 齐全后正常点击几乎不会触发。
  */
 
 const UA =
@@ -396,8 +396,22 @@ export class NeteaseMusicProvider {
         time: '3',
       },
     );
-    // 405 = "操作频繁"——重复提交同一首歌的同方向 like/unlike（目标状态已达成）
-    // / 真实失败。队列拿到 false 后会按指数退避重试。
+    // 405 = "操作频繁"——重复提交同一首歌的同方向 like/unlike（目标状态已
+    // 达成）。视为幂等成功：歌已在/已不在喜欢列表，远端状态与期望一致，
+    // 不需要重试。否则 LikeSyncQueue 会退避重试 7 次（64s），每次都 405。
+    if (data.code === 405) {
+      this.logger.debug(
+        `netease radio/like songId=${songId} liked=${liked} ` +
+          `code=405 (idempotent — target state already reached)`,
+      );
+      return true;
+    }
+    if (data.code !== 200) {
+      this.logger.warn(
+        `netease radio/like songId=${songId} liked=${liked} ` +
+          `code=${data.code} message=${data.message ?? '(none)'}`,
+      );
+    }
     return data.code === 200;
   }
 
