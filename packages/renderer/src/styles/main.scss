@@ -20,10 +20,6 @@
 @use 'components/app-shell';
 @use 'components/titlebar';
 @use 'components/dropdown-menu';
-@use 'components/cover-card';
-@use 'components/side-cards';
-@use 'components/progress';
-@use 'components/volume';
 @use 'components/transport';
 @use 'components/modal';
 @use 'components/search-panel';
@@ -34,5 +30,4 @@
 @use 'components/netease-modal';
 @use 'components/settings-modal';
 @use 'components/auth-error-panel';
-@use 'components/monster-beats';
 @use 'components/theater';
