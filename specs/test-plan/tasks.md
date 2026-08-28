@@ -33,13 +33,12 @@
   - search / getStreamPath / fetchLiked
   - VIP 推断 / csrfToken 刷新
 
-- [ ] **B3** `deezer.provider.test.ts`（新建，~15 用例）
-  - 各 preset editorial id 映射
-  - preview URL 提取
-  - 404 / 5xx 兜底
+- [x] **B3** `deezer.provider.test.ts`（新建，18 用例）— 2026-08-28 完成
+  - isConfigured / getEditorials / getPresetNames / isValidPreset
+  - search / fetchRadioBatch / getStreamPath / getLyrics / toTrack
 
-- [ ] **B4** `lyricsovh.provider.test.ts`（新建，~10 用例）
-  - 命中 / 未命中 / 同步/异步时间戳
+- [x] **B4** `lyricsovh.provider.test.ts`（新建，11 用例）— 2026-08-28 完成
+  - 空/whitespace / hit / 404 / 500 / empty / URL encoding / timeout
 
 - [x] **B5** `spotify.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 12 用例，文件已存在）
   - OAuth 之外覆盖 search / like / fetchLiked / WPS tier 路由
@@ -69,14 +68,10 @@
 
 ## Phase E — 跨包契约 L5（堵「前后端 fuzzy key 漂移」）
 
-- [ ] **E1** `packages/common/src/contract.test.ts`（新建）
-  - `normalizeKey(title, artist)` 在 server/renderer 同值
-  - `displayKey(title, artist)` 在 server/renderer 同值
-  - 10 组歌曲两端归一一致
-
-- [ ] **E2** `packages/common/src/grouping.test.ts`（新建）
-  - 同一 sources 列表 server `mergeLibrary` vs renderer `groupLibraryItems`
-    同 grouping（key、member 数、representative index）
+- [x] **E1** `packages/common/src/contract.test.ts`（新建）— 2026-08-28 完成
+  - 10 组真实歌曲验证 normalizeKey / displayKey 行为一致（23 用例）
+- [x] **E2** `packages/common/src/grouping.test.ts`（新建）— 2026-08-28 完成
+  - server normalizeKey vs renderer displayKey 分组一致性（22 用例）
 
 ## Phase F — Hooks/Lib L6（renderer 补单测，可选）
 

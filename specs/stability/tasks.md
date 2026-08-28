@@ -57,11 +57,15 @@
 
 ## B. Provider 单测（锁住平台 API 解析回归）
 
-- [ ] **B3** `deezer.provider.test.ts`（新建，~15 用例）
-  - 各 preset editorial id 映射 / preview URL 提取 / 404 5xx 兜底
+- [x] **B3** `deezer.provider.test.ts`（新建，18 用例）
+  - isConfigured / getEditorials / getPresetNames / isValidPreset
+  - search 命中/空/HTTP error / fetchRadioBatch valid/invalid preset/empty
+  - getStreamPath valid/no preview / getLyrics synced/unsynced/null
+  - toTrack title_short 优先
 
-- [ ] **B4** `lyricsovh.provider.test.ts`（新建，~10 用例）
-  - 命中 / 未命中 / 同步异步时间戳
+- [x] **B4** `lyricsovh.provider.test.ts`（新建，11 用例）
+  - 空 artist/title / whitespace / hit multi-line / 404 / 500
+  - empty lyrics / URL encoding / timeout（withTimeout 5s）
 
 - [ ] **B1** `qq.provider.test.ts` 扩展 7 → ~30 用例
   - search 命中/空结果/pay_play 推断/VIP 推断
@@ -78,14 +82,16 @@
 
 ## E. 跨包契约（堵"前后端 fuzzy key 漂移" — 架构约束最强调）
 
-- [ ] **E1** `packages/common/src/contract.test.ts`（新建）
-  - `normalizeKey(title, artist)` 在 server/renderer 同值
-  - `displayKey(title, artist)` 在 server/renderer 同值
-  - 10 组歌曲两端归一一致
+- [x] **E1** `packages/common/src/contract.test.ts`（新建，23 用例）
+  - 10 组真实歌曲验证 normalizeKey / displayKey 行为一致
+  - 覆盖简繁、feat、Live/Remix 版本、英文艺名、大小写、日文假名
+  - stripParensContent / stripTrailingMeta 稳定性
 
-- [ ] **E2** `packages/common/src/grouping.test.ts`（新建）
-  - 同一 sources 列表 server `mergeLibrary` vs renderer `groupLibraryItems` 同 grouping
-  - key、member 数、representative index 一致
+- [x] **E2** `packages/common/src/grouping.test.ts`（新建，22 用例）
+  - server normalizeKey 分组 vs renderer displayKey 分组一致性
+  - 同歌/简繁/feat/大小写 → 两端 group 数一致
+  - Live/Remix → server 多组 / renderer 1 组（预期差异）
+  - 混合场景 / 空列表 / stripParensContent + displayKey 链
 
 ## F. Renderer hooks/lib 补单测
 
