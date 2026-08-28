@@ -105,6 +105,13 @@
 
 ## F. Renderer hooks/lib 补单测
 
-- [ ] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环
-- [ ] **F2** `useCoverArt` epoch 取消 / race
-- [ ] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播
+- [x] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环
+  - 提取纯函数：pickFallbackSource / pickUpgradeSource / getFullSongProviders
+  - 测试 usePlayer.test.mjs：30 用例（常量/getFullSongProviders/pickFallback/pickUpgrade/降级链模拟）
+
+- [x] **F2** `useCoverArt` epoch 取消 / race
+  - 导出 applyCoverImage 供直接测试
+  - 测试 useCoverArt.test.mjs：16 用例（成功/epoch bail/fetch 失败 fallback/proxy URL/连续调用/bitmap.close）
+
+- [x] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播
+  - 测试 spotify-wps.test.mjs：25 用例（API surface/subscribe/ready/connect/play/disconnect/fatal events/reconnect）

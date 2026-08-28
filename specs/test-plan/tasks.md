@@ -72,10 +72,13 @@
 
 ## Phase F — Hooks/Lib L6（renderer 补单测，可选）
 
-- [ ] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环
-- [ ] **F2** `useCoverArt` epoch 取消 / race
+- [x] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环 — 2026-08-28 完成
+  - 提取纯函数 pickFallbackSource / pickUpgradeSource + 30 用例
+- [x] **F2** `useCoverArt` epoch 取消 / race — 2026-08-28 完成
+  - 导出 applyCoverImage + 16 用例
 - [x] **F3** `lib/groupLibrary.ts` 多 COVER / 多 LIVE 折叠 — `groupLibrary.test.ts` 已存在
-- [ ] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播
+- [x] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播 — 2026-08-28 完成
+  - 25 用例（connect/disconnect/play/fatal events/reconnect）
 - [x] **F5** `lib/storage.ts` Provider/Quality 读写 + 缺字段兜底 — `storage.test.ts` 已存在
 
 ## Phase G — CI 收尾
