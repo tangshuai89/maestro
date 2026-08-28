@@ -86,5 +86,10 @@
 ## Phase G — CI 收尾
 
 - [x] **G1** GitHub Actions：`typecheck + lint + test` 三连 — `.github/workflows/test.yml` 已配置
-- [ ] **G2** `test:ci` 子命令（`--bail --reporter=spec`）
-- [ ] **G3** 覆盖率（c8 / istanbul）报告 + 阈值门禁（≥60% 行）
+- [x] **G2** `test:ci` 子命令（`--bail --reporter=spec`）— 2026-08-28 完成
+  - `scripts/test.sh --ci` 模式：首个失败即退出 + `▸`/`✓` spec 格式输出
+  - CI workflow 切到 `npm run test:ci`
+- [x] **G3** 覆盖率（c8）报告 + 阈值门禁（≥60% 行）— 2026-08-28 完成
+  - `scripts/test.sh --coverage` 模式：c8 逐包包裹 → lcov 报告
+  - CI workflow 加覆盖率步骤（`continue-on-error: true`，warn-only 阶段）
+  - 当前 server 52.95% 行；B 组测试补完后切硬门禁

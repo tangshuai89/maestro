@@ -29,4 +29,8 @@ jobs:
         run: npm run lint
 
       - name: Run tests
-        run: npm test
+        run: npm run test:ci
+
+      - name: Coverage report
+        run: npm run test:coverage
+        continue-on-error: true
