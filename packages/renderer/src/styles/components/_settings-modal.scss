@@ -1,221 +1,274 @@
-@use '../abstracts' as *;
+// ─────────────────────────────────────────────────────────────────
+// AETHER Settings — 设置全屏（Figma 03/Screen/Settings 还原）
+//
+// 架构同 TheaterView：固定 1440×900 画布 + transform: scale() 缩放。
+//   .set-root   fixed inset 0，背景层铺满窗口（复用 th-bg 星云）
+//   .set-canvas 1440×900，transform: scale(var(--canvas-scale))
+//
+// 画布内坐标（对应 Figma node 399:1153）：
+//   top-hud y=24 / section-0 y=120 / section-1 y=340 / section-2 y=560
+//   每个 section 960×180 @ x=240
+// ─────────────────────────────────────────────────────────────────
 
-// Settings dialog (会话快照 备份/导出/导入). Rendered inside the shared
-// .modal-panel; same always-dark $overlay-* palette as reco-key / liked modals.
-
-.settings-modal-panel {
-  width: min(92vw, 520px);
+.set-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #02020a;
+  color: #f5f0e8;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  user-select: none;
+  z-index: 100;
 }
 
-.settings-modal-header {
+.set-canvas {
+  position: absolute;
+  left: 50%;
+  top: calc(40px + (100vh - 40px) / 2);
+  width: 1440px;
+  height: 900px;
+  transform: translate(-50%, -50%) scale(var(--canvas-scale, 1));
+  transform-origin: center center;
+  z-index: 5;
+}
+
+// ── top-hud（y=24） ─────────────────────────────────────────────
+
+.set-hud {
+  position: absolute;
+  top: 24px;
+  left: 0;
+  right: 0;
+  height: 64px;
+  padding: 0 64px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid $overlay-divider;
+  justify-content: space-between;
 }
 
-.settings-modal-title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 600;
-  color: $overlay-text;
+.set-hud-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(245, 240, 232, 0.9);
 }
 
-.settings-modal-kicker {
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: $overlay-text-faint;
-  text-transform: uppercase;
-}
-
-.settings-modal-close {
-  width: 32px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  color: $overlay-icon;
-  font-size: 22px;
-  line-height: 1;
+.set-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.5);
   cursor: pointer;
-
-  &:hover {
-    color: #fff;
-  }
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.settings-modal-body {
-  padding: 8px 14px 16px;
-  overflow-y: auto;
-  max-height: 70vh;
+.set-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f0e8;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
-.settings-section {
-  padding: 16px;
-  margin: 10px 0;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+// ── sections（960×180 @ x=240） ─────────────────────────────────
 
-  &:last-child {
-    margin-bottom: 0;
-  }
+.set-section {
+  position: absolute;
+  left: 240px;
+  width: 960px;
+  min-height: 180px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.settings-section-title {
+.set-section:nth-of-type(1) { top: 120px; }
+.set-section:nth-of-type(2) { top: 340px; }
+.set-section:nth-of-type(3) { top: 560px; }
+
+.set-section-title {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  color: $overlay-text;
+  color: rgba(245, 240, 232, 0.9);
   letter-spacing: -0.01em;
 }
 
-.settings-section-hint {
-  margin: 0 0 10px;
+.set-section-hint {
+  margin: 0 0 16px;
   font-size: 12px;
   line-height: 1.5;
-  color: $overlay-text-dim;
+  color: rgba(245, 240, 232, 0.35);
 }
 
-.settings-path {
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: $overlay-field-bg;
-  border: 1px solid $overlay-field-border;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  color: $overlay-text-dim;
-  word-break: break-all;
-  margin-bottom: 10px;
-}
-
-.settings-label {
-  display: block;
-  font-size: 11px;
-  color: $overlay-text-mute;
-  margin: 8px 0 4px;
-}
-
-.settings-input {
-  width: 100%;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 9px;
-  border: 1px solid $overlay-field-border;
-  background: $overlay-field-bg;
-  color: $overlay-text;
-  font-size: 13px;
-  outline: none;
-
-  &:focus-visible {
-    border-color: $overlay-field-border-hi;
-  }
-}
-
-.settings-file {
-  width: 100%;
-  font-size: 12px;
-  color: $overlay-text-dim;
-  margin-bottom: 4px;
-}
-
-.settings-pass-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.settings-actions {
+.set-section-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-top: 12px;
 }
 
-.settings-btn {
-  height: 34px;
-  padding: 0 16px;
-  border: 1px solid $overlay-field-border;
-  border-radius: 9px;
-  background: $overlay-field-bg;
-  color: $overlay-text;
-  font-size: 13px;
-  cursor: pointer;
+// ── 路径展示 ────────────────────────────────────────────────────
 
-  &:hover:not(:disabled) {
-    background: $overlay-hover;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-}
-
-.settings-btn-primary {
-  background: $accent-green;
-  border-color: transparent;
-  color: #06231a;
-  font-weight: 600;
-}
-
-.settings-btn-ghost {
-  width: 34px;
-  height: 34px;
-  border: 1px solid $overlay-field-border;
-  border-radius: 9px;
-  background: transparent;
-  color: $overlay-text-dim;
-  font-size: 15px;
-  cursor: pointer;
-
-  &:hover {
-    color: $overlay-text;
-  }
-}
-
-.settings-count {
+.set-path {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: 'Inter', monospace;
   font-size: 12px;
-  color: $overlay-text-mute;
+  color: rgba(245, 240, 232, 0.5);
+  word-break: break-all;
 }
 
-// Tag/Stat 风格的备份计数徽章（对应 Figma Settings 屏的 "当前 7 份" Tag/Stat）
-.settings-stat-tag {
+// ── Tag/Stat 风格徽章 ───────────────────────────────────────────
+
+.set-stat-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.2);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   line-height: 1;
 }
 
-.settings-stat-tag-label {
-  color: $overlay-text-mute;
+.set-stat-label {
+  color: rgba(0, 229, 255, 0.6);
   text-transform: uppercase;
 }
 
-.settings-stat-tag-value {
-  color: $overlay-text;
+.set-stat-value {
+  color: #00e5ff;
   font-variant-numeric: tabular-nums;
 }
 
-.settings-status {
+// ── Button/Text（对应 Figma Button/Text 组件） ──────────────────
+
+.set-btn {
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.8);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.set-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f0e8;
+}
+
+.set-btn:disabled { opacity: 0.5; cursor: default; }
+
+.set-btn--accent {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
+}
+
+.set-btn--accent:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: rgba(0, 229, 255, 0.6);
+  color: #00e5ff;
+}
+
+.set-btn-ghost {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(245, 240, 232, 0.4);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.set-btn-ghost:hover {
+  color: #f5f0e8;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+// ── Input/Text（对应 Figma Input/Text 组件） ────────────────────
+
+.set-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: rgba(245, 240, 232, 0.3);
+  text-transform: uppercase;
+  margin: 14px 0 6px;
+}
+
+.set-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #f5f0e8;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+
+  &::placeholder { color: rgba(245, 240, 232, 0.2); }
+  &:focus { border-color: rgba(0, 229, 255, 0.3); }
+}
+
+.set-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.set-file-input {
+  width: 100%;
+  font-size: 12px;
+  color: rgba(245, 240, 232, 0.4);
+  padding: 8px 0;
+  &::-webkit-file-upload-button {
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(245, 240, 232, 0.7);
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 10px;
+  }
+}
+
+// ── 状态行 ──────────────────────────────────────────────────────
+
+.set-status {
   margin-top: 10px;
   font-size: 12px;
   line-height: 1.4;
 
-  &--ok {
-    color: $accent-green;
-  }
-
-  &--err {
-    color: $overlay-error;
-  }
+  &--ok { color: #3dffa2; }
+  &--err { color: #ff3b5c; }
 }
