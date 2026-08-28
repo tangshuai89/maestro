@@ -1,153 +1,188 @@
-@use '../abstracts' as *;
+// ─────────────────────────────────────────────────────────────────
+// AETHER AuthErrorPanel — 登录失败恢复全屏（Figma 03/Screen/Error 还原）
+//
+// 架构同 TheaterView：固定 1440×900 画布 + transform: scale() 缩放。
+//   .aep-root   fixed inset 0，背景层铺满窗口（复用 th-bg 星云）
+//   .aep-canvas 1440×900，transform: scale(var(--canvas-scale))
+//
+// 画布内坐标（对应 Figma node 401:1287）：
+//   Tag/Stat y=564 / error-panel 800×200 @ (320, 600)
+// ─────────────────────────────────────────────────────────────────
 
-// Recovery panel rendered at App level when a login attempt fails.
-// Sits above the cover-card area so it survives track swaps. Distinct
-// from <ErrorPanel> (which is for transport/playback errors inside
-// the cover card).
-
-.auth-error-panel {
+.aep-root {
   position: fixed;
-  left: 50%;
-  bottom: var(--space-5);
-  transform: translateX(-50%);
-  z-index: z('modal');
-  max-width: 480px;
-  width: calc(100% - 2 * var(--space-3));
-  background: var(--error-bg);
-  border: 1px solid var(--error-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  color: var(--error-fg);
-  -webkit-app-region: no-drag;
-  @include backdrop-blur(20px, 100%);
+  inset: 0;
+  overflow: hidden;
+  background: #02020a;
+  color: #f5f0e8;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  user-select: none;
+  z-index: 200;
 }
 
-// 错误头：severity 标签 + error code + 展开按钮（对应 Figma Error 屏的 FATAL/WARN tag）
-.auth-error-header {
+.aep-canvas {
+  position: absolute;
+  left: 50%;
+  top: calc(40px + (100vh - 40px) / 2);
+  width: 1440px;
+  height: 900px;
+  transform: translate(-50%, -50%) scale(var(--canvas-scale, 1));
+  transform-origin: center center;
+  z-index: 5;
+}
+
+// ── Tag/Stat 错误码标签（y=564） ────────────────────────────────
+
+.aep-code-tag {
+  position: absolute;
+  top: 564px;
+  left: 320px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sev, rgba(255, 59, 92, 0.3));
+}
+
+.aep-code-severity {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--sev, #ff3b5c);
+  text-transform: uppercase;
+}
+
+.aep-code-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(245, 240, 232, 0.5);
+  font-family: 'Inter', monospace;
+}
+
+// ── error-panel（800×200 @ x=320, y=600） ───────────────────────
+
+.aep-panel {
+  position: absolute;
+  top: 600px;
+  left: 320px;
+  width: 800px;
+  min-height: 200px;
+  padding: 20px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(20, 20, 30, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+// summary 行
+.aep-summary {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 12px;
 }
 
-.auth-error-severity {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1;
-}
-
-.auth-error-severity--fatal {
-  background: rgba(255, 60, 60, 0.2);
-  color: #ff6b6b;
-  border: 1px solid rgba(255, 60, 60, 0.3);
-}
-
-.auth-error-severity--warn {
-  background: rgba(255, 180, 0, 0.2);
-  color: #ffb400;
-  border: 1px solid rgba(255, 180, 0, 0.3);
-}
-
-.auth-error-severity--info {
-  background: rgba(100, 180, 255, 0.15);
-  color: #64b4ff;
-  border: 1px solid rgba(100, 180, 255, 0.25);
-}
-
-.auth-error-code {
-  font-size: 10px;
-  font-family: var(--font-mono, monospace);
-  color: var(--error-fg-soft);
+.aep-summary-text {
   flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(245, 240, 232, 0.9);
 }
 
-.auth-error-expand {
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: var(--error-fg-soft);
-  font-size: 12px;
-  cursor: pointer;
-  border-radius: 3px;
-  line-height: 1;
-
-  &:hover {
-    color: var(--error-fg);
-    background: rgba(255, 255, 255, 0.08);
-  }
-}
-
-.auth-error-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.auth-error-detail {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--error-fg-soft);
-  margin-bottom: var(--space-2-ui);
-  word-break: break-all;
-}
-
-// Stack trace 折叠区（对应 Figma Error 屏的 stack trace 块）
-.auth-error-stack {
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--error-fg-soft);
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--error-border);
+.aep-expand {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  padding: 8px 10px;
-  margin: 0 0 var(--space-2-ui);
-  max-height: 180px;
+  background: transparent;
+  color: rgba(245, 240, 232, 0.4);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.aep-expand:hover {
+  color: #f5f0e8;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+// stack trace
+.aep-stack {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  font-family: 'Inter', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: rgba(245, 240, 232, 0.4);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  max-height: 120px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
+  user-select: text;
 }
 
-.auth-error-actions {
+.aep-detail {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(245, 240, 232, 0.4);
+  word-break: break-all;
+}
+
+// actions（Button/Text 风格）
+.aep-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+  margin-top: 16px;
 }
 
-.auth-error-btn {
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-ui);
-  color: #fff;
-  border: 1px solid var(--accent-ui);
+.aep-btn {
+  height: 31px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.7);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease;
-  -webkit-app-region: no-drag;
+  transition: all 0.15s ease;
 }
 
-.auth-error-btn:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+.aep-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f0e8;
 }
 
-.auth-error-btn--primary {
-  background: var(--accent-ui);
+.aep-btn--primary {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
   font-weight: 600;
 }
 
-.auth-error-btn-ghost {
-  background: transparent;
-  color: var(--error-fg);
-  border-color: var(--error-border);
+.aep-btn--primary:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: rgba(0, 229, 255, 0.6);
+  color: #00e5ff;
 }
 
-.auth-error-btn-ghost:hover {
-  background: var(--error-border);
-  color: var(--error-fg);
+.aep-btn--ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.06);
+  color: rgba(245, 240, 232, 0.4);
+}
+
+.aep-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.6);
 }

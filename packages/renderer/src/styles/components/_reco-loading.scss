@@ -1,0 +1,247 @@
+// ─────────────────────────────────────────────────────────────────
+// AETHER RecoLoading — AI 推荐生成中全屏（Figma 03/Screen/RecoLoading 还原）
+//
+// 架构同 TheaterView：固定 1440×900 画布 + transform: scale() 缩放。
+//   .rl-root    fixed inset 0，背景层铺满窗口（复用 th-bg 星云）
+//   .rl-canvas  1440×900，transform: scale(var(--canvas-scale))
+//
+// 画布内坐标（对应 Figma node 408:1402）：
+//   top-hud y=24 / cards y=300 / progress y=560 / stats y=640
+// ─────────────────────────────────────────────────────────────────
+
+.rl-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #02020a;
+  color: #f5f0e8;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  user-select: none;
+  z-index: 150;
+}
+
+.rl-canvas {
+  position: absolute;
+  left: 50%;
+  top: calc(40px + (100vh - 40px) / 2);
+  width: 1440px;
+  height: 900px;
+  transform: translate(-50%, -50%) scale(var(--canvas-scale, 1));
+  transform-origin: center center;
+  z-index: 5;
+}
+
+// ── top-hud（y=24） ─────────────────────────────────────────────
+
+.rl-hud {
+  position: absolute;
+  top: 24px;
+  left: 0;
+  right: 0;
+  height: 64px;
+  padding: 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rl-hud-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(181, 123, 255, 0.9);
+  text-shadow: 0 0 12px rgba(181, 123, 255, 0.3);
+}
+
+.rl-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.rl-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f0e8;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+// ── Card/Neural × 3 skeleton（y=300） ───────────────────────────
+
+.rl-cards {
+  position: absolute;
+  top: 300px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+}
+
+.rl-card {
+  width: 200px;
+  height: 260px;
+  padding: 20px;
+  border: 1px solid rgba(181, 123, 255, 0.15);
+  border-radius: 16px;
+  background: rgba(181, 123, 255, 0.04);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: rl-card-pulse 2s ease-in-out infinite;
+}
+
+@keyframes rl-card-pulse {
+  0%, 100% { opacity: 0.4; border-color: rgba(181, 123, 255, 0.1); }
+  50% { opacity: 0.8; border-color: rgba(181, 123, 255, 0.3); }
+}
+
+.rl-card-art {
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(181, 123, 255, 0.15) 0%,
+    rgba(61, 155, 255, 0.1) 50%,
+    rgba(181, 123, 255, 0.15) 100%
+  );
+  background-size: 200% 200%;
+  animation: rl-art-shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes rl-art-shimmer {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+}
+
+.rl-card-line {
+  height: 10px;
+  border-radius: 4px;
+  background: rgba(181, 123, 255, 0.12);
+  animation: rl-line-pulse 1.6s ease-in-out infinite;
+}
+
+.rl-card-line--title { width: 80%; }
+.rl-card-line--artist { width: 55%; height: 8px; }
+
+@keyframes rl-line-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.rl-card-match {
+  width: 40px;
+  height: 16px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: rgba(181, 123, 255, 0.1);
+}
+
+// ── 进度条 + STEP 文案（y=560） ─────────────────────────────────
+
+.rl-progress {
+  position: absolute;
+  top: 560px;
+  left: 320px;
+  width: 800px;
+}
+
+.rl-progress-bar {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  position: relative;
+}
+
+.rl-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #b57bff, transparent);
+  animation: rl-progress-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes rl-progress-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.rl-progress-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.rl-step-label {
+  font-family: 'Inter', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #b57bff;
+}
+
+.rl-step-desc {
+  font-size: 13px;
+  color: rgba(245, 240, 232, 0.6);
+}
+
+// ── 底部 Tag/Stat（y=640） ──────────────────────────────────────
+
+.rl-stats {
+  position: absolute;
+  top: 640px;
+  left: 320px;
+  display: flex;
+  gap: 16px;
+}
+
+.rl-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.rl-stat-label {
+  color: rgba(245, 240, 232, 0.3);
+  text-transform: uppercase;
+}
+
+.rl-stat-value {
+  color: rgba(245, 240, 232, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.rl-stat--accent {
+  background: rgba(181, 123, 255, 0.08);
+  border-color: rgba(181, 123, 255, 0.2);
+}
+
+.rl-stat--accent .rl-stat-label { color: rgba(181, 123, 255, 0.5); }
+.rl-stat--accent .rl-stat-value { color: #b57bff; }

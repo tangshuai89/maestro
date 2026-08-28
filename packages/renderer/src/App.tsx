@@ -19,6 +19,7 @@ import RecoKeyModal from './components/modals/RecoKeyModal';
 import LikedLibraryModal from './components/modals/LikedLibraryModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
+import RecoLoading from './components/common/RecoLoading';
 
 /**
  * Composition layer. All logic lives in hooks/ (usePlayer owns the audio
@@ -290,6 +291,7 @@ export default function App() {
         onSeek={player.seek}
         onOpenLiked={() => { void reloadLikedCount(); setLikedOpen(true); }}
         onSwitchProvider={handleSwitchSource}
+        onConfigureReco={() => reco.setRecoKeyOpen(true)}
       />
 
       {/* Always mounted (never conditionally unmounted) so the Web Audio graph
@@ -315,6 +317,10 @@ export default function App() {
           onPlay={player.playSearch}
           onClose={() => player.setSearchOpen(false)}
         />
+      )}
+
+      {reco.recoRunning && (
+        <RecoLoading librarySize={reco.recoStatus?.librarySize ?? 0} />
       )}
 
       {reco.recoKeyOpen && (

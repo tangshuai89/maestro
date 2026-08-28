@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import Modal from '../common/Modal';
 import {
   getStateSnapshot,
   importState,
@@ -14,6 +13,20 @@ import {
 } from '../../lib/backup-crypto';
 import { collectLocalStorage, restoreLocalStorage } from '../../lib/storage';
 
+/**
+ * AETHER Settings — 设置全屏（Figma 03/Screen/Settings 还原）。
+ *
+ * 设计稿结构（1440×900，node 399:1153）：
+ *  - backdrop（星云 + 地平线，复用 th-bg）
+ *  - top-hud（"SETTINGS // CONFIG" + close 按钮）
+ *  - 3 个 section（960×180 @ y=120/340/560）：
+ *    section-0：本地自动备份（目录路径 + Tag/Stat + Button/Text）
+ *    section-1：导出会话快照（Button/Text + Input/Text 口令框）
+ *    section-2：导入并合并（Input/Text 文件 + Input/Text 口令 + Button/Text）
+ *
+ * 备份/导出/导入逻辑完整保留。
+ */
+
 interface Props {
   onClose: () => void;
 }
@@ -22,22 +35,14 @@ type Status = { kind: 'idle' | 'busy' | 'ok' | 'err'; msg?: string };
 
 const APP_VERSION = '1.0.0';
 
-/**
- * 设置弹窗（本轮只做"会话快照 备份/导出/导入"骨架 —— #3.1）。
- * 三块：本地自动备份信息 / 口令加密导出 / 口令解密导入。
- * 敏感 cookie/token 走 AES-GCM，明文只在服务端本地 backups/ 里（用户自己机器）。
- */
 export default function SettingsModal({ onClose }: Props) {
-  // ── 备份信息 ──
   const [backupDir, setBackupDir] = useState<string>('…');
   const [backupCount, setBackupCount] = useState<number>(0);
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' });
 
-  // ── 导出 ──
   const [exportPass, setExportPass] = useState(generatePassphrase());
   const [exportStatus, setExportStatus] = useState<Status>({ kind: 'idle' });
 
-  // ── 导入 ──
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPass, setImportPass] = useState('');
   const [importStatus, setImportStatus] = useState<Status>({ kind: 'idle' });
@@ -50,6 +55,27 @@ export default function SettingsModal({ onClose }: Props) {
       })
       .catch(() => setBackupDir('（无法读取备份目录）'));
   }, []);
+
+  // 1440×900 画布等比缩放
+  const [canvasScale, setCanvasScale] = useState(1);
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const scale = Math.min(w / 1440, Math.max(0.3, (h - 40) / 900));
+      setCanvasScale(scale);
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
+  }, []);
+
+  // ESC 关闭
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const handleBackupNow = async () => {
     setBackupStatus({ kind: 'busy' });
@@ -80,7 +106,6 @@ export default function SettingsModal({ onClose }: Props) {
         localStorage: collectLocalStorage(),
       };
       const blob = await encryptBundle(bundle, exportPass);
-      // 触发下载
       const file = new Blob([blob], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(file);
       const a = document.createElement('a');
@@ -91,10 +116,7 @@ export default function SettingsModal({ onClose }: Props) {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      setExportStatus({
-        kind: 'ok',
-        msg: '已导出 · 记住口令，导入时需要它',
-      });
+      setExportStatus({ kind: 'ok', msg: '已导出 · 记住口令，导入时需要它' });
     } catch (e) {
       setExportStatus({ kind: 'err', msg: (e as Error).message });
     }
@@ -115,116 +137,110 @@ export default function SettingsModal({ onClose }: Props) {
       const bundle = await decryptBundle(text, importPass);
       const { merged } = await importState(bundle.stateJson);
       restoreLocalStorage(bundle.localStorage);
-      setImportStatus({
-        kind: 'ok',
-        msg: `已合并 ${merged.length} 项 · 重启 App 生效`,
-      });
+      setImportStatus({ kind: 'ok', msg: `已合并 ${merged.length} 项 · 重启 App 生效` });
     } catch (e) {
       setImportStatus({ kind: 'err', msg: (e as Error).message });
     }
   };
 
   return (
-    <Modal onClose={onClose} panelClassName="settings-modal-panel">
-      <div className="settings-modal-header">
-        <span className="settings-modal-title">设置</span>
-        <span className="settings-modal-kicker">CONFIG</span>
-        <button
-          className="settings-modal-close"
-          onClick={onClose}
-          aria-label="关闭"
-        >
-          ×
-        </button>
+    <div className="set-root">
+      {/* ── 背景层 ── */}
+      <div className="th-bg" aria-hidden="true">
+        <div className="th-bg-radial" />
+        <div className="th-nebula th-nebula--violet" />
+        <div className="th-nebula th-nebula--cyan" />
+        <div className="th-nebula th-nebula--acid" />
+        <div className="th-horizon" />
       </div>
 
-      <div className="settings-modal-body">
-        {/* ── 本地自动备份 ── */}
-        <section className="settings-section">
-          <h3 className="settings-section-title">本地自动备份</h3>
-          <p className="settings-section-hint">
-            每天自动把登录态与红心库备份到本地目录，保留最近 7 份。
-          </p>
-          <div className="settings-path" title={backupDir}>
-            {backupDir}
-          </div>
-          <div className="settings-actions">
+      {/* ── 1440×900 设计画布 ── */}
+      <div className="set-canvas" style={{ ['--canvas-scale' as string]: String(canvasScale) }}>
+        {/* top-hud（y=24） */}
+        <header className="set-hud">
+          <span className="set-hud-title">SETTINGS // CONFIG</span>
+          <button className="set-close" onClick={onClose} aria-label="关闭" title="关闭">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
+
+        {/* section-0：本地自动备份（960×180 @ y=120） */}
+        <section className="set-section">
+          <h3 className="set-section-title">本地自动备份</h3>
+          <p className="set-section-hint">每日自动备份会话快照到本地目录</p>
+          <div className="set-path" title={backupDir}>{backupDir}</div>
+          <div className="set-section-actions">
+            <span className="set-stat-tag">
+              <span className="set-stat-label">BACKUPS</span>
+              <span className="set-stat-value">{backupCount}</span>
+            </span>
             <button
-              className="settings-btn"
+              className="set-btn"
               onClick={() => void handleBackupNow()}
               disabled={backupStatus.kind === 'busy'}
             >
               {backupStatus.kind === 'busy' ? '备份中…' : '立即备份'}
             </button>
-            <span className="settings-stat-tag" title={`本地备份目录共 ${backupCount} 份`}>
-              <span className="settings-stat-tag-label">BACKUPS</span>
-              <span className="settings-stat-tag-value">{backupCount}</span>
-            </span>
           </div>
           <StatusLine status={backupStatus} />
         </section>
 
-        {/* ── 导出 ── */}
-        <section className="settings-section">
-          <h3 className="settings-section-title">导出会话快照</h3>
-          <p className="settings-section-hint">
-            导出登录态、红心库与偏好为一个加密文件（含各平台 cookie / token，
-            务必设口令）。换电脑或重装后可导入恢复。
-            <br />
-            自动生成的口令由 256 词词表随机抽 4 词组合，请妥善保管——丢了这个口令
-            备份无法恢复。
-          </p>
-          <label className="settings-label">口令</label>
-          <div className="settings-pass-row">
-            <input
-              type="text"
-              className="settings-input"
-              value={exportPass}
-              onChange={(e) => setExportPass(e.target.value)}
-            />
+        {/* section-1：导出会话快照（960×180 @ y=340） */}
+        <section className="set-section">
+          <h3 className="set-section-title">导出会话快照</h3>
+          <p className="set-section-hint">加密导出全部凭据 + 收藏 + 偏好</p>
+          <div className="set-section-actions">
             <button
-              className="settings-btn-ghost"
-              onClick={() => setExportPass(generatePassphrase())}
-              title="重新生成"
-            >
-              ↻
-            </button>
-          </div>
-          <div className="settings-actions">
-            <button
-              className="settings-btn settings-btn-primary"
+              className="set-btn set-btn--accent"
               onClick={() => void handleExport()}
               disabled={exportStatus.kind === 'busy'}
             >
               {exportStatus.kind === 'busy' ? '导出中…' : '导出加密快照'}
             </button>
           </div>
+          <label className="set-label">口令（自动生成，可修改）</label>
+          <div className="set-input-row">
+            <input
+              type="text"
+              className="set-input"
+              value={exportPass}
+              onChange={(e) => setExportPass(e.target.value)}
+            />
+            <button
+              className="set-btn-ghost"
+              onClick={() => setExportPass(generatePassphrase())}
+              title="重新生成"
+            >
+              ↻
+            </button>
+          </div>
           <StatusLine status={exportStatus} />
         </section>
 
-        {/* ── 导入 ── */}
-        <section className="settings-section">
-          <h3 className="settings-section-title">导入并合并</h3>
-          <p className="settings-section-hint">
-            导入不会覆盖当前已有的红心与登录态，只补充缺失的。导入后重启 App 生效。
-          </p>
+        {/* section-2：导入并合并（960×180 @ y=560） */}
+        <section className="set-section">
+          <h3 className="set-section-title">导入并合并</h3>
+          <p className="set-section-hint">从 .maestro-backup 文件恢复数据</p>
+          <label className="set-label">备份文件</label>
           <input
             type="file"
             accept=".maestro-backup,application/octet-stream"
-            className="settings-file"
+            className="set-file-input"
             onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
           />
-          <label className="settings-label">口令</label>
+          <label className="set-label">口令</label>
           <input
             type="password"
-            className="settings-input"
+            className="set-input"
             placeholder="导出时设置的口令"
             value={importPass}
             onChange={(e) => setImportPass(e.target.value)}
           />
-          <div className="settings-actions">
+          <div className="set-section-actions">
             <button
-              className="settings-btn"
+              className="set-btn"
               onClick={() => void handleImport()}
               disabled={importStatus.kind === 'busy'}
             >
@@ -234,17 +250,14 @@ export default function SettingsModal({ onClose }: Props) {
           <StatusLine status={importStatus} />
         </section>
       </div>
-    </Modal>
+    </div>
   );
 }
 
 function StatusLine({ status }: { status: Status }) {
   if (status.kind === 'idle' || status.kind === 'busy') return null;
   return (
-    <div
-      className={`settings-status settings-status--${status.kind}`}
-      role="status"
-    >
+    <div className={`set-status set-status--${status.kind}`} role="status">
       {status.msg}
     </div>
   );
