@@ -1,464 +1,327 @@
 @use '../abstracts' as *;
 
-// ❤ 红心库弹窗。共用 .modal-panel（_modal.scss），这里是内部样式：
-// - 头部带平台计数 + 关闭
-// - 中部滚动列表（支持千级条目）
-// - 空态 + 底部"重新导入"
-// - 行点击直接 playSearch
+// ─────────────────────────────────────────────────────────────────
+// AETHER Library — 红心库全屏（Figma 03/Screen/Library 还原）
 //
-// 体验细节：
-// - sessionStorage SWR：二次打开无白屏
-// - 首次打开用 skeleton 行占位
-// - 「重新导入」中顶部渐变条 + 中央心形脉动 overlay + 列表变暗
+// 架构同 TheaterView：固定 1440×900 画布 + transform: scale() 缩放。
+//   .lib-root   fixed inset 0，背景层铺满窗口（复用 th-bg 星云）
+//   .lib-canvas 1440×900，transform: scale(var(--canvas-scale))
+//
+// 画布内坐标（对应 Figma node 390:1081）：
+//   top-hud y=24 / platform-counts y=112 / search-bar y=148 /
+//   song-list y=216 / footer y=812
+// ─────────────────────────────────────────────────────────────────
 
-.liked-modal-panel {
-  width: 480px;
-  max-width: calc(100vw - 40px);
-  max-height: calc(100vh - 80px);
-  display: flex;
-  flex-direction: column;
+.lib-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #02020a;
+  color: #f5f0e8;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  user-select: none;
+  z-index: 100;
 }
 
-.liked-modal-header {
+// ── 1440×900 设计画布 ───────────────────────────────────────────
+
+.lib-canvas {
+  position: absolute;
+  left: 50%;
+  top: calc(40px + (100vh - 40px) / 2);
+  width: 1440px;
+  height: 900px;
+  transform: translate(-50%, -50%) scale(var(--canvas-scale, 1));
+  transform-origin: center center;
+  z-index: 5;
+}
+
+// ── top-hud（y=24，❤ + LIBRARY // LIKED + close） ───────────────
+
+.lib-hud {
+  position: absolute;
+  top: 24px;
+  left: 0;
+  right: 0;
+  height: 64px;
+  padding: 0 64px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid $overlay-divider;
-  flex-shrink: 0;
+  justify-content: space-between;
 }
 
-.liked-modal-title {
-  font-size: 14px;
-  color: #ff6b81; // 心红
-  font-weight: 600;
-  display: inline-flex;
+.lib-hud-brand {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
 }
 
-// 后台拉新中指示：一个心红小点循环脉动，让用户知道现在显示的可能不是最新数据。
-// 紧贴标题文字右侧，不占位，不抢戏——视觉重量 = 一颗 6px 圆点。
-.liked-modal-syncing-dot {
+.lib-hud-heart {
+  font-size: 20px;
+  color: #ff3b5c;
+  text-shadow: 0 0 12px rgba(255, 59, 92, 0.5);
+}
+
+.lib-hud-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(245, 240, 232, 0.9);
+}
+
+.lib-syncing-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: $accent-green;
-  box-shadow: 0 0 6px rgba(49, 194, 124, 0.6);
-  animation: liked-syncing-pulse 1.2s ease-in-out infinite;
+  background: #3dffa2;
+  box-shadow: 0 0 6px rgba(61, 255, 162, 0.6);
+  animation: lib-syncing-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes liked-syncing-pulse {
-  0%,
-  100% {
-    opacity: 0.4;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
+@keyframes lib-syncing-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
-.liked-modal-count {
-  font-size: 12px;
-  color: $overlay-text-dim;
-  padding-right: 4px;
-}
-
-// 平台计数徽章行：对应 Figma Library 屏顶部 Q 1,284 / N 892 / S 347 / D 156
-.liked-modal-platform-stats {
+.lib-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.5);
+  cursor: pointer;
   display: flex;
-  gap: 6px;
-  flex: 1;
-  justify-content: flex-end;
-  padding-right: 8px;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.liked-modal-platform-stat {
+.lib-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f0e8;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+// ── platform-counts（y=112，4 Badge/Platform + 数字） ───────────
+
+.lib-platform-counts {
+  position: absolute;
+  top: 112px;
+  left: 240px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.lib-platform-stat {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+}
+
+.lib-platform-letter {
+  width: 20px;
   height: 20px;
-  padding: 0 6px;
-  border-radius: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.liked-modal-platform-letter {
-  font-size: 11px;
   font-weight: 700;
+  color: #02020a;
+  background: var(--badge);
+  box-shadow: 0 0 8px var(--badge);
 }
 
-.liked-modal-platform-num {
-  color: $overlay-text-dim;
+.lib-platform-num {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(245, 240, 232, 0.7);
   font-variant-numeric: tabular-nums;
 }
 
-// Per-platform accent colors (matching Badge/Platform in Figma)
-.liked-modal-platform-stat--qq .liked-modal-platform-letter { color: #31c27c; }
-.liked-modal-platform-stat--netease .liked-modal-platform-letter { color: #c20c0c; }
-.liked-modal-platform-stat--spotify .liked-modal-platform-letter { color: #1db954; }
-.liked-modal-platform-stat--deezer .liked-modal-platform-letter { color: #a238ff; }
-
-.liked-modal-count-detail {
-  color: $overlay-text-faint;
+.lib-count {
+  font-size: 11px;
+  color: rgba(245, 240, 232, 0.35);
+  margin-left: 8px;
 }
 
-.liked-modal-close {
-  width: 32px;
-  height: 32px;
+// ── search-bar（960×48 @ y=148） ────────────────────────────────
+
+.lib-search-bar {
+  position: absolute;
+  top: 148px;
+  left: 240px;
+  width: 960px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 0.2s ease;
+}
+
+.lib-search-bar:focus-within { border-color: rgba(0, 229, 255, 0.3); }
+
+.lib-search-icon { color: rgba(245, 240, 232, 0.35); flex-shrink: 0; }
+
+.lib-search-input {
+  flex: 1;
+  height: 100%;
   border: none;
   background: transparent;
-  color: $overlay-icon;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  border-radius: 6px;
-}
-
-.liked-modal-close:hover {
-  color: #fff;
-  background: $overlay-hover;
-}
-
-.liked-modal-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 4px 0;
-  // 虚拟滚动时 body 自身就是 scroll container——给子元素一个明确的全宽上下文。
-  position: relative;
-}
-
-// 搜索条：header 与 body 之间的固定区（不随列表滚动）。
-.liked-modal-search {
-  position: relative;
-  flex-shrink: 0;
-  padding: 6px 16px 2px;
-  border-bottom: 1px solid $overlay-divider;
-}
-
-.liked-modal-search-input {
-  width: 100%;
-  height: 32px;
-  padding: 0 30px 0 12px;
-  border: 1px solid $overlay-field-border;
-  border-radius: 8px;
-  background: $overlay-field-bg;
-  color: $overlay-text;
-  font-size: 13px;
+  color: #f5f0e8;
+  font-size: 14px;
   outline: none;
-  transition: border-color 0.1s ease;
-
-  &::placeholder {
-    color: $overlay-text-faint;
-  }
-
-  &:focus {
-    border-color: $overlay-field-border-hi;
-  }
+  &::placeholder { color: rgba(245, 240, 232, 0.25); }
 }
 
-.liked-modal-search-clear {
-  position: absolute;
-  right: 22px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
+.lib-search-clear {
+  width: 24px;
+  height: 24px;
   border: none;
-  border-radius: 50%;
-  background: $overlay-hover;
-  color: $overlay-text-faint;
-  font-size: 12px;
-  line-height: 20px;
+  background: transparent;
+  color: rgba(245, 240, 232, 0.3);
+  font-size: 18px;
   cursor: pointer;
-
-  &:hover {
-    color: $overlay-text;
-  }
+  border-radius: 50%;
+  &:hover { color: #f5f0e8; background: rgba(255, 255, 255, 0.08); }
 }
 
-// 虚拟滚动列表容器：virtualizer 用它算 visible range。高度由 .liked-modal-body
-// 的 flex: 1 + min-height: 0 决定；自己只负责内部 absolute 定位。
-.liked-modal-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  // 兼容虚拟滚动（@tanstack/react-virtual）：内层行用 absolute 定位，
-  // 外层容器不需要 list-style 等——保留原 reset 即可。
+// ── song-list（960×580 @ y=216） ────────────────────────────────
+
+.lib-body {
+  position: absolute;
+  top: 216px;
+  left: 240px;
+  width: 960px;
+  height: 580px;
+  overflow-y: auto;
+  position: absolute;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
 }
 
-// 虚拟化时 group 不再是 <li>，而是 absolute 定位的 div。给它和原来 <li>
-// 同样的 list-item 样式（底部无分隔线——视觉上是连续的列表）。
-.liked-modal-virtual-list {
+.lib-virtual-list {
   position: relative;
   width: 100%;
 }
 
-.liked-modal-loading,
-.liked-modal-error {
-  padding: 40px 16px;
-  text-align: center;
-  font-size: 13px;
-  color: $overlay-text-dim;
-}
-
-.liked-modal-error {
-  color: $overlay-error;
-}
-
-.liked-modal-empty {
-  padding: 60px 16px;
-  text-align: center;
-}
-
-.liked-modal-empty-icon {
-  font-size: 48px;
-  color: $overlay-text-faint;
-  margin-bottom: 12px;
-}
-
-.liked-modal-empty-text {
-  font-size: 13px;
-  color: $overlay-text-dim;
-  margin-bottom: 16px;
-}
-
-.liked-modal-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.liked-modal-group {
-  // 展开时给整组一个轻微的边界，让子列表在视觉上归属于这一组。
-  &:has(.liked-modal-row.is-open) {
+.lib-group {
+  &:has(.lib-row.is-open) {
     background: rgba(255, 255, 255, 0.02);
   }
 }
 
-.liked-modal-row {
+.lib-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  height: 56px;
   padding: 8px 12px;
   cursor: pointer;
   transition: background-color 0.1s ease;
+  border-radius: 8px;
 }
 
-.liked-modal-row:hover {
-  background: $overlay-hover;
-}
+.lib-row:hover { background: rgba(255, 255, 255, 0.05); }
+.lib-row:active { background: rgba(255, 255, 255, 0.08); }
+.lib-row.is-open { background: rgba(255, 255, 255, 0.05); }
 
-.liked-modal-row:active {
-  background: $overlay-field-bg;
-}
-
-.liked-modal-row.is-open {
-  background: $overlay-hover;
-}
-
-// 移动端 accordion 风格的展开按钮：平台版本数 + 旋转的 chevron。
-.liked-modal-toggle {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  height: 22px;
-  padding: 0 6px;
-  margin-left: 2px;
-  border: 1px solid $overlay-field-border;
-  border-radius: 11px;
-  background: transparent;
-  color: $overlay-text-dim;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.liked-modal-toggle:hover {
-  border-color: $overlay-field-border-hi;
-  background: $overlay-field-bg;
-  color: $overlay-text;
-}
-
-.liked-modal-toggle-count {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.liked-modal-toggle-chevron {
-  font-size: 9px;
-  line-height: 1;
-}
-
-// 展开后的各平台子列表。
-.liked-modal-sublist {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 4px;
-}
-
-.liked-modal-subrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  // 左侧缩进对齐到封面右缘（封面 40 + gap 10 + padding 12），让子行明显是下级。
-  padding: 6px 12px 6px 30px;
-  cursor: pointer;
-  transition: background-color 0.1s ease;
-}
-
-.liked-modal-subrow:hover {
-  background: $overlay-hover;
-}
-
-.liked-modal-subrow:active {
-  background: $overlay-field-bg;
-}
-
-// 子行前的连接圆点，暗示层级归属。
-.liked-modal-subrow-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: $overlay-text-faint;
-}
-
-.liked-modal-subrow .liked-modal-track {
-  font-size: 12px;
-  font-weight: 400;
-  color: $overlay-text-dim;
-}
-
-.liked-modal-cover {
+.lib-cover {
   width: 40px;
   height: 40px;
-  border-radius: 6px;
+  border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
-  background: $overlay-ph-a;
+  background: rgba(91, 43, 255, 0.15);
 }
 
-.liked-modal-cover-empty {
+.lib-cover-empty {
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  // Glyph sits over the per-song generated gradient (inline background-image).
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.5);
   background-size: cover;
   background-position: center;
 }
 
-.liked-modal-meta {
+.lib-meta {
   flex: 1;
   min-width: 0;
 }
 
-.liked-modal-track {
+.lib-track {
   font-size: 13px;
-  color: $overlay-text;
+  color: rgba(245, 240, 232, 0.9);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.liked-modal-artist {
+.lib-artist {
   font-size: 11px;
-  color: $overlay-text-dim;
+  color: rgba(245, 240, 232, 0.4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 2px;
 }
 
-.liked-modal-album {
-  color: $overlay-text-faint;
-}
+.lib-album { color: rgba(245, 240, 232, 0.25); }
 
-// 行内时长（对应 Figma Library 屏右侧的 4:29 / 5:25 等）
-.liked-modal-duration {
+.lib-duration {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: $overlay-text-faint;
+  color: rgba(245, 240, 232, 0.3);
   flex-shrink: 0;
-  margin-left: 8px;
-  font-family: var(--font-mono, monospace);
+  font-family: 'Inter', monospace;
 }
 
-.liked-modal-sources {
+// 平台 badges
+.lib-sources {
   display: flex;
   gap: 3px;
   flex-shrink: 0;
 }
 
-.liked-modal-badge {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+.lib-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  color: #02020a;
 }
 
-.liked-modal-badge-qq {
-  background: #31c27c;
-}
+.lib-badge-qq { background: #FFD93D; }
+.lib-badge-netease { background: #FF3B5C; color: #fff; }
+.lib-badge-spotify { background: #3DFFA2; }
+.lib-badge-deezer { background: #3D9BFF; }
 
-.liked-modal-badge-netease {
-  background: #c20c0c;
-}
-
-.liked-modal-badge-spotify {
-  background: #1db954;
-}
-
-.liked-modal-badge-deezer {
-  background: #a238ff;
-}
-
-// ── 版本 / 翻唱 染色（Step 4 跨平台 fan-out 重构配套）───────────────
-// 折叠行的组级徽章不染色（保留并集总览），子行徽章按 versionTag 加左边框
-// 标识 + 内部小字标签，让用户一眼区分 studio / live / 翻唱。COVER 默认
-// 折叠行用 ⚠ 标记，展开子行看斜体「翻唱」字样。
-.liked-modal-badges {
-  &--live {
-    .liked-modal-badge { border-top: 2px solid #3b82f6; }
-  }
-  &--acoustic {
-    .liked-modal-badge { border-top: 2px solid #a855f7; }
-  }
-  &--remix {
-    .liked-modal-badge { border-top: 2px solid #f97316; }
-  }
-  &--instrumental {
-    .liked-modal-badge { border-top: 2px solid #94a3b8; }
-  }
-  &--karaoke {
-    .liked-modal-badge { border-top: 2px solid #64748b; }
-  }
-  &--demo {
-    .liked-modal-badge { border-top: 2px solid #cbd5e1; }
-  }
-  &--edit {
-    .liked-modal-badge { border-top: 2px solid #fbbf24; }
-  }
+// 版本染色
+.lib-badges {
+  &--live { .lib-badge { border-top: 2px solid #3b82f6; } }
+  &--acoustic { .lib-badge { border-top: 2px solid #a855f7; } }
+  &--remix { .lib-badge { border-top: 2px solid #f97316; } }
+  &--instrumental { .lib-badge { border-top: 2px solid #94a3b8; } }
+  &--karaoke { .lib-badge { border-top: 2px solid #64748b; } }
+  &--demo { .lib-badge { border-top: 2px solid #cbd5e1; } }
+  &--edit { .lib-badge { border-top: 2px solid #fbbf24; } }
   &--cover {
-    // 翻唱：边框 + 内部字染色为「灰 + 斜体」，区别于录音版本。
-    .liked-modal-badge {
+    .lib-badge {
       border-top: 2px solid #64748b;
       background-image: linear-gradient(135deg, transparent 45%, rgba(100,116,139,0.4) 50%, transparent 55%);
       font-style: italic;
@@ -466,12 +329,9 @@
   }
 }
 
-.liked-modal-badge-version {
-  display: none; // 默认隐藏，CSS 用 .liked-modal-badges--* 容器决定是否可见
-}
+.lib-badge-version { display: none; }
 
-// 子行版本标签（title 旁的 inline 小字）
-.liked-modal-version-tag {
+.lib-version-tag {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 5px;
@@ -490,16 +350,71 @@
   &--edit { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
 }
 
-// 折叠行末尾的「含翻唱」⚠ 提示
-.liked-modal-cover-warn {
+.lib-cover-warn {
   font-size: 12px;
   color: #f59e0b;
   margin: 0 4px;
   flex-shrink: 0;
 }
 
-// 子行配色：子行的左侧 2px 描边让版本类型一眼可辨
-.liked-modal-subrow {
+// 展开按钮
+.lib-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: transparent;
+  color: rgba(245, 240, 232, 0.5);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.lib-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f5f0e8;
+}
+
+.lib-toggle-count { font-size: 11px; font-weight: 600; line-height: 1; }
+.lib-toggle-chevron { font-size: 9px; line-height: 1; }
+
+// 子列表
+.lib-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+.lib-subrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 30px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.lib-subrow:hover { background: rgba(255, 255, 255, 0.05); }
+
+.lib-subrow-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(245, 240, 232, 0.2);
+}
+
+.lib-subrow .lib-track {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(245, 240, 232, 0.5);
+}
+
+.lib-subrow {
   &--live { border-left: 2px solid rgba(59, 130, 246, 0.5); }
   &--acoustic { border-left: 2px solid rgba(168, 85, 247, 0.5); }
   &--remix { border-left: 2px solid rgba(249, 115, 22, 0.5); }
@@ -510,249 +425,172 @@
   &--edit { border-left: 2px solid rgba(251, 191, 36, 0.4); }
 }
 
-.liked-modal-footer {
+// ── footer（y=812，重新导入 + 提示） ───────────────────────────
+
+.lib-footer {
+  position: absolute;
+  top: 812px;
+  left: 240px;
+  width: 960px;
+  height: 48px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-top: 1px solid $overlay-divider;
-  flex-shrink: 0;
+  justify-content: space-between;
 }
 
-.liked-modal-refresh {
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid $overlay-field-border;
+.lib-refresh-btn {
+  height: 31px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  background: transparent;
-  color: $overlay-text;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 240, 232, 0.8);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.liked-modal-refresh:hover:not(:disabled) {
-  border-color: $overlay-field-border-hi;
-  background: $overlay-hover;
+.lib-refresh-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f0e8;
 }
 
-.liked-modal-refresh:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+.lib-refresh-btn:disabled { opacity: 0.5; cursor: default; }
 
-.liked-modal-hint {
-  flex: 1;
-  text-align: right;
+.lib-footer-hint {
   font-size: 11px;
-  color: $overlay-text-faint;
+  color: rgba(245, 240, 232, 0.25);
 }
 
-// ── Skeleton 占位（首次打开、无 sessionStorage 缓存时） ──────
-//
-// 复用真实行结构（40×40 封面 + 双行 meta），尺寸 1:1，避免真数据到达时整
-// 列下沉。每个块的 pulse 动画错开 60ms，做出"瀑布式"的轻微延迟感。
-.liked-modal-skeleton-list {
+// ── 空态 / 错误 ─────────────────────────────────────────────────
+
+.lib-empty {
+  padding: 80px 16px;
+  text-align: center;
+}
+
+.lib-empty-icon {
+  font-size: 48px;
+  color: rgba(245, 240, 232, 0.15);
+  margin-bottom: 12px;
+}
+
+.lib-empty-text {
+  font-size: 14px;
+  color: rgba(245, 240, 232, 0.4);
+  margin-bottom: 16px;
+}
+
+.lib-error {
+  padding: 40px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #ff3b5c;
+}
+
+// ── Skeleton 占位 ───────────────────────────────────────────────
+
+.lib-skeleton-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.liked-modal-skeleton {
+.lib-skeleton {
   cursor: default;
   pointer-events: none;
 }
 
-.liked-modal-skeleton-block {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.04) 100%
-  );
+.lib-skeleton-block {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%);
   background-size: 200% 100%;
-  animation: liked-skeleton-pulse 1.4s ease-in-out infinite;
+  animation: lib-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
-.liked-modal-skeleton-line {
+.lib-skeleton-line {
   height: 10px;
   border-radius: 3px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.04) 100%
-  );
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%);
   background-size: 200% 100%;
-  animation: liked-skeleton-pulse 1.4s ease-in-out infinite;
+  animation: lib-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
-.liked-modal-skeleton-line-track {
-  width: 65%;
-  margin-bottom: 8px;
+.lib-skeleton-line-track { width: 65%; margin-bottom: 8px; }
+.lib-skeleton-line-artist { width: 40%; height: 8px; }
+
+@keyframes lib-skeleton-pulse {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
-.liked-modal-skeleton-line-artist {
-  width: 40%;
-  height: 8px;
-}
+// ── 重新导入 overlay ────────────────────────────────────────────
 
-@keyframes liked-skeleton-pulse {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
-}
-
-// ── 「重新导入」中：顶部渐变同步条 ─────────────────────
-//
-// 浮在 header 下边缘的 2px 高条，从左到右循环滚动，做出"正在同步"的暗示。
-// 类似 YouTube Music / Apple Music 的「syncing」指示。颜色用平台绿
-// (#31c27c) + 白色淡出，看起来像信号灯。
-.liked-modal-syncbar {
-  position: absolute;
-  top: 41px; // header 12+12+边框 1 + 行高 ≈ 此处
-  left: 0;
-  right: 0;
-  height: 2px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-  z-index: 1;
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    width: 40%;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(49, 194, 124, 0.0) 0%,
-      $accent-green 50%,
-      rgba(49, 194, 124, 0.0) 100%
-    );
-    animation: liked-syncbar-slide 1.4s ease-in-out infinite;
-  }
-}
-
-@keyframes liked-syncbar-slide {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(350%);
-  }
-}
-
-// ── 「重新导入」中：列表中央的覆盖卡片 ─────────────────
-//
-// 绝对定位覆盖整个 body，模糊 + 半透明黑底，中央放心形脉动 spinner + 文字。
-// 列表本身亮度降到 0.55 让背景仍然可见（用户知道自己在哪），但又被遮罩
-// 引导视觉到中央。
-.liked-modal-refresh-overlay {
+.lib-refresh-overlay {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(2, 2, 10, 0.6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  animation: liked-overlay-fade-in 0.18s ease-out;
+  animation: lib-overlay-fade-in 0.18s ease-out;
   z-index: 2;
   border-radius: inherit;
 }
 
-@keyframes liked-overlay-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+@keyframes lib-overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.liked-modal-refresh-card {
+.lib-refresh-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 18px 24px;
-  border-radius: 12px;
-  background: rgba(24, 24, 28, 0.85);
+  padding: 24px 32px;
+  border-radius: 16px;
+  background: rgba(20, 20, 30, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.liked-modal-refresh-heart {
+.lib-refresh-heart {
   font-size: 36px;
   line-height: 1;
-  color: #ff6b81; // 心红（与 header title 同色）
-  // 心形「心跳」动画：放大 + 缩小循环。2 次连击模拟真实心电图的「lub-dub」。
-  animation: liked-heart-pulse 1.2s ease-in-out infinite;
-  text-shadow: 0 0 16px rgba(255, 107, 129, 0.5);
+  color: #ff3b5c;
+  animation: lib-heart-pulse 1.2s ease-in-out infinite;
+  text-shadow: 0 0 16px rgba(255, 59, 92, 0.5);
 }
 
-@keyframes liked-heart-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.95;
-  }
-  20% {
-    transform: scale(1.18);
-    opacity: 1;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 0.9;
-  }
-  60% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
+@keyframes lib-heart-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  20% { transform: scale(1.18); opacity: 1; }
+  40% { transform: scale(1); opacity: 0.9; }
+  60% { transform: scale(1.1); opacity: 1; }
 }
 
-.liked-modal-refresh-title {
-  font-size: 13px;
-  color: $overlay-text;
-  font-weight: 500;
-}
+.lib-refresh-title { font-size: 14px; color: #f5f0e8; font-weight: 500; }
+.lib-refresh-sub { font-size: 12px; color: rgba(245, 240, 232, 0.35); }
 
-.liked-modal-refresh-sub {
-  font-size: 11px;
-  color: $overlay-text-faint;
-}
-
-// ── 「重新导入」按钮内的小 spinner ────────────────────
-//
-// 空态"现在导入"和 footer "重新导入"按钮在 refreshing 时都内嵌一个 12px
-// 旋转点。比把整个按钮加 :disabled opacity 更明确——用户知道是「正在做」
-// 而不是「按钮坏了」。
-.liked-modal-btn-spinner {
+.lib-btn-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  margin-right: 6px;
   vertical-align: -2px;
   border: 1.5px solid rgba(255, 255, 255, 0.25);
   border-top-color: #fff;
   border-radius: 50%;
-  animation: liked-btn-spin 0.7s linear infinite;
+  animation: lib-btn-spin 0.7s linear infinite;
 }
 
-@keyframes liked-btn-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+@keyframes lib-btn-spin { to { transform: rotate(360deg); } }
 
-// 列表在 refreshing 时整体降亮度（让中央 overlay 更突出）。
-// 虚拟化后 list 是 div，所以 selector 改用 class 而不是 element type。
-.liked-modal-body:has(.liked-modal-refresh-overlay) .liked-modal-virtual-list {
+.lib-body:has(.lib-refresh-overlay) .lib-virtual-list {
   opacity: 0.55;
   transition: opacity 0.2s ease-out;
   pointer-events: none;
