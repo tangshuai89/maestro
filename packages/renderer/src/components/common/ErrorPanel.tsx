@@ -24,7 +24,9 @@ export default function ErrorPanel({ message, onClose }: Props) {
       await navigator.clipboard.writeText(message);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
-    } catch {}
+    } catch {
+      // clipboard 不可用时降级：什么都不做
+    }
   };
 
   return (

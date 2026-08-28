@@ -30,7 +30,6 @@ const LYRICS_PROBE_CONCURRENCY = 3;
 const EMPTY_TIMEOUT_MS = 3000;
 
 type SourceMode = 'all' | MusicProvider;
-const SOURCE_MODES: SourceMode[] = ['all', 'qq', 'netease', 'spotify', 'deezer'];
 
 const PLATFORM_BADGE: Record<MusicProvider, { letter: string; color: string }> = {
   qq: { letter: 'Q', color: '#FFD93D' },
