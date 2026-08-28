@@ -1,14 +1,18 @@
 import { useState } from 'react';
 
+/**
+ * AETHER ErrorPanel — TheaterView 内联错误面板（AETHER 视觉风格）。
+ *
+ * 这是 TheaterView 内的播放/传输错误面板，不是全屏。
+ * 可展开：一行摘要 → 完整文本 + 复制 + 关闭。
+ * 对应 Figma Screen/Error 的 error-panel 子组件语义。
+ */
+
 interface Props {
   message: string;
   onClose: () => void;
 }
 
-/**
- * 可展开的错误面板——始终显示一行摘要，点击展开完整文本（等宽字体、自动换行），
- * 带复制按钮与关闭按钮。调试 NetEase 扫码登录 / OAuth 这种长错误信息必备。
- */
 export default function ErrorPanel({ message, onClose }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -20,34 +24,28 @@ export default function ErrorPanel({ message, onClose }: Props) {
       await navigator.clipboard.writeText(message);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      // clipboard 不可用时降级：什么都不做
-    }
+    } catch {}
   };
 
   return (
-    <div className={`error-panel ${expanded ? 'expanded' : ''}`}>
+    <div className={`err-panel ${expanded ? 'err-panel--expanded' : ''}`}>
       <button
-        className="error-summary"
+        className="err-summary"
         onClick={() => setExpanded((v) => !v)}
         title="点击查看完整错误"
       >
-        <span className="error-icon">⚠</span>
-        <span className="error-summary-text">{firstLine}</span>
-        <span className="error-toggle">{expanded ? '▾' : '▸'}</span>
+        <span className="err-icon">⚠</span>
+        <span className="err-summary-text">{firstLine}</span>
+        <span className="err-toggle">{expanded ? '▾' : '▸'}</span>
       </button>
       {expanded && (
-        <div className="error-detail">
-          <pre className="error-pre">{message}</pre>
-          <div className="error-actions">
-            <button
-              className="error-action"
-              onClick={handleCopy}
-              title="复制完整错误信息"
-            >
+        <div className="err-detail">
+          <pre className="err-pre">{message}</pre>
+          <div className="err-actions">
+            <button className="err-action" onClick={handleCopy} title="复制完整错误信息">
               {copied ? '已复制 ✓' : '复制'}
             </button>
-            <button className="error-action" onClick={onClose} title="关闭">
+            <button className="err-action" onClick={onClose} title="关闭">
               关闭
             </button>
           </div>
