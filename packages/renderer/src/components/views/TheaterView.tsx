@@ -409,8 +409,8 @@ export default function TheaterView(props: TheaterViewProps) {
         <section className={`th-lyrics-panel${noLyrics ? ' th-lyrics-panel--no-lyrics' : ''}`} aria-label="歌词">
           {noLyrics ? (
             <>
-              <span className="th-lyric-tag">NO LYRICS</span>
-              <p className="th-lyric th-lyric--dim">无歌词可用</p>
+              <span className="th-lyric-tag">LYRICS UNAVAILABLE</span>
+              <p className="th-lyric th-lyric--dim">暂无歌词 // NO LYRICS</p>
             </>
           ) : (
             <>
@@ -432,7 +432,7 @@ export default function TheaterView(props: TheaterViewProps) {
         {trialFellBack && (
           <div className="th-trial-tag" aria-label="试听降级">
             <span className="th-trial-tag-dot" aria-hidden="true" />
-            <span className="th-trial-tag-label">TRIAL</span>
+            <span className="th-trial-tag-label">30S TRIAL</span>
           </div>
         )}
 
@@ -470,12 +470,12 @@ export default function TheaterView(props: TheaterViewProps) {
         {/* 右下：DeepSeek 推荐（1440 稿 1000,700） */}
         {!recoConfigured && !recoRunning ? (
           <div className="th-reco-unconfigured">
-            <div className="th-reco-unconfigured-title">NEURAL FEED</div>
-            <div className="th-reco-unconfigured-desc">配置 DEEPSEEK KEY 后开启 AI 推荐</div>
+            <div className="th-reco-unconfigured-title">AI 推荐未配置</div>
+            <div className="th-reco-unconfigured-desc">在设置中填入 DeepSeek API Key，开启智能推荐</div>
             {onConfigureReco && (
               <div className="th-reco-unconfigured-actions">
                 <button className="th-reco-unconfigured-btn" onClick={onConfigureReco}>
-                  配置
+                  配置 KEY
                 </button>
               </div>
             )}

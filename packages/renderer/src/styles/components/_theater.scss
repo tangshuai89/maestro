@@ -633,37 +633,29 @@
 .th-lyric-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 13px;
-  padding: 0 6px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
   font-family: 'JetBrains Mono', 'Menlo', monospace;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.3);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  color: rgba(245, 240, 232, 0.1);
   text-transform: uppercase;
 }
 
-// TrialFallback：在 (560, 640) 显示 TRIAL Tag/Stat
+// TrialFallback：在 (560, 640) 显示 30S TRIAL Tag/Stat（cyan + 红点）
 .th-trial-tag {
   position: absolute;
   left: 560px;
   top: 640px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 13px;
-  padding: 0 6px;
-  border-radius: 3px;
-  background: rgba(255, 217, 61, 0.08);
-  border: 1px solid rgba(255, 217, 61, 0.2);
   font-family: 'JetBrains Mono', 'Menlo', monospace;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 1px;
   z-index: 7;
 }
 
@@ -671,39 +663,43 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #FFD93D;
-  box-shadow: 0 0 6px rgba(255, 217, 61, 0.5);
+  background: #ff3b5c;
+  box-shadow: 0 0 6px rgba(255, 59, 92, 0.5);
+  flex-shrink: 0;
 }
 
 .th-trial-tag-label {
-  color: #FFD93D;
+  color: #00e5ff;
   text-transform: uppercase;
 }
 
-// RecoUnconfigured：替换 neural-suggestions 区域
+// RecoUnconfigured：替换 neural-suggestions 区域（glass 风格）
 .th-reco-unconfigured {
   position: absolute;
   left: 1000px;
   top: 700px;
   width: 392px;
   height: 132px;
-  padding: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   z-index: 7;
 }
 
 .th-reco-unconfigured-title {
   font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: rgba(181, 123, 255, 0.6);
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .th-reco-unconfigured-desc {
   font-size: 11px;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.3);
-  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .th-reco-unconfigured-actions {
@@ -713,20 +709,22 @@
 
 .th-reco-unconfigured-btn {
   height: 23px;
-  padding: 0 10px;
-  border: 1px solid rgba(181, 123, 255, 0.3);
-  border-radius: 6px;
-  background: rgba(181, 123, 255, 0.08);
-  color: #b57bff;
-  font-size: 11px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #00e5ff;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 10px;
   font-weight: 500;
+  letter-spacing: 1px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .th-reco-unconfigured-btn:hover {
-  background: rgba(181, 123, 255, 0.15);
-  border-color: rgba(181, 123, 255, 0.5);
+  background: rgba(0, 229, 255, 0.1);
+  border-color: rgba(0, 229, 255, 0.3);
 }
 
 // ── 左下：能量核心（1440 稿 300,700） ───────────────────────────
