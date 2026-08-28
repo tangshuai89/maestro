@@ -67,18 +67,28 @@
   - 空 artist/title / whitespace / hit multi-line / 404 / 500
   - empty lyrics / URL encoding / timeout（withTimeout 5s）
 
-- [ ] **B1** `qq.provider.test.ts` 扩展 7 → ~30 用例
-  - search 命中/空结果/pay_play 推断/VIP 推断
-  - fetchRadioBatch 8 seed 轮转
-  - getStreamPath：vkey 过期 → 401 重取
-  - getLyrics LRC 解析
+- [x] **B1** `qq.provider.test.ts` 扩展 7 → 33 用例
+  - 保留原 7 个 computeGtk golden tests
+  - 新增 26 个：search 命中/空/HTTP error/pay_play VIP 推断
+  - fetchRadioBatch 种子轮转/空/HTTP error
+  - getStreamPath 正常/高音质回退/无 purl
+  - getLyrics LRC 解析/无歌词/HTTP error
+  - isConfigured / like / unlike / fetchLiked 分页 / toTrack 字段映射
 
-- [ ] **B5** `spotify.test.ts` 扩展 12 → ~30 用例
-  - OAuth 之外覆盖 search / like / fetchLiked / WPS tier 路由
+- [x] **B5** `spotify.test.ts` 扩展 12 → 30 用例
+  - 保留原 12 个 OAuth PKCE tests
+  - 新增 18 个：search 字段映射/空/401/多结果
+  - fetchLiked 返回/空/HTTP error/分页
+  - like 网络错误 / unlike 401 / getMeInfo premium/free/null
+  - getValidAccessToken refresh / bindSessionId / cancelPendingFlows / exchangeCode
 
-- [ ] **B2** `netease.provider.test.ts`（新建，~25 用例）
-  - search / getStreamPath / fetchLiked
-  - VIP 推断 / csrfToken 刷新
+- [x] **B2** `netease.provider.test.ts`（新建，28 用例）
+  - isConfigured / fetchRadioBatch 字段映射/301/500/空/count 截断
+  - fetchLiked 3 步流程/未登录/无 uid/无歌单
+  - search 字段映射/空/enrichment 补封面+vipLocked/enrichment 失败不阻塞
+  - getStreamPath 正常/高音质回退/无 url
+  - like/unlike 200/405 幂等 / fmTrash / getLyrics 有/无/code!=200
+  - apiCall 非 JSON → throws
 
 ## E. 跨包契约（堵"前后端 fuzzy key 漂移" — 架构约束最强调）
 

@@ -23,15 +23,12 @@
 
 ## Phase B — Provider L2 单测（覆盖度 +20%）
 
-- [x] **B1** `qq.provider.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 7 断言，文件已存在）
-  - search 命中 / 空结果 / pay_play 推断 / VIP 推断
-  - fetchRadioBatch 8 个 seed 轮转
-  - getStreamPath：vkey 过期 -> 401 重取
-  - getLyrics LRC 解析
+- [x] **B1** `qq.provider.test.ts` 扩展到 33 用例 — 2026-08-28 完成
+  - 保留原 7 个 computeGtk + 新增 26 个（search/fetchRadioBatch/getStreamPath/getLyrics/like/unlike/fetchLiked）
 
-- [ ] **B2** `netease.provider.test.ts`（新建，~25 用例）
-  - search / getStreamPath / fetchLiked
-  - VIP 推断 / csrfToken 刷新
+- [x] **B2** `netease.provider.test.ts`（新建，28 用例）— 2026-08-28 完成
+  - isConfigured / fetchRadioBatch / fetchLiked 3 步 / search + enrichment
+  - getStreamPath 回退 / like/unlike 405 幂等 / fmTrash / getLyrics / apiCall 非 JSON
 
 - [x] **B3** `deezer.provider.test.ts`（新建，18 用例）— 2026-08-28 完成
   - isConfigured / getEditorials / getPresetNames / isValidPreset
@@ -40,8 +37,8 @@
 - [x] **B4** `lyricsovh.provider.test.ts`（新建，11 用例）— 2026-08-28 完成
   - 空/whitespace / hit / 404 / 500 / empty / URL encoding / timeout
 
-- [x] **B5** `spotify.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 12 用例，文件已存在）
-  - OAuth 之外覆盖 search / like / fetchLiked / WPS tier 路由
+- [x] **B5** `spotify.test.ts` 扩展到 30 用例 — 2026-08-28 完成
+  - 保留原 12 个 OAuth + 新增 18 个（search/fetchLiked/like/unlike/getMeInfo/refresh/bindSessionId/cancel/exchange）
 
 ## Phase C — Service L3 边界补强
 
