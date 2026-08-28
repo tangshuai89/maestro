@@ -56,6 +56,7 @@ export interface TheaterViewProps {
   onSeek: (seconds: number) => void;
   onOpenLiked: () => void;
   onSwitchProvider: () => void;
+  onConfigureReco?: () => void;
 }
 
 // ── helpers ──────────────────────────────────────────────────
@@ -166,7 +167,7 @@ export default function TheaterView(props: TheaterViewProps) {
     lyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
     onPlayPause, onSkip, onPrev, onSeek, onLike, onDislike,
-    onSwitchProvider,
+    onSwitchProvider, onConfigureReco,
   } = props;
 
   // ── 1440×900 设计稿等比缩放（Electron 窗口任意拖拽） ──
@@ -189,6 +190,8 @@ export default function TheaterView(props: TheaterViewProps) {
   const stardust = useStardust(track?.id);
 
   const hasTrack = Boolean(track);
+  // NoLyrics 降级状态：有曲目但歌词为空/null
+  const noLyrics = hasTrack && (!lyrics || lyrics.length === 0);
   // 歌词：真实曲目用真实歌词；无曲目时显示一行静态引导文案
   const realActiveLine = useMemo(
     () => activeLineIndex(lyrics, currentTime),
@@ -403,18 +406,35 @@ export default function TheaterView(props: TheaterViewProps) {
         </div>
 
         {/* 歌词文字流（1440 稿 820,320；无面板 chrome，纯文字流） */}
-        <section className="th-lyrics-panel" aria-label="歌词">
-          {prevLine && <p className="th-lyric th-lyric--dim">{prevLine}</p>}
-          <div className="th-lyric-active">
-            <span className="th-lyric-bar" aria-hidden="true" />
-            <p key={currentLine ?? 'idle'} className="th-lyric th-lyric--current">
-              {currentLine ?? (loading ? '正在搜寻信号…' : '等待播放')}
-            </p>
-          </div>
-          {followingLines.map((line, i) => (
-            <p key={`${i}-${line}`} className="th-lyric th-lyric--dim">{line}</p>
-          ))}
+        <section className={`th-lyrics-panel${noLyrics ? ' th-lyrics-panel--no-lyrics' : ''}`} aria-label="歌词">
+          {noLyrics ? (
+            <>
+              <span className="th-lyric-tag">NO LYRICS</span>
+              <p className="th-lyric th-lyric--dim">无歌词可用</p>
+            </>
+          ) : (
+            <>
+              {prevLine && <p className="th-lyric th-lyric--dim">{prevLine}</p>}
+              <div className="th-lyric-active">
+                <span className="th-lyric-bar" aria-hidden="true" />
+                <p key={currentLine ?? 'idle'} className="th-lyric th-lyric--current">
+                  {currentLine ?? (loading ? '正在搜寻信号…' : '等待播放')}
+                </p>
+              </div>
+              {followingLines.map((line, i) => (
+                <p key={`${i}-${line}`} className="th-lyric th-lyric--dim">{line}</p>
+              ))}
+            </>
+          )}
         </section>
+
+        {/* TrialFallback 降级标签（1440 稿 560,640） */}
+        {trialFellBack && (
+          <div className="th-trial-tag" aria-label="试听降级">
+            <span className="th-trial-tag-dot" aria-hidden="true" />
+            <span className="th-trial-tag-label">TRIAL</span>
+          </div>
+        )}
 
         {/* 左下：能量核心（1440 稿 266,700；顺序 prev|like|play|next） */}
         <div className="th-core-cluster">
@@ -448,6 +468,19 @@ export default function TheaterView(props: TheaterViewProps) {
         </div>
 
         {/* 右下：DeepSeek 推荐（1440 稿 1000,700） */}
+        {!recoConfigured && !recoRunning ? (
+          <div className="th-reco-unconfigured">
+            <div className="th-reco-unconfigured-title">NEURAL FEED</div>
+            <div className="th-reco-unconfigured-desc">配置 DEEPSEEK KEY 后开启 AI 推荐</div>
+            {onConfigureReco && (
+              <div className="th-reco-unconfigured-actions">
+                <button className="th-reco-unconfigured-btn" onClick={onConfigureReco}>
+                  配置
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="th-reco">
           <div className="th-reco-head">
             <span className="th-reco-label">DEEP.SEEK // NEURAL FEED</span>
@@ -499,6 +532,7 @@ export default function TheaterView(props: TheaterViewProps) {
             <div className="th-reco-foot">AI 评估：{recoMatchRate}% MATCH</div>
           )}
         </div>
+        )}
 
         {/* 版本行（1440 稿右下） */}
         <div className="th-footer-version" aria-hidden="true">NEURAL.SYNC // AES.ENGINE v3.0</div>

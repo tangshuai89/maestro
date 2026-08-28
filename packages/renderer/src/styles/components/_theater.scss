@@ -622,6 +622,113 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+// ── 降级状态：NoLyrics / TrialFallback / RecoUnconfigured ───────
+
+// NoLyrics：lyric-stream 缩小为 Tag/Stat + 1 行文案
+.th-lyrics-panel--no-lyrics {
+  height: auto;
+  gap: 12px;
+}
+
+.th-lyric-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 13px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.3);
+  text-transform: uppercase;
+}
+
+// TrialFallback：在 (560, 640) 显示 TRIAL Tag/Stat
+.th-trial-tag {
+  position: absolute;
+  left: 560px;
+  top: 640px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 13px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: rgba(255, 217, 61, 0.08);
+  border: 1px solid rgba(255, 217, 61, 0.2);
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  z-index: 7;
+}
+
+.th-trial-tag-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #FFD93D;
+  box-shadow: 0 0 6px rgba(255, 217, 61, 0.5);
+}
+
+.th-trial-tag-label {
+  color: #FFD93D;
+  text-transform: uppercase;
+}
+
+// RecoUnconfigured：替换 neural-suggestions 区域
+.th-reco-unconfigured {
+  position: absolute;
+  left: 1000px;
+  top: 700px;
+  width: 392px;
+  height: 132px;
+  padding: 16px;
+  z-index: 7;
+}
+
+.th-reco-unconfigured-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: rgba(181, 123, 255, 0.6);
+  margin-bottom: 8px;
+}
+
+.th-reco-unconfigured-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.3);
+  margin-bottom: 12px;
+}
+
+.th-reco-unconfigured-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.th-reco-unconfigured-btn {
+  height: 23px;
+  padding: 0 10px;
+  border: 1px solid rgba(181, 123, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(181, 123, 255, 0.08);
+  color: #b57bff;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.th-reco-unconfigured-btn:hover {
+  background: rgba(181, 123, 255, 0.15);
+  border-color: rgba(181, 123, 255, 0.5);
+}
+
 // ── 左下：能量核心（1440 稿 300,700） ───────────────────────────
 
 .th-core-cluster {
