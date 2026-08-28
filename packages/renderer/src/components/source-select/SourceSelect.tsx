@@ -2,6 +2,20 @@ import { useEffect, useState } from 'react';
 import type { MusicProvider } from '../../api';
 import { getSpotifyStatus } from '../../api';
 
+/**
+ * AETHER SourceSelect — 选源页（Figma 03/Screen/SourceSelect 还原）。
+ *
+ * 设计稿结构（1440×900，node 314:1432）：
+ *  - backdrop（星云 + 星尘 + 地平线，复用 TheaterView 背景层）
+ *  - kicker-row（居中小标签 y=112）
+ *  - title-box（heading + sub，y=150）
+ *  - platform-cards（4 张竖卡 220×280，横排 y=390）
+ *    每张：accent-bar + badge + name + desc + meta + enter
+ *  - hint-row（底部提示 y=734）
+ *
+ * 画布等比缩放同 TheaterView：scale = min(w/1440, (h-40)/900)。
+ */
+
 interface SourceSelectProps {
   onSelect: (provider: MusicProvider) => void;
 }
@@ -9,58 +23,60 @@ interface SourceSelectProps {
 interface SourceDef {
   provider: MusicProvider;
   name: string;
-  /** Static desc shown when we have no Spotify status. */
   baseDesc: string;
-  /** Optional desc variant, keyed by Spotify tier. */
   spotifyVariants?: Partial<Record<'premium' | 'free' | 'open' | 'unknown', string>>;
-  className: string;
-  initial: string;
-  /** Disabled sources still render but can't be clicked. */
+  /** Figma badge letter */
+  badge: string;
+  /** Accent bar + badge color */
+  color: string;
+  /** Meta line (login method) */
+  meta: string;
   disabled?: boolean;
   disabledReason?: string;
 }
 
 const SOURCES: SourceDef[] = [
   {
-    provider: 'netease',
-    name: '网易云音乐',
-    baseDesc: '私人 FM 电台 · 手机扫码登录',
-    className: 'source-netease',
-    initial: '云',
-  },
-  {
     provider: 'qq',
     name: 'QQ 音乐',
-    baseDesc: '登录后可搜索 + 播全曲（桌面扫码登录）',
-    className: 'source-qq',
-    initial: 'Q',
+    baseDesc: '登录后可搜索 + 播全曲',
+    badge: 'Q',
+    color: '#FFD93D',
+    meta: '桌面扫码登录',
+  },
+  {
+    provider: 'netease',
+    name: '网易云音乐',
+    baseDesc: '私人 FM 电台',
+    badge: 'N',
+    color: '#FF3B5C',
+    meta: '手机扫码登录',
   },
   {
     provider: 'deezer',
     name: 'Deezer',
-    baseDesc: '国际公开电台 · 30s 预览 · 无需登录',
-    className: 'source-deezer',
-    initial: 'D',
+    baseDesc: '国际公开电台 · 30s 预览',
+    badge: 'D',
+    color: '#3D9BFF',
+    meta: '无需登录',
   },
   {
     provider: 'spotify',
     name: 'Spotify',
-    baseDesc: '国际曲库 · 30s 预览 · 需 OAuth 登录',
+    baseDesc: '国际曲库 · 30s 预览',
     spotifyVariants: {
-      premium: '国际曲库 · 全曲播放（Premium）',
-      free: '国际曲库 · 30s 预览 · 需 OAuth 登录',
-      open: '国际曲库 · 30s 预览 · 需 OAuth 登录',
-      unknown: '国际曲库 · 30s 预览 · 需 OAuth 登录',
+      premium: '国际曲库 · 全曲播放',
+      free: '国际曲库 · 30s 预览',
+      open: '国际曲库 · 30s 预览',
+      unknown: '国际曲库 · 30s 预览',
     },
-    className: 'source-spotify',
-    initial: 'S',
+    badge: 'S',
+    color: '#3DFFA2',
+    meta: 'OAuth 登录',
   },
 ];
 
 export default function SourceSelect({ onSelect }: SourceSelectProps) {
-  // Spotify tier drives the desc on its card. Default to "unknown" — when
-  // the user just opens the app and the status fetch is still pending, we
-  // fall back to the conservative "30s 预览" wording.
   const [spotifyTier, setSpotifyTier] = useState<
     'premium' | 'free' | 'open' | 'unknown'
   >('unknown');
@@ -69,54 +85,82 @@ export default function SourceSelect({ onSelect }: SourceSelectProps) {
       .then((s) => {
         if (s.loggedIn && s.tier) setSpotifyTier(s.tier);
       })
-      .catch(() => {
-        // ignore — keep "unknown" / 30s 预览 wording
-      });
+      .catch(() => {});
+  }, []);
+
+  // 1440×900 画布等比缩放（同 TheaterView）
+  const [canvasScale, setCanvasScale] = useState(1);
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const scale = Math.min(w / 1440, Math.max(0.3, (h - 40) / 900));
+      setCanvasScale(scale);
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
   }, []);
 
   return (
-    <div className="source-select">
-      <div className="source-titlebar" />
-      <div className="source-heading">
-        <div className="source-title">选择音乐来源</div>
-        <div className="source-subtitle">挑一个音源，开始你的电台</div>
+    <div className="ss-root">
+      {/* ── 背景层（铺满窗口，不随画布缩放） ── */}
+      <div className="th-bg" aria-hidden="true">
+        <div className="th-bg-radial" />
+        <div className="th-nebula th-nebula--violet" />
+        <div className="th-nebula th-nebula--cyan" />
+        <div className="th-nebula th-nebula--acid" />
+        <div className="th-horizon" />
       </div>
-      <div className="source-list">
-        {SOURCES.map((s) => {
-          const desc =
-            s.provider === 'spotify' && s.spotifyVariants
-              ? s.spotifyVariants[spotifyTier]
-              : s.baseDesc;
-          return (
-            <button
-              key={s.provider}
-              className={`source-card ${s.className}${s.disabled ? ' source-card-disabled' : ''}`}
-              onClick={() => {
-                if (s.disabled) return;
-                onSelect(s.provider);
-              }}
-              disabled={s.disabled}
-              title={s.disabledReason ?? ''}
-            >
-              <div className="source-logo">{s.initial}</div>
-              <div className="source-meta">
-                <div className="source-name">{s.name}</div>
-                <div className="source-desc">{desc}</div>
-              </div>
-              <svg
-                className="source-arrow"
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="currentColor"
+
+      {/* ── 1440×900 设计画布 ── */}
+      <div className="ss-canvas" style={{ ['--canvas-scale' as string]: String(canvasScale) }}>
+        {/* kicker（y=112） */}
+        <div className="ss-kicker">
+          <span className="ss-kicker-text">AETHER ENGINE // SOURCE PROTOCOL</span>
+        </div>
+
+        {/* title-box（y=150） */}
+        <div className="ss-title-box">
+          <h1 className="ss-heading">选择音乐来源</h1>
+          <p className="ss-sub">挑一个音源，开始你的宇宙剧场</p>
+        </div>
+
+        {/* platform-cards（y=390，4 张竖卡 220×280） */}
+        <div className="ss-cards">
+          {SOURCES.map((s) => {
+            const desc =
+              s.provider === 'spotify' && s.spotifyVariants
+                ? s.spotifyVariants[spotifyTier]
+                : s.baseDesc;
+            return (
+              <button
+                key={s.provider}
+                className={`ss-card${s.disabled ? ' ss-card--disabled' : ''}`}
+                style={{ ['--card-accent' as string]: s.color }}
+                onClick={() => {
+                  if (s.disabled) return;
+                  onSelect(s.provider);
+                }}
+                disabled={s.disabled}
+                title={s.disabledReason ?? ''}
               >
-                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />
-              </svg>
-            </button>
-          );
-        })}
+                <div className="ss-card-accent" />
+                <div className="ss-card-badge">{s.badge}</div>
+                <div className="ss-card-name">{s.name}</div>
+                <div className="ss-card-desc">{desc}</div>
+                <div className="ss-card-meta">{s.meta}</div>
+                <div className="ss-card-enter">ENTER →</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* hint-row（y=734） */}
+        <div className="ss-hint">
+          <span className="ss-hint-text">凭据本地存储 · 不上传任何服务器</span>
+        </div>
       </div>
     </div>
   );
 }
-

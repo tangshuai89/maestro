@@ -1,179 +1,219 @@
-@use '../abstracts' as *;
+// ─────────────────────────────────────────────────────────────────
+// AETHER SourceSelect — 选源页（Figma 03/Screen/SourceSelect 还原）
+//
+// 架构同 TheaterView：固定 1440×900 画布 + transform: scale() 缩放。
+//   .ss-root    fixed inset 0，背景层铺满窗口（复用 th-bg 星云）
+//   .ss-canvas  1440×900，transform: scale(var(--canvas-scale))
+//
+// 画布内坐标（对应 Figma node 314:1432）：
+//   kicker y=112 / title-box y=150 / cards y=390 / hint y=734
+// ─────────────────────────────────────────────────────────────────
 
-// First-run screen: pick a music source. Full-window centred card list.
-
-.source-select {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  padding: 0 var(--space-6) var(--space-6);
-  gap: var(--space-6);
-  isolation: isolate;
+.ss-root {
+  position: fixed;
+  inset: 0;
   overflow: hidden;
-  background: var(--bg-base);
+  background: #02020a;
+  color: #f5f0e8;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  user-select: none;
 }
 
-.source-titlebar {
-  position: fixed;
-  top: 0;
+// ── 1440×900 设计画布（等比缩放，同 TheaterView） ───────────────
+
+.ss-canvas {
+  position: absolute;
+  left: 50%;
+  top: calc(40px + (100vh - 40px) / 2);
+  width: 1440px;
+  height: 900px;
+  transform: translate(-50%, -50%) scale(var(--canvas-scale, 1));
+  transform-origin: center center;
+  z-index: 5;
+}
+
+// ── kicker（y=112，居中小标签） ──────────────────────────────────
+
+.ss-kicker {
+  position: absolute;
+  top: 112px;
   left: 0;
   right: 0;
-  height: 40px;
-  -webkit-app-region: drag;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border-bottom: 1px solid var(--glass-border);
-  z-index: z('titlebar');
-}
-
-.source-heading {
   text-align: center;
 }
 
-.source-title {
-  font-size: 28px;
+.ss-kicker-text {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  color: rgba(0, 229, 255, 0.6);
+  text-transform: uppercase;
+}
+
+// ── title-box（y=150，居中标题 + 副标题） ────────────────────────
+
+.ss-title-box {
+  position: absolute;
+  top: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.ss-heading {
+  font-size: 34px;
   font-weight: 700;
-  color: var(--text-primary);
   letter-spacing: -0.02em;
-  margin-bottom: 6px;
-  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-ui) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #f5f0e8;
+  margin: 0;
+  line-height: 1;
 }
 
-.source-subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
+.ss-sub {
+  font-size: 16px;
   font-weight: 400;
+  color: rgba(245, 240, 232, 0.45);
+  margin: 10px 0 0;
+  line-height: 1;
 }
 
-.source-list {
+// ── platform-cards（y=390，4 张竖卡 220×280 横排） ───────────────
+// Figma: cards 容器 964×280 @ (238, 390)
+//   4 卡 220×280，间距 28px（220 + 28 = 248）
+
+.ss-cards {
+  position: absolute;
+  top: 390px;
+  left: 238px;
+  width: 964px;
+  height: 280px;
+  display: flex;
+  gap: 28px;
+}
+
+.ss-card {
+  position: relative;
+  width: 220px;
+  height: 280px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  width: 100%;
-  max-width: 360px;
-}
-
-.source-card {
-  display: flex;
   align-items: center;
-  gap: var(--space-4-ui);
-  width: 100%;
-  padding: var(--space-4-ui) var(--space-5);
-  border-radius: var(--radius-lg);
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-md);
-  transition:
-    transform 0.25s var(--ease-spring),
-    box-shadow 0.25s ease,
-    border-color 0.25s ease,
-    background 0.25s ease;
-  text-align: left;
-  position: relative;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
   overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.25s ease, background 0.25s ease;
 }
 
-.source-card::after {
-  // Subtle gradient sweep that lights up on hover.
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, transparent 0%, var(--accent-soft) 100%);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
+.ss-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--card-accent);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.source-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--border-strong);
+.ss-card:active {
+  transform: translateY(-2px) scale(0.98);
 }
 
-.source-card:hover::after {
-  opacity: 1;
-}
-
-.source-card-disabled,
-.source-card-disabled:hover {
-  opacity: 0.45;
+.ss-card--disabled,
+.ss-card--disabled:hover {
+  opacity: 0.4;
   cursor: not-allowed;
   transform: none;
-  box-shadow: var(--shadow-sm);
-  border-color: var(--glass-border);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.source-card-disabled::after {
-  display: none;
+// accent-bar（顶部 3px 彩色条，y=34 in card）
+.ss-card-accent {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--card-accent);
+  opacity: 0.8;
 }
 
-.source-logo {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-md);
+// badge（28×28 圆形平台徽章，y=51 in card）
+.ss-card-badge {
+  margin-top: 51px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 13px;
   font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
+  color: #02020a;
+  background: var(--card-accent);
+  box-shadow: 0 0 12px var(--card-accent);
 }
 
-.source-netease .source-logo {
-  background: linear-gradient(135deg, #c20c0c 0%, #8b0000 100%);
-}
-
-.source-qq .source-logo {
-  background: linear-gradient(135deg, #31c27c 0%, #1ba45e 100%);
-}
-
-.source-deezer .source-logo {
-  background: linear-gradient(135deg, #a238ff 0%, #ff6e7f 100%);
-  color: #fff;
-}
-
-.source-spotify .source-logo {
-  background: linear-gradient(135deg, #1db954 0%, #0fa844 100%);
-  color: #fff;
-}
-
-.source-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.source-name {
+// name（y=93 in card）
+.ss-card-name {
+  margin-top: 14px;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: rgba(245, 240, 232, 0.9);
   letter-spacing: -0.01em;
 }
 
-.source-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 2px;
+// desc（y=126 in card）
+.ss-card-desc {
+  margin-top: 19px;
+  font-size: 11px;
   font-weight: 400;
+  color: rgba(245, 240, 232, 0.5);
+  text-align: center;
+  padding: 0 16px;
+  line-height: 1.4;
 }
 
-.source-arrow {
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  transition: transform 0.25s var(--ease-spring), color 0.25s ease;
+// meta（y=155 in card）
+.ss-card-meta {
+  margin-top: 14px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: rgba(245, 240, 232, 0.3);
+  text-transform: uppercase;
 }
 
-.source-card:hover .source-arrow {
-  color: var(--accent-ui);
-  transform: translateX(4px);
+// enter（y=182 in card）
+.ss-card-enter {
+  margin-top: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--card-accent);
+  opacity: 0.7;
+  transition: opacity 0.25s ease;
+}
+
+.ss-card:hover .ss-card-enter {
+  opacity: 1;
+}
+
+// ── hint-row（y=734，居中底部提示） ──────────────────────────────
+
+.ss-hint {
+  position: absolute;
+  top: 734px;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
+.ss-hint-text {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: rgba(245, 240, 232, 0.25);
 }
