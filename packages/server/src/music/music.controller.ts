@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -139,6 +140,31 @@ export class MusicController {
   @Get('deezer/editorials')
   deezerEditorials() {
     return { items: DeezerMusicProvider.getEditorials() };
+  }
+
+  /**
+   * Switch the Deezer preset (genre chart) for the current session.
+   * The preset persists in session.prefs.deezerPreset so subsequent
+   * /next calls keep the user's choice.
+   *
+   * Body: { preset: string }
+   * 400 if preset is not a valid preset name.
+   */
+  @Put('deezer/preset')
+  setDeezerPreset(
+    @Body() body: { preset?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const preset = body?.preset;
+    if (!preset || !DeezerMusicProvider.isValidPreset(preset)) {
+      throw new BadRequestException(
+        `Invalid deezer preset "${preset}". Valid: ${DeezerMusicProvider.getPresetNames().join(', ')}`,
+      );
+    }
+    const session = this.sessionService.resolve(req, res);
+    session.prefs = { ...(session.prefs ?? {}), deezerPreset: preset };
+    return { ok: true, preset };
   }
 
   /**

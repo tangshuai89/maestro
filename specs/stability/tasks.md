@@ -38,19 +38,22 @@
 
 ## D. Controller 路由补强（小工作量，快速清）
 
-- [ ] **D4** `/music/deezer/preset` 切换持久化 + 不存在 preset → 400
-  - 测试：合法 preset 切换后持久化；非法 preset 返 400
-  - 文件：新建 `packages/server/src/music/deezer-preset.test.ts` 或加到现有 e2e
+- [x] **D4** `/music/deezer/preset` 切换持久化 + 不存在 preset → 400
+  - 新增 `PUT /music/deezer/preset` 端点（校验 + 持久化到 session.prefs）
+  - DeezerMusicProvider 加 `isValidPreset` / `getPresetNames` static 方法
+  - 测试：`packages/server/src/music/deezer-preset.test.ts`（7 用例全绿）
 
-- [ ] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验
-  - 测试三态：401 without token / 401 wrong token / 200 with correct token
-  - 文件：新建 `packages/server/src/auth/auth-guard.test.ts`
+- [x] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验
+  - **修复生产 bug**：`config.ts` 读 `MASTERO_INTERNAL_TOKEN`（多了 R）→ guard 永远失效
+  - 修正为 `MAESTRO_INTERNAL_TOKEN`（与 Electron main / guard 文档一致）
+  - 扩展 `InProcessClient.call` 支持自定义 headers
+  - 测试：`packages/server/src/auth/auth-guard.test.ts`（5 用例：dev/无header/错header/正确header/POST）
 
 ## C. Service 业务补强
 
-- [ ] **C1** `getNextTrack` 流控：refill 失败 → placeholder、queue 仍空 → 占位
-  - 测试：refill mock 失败 → 返 placeholder；queue 持续空 → 占位不卡
-  - 文件：加到 `packages/server/src/music/music.service` 相关测试
+- [x] **C1** `getNextTrack` 流控：refill 失败 → placeholder、queue 仍空 → 占位
+  - 代码已就位（`music.service.ts:396-420`）：refill 失败 → placeholder、queue 空 → placeholder
+  - 测试：`packages/server/src/music/get-next-track.test.ts`（6 用例：失败/空/正常/连续/形状/disliked）
 
 ## B. Provider 单测（锁住平台 API 解析回归）
 

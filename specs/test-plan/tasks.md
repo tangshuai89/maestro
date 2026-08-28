@@ -46,7 +46,8 @@
 
 ## Phase C — Service L3 边界补强
 
-- [ ] **C1** `getNextTrack` 流控：refill 失败 -> placeholder、queue 仍空 -> 占位
+- [x] **C1** `getNextTrack` 流控：refill 失败 -> placeholder、queue 仍空 -> 占位 — 2026-08-28 完成
+  - 代码已就位（`music.service.ts:396-420`），补测试 `get-next-track.test.ts`（6 用例）
 - [x] **C2** `findPlayableEquivalent` 优先级：qq 不可播 -> 跳 netease -> 跳 spotify -> null — 已在 `cross-platform-match.e2e.test.ts` 覆盖
 - [x] **C3** `markDisliked` / `dislikeMerged` 在 multi-source 下的合并 — 已在 `like.e2e.test.ts` 覆盖
 - [x] **C4** `importLiked` 部分平台失败：importedAt 仍写入；sources 标 error — 已在 `library-import.e2e.test.ts` 覆盖
@@ -57,12 +58,14 @@
 - [x] **D1** `/music/search` 输入清洗：XSS / 空 / 超长 — 已在 `like.e2e.test.ts` 覆盖（空 q → 400）
 - [x] **D2** `/music/lyrics/aggregate` cache hit / miss — 已在 `lyrics-aggregate.e2e.test.ts` 覆盖
 - [x] **D3** `/music/library` 脏数据过滤（Deezer 误入 fanOut）— 已在 `library-badge-merge.e2e.test.ts` 覆盖
-- [ ] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400
+- [x] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400 — 2026-08-28 完成
+  - 新增 `PUT /music/deezer/preset` 端点 + `DeezerMusicProvider.isValidPreset`
+  - 测试：`deezer-preset.test.ts`（7 用例）
 - [x] **D5** `/music/dislike/merged` 路由顺序（不被 `/dislike/:trackId` 截胡）— 已在 `like.e2e.test.ts` 覆盖
-- [ ] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验
-  - 401 without token
-  - 401 wrong token
-  - 200 with correct token
+- [x] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验 — 2026-08-28 完成
+  - **修复生产 bug**：`config.ts` 读 `MASTERO_INTERNAL_TOKEN`（typo）→ guard 永远失效
+  - 修正为 `MAESTRO_INTERNAL_TOKEN`；扩展 InProcessClient 支持自定义 headers
+  - 测试：`auth-guard.test.ts`（5 用例：dev mode / 无 header / 错 header / 正确 header / POST）
 
 ## Phase E — 跨包契约 L5（堵「前后端 fuzzy key 漂移」）
 

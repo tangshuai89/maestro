@@ -19,3 +19,4 @@ packages/server/.storage/
 
 # Superdesign temp design artifacts
 .superdesign/tmp/
+coverage/

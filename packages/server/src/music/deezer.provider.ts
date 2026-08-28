@@ -98,6 +98,16 @@ export class DeezerMusicProvider {
     }));
   }
 
+  /** Valid preset names (keys of DEEZER_EDITORIALS_PRESET). */
+  static getPresetNames(): string[] {
+    return Object.keys(DEEZER_EDITORIALS_PRESET);
+  }
+
+  /** Check if a preset name is valid. */
+  static isValidPreset(preset: string): boolean {
+    return preset in DEEZER_EDITORIALS_PRESET;
+  }
+
   /**
    * 取一批电台歌曲。默认走国际流行榜（editorial 132），可用 source 切
    * 到具体榜单（'editorial' 走 /editorial/{id}/charts 包括亚洲流行
