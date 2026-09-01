@@ -2347,9 +2347,11 @@ export class MusicService {
     for (const p of perPlatform) {
       if (p.liked) {
         this.setLike(state, p.platform, p.repId, true);
+        this.updateLikedCache(session, p.platform, p.repId, true);
         fresh.push({ platform: p.platform, trackId: p.repId });
       } else if (p.canSync) {
         this.setLike(state, p.platform, p.repId, true); // 乐观点亮
+        this.updateLikedCache(session, p.platform, p.repId, true);
         fresh.push({ platform: p.platform, trackId: p.repId });
         targets.push({ platform: p.platform, trackId: p.repId });
       }
@@ -2536,6 +2538,11 @@ export class MusicService {
         fresh.push({ platform, trackId });
         // setLike 是幂等的：已心动的不会被翻回 unlike（本地即时可见）。
         this.setLike(state, platform, trackId, true);
+        // 乐观更新 likedCache：fanOutLike 写完本地 state 后，紧接着的
+        // detectLikedAndSync（由 refreshLikedStateUntilStable 轮询触发）会调
+        // getLikedSet 读缓存。如果不更新缓存，detect 读到的是 like 写入前的
+        // 旧集合 → 看不到新 ❤ → 返 liked=false → UI 红心被抹掉。
+        this.updateLikedCache(session, platform, trackId, true);
         targets.push({ platform, trackId });
       }
       // 与已有记录合并：这次 sources 里没列的旧平台也保留——避免“老
@@ -2556,6 +2563,8 @@ export class MusicService {
           sources.find((s) => s.platform === entry.platform)?.trackId;
         if (!trackId) continue;
         this.setLike(state, entry.platform, trackId, false);
+        // 乐观更新缓存（与 like 方向同理，防止 detect 读到旧缓存把红心复活）。
+        this.updateLikedCache(session, entry.platform, trackId, false);
         targets.push({ platform: entry.platform, trackId });
       }
       delete state.fanOut[canonicalId];
