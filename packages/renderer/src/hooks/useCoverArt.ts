@@ -17,7 +17,7 @@ import { placeholderCover } from '../lib/placeholderCover';
  * background-image (the browser renders cross-origin <img>s fine without
  * pixel access).
  */
-async function applyCoverImage(
+export async function applyCoverImage(
   url: string,
   bgLayerRef: RefObject<HTMLDivElement | null>,
   coverBackdropRef: RefObject<HTMLDivElement | null>,

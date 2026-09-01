@@ -49,7 +49,7 @@ export class ConfigService {
   // MAESTRO_INTERNAL_TOKEN 环境变量传给 NestJS sidecar。RequireInternalTokenGuard
   // 用它验证来自 renderer 的 state-changing 请求。dev 模式（没传 env）→ 空字符串
   // → guard 进入"宽松模式"+ 警告日志，便于本地不依赖 Electron 跑 server。
-  readonly internalToken = process.env.MASTERO_INTERNAL_TOKEN ?? '';
+  readonly internalToken = process.env.MAESTRO_INTERNAL_TOKEN ?? '';
 
   constructor() {
     fs.mkdirSync(this.storageDir, { recursive: true });

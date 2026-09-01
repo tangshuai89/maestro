@@ -42,7 +42,7 @@ import { wpsLog } from '../lib/debug';
  * track 的其它平台 source 里挑下一个能播的。QQ/网易云是完整曲流优先，
  * Deezer/Spotify 是 30s 预览兜底。
  */
-const FALLBACK_PRIORITY: MusicProvider[] = [
+export const FALLBACK_PRIORITY: MusicProvider[] = [
   'qq',
   'netease',
   'deezer',
@@ -54,10 +54,10 @@ const FALLBACK_PRIORITY: MusicProvider[] = [
  * 30s 预览，**不能**当作 VIP 试听升级的目标（换过去还是 30s，白换）。
  * Spotify Premium (WPS) 是例外——见 getFullSongProviders()。
  */
-const FULL_SONG_PROVIDERS: MusicProvider[] = ['qq', 'netease'];
+export const FULL_SONG_PROVIDERS: MusicProvider[] = ['qq', 'netease'];
 
 /** 动态「完整曲流」平台：QQ/网易云固定 + Spotify（仅 Premium）. */
-function getFullSongProviders(spotifyTier?: string | null): MusicProvider[] {
+export function getFullSongProviders(spotifyTier?: string | null): MusicProvider[] {
   if (spotifyTier === 'premium') return ['qq', 'netease', 'spotify'];
   return FULL_SONG_PROVIDERS;
 }
@@ -68,8 +68,44 @@ function getFullSongProviders(spotifyTier?: string | null): MusicProvider[] {
  *    真正的判据是 GAP，MAX 只挡"元数据错得离谱"的极端，放宽无副作用。
  *  - GAP=45 大到没有正常歌会误判：元数据是真实全长，正常播放时 audio.duration
  *    与它只差 1-2s；差 45s+ 只可能是被截断的试听。 */
-const TRIAL_MAX_SEC = 120;
-const TRIAL_GAP_SEC = 45;
+export const TRIAL_MAX_SEC = 120;
+export const TRIAL_GAP_SEC = 45;
+
+/**
+ * Pick the next fallback source from a unified item's sources list, given
+ * the set of platforms already tried. Used by tryFallbackSource.
+ * Returns the first source in FALLBACK_PRIORITY order that hasn't been tried
+ * and has copyright. Pure function — no side effects.
+ */
+export function pickFallbackSource<T extends { platform: string; hasCopyright: boolean }>(
+  sources: T[],
+  tried: Set<string>,
+  priority: readonly string[] = FALLBACK_PRIORITY,
+): T | undefined {
+  return priority
+    .filter((p) => !tried.has(p))
+    .map((p) => sources.find((s) => s.platform === p && s.hasCopyright))
+    .find((s): s is T => Boolean(s));
+}
+
+/**
+ * Pick the next "full song" source for trial upgrade. Same as pickFallbackSource
+ * but restricted to full-song providers (qq/netease + spotify if premium),
+ * and additionally filters out vipLocked sources (switching to another VIP-locked
+ * source is pointless — still trial). Pure function.
+ */
+export function pickUpgradeSource<T extends { platform: string; hasCopyright: boolean; vipLocked?: boolean }>(
+  sources: T[],
+  tried: Set<string>,
+  fullProviders: readonly string[] = FULL_SONG_PROVIDERS,
+): T | undefined {
+  return fullProviders
+    .filter((p) => !tried.has(p))
+    .map((p) =>
+      sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
+    )
+    .find((s): s is T => Boolean(s));
+}
 
 /**
  * Parse a page of unified search / reco items into a playable queue, dropping

@@ -229,10 +229,12 @@ export class InProcessClient {
     method: string,
     pathname: string,
     body?: unknown,
+    extraHeaders?: Record<string, string>,
   ): Promise<InProcessResponse> {
     const reqHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(this.cookie ? { Cookie: this.cookie } : {}),
+      ...(extraHeaders ?? {}),
     };
     const r = await inProcessRequest(this.handler, {
       method,

@@ -23,30 +23,27 @@
 
 ## Phase B — Provider L2 单测（覆盖度 +20%）
 
-- [x] **B1** `qq.provider.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 7 断言，文件已存在）
-  - search 命中 / 空结果 / pay_play 推断 / VIP 推断
-  - fetchRadioBatch 8 个 seed 轮转
-  - getStreamPath：vkey 过期 -> 401 重取
-  - getLyrics LRC 解析
+- [x] **B1** `qq.provider.test.ts` 扩展到 33 用例 — 2026-08-28 完成
+  - 保留原 7 个 computeGtk + 新增 26 个（search/fetchRadioBatch/getStreamPath/getLyrics/like/unlike/fetchLiked）
 
-- [ ] **B2** `netease.provider.test.ts`（新建，~25 用例）
-  - search / getStreamPath / fetchLiked
-  - VIP 推断 / csrfToken 刷新
+- [x] **B2** `netease.provider.test.ts`（新建，28 用例）— 2026-08-28 完成
+  - isConfigured / fetchRadioBatch / fetchLiked 3 步 / search + enrichment
+  - getStreamPath 回退 / like/unlike 405 幂等 / fmTrash / getLyrics / apiCall 非 JSON
 
-- [ ] **B3** `deezer.provider.test.ts`（新建，~15 用例）
-  - 各 preset editorial id 映射
-  - preview URL 提取
-  - 404 / 5xx 兜底
+- [x] **B3** `deezer.provider.test.ts`（新建，18 用例）— 2026-08-28 完成
+  - isConfigured / getEditorials / getPresetNames / isValidPreset
+  - search / fetchRadioBatch / getStreamPath / getLyrics / toTrack
 
-- [ ] **B4** `lyricsovh.provider.test.ts`（新建，~10 用例）
-  - 命中 / 未命中 / 同步/异步时间戳
+- [x] **B4** `lyricsovh.provider.test.ts`（新建，11 用例）— 2026-08-28 完成
+  - 空/whitespace / hit / 404 / 500 / empty / URL encoding / timeout
 
-- [x] **B5** `spotify.test.ts` 扩展到 ~30 用例 — **用例数待补**（当前 12 用例，文件已存在）
-  - OAuth 之外覆盖 search / like / fetchLiked / WPS tier 路由
+- [x] **B5** `spotify.test.ts` 扩展到 30 用例 — 2026-08-28 完成
+  - 保留原 12 个 OAuth + 新增 18 个（search/fetchLiked/like/unlike/getMeInfo/refresh/bindSessionId/cancel/exchange）
 
 ## Phase C — Service L3 边界补强
 
-- [ ] **C1** `getNextTrack` 流控：refill 失败 -> placeholder、queue 仍空 -> 占位
+- [x] **C1** `getNextTrack` 流控：refill 失败 -> placeholder、queue 仍空 -> 占位 — 2026-08-28 完成
+  - 代码已就位（`music.service.ts:396-420`），补测试 `get-next-track.test.ts`（6 用例）
 - [x] **C2** `findPlayableEquivalent` 优先级：qq 不可播 -> 跳 netease -> 跳 spotify -> null — 已在 `cross-platform-match.e2e.test.ts` 覆盖
 - [x] **C3** `markDisliked` / `dislikeMerged` 在 multi-source 下的合并 — 已在 `like.e2e.test.ts` 覆盖
 - [x] **C4** `importLiked` 部分平台失败：importedAt 仍写入；sources 标 error — 已在 `library-import.e2e.test.ts` 覆盖
@@ -57,34 +54,40 @@
 - [x] **D1** `/music/search` 输入清洗：XSS / 空 / 超长 — 已在 `like.e2e.test.ts` 覆盖（空 q → 400）
 - [x] **D2** `/music/lyrics/aggregate` cache hit / miss — 已在 `lyrics-aggregate.e2e.test.ts` 覆盖
 - [x] **D3** `/music/library` 脏数据过滤（Deezer 误入 fanOut）— 已在 `library-badge-merge.e2e.test.ts` 覆盖
-- [ ] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400
+- [x] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400 — 2026-08-28 完成
+  - 新增 `PUT /music/deezer/preset` 端点 + `DeezerMusicProvider.isValidPreset`
+  - 测试：`deezer-preset.test.ts`（7 用例）
 - [x] **D5** `/music/dislike/merged` 路由顺序（不被 `/dislike/:trackId` 截胡）— 已在 `like.e2e.test.ts` 覆盖
-- [ ] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验
-  - 401 without token
-  - 401 wrong token
-  - 200 with correct token
+- [x] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验 — 2026-08-28 完成
+  - **修复生产 bug**：`config.ts` 读 `MASTERO_INTERNAL_TOKEN`（typo）→ guard 永远失效
+  - 修正为 `MAESTRO_INTERNAL_TOKEN`；扩展 InProcessClient 支持自定义 headers
+  - 测试：`auth-guard.test.ts`（5 用例：dev mode / 无 header / 错 header / 正确 header / POST）
 
 ## Phase E — 跨包契约 L5（堵「前后端 fuzzy key 漂移」）
 
-- [ ] **E1** `packages/common/src/contract.test.ts`（新建）
-  - `normalizeKey(title, artist)` 在 server/renderer 同值
-  - `displayKey(title, artist)` 在 server/renderer 同值
-  - 10 组歌曲两端归一一致
-
-- [ ] **E2** `packages/common/src/grouping.test.ts`（新建）
-  - 同一 sources 列表 server `mergeLibrary` vs renderer `groupLibraryItems`
-    同 grouping（key、member 数、representative index）
+- [x] **E1** `packages/common/src/contract.test.ts`（新建）— 2026-08-28 完成
+  - 10 组真实歌曲验证 normalizeKey / displayKey 行为一致（23 用例）
+- [x] **E2** `packages/common/src/grouping.test.ts`（新建）— 2026-08-28 完成
+  - server normalizeKey vs renderer displayKey 分组一致性（22 用例）
 
 ## Phase F — Hooks/Lib L6（renderer 补单测，可选）
 
-- [ ] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环
-- [ ] **F2** `useCoverArt` epoch 取消 / race
+- [x] **F1** `usePlayer` 核心：tryUpgradeFromTrial、跨平台降级循环 — 2026-08-28 完成
+  - 提取纯函数 pickFallbackSource / pickUpgradeSource + 30 用例
+- [x] **F2** `useCoverArt` epoch 取消 / race — 2026-08-28 完成
+  - 导出 applyCoverImage + 16 用例
 - [x] **F3** `lib/groupLibrary.ts` 多 COVER / 多 LIVE 折叠 — `groupLibrary.test.ts` 已存在
-- [ ] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播
+- [x] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播 — 2026-08-28 完成
+  - 25 用例（connect/disconnect/play/fatal events/reconnect）
 - [x] **F5** `lib/storage.ts` Provider/Quality 读写 + 缺字段兜底 — `storage.test.ts` 已存在
 
 ## Phase G — CI 收尾
 
 - [x] **G1** GitHub Actions：`typecheck + lint + test` 三连 — `.github/workflows/test.yml` 已配置
-- [ ] **G2** `test:ci` 子命令（`--bail --reporter=spec`）
-- [ ] **G3** 覆盖率（c8 / istanbul）报告 + 阈值门禁（≥60% 行）
+- [x] **G2** `test:ci` 子命令（`--bail --reporter=spec`）— 2026-08-28 完成
+  - `scripts/test.sh --ci` 模式：首个失败即退出 + `▸`/`✓` spec 格式输出
+  - CI workflow 切到 `npm run test:ci`
+- [x] **G3** 覆盖率（c8）报告 + 阈值门禁（≥60% 行）— 2026-08-28 完成
+  - `scripts/test.sh --coverage` 模式：c8 逐包包裹 → lcov 报告
+  - CI workflow 加覆盖率步骤（`continue-on-error: true`，warn-only 阶段）
+  - 当前 server 52.95% 行；B 组测试补完后切硬门禁

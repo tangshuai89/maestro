@@ -226,5 +226,538 @@ void (async () => {
   console.log('✅ 12. getValidTokenForRenderer: 透传 accessToken + tier');
 }
 
-console.log('\n🎉 全部 12 个测试通过');
+// ── 13. search: 命中结果字段映射 ────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        tracks: {
+          items: [
+            {
+              id: 't1',
+              name: 'Test Song',
+              artists: [
+                { id: 'a1', name: 'Artist A' },
+                { id: 'a2', name: 'Artist B' },
+              ],
+              album: {
+                id: 'al1',
+                name: 'Album X',
+                images: [{ url: 'http://img', width: 300, height: 300 }],
+              },
+              duration_ms: 180000,
+              preview_url: 'http://preview',
+            },
+          ],
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.search(session as any, 'test');
+    assert.strictEqual(results.length, 1);
+    const t = results[0];
+    assert.strictEqual(t.id, 't1');
+    assert.strictEqual(t.title, 'Test Song');
+    assert.strictEqual(t.artist, 'Artist A / Artist B');
+    assert.strictEqual(t.album, 'Album X');
+    assert.strictEqual(t.coverUrl, 'http://img');
+    assert.strictEqual(t.duration, 180);
+    console.log('✅ 13. search: 命中结果字段映射（id/title/artist/album/coverUrl/duration）');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 14. search: 空结果 ──────────────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ tracks: { items: [] } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.search(session as any, 'nothing-matches');
+    assert.strictEqual(results.length, 0);
+    console.log('✅ 14. search: 空结果返回空数组');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 15. search: 401 → throws ────────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('', { status: 401 })) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    await svc.search(session as any, 'test');
+    assert.fail('应该抛错');
+  } catch (e: any) {
+    assert.ok(/spotify_auth_failed/.test(e.message), '应抛 spotify_auth_failed');
+    console.log('✅ 15. search: 401 → throws spotify_auth_failed');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 16. search: 多结果保持顺序 ──────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        tracks: {
+          items: [
+            { id: 't1', name: 'Song 1', artists: [{ id: 'a1', name: 'A' }], album: { name: 'Al' }, duration_ms: 1000 },
+            { id: 't2', name: 'Song 2', artists: [{ id: 'a2', name: 'B' }], album: { name: 'Bl' }, duration_ms: 2000 },
+            { id: 't3', name: 'Song 3', artists: [{ id: 'a3', name: 'C' }], album: { name: 'Cl' }, duration_ms: 3000 },
+          ],
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.search(session as any, 'multi');
+    assert.strictEqual(results.length, 3);
+    assert.strictEqual(results[0].id, 't1');
+    assert.strictEqual(results[1].id, 't2');
+    assert.strictEqual(results[2].id, 't3');
+    console.log('✅ 16. search: 多结果保持 API 返回顺序');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 17. fetchLiked: 返回 liked tracks ───────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        items: [
+          { added_at: '2024-01-01', track: { id: 't1', name: 'Liked Song', artists: [{ id: 'a1', name: 'A' }], album: { name: 'Al' }, duration_ms: 5000 } },
+        ],
+        next: null,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.fetchLiked(session as any);
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].id, 't1');
+    assert.strictEqual(results[0].liked, true, 'liked 应为 true');
+    console.log('✅ 17. fetchLiked: 返回 liked tracks（liked=true）');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 18. fetchLiked: 空 ──────────────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ items: [], next: null }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.fetchLiked(session as any);
+    assert.strictEqual(results.length, 0);
+    console.log('✅ 18. fetchLiked: 空结果返回空数组');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 19. fetchLiked: HTTP error → 返回空（不抛） ─────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('', { status: 500 })) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.fetchLiked(session as any);
+    assert.strictEqual(results.length, 0, 'HTTP error 应返空数组不抛');
+    console.log('✅ 19. fetchLiked: HTTP error → 返回空数组（不抛）');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 20. fetchLiked: 分页（next cursor） ─────────────────
+{
+  let callCount = 0;
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    callCount++;
+    if (callCount === 1) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            { added_at: '2024-01-01', track: { id: 't1', name: 'Song 1', artists: [{ id: 'a', name: 'A' }], album: { name: 'Al' }, duration_ms: 1000 } },
+          ],
+          next: 'https://api.spotify.com/v1/me/tracks?offset=50&limit=50',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        items: [
+          { added_at: '2024-01-02', track: { id: 't2', name: 'Song 2', artists: [{ id: 'b', name: 'B' }], album: { name: 'Bl' }, duration_ms: 2000 } },
+        ],
+        next: null,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const results = await svc.fetchLiked(session as any);
+    assert.strictEqual(results.length, 2, '应合并两页');
+    assert.strictEqual(results[0].id, 't1');
+    assert.strictEqual(results[1].id, 't2');
+    assert.strictEqual(callCount, 2, '应请求两次');
+    console.log('✅ 20. fetchLiked: 分页（next cursor）合并两页');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 21. like: 网络错误 → 抛错 ───────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new TypeError('fetch failed');
+  }) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    let threw = false;
+    try {
+      await svc.like(session as any, 'track-1');
+    } catch (e: any) {
+      threw = true;
+      assert.ok(/fetch failed/.test(e.message), '应抛 fetch failed');
+    }
+    assert.ok(threw, '网络错误应抛错');
+    console.log('✅ 21. like: 网络错误 → 抛错（非 success=false）');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 22. unlike: 401 → success=false ─────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('', { status: 401 })) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const r = await svc.unlike(session as any, 'track-1');
+    assert.strictEqual(r.success, false, '401 应返 success=false');
+    console.log('✅ 22. unlike: 401 → success=false');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 23. getMeInfo: premium tier ─────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ id: 'user-1', display_name: 'Premium User', product: 'premium' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const info = await svc.getMeInfo(session as any);
+    assert.ok(info, '应返回 info');
+    assert.strictEqual(info!.tier, 'premium');
+    assert.strictEqual(info!.id, 'user-1');
+    assert.strictEqual(info!.displayName, 'Premium User');
+    console.log('✅ 23. getMeInfo: premium tier');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 24. getMeInfo: free tier ────────────────────────────
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ id: 'user-2', display_name: 'Free User', product: 'free' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const info = await svc.getMeInfo(session as any);
+    assert.ok(info);
+    assert.strictEqual(info!.tier, 'free');
+    console.log('✅ 24. getMeInfo: free tier');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 25. getMeInfo: 无 token → null ──────────────────────
+{
+  const info = await svc.getMeInfo({} as any);
+  assert.strictEqual(info, null, '无 token 应返 null');
+  console.log('✅ 25. getMeInfo: 无 token → null');
+}
+
+// ── 26. getValidAccessToken: 过期 + 有 client_id → refresh ─
+{
+  const origFetch = globalThis.fetch;
+  process.env.SPOTIFY_CLIENT_ID = 'test-client-id';
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        access_token: 'refreshed-tok',
+        token_type: 'Bearer',
+        expires_in: 3600,
+        refresh_token: 'new-refresh',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'expired',
+        refreshToken: 'old-refresh',
+        expiresAt: 0,
+      },
+    };
+    const tok = await svc.getValidAccessToken(session as any);
+    assert.strictEqual(tok, 'refreshed-tok', '应返回刷新后的 token');
+    console.log('✅ 26. getValidAccessToken: 过期 + 有 client_id → refresh 成功');
+  } finally {
+    globalThis.fetch = origFetch;
+    delete process.env.SPOTIFY_CLIENT_ID;
+  }
+}
+
+// ── 27. getValidAccessToken: refresh 失败 → null ─────────
+{
+  const origFetch = globalThis.fetch;
+  process.env.SPOTIFY_CLIENT_ID = 'test-client-id';
+  globalThis.fetch = (async () =>
+    new Response('{"error":"invalid_grant"}', { status: 400 })) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'expired',
+        refreshToken: 'bad-refresh',
+        expiresAt: 0,
+      },
+    };
+    const tok = await svc.getValidAccessToken(session as any);
+    assert.strictEqual(tok, null, 'refresh 失败应返 null');
+    console.log('✅ 27. getValidAccessToken: refresh 失败 → null');
+  } finally {
+    globalThis.fetch = origFetch;
+    delete process.env.SPOTIFY_CLIENT_ID;
+  }
+}
+
+// ── 28. bindSessionId: 绑定后 refresh 走 coordinator ─────
+{
+  const recordedSids: string[] = [];
+  const recordingCoordinator = {
+    run: (sid: string, fn: () => Promise<unknown>) => {
+      recordedSids.push(sid);
+      return fn();
+    },
+  };
+  const svc2 = new SpotifyMusicProvider(
+    fakeStorage as any,
+    recordingCoordinator as any,
+    fakeSessions as any,
+  );
+  const session = {
+    spotify: {
+      accessToken: 'expired',
+      refreshToken: 'r',
+      expiresAt: 0,
+    },
+  };
+  svc2.bindSessionId(session as any, 'sess-bound-123');
+
+  const origFetch = globalThis.fetch;
+  process.env.SPOTIFY_CLIENT_ID = 'test-client-id';
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ access_token: 'new-tok', expires_in: 3600 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const tok = await svc2.getValidAccessToken(session as any);
+    assert.strictEqual(tok, 'new-tok');
+    assert.strictEqual(recordedSids.length, 1, 'coordinator.run 应被调一次');
+    assert.strictEqual(recordedSids[0], 'sess-bound-123', 'sessionId 应透传');
+    console.log('✅ 28. bindSessionId: 绑定后 refresh 走 coordinator 带 sessionId');
+  } finally {
+    globalThis.fetch = origFetch;
+    delete process.env.SPOTIFY_CLIENT_ID;
+  }
+}
+
+// ── 29. cancelPendingFlows: 清除 pending ────────────────
+{
+  const r1 = svc.startAuth('cid', 'http://cb', 'sess-cancel');
+  const removed = svc.cancelPendingFlows('sess-cancel');
+  assert.strictEqual(removed, 1, '应清除 1 个 flow');
+  try {
+    await svc.exchangeCode({}, 'code', r1.state, 'http://cb', 'sess-cancel');
+    assert.fail('应该抛错');
+  } catch (e: any) {
+    assert.ok(/invalid_state/.test(e.message), '清除后 exchangeCode 应拒绝');
+    console.log('✅ 29. cancelPendingFlows: 清除 pending 后 exchangeCode 拒绝');
+  }
+}
+
+// ── 30. exchangeCode: 成功换 token + 拉 /me ─────────────
+{
+  const origFetch = globalThis.fetch;
+  process.env.SPOTIFY_CLIENT_ID = 'test-client-id';
+  const r = svc.startAuth('test-client-id', 'http://localhost:3200/cb', 'sess-30');
+  globalThis.fetch = (async (url: any) => {
+    const urlStr = String(url);
+    if (urlStr.includes('/api/token')) {
+      return new Response(
+        JSON.stringify({
+          access_token: 'exchanged-tok',
+          refresh_token: 'exchanged-refresh',
+          expires_in: 3600,
+          scope: 'user-library-modify streaming',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    if (urlStr.endsWith('/me')) {
+      return new Response(
+        JSON.stringify({ id: 'user-30', display_name: 'Test User 30', product: 'premium' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const session: Record<string, unknown> = {};
+    const result = await svc.exchangeCode(
+      session as any,
+      'auth-code',
+      r.state,
+      'http://localhost:3200/cb',
+      'sess-30',
+    );
+    assert.strictEqual(result.token.accessToken, 'exchanged-tok');
+    assert.strictEqual(result.token.refreshToken, 'exchanged-refresh');
+    assert.strictEqual(result.token.tier, 'premium');
+    assert.strictEqual(result.profile.id, 'user-30');
+    assert.strictEqual(result.profile.displayName, 'Test User 30');
+    console.log('✅ 30. exchangeCode: 成功换 token + 拉 /me 拿 tier');
+  } finally {
+    globalThis.fetch = origFetch;
+    delete process.env.SPOTIFY_CLIENT_ID;
+  }
+}
+
+console.log('\n🎉 spotify.test 全部 30 项通过');
 })();
