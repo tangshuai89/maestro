@@ -27,9 +27,28 @@ function resolveApiOrigin(): string {
   return 'http://localhost:3200';
 }
 
-/** Resolved server origin (''  in dev, sidecar URL / localhost:3200 in
- *  prod). Exported so the renderer can build media URLs (audio src,
- *  cover-proxy) against the exact same origin the API client uses. */
+/**
+ * Audit A3 (consistency-fixes T1): the sidecar URL is pushed via preload's
+ * `sidecar-ready` IPC AFTER this module is first imported. When
+ * `api.ts` was loaded eagerly at boot, the old `const API_ORIGIN =
+ * resolveApiOrigin()` captured `''` (or 'localhost:3200') permanently, so
+ * the renderer's audio src / cover-proxy URLs were broken until a full
+ * reload — and the default port was the only thing keeping prod alive.
+ *
+ * `getApiOrigin()` evaluates on every call so media URLs that fire
+ * later (radio next-track previews, lazy cover fetches) see the real
+ * sidecar URL.
+ *
+ * The legacy `API_ORIGIN` const is kept as a one-shot snapshot for
+ * backwards-compatible callers; new code should prefer `getApiOrigin()`.
+ */
+export function getApiOrigin(): string {
+  return resolveApiOrigin();
+}
+
+/** @deprecated one-shot snapshot taken at module load time. Use
+ *  `getApiOrigin()` for media URLs that fire after `sidecar-ready`
+ *  (audio src, cover-proxy, lyrics share). */
 export const API_ORIGIN = resolveApiOrigin();
 const API_BASE = API_ORIGIN;
 

@@ -1,5 +1,5 @@
 import { useCallback, useRef, type RefObject } from 'react';
-import { API_ORIGIN } from '../api';
+import { getApiOrigin } from '../api';
 import { resetCoverColor, setCoverColor } from '../lib/coverColor';
 import { placeholderCover } from '../lib/placeholderCover';
 
@@ -27,7 +27,7 @@ export async function applyCoverImage(
   // Build the proxied URL against the same origin the API client uses. In
   // dev API_ORIGIN is '' → /music/cover-proxy (Vite proxies to :3200); in
   // prod it's the sidecar origin → an absolute URL.
-  const proxied = `${API_ORIGIN}/music/cover-proxy?url=${encodeURIComponent(url)}`;
+  const proxied = `${getApiOrigin()}/music/cover-proxy?url=${encodeURIComponent(url)}`;
 
   let bitmap: ImageBitmap;
   try {

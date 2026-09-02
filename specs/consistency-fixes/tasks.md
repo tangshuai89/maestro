@@ -9,7 +9,7 @@
 
 ## P0 — 打包版致命（必须最先修）
 
-- [ ] **T1** 媒体路由 guard 豁免 + sidecar 探活 + API_ORIGIN 动态化
+- [x] **T1** 媒体路由 guard 豁免 + sidecar 探活 + API_ORIGIN 动态化
   - `music.controller.ts`：新建 `@SkipInternalToken()` 装饰器（SetMetadata），
     `RequireInternalTokenGuard` 用 Reflector 检查；对以下只读媒体 GET 豁免：
     `GET /music/stream/:provider/:trackId`、`GET /music/cover-proxy`、
@@ -24,7 +24,7 @@
 
 ## P1 — likedCache/state 双真值源收口（B 类根因，修完 #75 才算真正修完）
 
-- [ ] **T2** `writeLike` 收口 + getLikedSet 返回 reconciled 集合
+- [x] **T2** `writeLike` 收口 + getLikedSet 返回 reconciled 集合
   - `music.service.ts` 新增私有 helper：
     `writeLike(session, state, platform, trackId, liked)` = `setLike` +
     `updateLikedCache`，返回 setLike 的 boolean
@@ -43,7 +43,7 @@
     (3) reconcile 后缓存与 state 一致 (4) 在途 like（pendingTargets 模拟）
     不被 reconcile 抹掉
 
-- [ ] **T3** LikeSyncQueue 可见性窗口 + 登录登出缓存失效
+- [x] **T3** LikeSyncQueue 可见性窗口 + 登录登出缓存失效
   - `like-sync.queue.ts`：target 完成后保留 30s「可见性窗口」——
     `pendingTargets` 返回 pending + active + recently-completed（30s 内）；
     实现：completed 数组 `{sessionId, platform, trackId, liked, at}`，
@@ -56,7 +56,7 @@
     pendingTargets 仍含该 target；auth 流程测试——登出后 likedCache 失效
     （getLikedSet 重新拉取）
 
-- [ ] **T4** resolveEquivalents 的 unlike 竞态 + stale canonicalId
+- [x] **T4** resolveEquivalents 的 unlike 竞态 + stale canonicalId
   - `music.service.ts` `resolveEquivalents`（~1008-1102）：await
     searchEquivalent 完成后 re-loadState，检查 `state.fanOut[canonicalId]`
     仍存在（用户没取消）才写入 setLike/mergeFanOutEntries；已消失则丢弃
@@ -70,7 +70,7 @@
   - 测试：discover 期间 unlike → 结果被丢弃；detect 跨 wait 的
     canonicalId 漂移用例
 
-- [ ] **T5** per-session 状态锁 + importLiked 单飞
+- [x] **T5** per-session 状态锁 + importLiked 单飞
   - `music.service.ts`：手写 promise-chain mutex
     （`private stateLocks = new Map<string, Promise<void>>()` +
     `withStateLock<T>(sessionId, fn: () => Promise<T>): Promise<T>`）
@@ -89,7 +89,7 @@
 
 ## P1 — 前端交互守护（与 server 任务并行）
 
-- [ ] **T6** usePlayer 红心/切歌竞态守护
+- [x] **T6** usePlayer 红心/切歌竞态守护
   - `handleLike`（~1185）：进入时 `const ticket = ++likeTicketRef.current`
     + `const startedTrackId = track.id`；await 后
     `ticket === likeTicketRef.current && trackRef.current?.id === startedTrackId`
@@ -109,7 +109,7 @@
 
 ## P2 — Spotify/WPS 生命周期
 
-- [ ] **T7** Spotify token/session 生命周期
+- [x] **T7** Spotify token/session 生命周期
   - `common/session.ts` `persistSpotify`（~214）：校验传入的
     ProviderSession 与当前 live `s.providers.spotify` 是同一对象引用
     （不是则说明已登出/重登，丢弃写入并 log）
@@ -118,7 +118,7 @@
   - `auth/refresh-coordinator.ts`：key 改 `${provider}:${sessionId}`
   - 测试：登出期间 refresh 完成不复活 token；expiresAt 是新值
 
-- [ ] **T8** spotify-wps.ts + useSpotifyWpsPlayer 生命周期
+- [x] **T8** spotify-wps.ts + useSpotifyWpsPlayer 生命周期
   - `waitForSdk`（~119）：超时分支 `sdkPromise = null` 允许重试
   - `bindListeners`/`disconnect`（~214/~333）：保存 listener 引用，
     disconnect 时逐个 `removeListener`
@@ -133,7 +133,7 @@
 
 ## P2 — Electron main 登录/生命周期
 
-- [ ] **T9** 登录窗口 + oauth-buffer 竞态
+- [x] **T9** 登录窗口 + oauth-buffer 竞态
   - `main.ts` `openQqLoginWindow`/`openNeteaseLoginWindow`
     （~418/~547）：login 调用时清 `__maestroLastResult`（强制新流程），
     登出 IPC（若有）时销毁隐藏窗口
@@ -149,7 +149,7 @@
 
 ## P3 — 存储/会话持久化
 
-- [ ] **T10** 存储 flush + prefs 持久化 + 杂项
+- [x] **T10** 存储 flush + prefs 持久化 + 杂项
   - server `main.ts`（bootstrap）：`process.on('SIGTERM')` →
     `storage.flushSync()` 后退出；electron `main.ts` before-quit 先发
     SIGTERM 并短暂等待（≤500ms）再强杀
@@ -175,9 +175,9 @@
 
 ## 完成判据
 
-- [ ] 全部 P0/P1 任务（T1-T6）合并
-- [ ] P2/P3 任务（T7-T10）合并
-- [ ] 每个 PR：`npm run typecheck && npm run lint && npm test` 全绿
+- [x] 全部 P0/P1 任务（T1-T6）实现（本 PR）
+- [x] P2/P3 任务（T7-T10）实现（本 PR）
+- [x] `npm run typecheck && npm run lint && npm test` 全绿
 - [ ] 打包冒烟：打包版能出声、能显示封面（T1 验收，条件允许时）
 - [ ] 回归确认：#75 场景（推荐歌曲点红心）+ radio 点红心 + 取消红心
   三个手工场景在修复后行为正确

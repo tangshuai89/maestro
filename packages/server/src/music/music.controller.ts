@@ -23,6 +23,7 @@ import { SessionService } from '../common/session';
 import { DeezerMusicProvider } from './deezer.provider';
 import { QqQuality } from './qq.provider';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
+import { SkipInternalToken } from '../common/decorators/skip-internal-token.decorator';
 import type { FanOutLikeResponse, SourceInfo } from './types';
 
 /** 从请求体里宽松解析跨平台匹配元数据。缺字段 / 类型不对 → undefined，
@@ -137,6 +138,7 @@ export class MusicController {
    * fetches this once on first Deezer session to populate the preset
    * picker.
    */
+  @SkipInternalToken()
   @Get('deezer/editorials')
   deezerEditorials() {
     return { items: DeezerMusicProvider.getEditorials() };
@@ -163,7 +165,9 @@ export class MusicController {
       );
     }
     const session = this.sessionService.resolve(req, res);
-    session.prefs = { ...(session.prefs ?? {}), deezerPreset: preset };
+    // T10 (consistency-fixes G2)：走 setPref 而不是直接改 prefs，确保
+    // 重启后 preset 不丢失（旧实现只改内存没 persist）。
+    this.sessionService.setPref(session, 'deezerPreset', preset);
     return { ok: true, preset };
   }
 
@@ -455,6 +459,7 @@ export class MusicController {
     return { source };
   }
 
+  @SkipInternalToken()
   @Get('stream/:provider/:trackId')
   async stream(
     @Param('provider') providerParam: string,
@@ -608,6 +613,7 @@ export class MusicController {
     'mosaic.scdn.co',                   // Spotify（歌单拼图封面）
   ]);
 
+  @SkipInternalToken()
   @Get('cover-proxy')
   async coverProxy(
     @Query('url') url: string | undefined,
@@ -695,6 +701,7 @@ export class MusicController {
    * Response: { lyrics: [{time, text}, ...] } or { lyrics: null }
    * when the provider or track has no lyrics.
    */
+  @SkipInternalToken()
   @Get('lyrics')
   async lyrics(
     @Query('provider') provider: string,

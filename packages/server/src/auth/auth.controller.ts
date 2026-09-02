@@ -20,6 +20,7 @@ import { SpotifyMusicProvider } from '../music/spotify.provider';
 import { StorageService } from '../common/storage';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue } from '../music/like-sync.queue';
+import { MusicService } from '../music/music.service';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 
 const SPOTIFY_CLIENT_ID_KEY = 'secrets:spotify-client-id';
@@ -43,6 +44,7 @@ export class AuthController {
     private readonly spotify: SpotifyMusicProvider,
     private readonly storage: StorageService,
     private readonly likeSync: LikeSyncQueue,
+    private readonly musicService: MusicService,
   ) {}
 
   // ── QQ 音乐（cookie 登录，非 QQ 互联 OAuth）────────────────────────────────
@@ -76,6 +78,8 @@ export class AuthController {
     );
     this.sessionService.setProvider(session, 'qq', profile);
     this.sessionService.setLastValidatedAt(session, 'qq', Date.now());
+    // T3 (consistency-fixes B4)：登录 → 失效 likedCache
+    this.musicService.invalidateLikedCache(session, 'qq');
     return {
       success: true,
       user: {
@@ -118,6 +122,8 @@ export class AuthController {
       const session = this.sessionService.resolve(req, res);
       this.sessionService.setProvider(session, 'netease', result.session);
       this.sessionService.setLastValidatedAt(session, 'netease', Date.now());
+      // T3 (consistency-fixes B4)：登录 → 失效 likedCache
+      this.musicService.invalidateLikedCache(session, 'netease');
       this.logger.log(
         `netease login OK → session=${session.id.slice(0, 8)}… nickname=${result.session.nickname}`,
       );
@@ -163,6 +169,8 @@ export class AuthController {
     );
     this.sessionService.setProvider(session, 'netease', profile);
     this.sessionService.setLastValidatedAt(session, 'netease', Date.now());
+    // T3 (consistency-fixes B4)：登录 → 失效 likedCache
+    this.musicService.invalidateLikedCache(session, 'netease');
     return {
       success: true,
       user: {
@@ -240,6 +248,9 @@ export class AuthController {
     }
     const session = this.sessionService.resolve(req, res);
     this.sessionService.clearProvider(session, p);
+    // T3 (consistency-fixes B4)：登出 → 失效 likedCache，避免下一账号
+    // 看到上一账号的 ❤ 列表。
+    this.musicService.invalidateLikedCache(session, p);
     // v_resilience: 同步队列里可能有这个 provider 的在途 / 等待任务，
     // 用户退出登录后留着它们只会在下一轮 processor 调用时拿一个无效
     // session 抛 fatal —— 浪费日志 + 后台循环。purge 掉。
@@ -398,6 +409,10 @@ export class AuthController {
       nickname: result.profile.displayName,
     });
     this.sessionService.setLastValidatedAt(session, 'spotify', Date.now());
+    // T3 (consistency-fixes B4)：登录 → 失效 likedCache
+    this.musicService.invalidateLikedCache(session, 'spotify');
+    // T3 (consistency-fixes B4)：登录 → 失效 likedCache
+    this.musicService.invalidateLikedCache(session, 'spotify');
     // 返一个自关闭 HTML 页——回调是在 Electron 的 window.open 子窗口里打开的，
     // session cookie 已在这条 response header 里写回。子窗口关掉即可，主窗口
     // 的 polling 下次就能读到 loggedIn=true。

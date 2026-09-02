@@ -15,7 +15,7 @@ import {
   dislikeMerged,
   pickPlayableTrack,
   findEquivalentSource,
-  API_ORIGIN,
+  getApiOrigin,
 } from '../api';
 import type {
   Track,
@@ -60,6 +60,25 @@ export const FULL_SONG_PROVIDERS: MusicProvider[] = ['qq', 'netease'];
 export function getFullSongProviders(spotifyTier?: string | null): MusicProvider[] {
   if (spotifyTier === 'premium') return ['qq', 'netease', 'spotify'];
   return FULL_SONG_PROVIDERS;
+}
+
+/**
+ * T6 (consistency-fixes D2/D5/D6)：判定「await 后的结果是否应该 apply」。
+ *
+ * 抽出为纯函数（hook 内无法直接单测）—— 比对任务票据 + 当前 track：
+ *   - ticket 不等 → 用户已重新 ❤ / 踩，旧结果应丢弃；
+ *   - currentTrackId !== startedTrackId → 用户已切歌，旧结果应丢弃；
+ *   - 两条件都通过 → 旧结果可应用（setTrack / setFanOutCount）。
+ *
+ * 也在 spec 测试 usePlayer.test.mjs 里覆盖。
+ */
+export function shouldApplyLikeResult(
+  ticket: number,
+  startedTrackId: string,
+  currentTicket: number,
+  currentTrackId: string | undefined,
+): boolean {
+  return ticket === currentTicket && currentTrackId === startedTrackId;
 }
 
 /** VIP 试听判定阈值：实际音频 ≤ TRIAL_MAX_SEC 秒、且元数据全长比它长 GAP 以上，
@@ -238,6 +257,12 @@ export function usePlayer(
   // refreshLikedState 的「代」计数：每次触发自增，poll 循环只认自己那一代——
   // 换歌 / 新的 refresh 触发时旧 poll 立即让位，避免旧循环覆盖新歌角标。
   const likedRefreshGenRef = useRef(0);
+  // T6 (consistency-fixes D2)：handleLike / handleDislike 的「任务票据」。
+  // 每次 ❤/踩 都 ++，await 回来后比对当前票据与启动时票据：
+  //   - 不等 → 旧 in-flight 结果丢弃（用户已切歌 / 已再次点击）；
+  //   - 等   → 才应用 setTrack/setFanOutCount。
+  // 同时要求 `trackRef.current?.id === startedTrackId`：切歌后旧结果也丢。
+  const likeTicketRef = useRef(0);
   // On source switch with a track playing, skip one provider-change auto-load
   // so the current song keeps playing until it ends / the user skips.
   const skipAutoLoadRef = useRef(false);
@@ -364,9 +389,12 @@ export function usePlayer(
       // 每次上歌/换源都先清掉上一次的报错——切到下一首/降级成功后不该再
       // 残留旧的 "音频加载失败" 弹窗。真正失败会在 onError 里重新 setError。
       setError(null);
+      // Audit A3 (consistency-fixes T1): use the live sidecar origin
+      // instead of the module-load snapshot so radio next-track previews
+      // fired after `sidecar-ready` see the real URL.
       let audioUrl =
         next.audioUrl && next.audioUrl.startsWith('/')
-          ? API_ORIGIN + next.audioUrl
+          ? getApiOrigin() + next.audioUrl
           : next.audioUrl;
       // QQ / NetEase: append the selected quality to the stream URL.
       if (
@@ -629,10 +657,20 @@ export function usePlayer(
   const detectAndApplyLiked = useCallback(
     async (
       unified: UnifiedSearchItem | undefined,
+      // T6 (consistency-fixes D3)：detect 期望 liked 状态。默认 true
+      // （向后兼容未传传者的代码路径——之前都是 liked=true 才调 detect）。
+      // refreshLikedStateUntilStable 传 expectedLiked = trackRef.current.liked，
+      // 避免用户 ❤ 后又手动取消（liked=false）时 detect 旧响应把它点亮回来。
+      expectedLiked: boolean = true,
     ): Promise<{ count: number; settled: boolean } | null> => {
       activeMergedIdRef.current = unified?.id;
       if (!unified) {
         setFanOutCount(0);
+        return { count: 0, settled: true };
+      }
+      // D3 守护：用户在 ❤ 之前手动 ❤→不 ❤ → 期望 liked=false → 不该调用
+      // detect（detect 在用户视角下「确认已 ❤」才有效）。短路返回。
+      if (!expectedLiked) {
         return { count: 0, settled: true };
       }
       const sources = unified.sources
@@ -651,6 +689,11 @@ export function usePlayer(
         // 只在还停留在这首歌时应用（防快速切歌竞态）。null = 结果被丢弃，
         // 调用方（poll）不当作稳定值、会继续重试。
         if (activeMergedIdRef.current !== unified.id) return null;
+        // D3 守护：apply 时再校验一次 expectedLiked（用户在 await 期间手动
+        // ❤→不 ❤ 也走这一道）。
+        if (trackRef.current?.liked === false && expectedLiked) {
+          return null;
+        }
         const count = r.liked ? r.fannedOutTo.length : 0;
         setFanOutCount(count);
         setTrack((prev) => (prev ? { ...prev, liked: r.liked } : prev));
@@ -707,7 +750,11 @@ export function usePlayer(
       if (likedRefreshGenRef.current !== myGen) return null; // 让位给新一轮
       const unified = currentUnifiedRef.current;
       if (!unified) return null;
-      const res = await detectAndApplyLiked(unified);
+      // T6 (consistency-fixes D3)：detect 轮询只在用户当前 liked=true 时启动。
+      // 用户手动翻转（❤→不 ❤）后，`trackRef.current?.liked` 与期望不符，
+      // 直接退出轮询——避免 detect 旧响应覆盖手动状态。
+      const expectedLiked = trackRef.current?.liked === true;
+      const res = await detectAndApplyLiked(unified, expectedLiked);
       if (likedRefreshGenRef.current !== myGen) return null;
       if (res === null) {
         // 探测失败（响应被丢弃 / 网络错）—— 重试但不计入稳定命中。
@@ -790,14 +837,28 @@ export function usePlayer(
     // the badge, otherwise it keeps showing the last search song's platform
     // count on top of unrelated radio tracks. `next.liked` (from the server)
     // still drives the ❤ fill via presentTrack.
+    // T6 (consistency-fixes D4)：radio 路径 await 期间用户可能切了平台 /
+    // preset（API 不支持中途切，UI 限制先于这点；但保险起见守护）。快照
+    // 启动时的 provider + preset，await 回来不一致就丢弃（让新的 loadNextTrack
+    // 自己 presentTrack 正确的歌）。
+    const startedProvider = provider;
+    const startedPreset = provider === 'deezer' ? deezerPreset : undefined;
     setFanOutCount(0);
     setLoading(true);
     setError(null);
     try {
       const next = await fetchNextTrack(
-        provider,
-        provider === 'deezer' ? deezerPreset : undefined,
+        startedProvider,
+        startedPreset,
       );
+      // D4 守护：await 期间 provider / preset 变了 → 旧的 fetchNextTrack 结果
+      // 丢弃（让新的 loadNextTrack 自然 presentTrack 正确曲）。
+      if (
+        provider !== startedProvider ||
+        (startedProvider === 'deezer' && deezerPreset !== startedPreset)
+      ) {
+        return;
+      }
       presentTrack(next);
     } catch (e) {
       setError((e as Error).message);
@@ -1014,11 +1075,20 @@ export function usePlayer(
         if (wpsPlayedIdRef.current !== track.id) {
           const uri = `spotify:track:${track.id}`;
           wpsPlayedIdRef.current = track.id;
+          // T6 (consistency-fixes D6)：track 守护。transferHere().then() 回调里
+          // 校验「现在还停留在同一首歌」——用户切歌后再 play 旧 URI 会让 WPS
+          // 播放与 UI 不同步。startedTrackId 是 await 之前的快照。
+          const startedTrackId = track.id;
           // transferHere 失败（设备还没注册完）不阻断 play——play 请求带
           // device_id 参数本身也会激活设备。两边都有 404 退避重试。
           void wps.transferHere().catch((e: Error) => {
             wpsLog('transfer-fallback', `transferHere 失败，继续 play：${e.message}`);
-          }).then(() => wps.play(uri)).catch((e: Error) => {
+          }).then(() => {
+            // D6：切歌检查。startedTrackId 与 wpsPlayedIdRef 都已设过，
+            // 但 await 期间切歌时 ref 也会被刷新——以 wpsPlayedIdRef 为准。
+            if (wpsPlayedIdRef.current !== startedTrackId) return;
+            return wps.play(uri);
+          }).catch((e: Error) => {
             console.error('[wps] play() rejected:', e);
             setError(`WPS 播放失败：${e.message}`);
           });
@@ -1184,6 +1254,15 @@ export function usePlayer(
 
   const handleLike = async () => {
     if (!track || !provider) return;
+    // T6 (consistency-fixes D1+D2)：任务票据 + 作废在途轮询。
+    // - likedRefreshGenRef++：让上一轮 refreshLikedStateUntilStable 的
+    //   轮询立刻 return null，不再读 detect 旧值。
+    // - likeTicketRef++：await 回来后比对，保证旧 ❤ 点击的结果不覆盖
+    //   新的 ❤ 点击（用户连点 ❤ → ❤ → ❤，旧 fetch 晚回 → 不应用）。
+    // - startedTrackId：切歌后旧结果丢弃。
+    const myTicket = ++likeTicketRef.current;
+    const startedTrackId = track.id;
+    likedRefreshGenRef.current++;
     // 语义：❤ 是开关。未收藏 → 在所有有版权的平台收藏（fan-out）；已收藏 →
     // 取消之前 fan-out 过的所有平台的收藏（不写「不喜欢」、不影响 FM 推荐——
     // 那是「踩」的语义）。
@@ -1202,6 +1281,18 @@ export function usePlayer(
           artist: current.artist,
           duration: current.duration,
         });
+        // T6 D2：守护「应用 setTrack / setFanOutCount」前，校验 ticket + track。
+        // 任一不匹配 → 旧结果丢弃（用户已切歌 / 再次 ❤ → 新 ticket 占位）。
+        if (
+          !shouldApplyLikeResult(
+            myTicket,
+            startedTrackId,
+            likeTicketRef.current,
+            trackRef.current?.id,
+          )
+        ) {
+          return;
+        }
         setFanOutCount(next ? result.fannedOutTo.length : 0);
         setTrack((prev) => (prev ? { ...prev, liked: next } : prev));
       } catch (e) {
@@ -1217,6 +1308,17 @@ export function usePlayer(
       duration: track.duration,
     });
     if (result.success) {
+      // T6 D2：同 ticket/track 守护。
+      if (
+        !shouldApplyLikeResult(
+          myTicket,
+          startedTrackId,
+          likeTicketRef.current,
+          trackRef.current?.id,
+        )
+      ) {
+        return;
+      }
       setTrack((prev) => (prev ? { ...prev, liked: result.liked } : prev));
       setFanOutCount(0);
     }
@@ -1224,6 +1326,11 @@ export function usePlayer(
 
   const handleDislike = async () => {
     if (!track || !provider) return;
+    // T6 (consistency-fixes D5)：与 handleLike 同款 ticket/track 守护，
+    // 避免旧 ❤ 操作的 await 晚回时复活红心。
+    const myTicket = ++likeTicketRef.current;
+    const startedTrackId = track.id;
+    likedRefreshGenRef.current++;
     // Unified search path: 踩 = 取消这首歌在所有平台的红心 + 标记不喜欢，
     // 否则某平台残留的红心会在下次切到这首歌时被 detect 重新点亮/收藏回来。
     const q = queueRef.current;
@@ -1234,6 +1341,17 @@ export function usePlayer(
         .map((s) => ({ platform: s.platform, trackId: s.trackId }));
       try {
         await dislikeMerged(current.id, sources);
+        // 切歌 / 再次 ❤ 触发新 ticket → 旧结果不应用。
+        if (
+          !shouldApplyLikeResult(
+            myTicket,
+            startedTrackId,
+            likeTicketRef.current,
+            trackRef.current?.id,
+          )
+        ) {
+          return;
+        }
         setFanOutCount(0);
         setTrack((prev) => (prev ? { ...prev, liked: false } : prev));
       } catch {
@@ -1244,6 +1362,16 @@ export function usePlayer(
     }
     // Single-platform path (radio): 单平台标记不喜欢。
     await dislike(provider, track.id);
+    if (
+      !shouldApplyLikeResult(
+        myTicket,
+        startedTrackId,
+        likeTicketRef.current,
+        trackRef.current?.id,
+      )
+    ) {
+      return;
+    }
     loadNextTrack();
   };
 

@@ -103,6 +103,12 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
 
     let cancelled = false;
     let refreshTimer: number | null = null;
+    // T8 (consistency-fixes E7)：local `wrapper` 变量——cleanup 关闭**本 effect**
+    // 创建的实例，而不是读 wrapperRef.current。Strict Mode 双调用 effect
+    // 时第二次 effect 可能覆盖 wrapperRef.current，第一次 cleanup 会断开
+    // 第二次创建的新 wrapper（造成幽灵 wrapper 泄漏）。local 闭包变量
+    // 彻底避免这个 race。
+    let wrapper: WpsWrapper | null = null;
 
     async function init(): Promise<void> {
       wpsDebugBanner();
@@ -121,6 +127,7 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
         // 拿 Widevine 解密音频。不可用 → connect 能成但播放必 playback_error。
         await probeEmeWidevine();
         const w = createWpsWrapper();
+        wrapper = w;
         wrapperRef.current = w;
         // No stored unsubscribe: teardown calls w.disconnect() which clears
         // all subscribers, and the callback already guards on `cancelled`.
@@ -189,8 +196,16 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
     return () => {
       cancelled = true;
       if (refreshTimer) window.clearInterval(refreshTimer);
-      wrapperRef.current?.disconnect();
-      wrapperRef.current = null;
+      // T8 E7：优先断开 local wrapper（精确到本 effect 的实例）。
+      // 仅在 wrapper 还没来得及赋值时才退到 wrapperRef.current。
+      if (wrapper) {
+        wrapper.disconnect();
+        wrapper = null;
+        if (wrapperRef.current === wrapper) wrapperRef.current = null;
+      } else {
+        wrapperRef.current?.disconnect();
+        wrapperRef.current = null;
+      }
       setWpsReady(false);
     };
   }, [enabled]);

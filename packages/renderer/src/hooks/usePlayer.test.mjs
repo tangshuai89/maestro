@@ -57,6 +57,7 @@ const {
   getFullSongProviders,
   pickFallbackSource,
   pickUpgradeSource,
+  shouldApplyLikeResult,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
 } = mod;
@@ -223,6 +224,38 @@ async function main() {
     const picked = pickUpgradeSource(sources, new Set(), ['qq', 'netease', 'spotify']);
     check('27. spotify vipLocked → undefined', picked, undefined);
   }
+
+  // ── T6 shouldApplyLikeResult（consistency-fixes D2/D5/D6 守护） ──
+  // ticket 一致 + track 一致 → 允许应用。
+  check(
+    'T6.1 ticket + track 都一致 → true',
+    shouldApplyLikeResult(1, 'a', 1, 'a'),
+    true,
+  );
+  // ticket 不一致（用户重新 ❤ / 踩）→ 丢弃旧结果。
+  check(
+    'T6.2 ticket 不一致 → false',
+    shouldApplyLikeResult(1, 'a', 2, 'a'),
+    false,
+  );
+  // track 不一致（切歌）→ 丢弃旧结果。
+  check(
+    'T6.3 track 不一致 → false',
+    shouldApplyLikeResult(1, 'a', 1, 'b'),
+    false,
+  );
+  // currentTrackId undefined（极快地又切走）→ 丢弃。
+  check(
+    'T6.4 currentTrackId undefined → false',
+    shouldApplyLikeResult(1, 'a', 1, undefined),
+    false,
+  );
+  // 两个都不一致 → 丢弃。
+  check(
+    'T6.5 ticket + track 都不一致 → false',
+    shouldApplyLikeResult(1, 'a', 2, 'b'),
+    false,
+  );
 
   // ── 降级循环模拟 ────────────────────────────────────────────────────
   // 28. 模拟完整降级链：qq → netease → deezer → spotify → undefined

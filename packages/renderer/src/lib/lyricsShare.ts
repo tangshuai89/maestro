@@ -1,4 +1,4 @@
-import { API_ORIGIN } from '../api';
+import { getApiOrigin } from '../api';
 import type { LyricLine } from '../api';
 
 const WIDTH = 720;
@@ -27,7 +27,7 @@ export async function downloadLyricsImage(opts: {
   let cover: ImageBitmap | null = null;
   if (coverUrl) {
     try {
-      const proxied = `${API_ORIGIN}/music/cover-proxy?url=${encodeURIComponent(coverUrl)}`;
+      const proxied = `${getApiOrigin()}/music/cover-proxy?url=${encodeURIComponent(coverUrl)}`;
       const res = await fetch(proxied);
       if (res.ok) cover = await createImageBitmap(await res.blob());
     } catch {

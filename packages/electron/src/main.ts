@@ -75,10 +75,22 @@ const SIDECAR_PORT = Number(process.env.PORT ?? 3200);
 
 /** 等端口就绪（轮询 :3200/music/deezer/editorials 之类的轻量 endpoint）。 */
 async function waitForSidecar(port: number, timeoutMs = 30_000): Promise<void> {
+  // Audit A2 (consistency-fixes T1): probe with X-Maestro-Token. The
+  // /music/deezer/editorials route is now token-skipped (see
+  // music.controller.ts @SkipInternalToken), but the guard only skips
+  // when MAESTRO_INTERNAL_TOKEN is configured in the sidecar. Belt and
+  // braces: send the token explicitly so a future regression that adds
+  // the guard back doesn't silently break startup again.
+  const headers: Record<string, string> = maestroInternalToken
+    ? { 'X-Maestro-Token': maestroInternalToken }
+    : {};
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/music/deezer/editorials`);
+      const res = await fetch(
+        `http://127.0.0.1:${port}/music/deezer/editorials`,
+        { headers },
+      );
       if (res.ok) return;
     } catch {
       // not ready yet
@@ -137,14 +149,24 @@ function startSidecar(): Promise<void> {
   });
 }
 
-/** 关闭 sidecar。app quit 时调。 */
-function stopSidecar(): void {
+/** 关闭 sidecar。app quit 时调。
+ *
+ * T10 (consistency-fixes G1)：发 SIGTERM 后同步等 ≤graceMs 让 sidecar 的
+ * SIGTERM handler 跑 storage.flushSync()。旧实现直接 kill 不等落定 →
+ * sidecar 200ms debounce 内的写入（红心/登录态）随进程死亡丢失。
+ * 用 Atomics.wait 同步阻塞——before-quit 里 async 等待不可靠（app 可能
+ * 在 promise 落定前退出）。sidecar 的 flushSync 是同步 I/O，实测 <50ms。 */
+function stopSidecar(graceMs = 0): void {
   if (!sidecar) return;
   console.log('[main] killing sidecar');
   try {
     sidecar.kill('SIGTERM');
   } catch {
     // ignore
+  }
+  if (graceMs > 0) {
+    // 给 sidecar 的 SIGTERM handler 一个同步宽限窗口写盘。
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, graceMs);
   }
   sidecar = null;
 }
@@ -179,7 +201,11 @@ function showMainWindow(): void {
 
 /** Send a transport command to the renderer's player. */
 function sendTrayCommand(command: 'playpause' | 'next' | 'prev'): void {
-  mainWindow?.webContents.send('tray:command', command);
+  // T9 (consistency-fixes F4)：mainWindow 在 quit/close 期间可能已 destroyed，
+  // 直接 send 会抛 `Object has been destroyed`。isDestroyed 检查后静默
+  // 丢弃——tray click 在 app 退出时本就没意义。
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('tray:command', command);
 }
 
 /** Rebuild the tray context menu + tooltip from the current playback state. */
@@ -416,6 +442,13 @@ async function readQqCookies(win: BrowserWindow): Promise<{
  * we just capture the browser's own login cookies.
  */
 function openQqLoginWindow(): Promise<QqLoginResult> {
+  // T9 (consistency-fixes F1)：每次用户点「登录 QQ 音乐」就清掉缓存结果。
+  // 旧实现：登出后再点「登录」→ 直接返回上一账号的 cached cookie，换不了
+  // 账号（直到重启 app）。新行为：忽略旧 cached → 强制重新 cookie 捕获
+  // 流程（新登录的 cookie 写到 __maestroLastResult）。
+  if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
+    (activeQqLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult = undefined;
+  }
   // Already-running window with a captured result → reuse.
   if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
     activeQqLoginWindow.show();
@@ -545,6 +578,10 @@ async function readNeteaseCookies(win: BrowserWindow): Promise<{
  * trusts), and resolve once MUSIC_U appears in the window's session cookies.
  */
 function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
+  // T9 (consistency-fixes F1)：同 QQ —— 每次点击登录就清缓存，避免换账号失败。
+  if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
+    (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult = undefined;
+  }
   if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
     activeNeteaseLoginWindow.show();
     activeNeteaseLoginWindow.focus();
@@ -797,7 +834,9 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-  stopSidecar();
+  // T10 (consistency-fixes G1)：发 SIGTERM 后等 ≤500ms 让 sidecar flushSync。
+  // 旧实现：直接 kill('SIGTERM') 不等落定 → sidecar 200ms debounce 内的写入丢失。
+  stopSidecar(500);
 });
 
 app.on('window-all-closed', () => {
