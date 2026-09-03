@@ -13,7 +13,6 @@ import {
   detectLiked,
   dislike,
   dislikeMerged,
-  pickPlayableTrack,
   findEquivalentSource,
   getApiOrigin,
 } from '../api';
@@ -35,144 +34,16 @@ import {
 } from '../lib/storage';
 import { useCoverArt } from './useCoverArt';
 import { wpsLog } from '../lib/debug';
+import {
+  FALLBACK_PRIORITY,
+  FULL_SONG_PROVIDERS,
+  getFullSongProviders,
+  shouldApplyLikeResult,
+  TRIAL_MAX_SEC,
+  TRIAL_GAP_SEC,
+  parsePlayableQueue,
+} from './usePlayer.helpers.ts';
 
-/**
- * 跨平台降级的优先级（镜像 server 的 PLAY_PRIORITY）：某首歌的当前源播放
- * 失败（无版权 / 取流 502 → <audio> code=4）时，按这个顺序在同一首统一
- * track 的其它平台 source 里挑下一个能播的。QQ/网易云是完整曲流优先，
- * Deezer/Spotify 是 30s 预览兜底。
- */
-export const FALLBACK_PRIORITY: MusicProvider[] = [
-  'qq',
-  'netease',
-  'deezer',
-  'spotify',
-];
-
-/**
- * 「完整曲流」平台：QQ / 网易云给的是全曲。Deezer/Spotify(非 Premium) 本身就是
- * 30s 预览，**不能**当作 VIP 试听升级的目标（换过去还是 30s，白换）。
- * Spotify Premium (WPS) 是例外——见 getFullSongProviders()。
- */
-export const FULL_SONG_PROVIDERS: MusicProvider[] = ['qq', 'netease'];
-
-/** 动态「完整曲流」平台：QQ/网易云固定 + Spotify（仅 Premium）. */
-export function getFullSongProviders(spotifyTier?: string | null): MusicProvider[] {
-  if (spotifyTier === 'premium') return ['qq', 'netease', 'spotify'];
-  return FULL_SONG_PROVIDERS;
-}
-
-/**
- * T6 (consistency-fixes D2/D5/D6)：判定「await 后的结果是否应该 apply」。
- *
- * 抽出为纯函数（hook 内无法直接单测）—— 比对任务票据 + 当前 track：
- *   - ticket 不等 → 用户已重新 ❤ / 踩，旧结果应丢弃；
- *   - currentTrackId !== startedTrackId → 用户已切歌，旧结果应丢弃；
- *   - 两条件都通过 → 旧结果可应用（setTrack / setFanOutCount）。
- *
- * 也在 spec 测试 usePlayer.test.mjs 里覆盖。
- */
-export function shouldApplyLikeResult(
-  ticket: number,
-  startedTrackId: string,
-  currentTicket: number,
-  currentTrackId: string | undefined,
-): boolean {
-  return ticket === currentTicket && currentTrackId === startedTrackId;
-}
-
-/** VIP 试听判定阈值：实际音频 ≤ TRIAL_MAX_SEC 秒、且元数据全长比它长 GAP 以上，
- *  就认定当前源是被 VIP 锁成的试听片段（QQ 试听常见 30s / 60s）。
- *  - MAX 放到 120：60s 试听的 audio.duration 常是 60.x（曾用 60 卡边界漏检）；
- *    真正的判据是 GAP，MAX 只挡"元数据错得离谱"的极端，放宽无副作用。
- *  - GAP=45 大到没有正常歌会误判：元数据是真实全长，正常播放时 audio.duration
- *    与它只差 1-2s；差 45s+ 只可能是被截断的试听。 */
-export const TRIAL_MAX_SEC = 120;
-export const TRIAL_GAP_SEC = 45;
-
-/**
- * Pick the next fallback source from a unified item's sources list, given
- * the set of platforms already tried. Used by tryFallbackSource.
- * Returns the first source in FALLBACK_PRIORITY order that hasn't been tried
- * and has copyright. Pure function — no side effects.
- */
-export function pickFallbackSource<T extends { platform: string; hasCopyright: boolean }>(
-  sources: T[],
-  tried: Set<string>,
-  priority: readonly string[] = FALLBACK_PRIORITY,
-): T | undefined {
-  return priority
-    .filter((p) => !tried.has(p))
-    .map((p) => sources.find((s) => s.platform === p && s.hasCopyright))
-    .find((s): s is T => Boolean(s));
-}
-
-/**
- * Pick the next "full song" source for trial upgrade. Same as pickFallbackSource
- * but restricted to full-song providers (qq/netease + spotify if premium),
- * and additionally filters out vipLocked sources (switching to another VIP-locked
- * source is pointless — still trial). Pure function.
- */
-export function pickUpgradeSource<T extends { platform: string; hasCopyright: boolean; vipLocked?: boolean }>(
-  sources: T[],
-  tried: Set<string>,
-  fullProviders: readonly string[] = FULL_SONG_PROVIDERS,
-): T | undefined {
-  return fullProviders
-    .filter((p) => !tried.has(p))
-    .map((p) =>
-      sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
-    )
-    .find((s): s is T => Boolean(s));
-}
-
-/**
- * Parse a page of unified search / reco items into a playable queue, dropping
- * items with no playable source and keeping `tracks` ALIGNED with `unifiedItems`
- * (same index → same song) so per-song ❤ detect / fan-out maps correctly.
- * Shared by playSearch (initial queue) and loadNextTrack (reco next batch).
- *
- * `opts.wpsReady` = Spotify Premium + WPS 已激活。此时服务端 bestSource
- * 仍把 Spotify 排最后（PLAY_PRIORITY: qq > netease > deezer > spotify，且
- * Spotify 常被标 vipLocked=30s preview）——但 WPS 是**全曲**可播的，应该
- * 优先用 Spotify 源走 WPS 路径，而不是 fallback 到 deezer 30s 预览。
- */
-function parsePlayableQueue(
-  items: UnifiedSearchItem[],
-  opts?: { wpsReady?: boolean },
-): {
-  tracks: Track[];
-  unifiedItems: UnifiedSearchItem[];
-} {
-  const wpsReady = opts?.wpsReady ?? false;
-  const tracks: Track[] = [];
-  const unifiedItems: UnifiedSearchItem[] = [];
-  for (const it of items) {
-    // WPS 可用 → Spotify 源优先（audioUrl 留空，presentTrack 里 WPS 接管）
-    const spotifySrc = wpsReady
-      ? it.sources.find((s) => s.platform === 'spotify')
-      : undefined;
-    const t: Track | null = spotifySrc
-      ? {
-          id: spotifySrc.trackId,
-          provider: 'spotify',
-          title: it.title,
-          artist: it.artist,
-          album: it.album,
-          coverUrl: it.coverUrl,
-          audioUrl: '', // <audio> 不用，WPS 全曲接管
-          duration: it.duration,
-          liked: false,
-          mediaMid: spotifySrc.mediaMid,
-        }
-      : pickPlayableTrack(it);
-    if (t) {
-      tracks.push(t);
-      unifiedItems.push(it);
-    }
-  }
-  return { tracks, unifiedItems };
-}
 
 /**
  * The playback core: everything that touches the <audio> element, the Web
@@ -186,6 +57,21 @@ function parsePlayableQueue(
  * `audioRef` is owned by the caller (App) and shared with useVolume + the
  * <audio> JSX + the progress/lyrics seek paths.
  */
+// 纯 helpers 拆到 ./usePlayer.helpers（ISSUES.md §5.2 partial split）。
+// 这里 re-export 保持外部 import 路径不变（App.tsx / 测试继续
+// `import { ... } from './usePlayer'`）。
+export {
+  FALLBACK_PRIORITY,
+  FULL_SONG_PROVIDERS,
+  getFullSongProviders,
+  shouldApplyLikeResult,
+  TRIAL_MAX_SEC,
+  TRIAL_GAP_SEC,
+  pickFallbackSource,
+  pickUpgradeSource,
+  parsePlayableQueue,
+} from './usePlayer.helpers.ts';
+
 export function usePlayer(
   audioRef: RefObject<HTMLAudioElement | null>,
   /**
