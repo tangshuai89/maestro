@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`ISSUES.md` §3.5** root `package.json` `description` 更新为跨平台播放器
+  （QQ / NetEase / Deezer / Spotify + DeepSeek AI），不再是过期的 QQ-only 描述。
+- **`ISSUES.md` §4.1** `StorageService` 写凭据文件后 chmod 0o600：抽出
+  `writeLocked()` 助手（writeFileSync + chmod），`scheduleWrite` / `flushSync`
+  都走它；Windows 上 chmod 降级为 debug 日志，不阻塞写。文件：
+  `packages/server/src/common/storage.ts`。
+- **`ISSUES.md` §4.3** `MusicController.proxyAudio` 加 host 白名单
+  （`ALLOWED_STREAM_HOSTS_EXACT` + `_SUFFIX` + `isStreamHostAllowed`），未知
+  域返 403，避免 controller 被当 SSRF 开放代理。文件：
+  `packages/server/src/music/music.controller.ts`。
+- **`ISSUES.md` §3.7** Electron main 日志统一走 `logger`（`src/lib/logger.ts`）：
+  main.ts 16 处 `console.*` 全部替换；logger 集中加 `[main]` 前缀，debug 默认
+  隐藏（`ELECTRON_ENABLE_VERBOSE=1` 开启）；electron 包接入 ESLint
+  `no-console: warn`（allow warn/error）。
+- **`ISSUES.md` §5.1（partial）** `music.service.ts` 歌词块拆分：3481 → 3384 行。
+  新增 `lyrics.service.ts`（getLyrics / getLyricsAggregated /
+  getLyricsAvailability + 独立 lyricsCache），controller 歌词端点直注
+  LyricsService；`getLyricsByName` 因依赖 `searchEquivalent` 留原位避免循环依赖。
 - **`ISSUES.md` §3.1** `NeteaseMusicProvider.fetchSongUrl`: 防御性 `parseInt` + NaN
   校验，非数字 `songId` 早抛 `BadRequestException`，避免 `ids=[NaN]` 让网易云 API
   返 400。文件：`packages/server/src/music/netease.provider.ts`。
@@ -21,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `packages/server/src/music/like-sync.queue.ts`。
 
 ### Added
+- **`ISSUES.md` §5.2（partial）** `usePlayer.ts` 纯 helpers 拆出
+  `usePlayer.helpers.ts`：1460 → 1348 行。FALLBACK_PRIORITY /
+  getFullSongProviders / pickFallbackSource / pickUpgradeSource /
+  parsePlayableQueue 等零 React 依赖决策函数独立成文件，主 hook re-export
+  保持 import 路径不变。完整 3-hook 拆分（usePlaybackTransport / useFallback /
+  useTrialUpgrade）有意不拆——主 hook 是 cohesive 设计，片段共享 refs/closures，
+  强拆会重引入闭包陷阱，留待专项 PR + e2e。
 - **`ISSUES.md` §1.2 / §3.8 ESLint hardening**（renderer / server / common 三包）：
   - `no-console: warn`（`allow: ['warn', 'error']`）—— 堵新 `console.log`，
     不误伤错误日志。
@@ -40,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ISSUES.md` §6.2 CHANGELOG.md`**（本文件）。
 
 ### Tests
+- `storage.test.ts`：新增 7 / 8（写入后 mode = 0o600、历史 0o644 被收紧），6 → 8。
+- `music.controller.allowlist.test.ts`：新增 10 项（QQ / NetEase / Spotify /
+  Deezer exact + suffix / SSRF / 非 http(s) / 非法 URL / suffix 误匹配 /
+  case-insensitive）。
+- `electron/src/lib/logger.test.ts`：新增 3 项（前缀透传 + debug 默认隐藏 +
+  verbose 开启）。
+- 9 个直接 `new MusicService` 的测试文件补 `lyricsService` 构造参数
+  （lyrics-aggregate / library-import / library-badge-merge /
+  liked-cache-consistency / cross-platform-match / search-unified /
+  get-next-track / per-session-lock / stale-canonicalid-guard）。
 - `packages/server/src/music/netease.provider.test.ts`：新增 29 / 30 两项
   （非数字 songId 抛 BadRequestException、前导零数字串正常解析），28 → 30。
 - `packages/server/src/music/qq.provider.test.ts`：新增 34 / 35 两项
