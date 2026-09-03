@@ -386,10 +386,16 @@ export class LikeSyncQueue {
 
   /** 失败后等待时长 = BASE * 2^attempt + [0, BASE) 随机抖动。attempt 从 0 计
    *  算 → 1s+jitter, 2s+jitter, 4s+jitter... 抖动避免多个失败 target 在同一
-   *  瞬间扎堆重试打爆平台 API（thundering herd）。 */
-  private static backoffMs(attempt: number): number {
+   *  瞬间扎堆重试打爆平台 API（thundering herd）。
+   *
+   * 接受可选 `rng` 让单测断言「种子 X → 固定 jitter 值」（ISSUES.md §2.11）；
+   * 不传时退化为 Math.random（生产路径行为不变）。 */
+  private static backoffMs(
+    attempt: number,
+    rng: () => number = Math.random,
+  ): number {
     const base = LikeSyncQueue.BACKOFF_BASE_MS * 2 ** attempt;
-    return base + Math.floor(Math.random() * LikeSyncQueue.BACKOFF_BASE_MS);
+    return base + Math.floor(rng() * LikeSyncQueue.BACKOFF_BASE_MS);
   }
 
   /** 是否致命错误（不该重试）。
