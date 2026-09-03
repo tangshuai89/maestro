@@ -255,6 +255,21 @@ The Vite dev server proxies `/api/*` (with the `/api` prefix stripped),
 `/music/*`, `/auth/*` and `/reco/*` to NestJS on `:3200`, so the whole app
 is same-origin in dev and one session cookie is shared.
 
+## Tests
+
+```bash
+npm test                # full suite (auto-discovers packages/*/src/**/*.test.ts)
+npm run typecheck       # tsc --noEmit across all workspaces
+npm run lint            # ESLint across renderer / server / common
+npm test -- --watch     # re-run on file change
+npm test -- --ci        # bail on first failure (CI mode)
+npm test -- --coverage  # c8 line coverage gate (≥60%)
+```
+
+Tests are sandbox-friendly: e2e tests don't `listen()` on real sockets —
+they drive NestJS via an in-process HTTP handler (`src/test-helpers/in-process-http.ts`)
+so `npm test` runs cleanly even when bind() is denied.
+
 ## Environment
 
 Every variable is optional in dev; the server falls back to sensible
