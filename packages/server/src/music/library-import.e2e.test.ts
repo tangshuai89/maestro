@@ -17,6 +17,7 @@ export {};
 const assert = require('node:assert');
 
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 const { buildUnifiedItems } = require('./search.util');
 
 // provider.fetchLiked() 的真实形状：audioUrl 是空的，播放时才取流。
@@ -69,6 +70,12 @@ const likeSync = {
   enqueue: () => {},
   pendingTargets: () => [],
 };
+const lyricsService = new LyricsService(
+  netease as any,
+  deezer as any,
+  qq as any,
+  lyricsOvh as any,
+);
 
 const svc = new MusicService(
   fakeStorage,
@@ -77,6 +84,7 @@ const svc = new MusicService(
   deezer,
   spotify,
   lyricsOvh,
+  lyricsService,
   match,
   likeSync,
 );
@@ -160,6 +168,7 @@ async function importTimeoutRegression() {
     deezer,
     spotify,
     lyricsOvh,
+    lyricsService,
     match,
     likeSync,
   );

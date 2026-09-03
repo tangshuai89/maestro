@@ -118,6 +118,7 @@ export async function runLoginWindow<T>(
 ): Promise<T> {
   const deadline = cfg.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const pollMs = cfg.pollIntervalMs ?? DEFAULT_POLL_MS;
+  // eslint-disable-next-line no-console
   const log = cfg.log ?? ((m) => console.log(`[login-window] ${m}`));
   const markerNames = cfg.markerNames ?? [];
 

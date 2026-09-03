@@ -171,4 +171,45 @@ function makeService() {
   console.log('✅ 6. mergeFrom 返回被触碰的 key');
 }
 
-console.log('\n🎉 全部 6 个测试通过');
+// ── 7. 写入后 chmod 0o600（ISSUES.md §4.1）──────────────────
+{
+  const svc = makeService();
+  svc.set('qq:cookie', 'secret-cookie-value');
+  svc.flushSync();
+  // mkdtempSync 默认 0o700（owner only rwx），但 mkdtempSync 创建的是
+  // 目录；storage 文件本身经 writeLocked 应被收紧到 0o600。
+  const stat = fs.statSync((svc as any).file);
+  // mode & 0o777 提取权限位（高位是文件类型）
+  const mode = stat.mode & 0o777;
+  assert.strictEqual(
+    mode,
+    0o600,
+    `凭据文件 mode 应为 0o600（owner rw only），实际 0o${mode.toString(8)}`,
+  );
+  console.log('✅ 7. 写入后凭据文件 chmod 0o600（owner rw only）');
+}
+
+// ── 8. 已有历史文件被覆盖时也 chmod 0o600 ─────────────────
+// 历史 state.json 是 umask 创建的（0o644），writeLocked 必须每次收紧。
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mbx-storage-legacy-'));
+  const file = path.join(dir, 'state.json');
+  // 显式写成 0o644 模拟旧文件
+  fs.writeFileSync(file, '{}', { mode: 0o644 });
+  fs.chmodSync(file, 0o644); // 保险：mkdtempSync + writeFileSync 双重保险
+  const fakeCfg = { storageDir: dir };
+  const svc = new StorageService(fakeCfg);
+  // 重定向到旧路径：构造一个 file 字段（StorageService 内部用 cfg.storageDir/state.json）
+  svc.set('legacy-key', 'legacy-value');
+  svc.flushSync();
+  const stat = fs.statSync(file);
+  const mode = stat.mode & 0o777;
+  assert.strictEqual(
+    mode,
+    0o600,
+    `历史 0o644 文件经 writeLocked 后应被收紧到 0o600，实际 0o${mode.toString(8)}`,
+  );
+  console.log('✅ 8. 已有 0o644 历史文件被收紧到 0o600');
+}
+
+console.log('\n🎉 全部 8 个测试通过');

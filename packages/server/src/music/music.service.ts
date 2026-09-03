@@ -35,6 +35,7 @@ import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
+import { LyricsService } from './lyrics.service';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
@@ -50,14 +51,6 @@ const IMPORT_FETCH_TIMEOUT_MS = 30_000;
  *  5000 对应重度用户 1-2 年的累计 ❤ 量，再多就是滥用。 */
 const FANOUT_MAX = 5_000;
 
-/** 歌词多源回退顺序——QQ 匿名可用且 LRC 最全，其次网易云（需登录），
- *  Deezer 大多没词（公共 API 不带 lyrics）。Spotify 无歌词 API，不在列。 */
-const LYRICS_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
-
-/** 歌词结果（含 miss）的内存缓存 TTL / 容量上限。 */
-const LYRICS_CACHE_TTL_MS = 10 * 60 * 1000;
-const LYRICS_CACHE_MAX = 2_000;
-
 /** 跨平台等价曲搜索（同 (session, platform, title+artist kw, 时长分桶)）的内存缓存。
  *  TTL 按结果性质分级：
  *  - **命中 / 干净缺席**（搜索成功但匹配不到——歌确实不在该平台）→ 1h。缺席是
@@ -70,8 +63,11 @@ const EQUIV_MATCH_CACHE_TTL_MS = 60 * 60 * 1000;
 const EQUIV_FAIL_CACHE_TTL_MS = 30_000;
 const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
 
-/** 有任何一行 time>0 才算 synced——lyrics.ovh / Deezer 纯文本歌词全部
- *  time=0，前端据此关掉滚动高亮和点击跳转。 */
+// IS_LYRIC_SOURCE_PRIORITY：仅 getLyricsByName 用（其它歌词聚合逻辑已迁
+// LyricsService）。getLyricsByName 留 MusicService 是因为它依赖本类的
+// searchEquivalent——避免循环依赖。
+const IS_LYRIC_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
+
 function isSynced(lines: LyricLine[]): boolean {
   return lines.some((l) => l.time > 0);
 }
@@ -205,6 +201,7 @@ export class MusicService {
     private readonly deezer: DeezerMusicProvider,
     private readonly spotify: SpotifyMusicProvider,
     private readonly lyricsOvh: LyricsOvhProvider,
+    private readonly lyricsService: LyricsService,
     private readonly match: MatchService,
     private readonly likeSync: LikeSyncQueue,
   ) {
@@ -3279,48 +3276,9 @@ export class MusicService {
     provider: MusicProvider,
     trackId: string,
   ): Promise<LyricLine[] | null> {
-    const cacheKey = `${provider}:${trackId}`;
-    const cached = this.lyricsCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < LYRICS_CACHE_TTL_MS) {
-      return cached.lines;
-    }
-    let lines: LyricLine[] | null = null;
-    try {
-      if (provider === 'netease') {
-        const ps = this.requireProviderSession(session, provider);
-        if (ps) lines = await this.netease.getLyrics(ps, trackId);
-      } else if (provider === 'deezer') {
-        lines = await this.deezer.getLyrics(trackId);
-      } else if (provider === 'qq') {
-        // QQ: lyrics work anonymously; pass the session cookie if we have
-        // one (harmless) but fall back to an empty session otherwise.
-        lines = await this.qq.getLyrics(session.providers.qq ?? {}, trackId);
-      }
-      // Spotify exposes no lyrics API — falls through as null.
-    } catch (err) {
-      this.logger.warn(
-        `lyrics fetch failed (${provider}/${trackId}): ${(err as Error).message}`,
-      );
-      return null; // 失败不缓存，下次还有机会
-    }
-    this.lyricsCache.set(cacheKey, { at: Date.now(), lines });
-    this.pruneLyricsCache();
-    return lines;
-  }
-
-  /** (provider:trackId | ovh:artist|title) → 最近一次歌词结果。miss（null）
-   *  也缓存，availability 扫描一页搜索结果时不至于反复打同一批接口。 */
-  private readonly lyricsCache = new Map<
-    string,
-    { at: number; lines: LyricLine[] | null }
-  >();
-
-  private pruneLyricsCache(): void {
-    if (this.lyricsCache.size <= LYRICS_CACHE_MAX) return;
-    for (const key of this.lyricsCache.keys()) {
-      this.lyricsCache.delete(key);
-      if (this.lyricsCache.size <= LYRICS_CACHE_MAX) break;
-    }
+    // 拆分到 LyricsService（ISSUES.md §5.1）。本方法保留以兼容已有调用
+    // 点（lyrics-aggregate.e2e.test.ts 等）；controller 已直注 LyricsService。
+    return this.lyricsService.getLyrics(session, provider, trackId);
   }
 
   /** (sessionId|platform|kw|时长分桶) → 最近一次等价曲搜索结果。null 也缓存。
@@ -3361,40 +3319,9 @@ export class MusicService {
     synced: boolean;
     source: MusicProvider | 'lyricsovh' | null;
   }> {
-    const tried = new Set<string>();
-    const attempts: Array<{ platform: MusicProvider; trackId: string }> = [];
-    if (trackId) attempts.push({ platform: provider, trackId });
-    for (const p of LYRICS_SOURCE_PRIORITY) {
-      for (const e of extras) {
-        if (e.platform === p && e.trackId) attempts.push(e);
-      }
-    }
-    for (const a of attempts) {
-      const key = `${a.platform}:${a.trackId}`;
-      if (tried.has(key)) continue;
-      tried.add(key);
-      const lines = await this.getLyrics(session, a.platform, a.trackId);
-      if (lines && lines.length > 0) {
-        return { lines, synced: isSynced(lines), source: a.platform };
-      }
-    }
-    // 第三方兜底（纯文本，无时间戳）
-    if (title && artist) {
-      const ovhKey = `ovh:${artist}|${title}`;
-      const cached = this.lyricsCache.get(ovhKey);
-      let lines: LyricLine[] | null;
-      if (cached && Date.now() - cached.at < LYRICS_CACHE_TTL_MS) {
-        lines = cached.lines;
-      } else {
-        lines = await this.lyricsOvh.getLyrics(artist, title);
-        this.lyricsCache.set(ovhKey, { at: Date.now(), lines });
-        this.pruneLyricsCache();
-      }
-      if (lines && lines.length > 0) {
-        return { lines, synced: false, source: 'lyricsovh' };
-      }
-    }
-    return { lines: null, synced: false, source: null };
+    return this.lyricsService.getLyricsAggregated(
+      session, provider, trackId, extras, title, artist,
+    );
   }
 
   /**
@@ -3419,7 +3346,7 @@ export class MusicService {
   }> {
     if (!title || !artist) return { lines: null, synced: false, source: null };
     const tried = new Set<string>();
-    for (const platform of LYRICS_SOURCE_PRIORITY) {
+    for (const platform of IS_LYRIC_SOURCE_PRIORITY) {
       if (tried.has(platform)) continue;
       tried.add(platform);
       const t = await this.searchEquivalent(session, platform, {
@@ -3445,20 +3372,7 @@ export class MusicService {
     session: Session,
     sources: Array<{ platform: MusicProvider; trackId: string }>,
   ): Promise<{ available: boolean; source: MusicProvider | null }> {
-    const ordered = [...sources].sort(
-      (a, b) =>
-        LYRICS_SOURCE_PRIORITY.indexOf(a.platform) -
-        LYRICS_SOURCE_PRIORITY.indexOf(b.platform),
-    );
-    for (const s of ordered) {
-      if (!s.trackId) continue;
-      if (!LYRICS_SOURCE_PRIORITY.includes(s.platform)) continue;
-      const lines = await this.getLyrics(session, s.platform, s.trackId);
-      if (lines && lines.length > 0) {
-        return { available: true, source: s.platform };
-      }
-    }
-    return { available: false, source: null };
+    return this.lyricsService.getLyricsAvailability(session, sources);
   }
 
   /** When the provider is unavailable, return a minimal placeholder so the UI

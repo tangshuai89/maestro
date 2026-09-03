@@ -15,6 +15,7 @@ export {};
 const assert = require('node:assert');
 
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 
 const fakeStorage = (() => {
   const m = new Map<string, unknown>();
@@ -38,6 +39,12 @@ const likeSync = {
   enqueue: () => {},
   pendingTargets: () => [],
 };
+const lyricsService = new LyricsService(
+  netease as any,
+  deezer as any,
+  qq as any,
+  lyricsOvh as any,
+);
 
 const svc = new MusicService(
   fakeStorage,
@@ -46,6 +53,7 @@ const svc = new MusicService(
   deezer,
   spotify,
   lyricsOvh,
+  lyricsService,
   match,
   likeSync,
 );
@@ -332,6 +340,7 @@ async function main() {
       bindSessionId: () => {}, // MusicService 传 session 时会绑 sessionId（refresh 单飞用）
     },
     { getLyrics: async () => null },
+    lyricsService,
     { mergeLibrary: (tracks: any[]) => tracks },
     {
       registerProcessor: () => {},

@@ -15,6 +15,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
 import { oauthBuffer } from './auth/oauth-buffer';
+import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
 // BOTH dev and packaged mode (~/Library/Application Support/Maestro). Without
@@ -113,7 +114,7 @@ function startSidecar(): Promise<void> {
       'server',
       'main.js',
     );
-    console.log(`[main] spawning sidecar: ${serverEntry}`);
+    logger.log(`spawning sidecar: ${serverEntry}`);
     // Persist under Electron's userData (~/Library/Application Support/Maestro
     // on macOS) so state + backups survive app updates and live in a stable,
     // user-discoverable place — not next to the read-only .app bundle. Backups
@@ -136,11 +137,11 @@ function startSidecar(): Promise<void> {
     sidecar.stdout?.on('data', (b) => process.stdout.write(`[sidecar] ${b}`));
     sidecar.stderr?.on('data', (b) => process.stderr.write(`[sidecar-err] ${b}`));
     sidecar.on('error', (err) => {
-      console.error('[main] sidecar spawn error:', err);
+      logger.error('sidecar spawn error:', err);
       reject(err);
     });
     sidecar.on('exit', (code) => {
-      console.log(`[main] sidecar exited with code=${code}`);
+      logger.log(`sidecar exited with code=${code}`);
       sidecar = null;
     });
     waitForSidecar(SIDECAR_PORT)
@@ -158,7 +159,7 @@ function startSidecar(): Promise<void> {
  * 在 promise 落定前退出）。sidecar 的 flushSync 是同步 I/O，实测 <50ms。 */
 function stopSidecar(graceMs = 0): void {
   if (!sidecar) return;
-  console.log('[main] killing sidecar');
+  logger.log('killing sidecar');
   try {
     sidecar.kill('SIGTERM');
   } catch {
@@ -349,7 +350,7 @@ function createWindow(): void {
     'console-message',
     (_e: unknown, level: number, message: string, line: number, source: string) => {
       const tag = ['DBG', 'LOG', 'WARN', 'ERR'][level] ?? 'LOG';
-      console.log(`[renderer ${tag}] ${message}  (${source}:${line})`);
+      logger.log(`[renderer ${tag}] ${message}  (${source}:${line})`);
     },
   );
 
@@ -504,7 +505,7 @@ function openQqLoginWindow(): Promise<QqLoginResult> {
       const { cookie, uin, all, hasMarker } = await readQqCookies(realWin);
       if (!hasMarker) return null;
       const result: QqLoginResult = { cookie, uin, extraCookies: all };
-      console.log(
+      logger.log(
         `[qq-login] captured ${Object.keys(all).length} cookies, ` +
           `uin=${uin ?? '?'}, keys=[${Object.keys(all).join(',')}]`,
       );
@@ -634,7 +635,7 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
         csrfToken: csrf,
         extraCookies: all,
       };
-      console.log(
+      logger.log(
         `[netease-login] captured MUSIC_U (len=${musicU.length}), ` +
           `${Object.keys(all).length} cookies`,
       );
@@ -740,7 +741,7 @@ if (!gotTheLock) {
  *  Extracted so 'open-url' (macOS) and 'second-instance' argv (Win/Linux)
  *  share one implementation. */
 function handleDeepLink(url: string): void {
-  console.log('[main] deep link:', url);
+  logger.log('deep link:', url);
   try {
     const parsed = new URL(url.replace(/\/\?/, '?'));
     // OAuth error: Spotify may redirect with ?error=access_denied&state=...
@@ -750,18 +751,18 @@ function handleDeepLink(url: string): void {
     const state = parsed.searchParams.get('state');
     if (error) {
       oauthBuffer.pushError(error, state ?? undefined, url);
-      console.log(`[main] oauth-buffer: pushed error=${error}`);
+      logger.log(`oauth-buffer: pushed error=${error}`);
       return;
     }
     const code = parsed.searchParams.get('code');
     if (!code || !state) {
-      console.error('[main] deep link 缺 code 或 state，忽略:', url);
+      logger.error('deep link 缺 code 或 state，忽略:', url);
       return;
     }
     oauthBuffer.push(code, state);
-    console.log('[main] oauth-buffer: pushed callback');
+    logger.log('oauth-buffer: pushed callback');
   } catch (err) {
-    console.error('[main] deep link parse failed:', err);
+    logger.error('deep link parse failed:', err);
   }
 }
 
@@ -784,7 +785,7 @@ app.whenReady().then(async () => {
     await components.whenReady();
     widevineReady = true;
     widevineStatus = components.status();
-    console.log('[main] widevine components ready:', widevineStatus);
+    logger.log('widevine components ready:', widevineStatus);
   } catch (err) {
     // 组件加载失败不阻塞启动——非 Spotify 源照常用，Spotify 自动退回 30s 预览。
     // 把 detail 也 stringify 出来（默认 devtools 只显示 [Object]）。
@@ -792,8 +793,8 @@ app.whenReady().then(async () => {
       try { return JSON.stringify(v, (_k, val) => typeof val === 'bigint' ? String(val) : val); }
       catch { return String(v); }
     };
-    console.error(
-      '[main] widevine components failed (Spotify 全曲不可用，退回 30s 预览):',
+    logger.error(
+      'widevine components failed (Spotify 全曲不可用，退回 30s 预览):',
       safeStr(err),
     );
   }
@@ -809,7 +810,7 @@ app.whenReady().then(async () => {
   try {
     await startSidecar();
   } catch (err) {
-    console.error('[main] failed to start sidecar:', err);
+    logger.error('failed to start sidecar:', err);
     // 不阻塞窗口打开——前端能展示一个错误面板，比黑屏好
   }
 
@@ -822,7 +823,7 @@ app.whenReady().then(async () => {
     try {
       app.dock?.setIcon(nativeImage.createFromPath(assetPath('icon.png')));
     } catch (err) {
-      console.warn('[main] dock.setIcon failed:', err);
+      logger.warn('dock.setIcon failed:', err);
     }
   }
 

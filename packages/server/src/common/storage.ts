@@ -38,11 +38,29 @@ export class StorageService {
     this.writeTimer = setTimeout(() => {
       this.writeTimer = null;
       try {
-        fs.writeFileSync(this.file, JSON.stringify(this.cache, null, 2));
+        this.writeLocked();
       } catch (err) {
         this.logger.error(`Failed to write storage: ${(err as Error).message}`);
       }
     }, 200);
+  }
+
+  /**
+   * 写 storage 文件并 chmod 0o600（owner 读写 only）。ISSUES.md §4.1：
+   * QQ cookie / NetEase MUSIC_U / Spotify token 全是明文；多用户 macOS
+   * 或备份到外置盘时默认 umask 创建太松。每次写都收紧一次，覆盖历史
+   * 文件的旧权限。Windows 上 fs.chmodSync 仅作 best-effort（不抛错）。
+   */
+  private writeLocked(): void {
+    fs.writeFileSync(this.file, JSON.stringify(this.cache, null, 2));
+    try {
+      fs.chmodSync(this.file, 0o600);
+    } catch (err) {
+      // Windows 或只读盘上 chmod 可能失败——日志降级到 debug，不阻塞写。
+      this.logger.debug(
+        `storage chmod 0o600 skipped: ${(err as Error).message}`,
+      );
+    }
   }
 
   get<T>(key: string): T | undefined {
@@ -113,7 +131,7 @@ export class StorageService {
       this.writeTimer = null;
     }
     try {
-      fs.writeFileSync(this.file, JSON.stringify(this.cache, null, 2));
+      this.writeLocked();
     } catch (err) {
       this.logger.error(`Failed to flush storage: ${(err as Error).message}`);
     }

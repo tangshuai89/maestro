@@ -23,6 +23,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-t2-'));
 process.env.STORAGE_DIR = tmpDir;
 
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 const { ConfigService } = require('../common/config');
 const { StorageService } = require('../common/storage');
 const { SessionService } = require('../common/session');
@@ -84,6 +85,12 @@ async function makeServiceV2() {
   const qs = quietProviders();
   const match = new MatchService(qs);
   const { LikeSyncQueue } = require('./like-sync.queue');
+  const lyricsService = new LyricsService(
+    qs.netease,
+    qs.deezer,
+    qs.qq,
+    qs.lyricsOvh,
+  );
   const ms = new MusicService(
     storage,
     qs.qq,
@@ -91,6 +98,7 @@ async function makeServiceV2() {
     qs.deezer,
     qs.spotify,
     qs.lyricsOvh,
+    lyricsService,
     match,
     new LikeSyncQueue(),
   );
