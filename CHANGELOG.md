@@ -83,6 +83,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `packages/server/src/music/like-sync.queue.test.ts`：新增第 5 项
   （`backoffMs` 注入 rng → 精确值 4500 / 1500 / 32500），4 → 5。
 
+### Fixed
+- **Stability round 1**: `searchEquivalent` 同 key 并发请求 coalescing
+  —— 读 cache miss → await 远端 → 写 cache 在 await 间断开，让 like sync 与
+  VIP 升级并发时各自打后端。仿 RefreshCoordinator 加 inflight map，N 个
+  awaiter 共享同一 Promise，失败透传 cache 不写。新增 5 项回归测试
+  （串行命中 / 并发 10 共享 / 失败透传 + 清理 / 不同 key 不互并 / inflight
+  完成后清零）。文件：packages/server/src/music/music.service.ts +
+  `search-equivalent-coalesce.test.ts`。
+- **Stability round 2**:
+  - `SessionService` reaperTimer 缺 onModuleDestroy 清理：`nest start --watch`
+    热重载场景下每次重载都加一个 setInterval，N 次重载后 N 个 eviction 并行跑。
+    修：加 reaperTimer 字段 + onModuleDestroy 显式 clearInterval（正常退出
+    靠 unref，热重载靠 destroy）。文件：packages/server/src/common/session.ts。
+  - `LyricsService.getLyrics` 同 searchEquivalent 的 cache race：getLyricsAvailability
+    顺序扫每个源时同 key 各自打后端。仿 searchEquivalent 加 inflight map。
+    新增 3 项回归测试。文件：packages/server/src/music/lyrics.service.ts +
+    `lyrics-coalesce.test.ts`。
+  - `music.service.ts` 调 `spotify.like/unlike` 裸 await：toggleLike 走
+    LikeSyncQueue 8s hard timeout 兜底（最坏用户点 ❤ 卡 8s 不响应）。
+    加 `withTimeout(5s)` 与 search/fetch 统一超时档。文件：
+    `packages/server/src/music/music.service.ts`。
+
 ## [2026-09-03] - Pre-CHANGELOG baseline
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）+

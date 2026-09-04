@@ -81,6 +81,13 @@ interface SessionBlob {
 @Injectable()
 export class SessionService implements OnModuleDestroy {
   private readonly logger = new Logger(SessionService.name);
+  /**
+   * Hourly eviction timer handle. 存字段是为了 onModuleDestroy 优雅清理——
+   * 仅靠 unref() 在 `nest start --watch` 热重载场景下不可靠（每个模块实例
+   * 都重新 onModuleInit，旧实例的 timer 仍挂在事件循环里，进程会一直
+   * 累积「过期会话清理」任务）。和 BackupController 的 autoTimer 同模式。
+   */
+  private reaperTimer: ReturnType<typeof setInterval> | null = null;
   private blob: SessionBlob = { byId: {} };
 
   constructor(
@@ -103,17 +110,22 @@ export class SessionService implements OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    if (this.reaperTimer) {
+      clearInterval(this.reaperTimer);
+      this.reaperTimer = null;
+    }
     this.storage.set(SESSION_KEY, this.blob);
     this.storage.flushSync();
   }
 
   onModuleInit(): void {
     // Hourly reaper so the cookie's sliding window doesn't accumulate
-    // orphan sessions in memory. unref() lets the timer not block process
-    // exit.
-    const t = setInterval(() => this.evictExpired(), 60 * 60_000);
+    // orphan sessions in memory. unref() 兜底：进程正常退出时不阻塞。
+    // 但 nest start --watch 热重载场景下 onModuleDestroy 会显式 clear——
+    // 否则每次重载都加一个 timer，N 次重载后 N 个 eviction 并行跑。
+    this.reaperTimer = setInterval(() => this.evictExpired(), 60 * 60_000);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (t as any).unref?.();
+    (this.reaperTimer as any).unref?.();
   }
 
   private evictExpired(): void {
