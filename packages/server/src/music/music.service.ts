@@ -1448,15 +1448,33 @@ export class MusicService {
         : EQUIV_FAIL_CACHE_TTL_MS;
       if (Date.now() - cached.at < ttl) return cached.track;
     }
-
-    const result = await this.searchEquivalentUncached(session, platform, meta, kw);
-    this.equivSearchCache.set(cacheKey, {
-      at: Date.now(),
-      track: result.track,
-      clean: result.clean,
+    // In-flight coalescing：同 key 已有未完成请求 → 共享同一 Promise，避免
+    // like sync 与 VIP 升级并发时各自打后端。`if (existing)` 已经在
+    // 临界区（cache miss 之后），JS 单线程 + 没有 await → 不会双重创建。
+    const inflight = this.inflightSearchEquivalent.get(cacheKey);
+    if (inflight) return inflight;
+    const p = this.searchEquivalentUncached(session, platform, meta, kw).then(
+      (result) => {
+        this.equivSearchCache.set(cacheKey, {
+          at: Date.now(),
+          track: result.track,
+          clean: result.clean,
+        });
+        this.pruneEquivSearchCache();
+        return result.track;
+      },
+      // 不动 reject：失败透传上去由调用方 catch；inflight 仍需 finally 清
+    );
+    p.finally(() => {
+      // 只清自己的 key（防止覆盖期间新发的同 key 请求——实际不会发生
+      // 因为 inflight.get/set 是同步操作，Promise 已 resolve 后才会
+      // 跑 finally；只是防御性写法）
+      if (this.inflightSearchEquivalent.get(cacheKey) === p) {
+        this.inflightSearchEquivalent.delete(cacheKey);
+      }
     });
-    this.pruneEquivSearchCache();
-    return result.track;
+    this.inflightSearchEquivalent.set(cacheKey, p);
+    return p;
   }
 
   /**
@@ -3288,6 +3306,18 @@ export class MusicService {
   private readonly equivSearchCache = new Map<
     string,
     { at: number; track: Track | null; clean: boolean }
+  >();
+
+  /**
+   * In-flight request coalescing for `searchEquivalent`（稳定性扫描：同
+   * session+platform+kw+时长分桶的并发调用过去各自打后端，造成 N 倍
+   * quota）。同 key 的第二个 awaiter 共享同一 Promise，结束后一次性
+   * 写 cache；失败不写 cache（保持原行为），inflight key 永远 finally
+   * 删除，不泄漏。
+   */
+  private readonly inflightSearchEquivalent = new Map<
+    string,
+    Promise<Track | null>
   >();
 
   private pruneEquivSearchCache(): void {
