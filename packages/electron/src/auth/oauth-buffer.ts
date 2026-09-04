@@ -70,16 +70,21 @@ export class OAuthCallbackBuffer {
     this.deliver(e);
   }
 
-  /** Drain the FIFO waiters with `entry`, else buffer `entry` for the
-   *  next consume(). pending is cleared by consume() itself on the
-   *  capture path; deliver() doesn't touch it. */
+  /** Drain **only the FIFO head** waiter with `entry`, else buffer
+   *  `entry` for the next consume(). pending is cleared by consume() on
+   *  the capture path; deliver() doesn't touch it.
+   *
+   * T9 (consistency-fixes F2)：每次 push 只 resolve 一个 waiter。
+   * 历史行为是「drain all waiters」——同一 OAuth PKCE code 被多个并发
+   * consume() 拿到后各自调 /auth/spotify/redeem，第二次 redeem 因 Spotify
+   * 服务端 one-shot 校验返 invalid_grant。FIFO-head-only 让多余的
+   * consume() 继续等下一次 push（避免同一个 code 被消费多次）。
+   */
   private deliver(entry: BufferedOAuthEntry): void {
     if (this.waiters.length > 0) {
-      const drained = this.waiters.splice(0, this.waiters.length);
-      for (const w of drained) {
-        clearTimeout(w.timer);
-        w.resolve(entry);
-      }
+      const head = this.waiters.shift()!;
+      clearTimeout(head.timer);
+      head.resolve(entry);
       return;
     }
     this.pending = entry;

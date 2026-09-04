@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   OnModuleDestroy,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -79,6 +80,7 @@ interface SessionBlob {
 
 @Injectable()
 export class SessionService implements OnModuleDestroy {
+  private readonly logger = new Logger(SessionService.name);
   private blob: SessionBlob = { byId: {} };
 
   constructor(
@@ -210,10 +212,28 @@ export class SessionService implements OnModuleDestroy {
    * in state.json (the previous implementation mutated session.spotify
    * in place and never called persist → token refresh was lost across
    * server restarts until the next refresh attempt).
+   *
+   * T7 (consistency-fixes E1)：对象身份校验。
+   *
+   * 背景：refresh 在途时（~几秒）用户可能登出再重登。登出 → clearProvider
+   * 删除 s.providers.spotify → 重登 → setProvider 写入**全新对象**作为
+   * s.providers.spotify。旧 refresh Promise 完成后调 persistSpotify 时如果
+   * 不校验，就把这个旧 ProviderSession 的 token 写进新对象里——
+   * 「登出后 token 复活」、「重登被旧账号覆盖」。
+   *
+   * 修复：传入的 providerSession 必须是 `s.providers.spotify` 的**同一对象**，
+   * 否则说明 session 已被替换 / 清除 → 丢弃写入 + log。
    */
   persistSpotify(sessionId: string, providerSession: ProviderSession): void {
     const s = this.blob.byId[sessionId];
     if (!s) return;
+    if (s.providers.spotify !== providerSession) {
+      this.logger.warn(
+        `persistSpotify: 传入 ProviderSession 与 session[${sessionId.slice(0, 8)}…].spotify ` +
+          `不是同一引用 → 用户已登出/重登，丢弃 refresh 写入（旧 accessToken 复活风险）`,
+      );
+      return;
+    }
     s.providers.spotify = providerSession.spotify
       ? { ...s.providers.spotify, ...providerSession }
       : providerSession;
@@ -233,7 +253,17 @@ export class SessionService implements OnModuleDestroy {
     provider: MusicProvider,
     ts: number,
   ): void {
-    session.prefs = { ...(session.prefs ?? {}), [`lastValidatedAt:${provider}`]: String(ts) };
+    this.setPref(session, `lastValidatedAt:${provider}`, String(ts));
+  }
+
+  /**
+   * T10 (consistency-fixes G2)：setPref — 写 prefs[key] 并 persist 到磁盘。
+   * 旧实现：setDeezerPreset 直接改 `session.prefs = {...}` 不调 this.persist()，
+   * 内存改了但 state.json 没写 → 重启丢 preset。新实现：setPref 内部
+   * 一并 persist，所有 pref 写入路径统一收敛到这里。
+   */
+  setPref(session: Session, key: string, value: string): void {
+    session.prefs = { ...(session.prefs ?? {}), [key]: value };
     this.persist();
   }
 

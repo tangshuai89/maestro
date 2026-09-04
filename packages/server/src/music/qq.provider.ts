@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Track } from './types';
 import { ProviderSession } from '../common/session';
 import { type LyricLine, parseLrc } from '../common/lyrics';
+import { randomBytes } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
 
 /** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
@@ -439,20 +440,31 @@ export class QqMusicProvider {
     session: ProviderSession,
     _radioId?: number,
     count = 10,
+    // ISSUES.md §3.3：rng 注入让单测断言「种子 X → 列表 Y」；不传时
+    // 退化为 Math.random（生产路径行为不变）。
+    rng: () => number = Math.random,
   ): Promise<Track[]> {
     const seeds = QqMusicProvider.RADIO_SEEDS;
-    const seed = seeds[Math.floor(Math.random() * seeds.length)];
+    const seed = seeds[Math.floor(rng() * seeds.length)];
     const tracks = await this.search(session, seed, 20);
-    // Fisher–Yates 打乱后取前 count 首
-    for (let i = tracks.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
-    }
+    QqMusicProvider.shuffle(tracks, rng);
     this.logger.log(`QQ radio(seed="${seed}") → ${tracks.length} 首`);
     return tracks.slice(0, count).map((t) => ({
       ...t,
       audioUrl: '', // 由 getStreamUrl 在播放时动态获取
     }));
+  }
+
+  /**
+   * Fisher–Yates in-place 打乱。可注入 rng 让单测断言顺序；不传时用
+   * Math.random（生产路径行为不变）。ISSUES.md §3.3。
+   */
+  private static shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
   }
 
   /**
@@ -619,9 +631,10 @@ export class QqMusicProvider {
   }
 
   private randomGuid(): string {
-    return Array.from({ length: 32 }, () =>
-      Math.floor(Math.random() * 16).toString(16),
-    ).join('');
+    // ISSUES.md §3.2：改用 crypto.randomBytes(16) 替代 Math.random × 32。
+    // 128 bit 真随机（等价 UUIDv4 强度），每次调用唯一，碰撞概率 2^-128，
+    // 不需要 Date.now() 前缀。QQ 鉴权对单次唯一性没要求。
+    return randomBytes(16).toString('hex');
   }
 
   /**

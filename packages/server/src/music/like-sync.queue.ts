@@ -87,6 +87,36 @@ export class LikeSyncQueue {
   private discoverResolver?: LikeDiscoverResolver;
 
   /**
+   * T3 (consistency-fixes B3)：可见性窗口。
+   *
+   * 背景：远程写成功后 `active=null`，但平台端最终一致（fetchLiked 可能
+   * 还返回旧集合）→ 下次 reconcile 把刚写成功的 like 当失配抹掉。
+   *
+   * 修复：完成的 target 保留一个 30s「可见性窗口」——pendingTargets 在
+   * 窗口内继续把它算作在途（liked=true 加、liked=false 删），对账就
+   * 不会误抹。窗口常量可注入便于测试。
+   */
+  static readonly DEFAULT_VISIBILITY_WINDOW_MS = 30_000;
+  private visibilityWindowMs: number = LikeSyncQueue.DEFAULT_VISIBILITY_WINDOW_MS;
+  /**
+   * 已完成但仍在可见性窗口内的 targets。
+   * entry: { sessionId, platform, trackId, liked, completedAt }。
+   * pendingTargets 读取时按 completedAt 过滤过期项；窗口外的当垃圾。
+   */
+  private readonly recentlyCompleted: Array<{
+    sessionId: string;
+    platform: MusicProvider;
+    trackId: string;
+    liked: boolean;
+    completedAt: number;
+  }> = [];
+
+  /** 测试用：覆盖默认窗口（0 = 立刻失效）。 */
+  setVisibilityWindowMs(ms: number): void {
+    this.visibilityWindowMs = ms;
+  }
+
+  /**
    * 单个 target 的最大尝试次数。覆盖 1 次失败 + 6 次退避重试 ≈ 64s 窗口
    * （1s + 2s + 4s + 8s + 16s + 32s）—— 网易云"操作频繁"阈值经验值几分钟，
    * 这个长度让多数短窗口抖动等得到恢复，又不会让用户在切歌时无限等待。
@@ -128,6 +158,24 @@ export class LikeSyncQueue {
     };
     if (this.active) collect(this.active);
     for (const task of this.pending.values()) collect(task);
+    // T3 (consistency-fixes B3)：可见性窗口内的已完成 targets 算作「在途」。
+    // 对账时 liked=true 不会被抹掉、liked=false 不会被复活。
+    const cutoff = Date.now() - this.visibilityWindowMs;
+    let writeIdx = 0;
+    for (let i = 0; i < this.recentlyCompleted.length; i++) {
+      const e = this.recentlyCompleted[i];
+      if (e.completedAt >= cutoff) {
+        this.recentlyCompleted[writeIdx++] = e;
+        if (e.sessionId === sessionId) {
+          out.push({
+            platform: e.platform,
+            trackId: e.trackId,
+            liked: e.liked,
+          });
+        }
+      }
+    }
+    this.recentlyCompleted.length = writeIdx; // lazy GC 过期项
     return out;
   }
 
@@ -170,11 +218,23 @@ export class LikeSyncQueue {
         if (!byPlatform.has(t.platform)) byPlatform.set(t.platform, t);
       }
       existing.targets = [...byPlatform.values()];
-      existing.session = task.session; // 用最新 session（cookie 可能已刷新）
+      // T10 (consistency-fixes G4)：task 创建时 snapshot session。
+      // 旧实现：`existing.session = task.session` 让后来的入队用最新
+      // session——用户在 in-flight 任务期间登出/重登，新 session 的 cookie
+      // 会被旧 task 拿去写入（新账号被旧任务污染）。新行为：保留 task
+      // 首次入队时的 session 快照，跨账号安全。代价：cookie 过期场景下
+      // 任务更可能失败；这种 case 让 syncLikeRemoteOnce 的 retry 兜底。
+      // existing.session 保持不变（首次入队时的快照）。
       // 任一次入队带了跨平台匹配元数据就保留（避免被后来的无 meta 入队覆盖丢掉）。
       existing.discover = existing.discover ?? task.discover;
     } else {
-      this.pending.set(key, { ...task, targets });
+      // 深拷贝 session 快照：cookies / token 不会被后续 session mutations 改动
+      // 串扰到本 task。structuredClone 在 Node 17+ 可用，且保留 Date / RegExp / Map。
+      this.pending.set(key, {
+        ...task,
+        targets,
+        session: structuredClone(task.session),
+      });
     }
     void this.drain();
   }
@@ -248,7 +308,18 @@ export class LikeSyncQueue {
       }
     }
     for (const t of task.targets) {
-      await this.runTarget(task, t.platform, t.trackId);
+      const ok = await this.runTarget(task, t.platform, t.trackId);
+      // T3 (consistency-fixes B3)：成功的远程写入记入可见性窗口。
+      // 对账在窗口内会把这个 target 视作「在途」，避免 detect 抹掉。
+      if (ok) {
+        this.recentlyCompleted.push({
+          sessionId: task.session.id,
+          platform: t.platform,
+          trackId: t.trackId,
+          liked: task.liked,
+          completedAt: Date.now(),
+        });
+      }
     }
   }
 
@@ -259,11 +330,17 @@ export class LikeSyncQueue {
    *  - 用户中途翻转方向（unlike → like 或反之）= 当前意图已废，立即退出
    *    让位给新任务；pending 里有同 key 但 liked 反过来的任务，就是翻转信号。
    *  最终失败只告警——best-effort。 */
+  /**
+   * 返回值语义（T3 改造）：
+   *   - true  = 远程写入成功（processor resolve）；
+   *   - false = 未完成（direction reversal / 致命错误 / 重试耗尽放弃）。
+   * 调用方据此决定是否把这个 target 记入可见性窗口。
+   */
   private async runTarget(
     task: LikeSyncTask,
     platform: MusicProvider,
     trackId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const verb = task.liked ? 'like' : 'unlike';
     for (let attempt = 0; attempt < LikeSyncQueue.MAX_ATTEMPTS; attempt++) {
       // 翻转检查：先于 throw-catch 一次，免得 sleep 完再发现意图已废。
@@ -272,11 +349,11 @@ export class LikeSyncQueue {
           `like-sync ${verb} ${platform}/${trackId} ` +
             `superseded by direction reversal — aborting retries`,
         );
-        return;
+        return false;
       }
       try {
         await this.processor!(task.session, platform, trackId, task.liked);
-        return;
+        return true;
       } catch (err) {
         const fatal = LikeSyncQueue.isFatalError(err);
         const last = attempt === LikeSyncQueue.MAX_ATTEMPTS - 1;
@@ -286,10 +363,11 @@ export class LikeSyncQueue {
             `${(err as Error).message}${fatal ? ' (fatal)' : ''}` +
             `${last && !fatal ? ' (giving up)' : ''}`,
         );
-        if (fatal || last) return;
+        if (fatal || last) return false;
         await this.sleep(LikeSyncQueue.backoffMs(attempt));
       }
     }
+    return false;
   }
 
   /** 队列里同 key 的 pending 任务方向是否翻转？
@@ -308,10 +386,16 @@ export class LikeSyncQueue {
 
   /** 失败后等待时长 = BASE * 2^attempt + [0, BASE) 随机抖动。attempt 从 0 计
    *  算 → 1s+jitter, 2s+jitter, 4s+jitter... 抖动避免多个失败 target 在同一
-   *  瞬间扎堆重试打爆平台 API（thundering herd）。 */
-  private static backoffMs(attempt: number): number {
+   *  瞬间扎堆重试打爆平台 API（thundering herd）。
+   *
+   * 接受可选 `rng` 让单测断言「种子 X → 固定 jitter 值」（ISSUES.md §2.11）；
+   * 不传时退化为 Math.random（生产路径行为不变）。 */
+  private static backoffMs(
+    attempt: number,
+    rng: () => number = Math.random,
+  ): number {
     const base = LikeSyncQueue.BACKOFF_BASE_MS * 2 ** attempt;
-    return base + Math.floor(Math.random() * LikeSyncQueue.BACKOFF_BASE_MS);
+    return base + Math.floor(rng() * LikeSyncQueue.BACKOFF_BASE_MS);
   }
 
   /** 是否致命错误（不该重试）。

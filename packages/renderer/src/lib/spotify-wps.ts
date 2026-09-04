@@ -136,6 +136,9 @@ function waitForSdk(): Promise<SpotifySdk> {
       }
       if (Date.now() - start > 5000) {
         wpsError('sdk', `timeout after 5s; __wpsSdkReady=${Boolean((window as unknown as { __wpsSdkReady?: boolean }).__wpsSdkReady)}, window.Spotify=${Boolean(window.Spotify)}`);
+        // T8 (consistency-fixes E3)：超时分支 sdkPromise = null 允许下次
+        // 重试。旧实现 sdkPromise 永久 rejected → 该会话 WPS 永远不可用。
+        sdkPromise = null;
         return reject(new Error('spotify-wps: SDK 未在 5s 内 ready'));
       }
       setTimeout(tick, 50);
@@ -182,7 +185,13 @@ async function spotifyApiWithRetry(
 
 export function createWpsWrapper(): WpsWrapper {
   let player: SpotifyPlayer | null = null;
-  let getToken: (() => Promise<string | null>) | null = null;
+  // T8 (consistency-fixes E6)：latestToken 可变变量代替 `getToken` 闭包。
+  // 旧实现：`getToken = async () => token` 在 `connect(token)` 时绑定，但
+  // `refreshToken(newToken)` 异步链里 capture 的仍是旧 `token`——SDK 后续
+  // 调 getOAuthToken 时拿到的还是 connect 时的初始 token。
+  // 改用可变 `latestToken` 变量：connect / refreshToken 都原地更新，
+  // SDK getOAuthToken 回调直接读 `latestToken`（不受闭包 capture 影响）。
+  let latestToken: string | null = null;
   // WPS 致命错误：initialization_error / authentication_error / account_error
   // 任意一个 fire 则无法播放，useSpotifyWpsPlayer 据此退到 30s 预览
   let wpsFatal = false;
@@ -213,6 +222,11 @@ export function createWpsWrapper(): WpsWrapper {
 
   function bindListeners(p: SpotifyPlayer): void {
     // SDK 事件 payload 类型各异，回调统一收 unknown 再 narrow（见 on() 签名）。
+    // T8 (consistency-fixes E4)：保存 listener 引用供 disconnect 时移除。
+    // 旧实现每次 connect 都 bindListeners 但从不 removeListener → 多次
+    // 登录登出后老 player 的 listeners 仍挂在 SDK 全局，触发「幽灵设备」
+    // 状态回调污染新 player 的状态。
+    const listenerRefs: Array<{ event: string; fn: (p: unknown) => void }> = [];
     const onPlayerStateChanged = (payload: unknown): void => {
       const sdkState = payload as SpotifyWebPlaybackState | null;
       wpsLog('state', `player_state_changed paused=${sdkState?.paused} pos=${sdkState?.position}ms hasTrack=${Boolean(sdkState?.track)}`);
@@ -236,6 +250,13 @@ export function createWpsWrapper(): WpsWrapper {
     };
     const onReady = (payload: unknown): void => {
       const info = payload as { device_id?: string };
+      // T8 (consistency-fixes E5)：旧 player 的 ready 事件不应覆盖新 player
+      // 的 deviceId。用户在旧 player ready 前 disconnect + 重新 connect → 老
+      // 回调晚到时 `p !== player` → 丢弃。
+      if (p !== player) {
+        wpsLog('ready', `stale ready event from old player (p !== current) → ignored`);
+        return;
+      }
       if (info?.device_id) {
         (p as unknown as { _deviceId?: string })._deviceId = info.device_id;
         deviceId = info.device_id;
@@ -253,12 +274,15 @@ export function createWpsWrapper(): WpsWrapper {
     // SDK 提供 .addListener()，.on() 是 alias
     // 'initial_state' 不是 SDK 正式事件——去掉，只 listen 官方文档的 6 个事件
     const on = (event: string, cb: (p: unknown) => void) => {
+      listenerRefs.push({ event, fn: cb });
       if (typeof p.addListener === 'function') {
         p.addListener(event, cb as never);
       } else if (typeof (p as SpotifyPlayer).on === 'function') {
         (p as SpotifyPlayer).on(event, cb);
       }
     };
+    // 把 listenerRefs 挂到 player 上供 disconnect 时访问。
+    (p as unknown as { __wpsListeners?: typeof listenerRefs }).__wpsListeners = listenerRefs;
     on('player_state_changed', onPlayerStateChanged);
     on('ready', onReady);
     on('not_ready', onNotReady);
@@ -296,7 +320,7 @@ export function createWpsWrapper(): WpsWrapper {
   }
 
   async function connect(token: string): Promise<void> {
-    getToken = async () => token;
+    latestToken = token;
     const Spotify = await waitForSdk();
     if (player) {
       try {
@@ -310,11 +334,8 @@ export function createWpsWrapper(): WpsWrapper {
     const p: any = new Spotify.Player({
         name: deviceName,
         getOAuthToken: (cb: (t: string) => void) => {
-          if (getToken) {
-            void getToken().then((t) => (t ? cb(t) : cb(token)));
-          } else {
-            cb(token);
-          }
+          // T8 E6：直接读 latestToken（refreshToken 持续更新这个变量）。
+          if (latestToken) cb(latestToken);
         },
         volume: 0.8,
       });
@@ -332,6 +353,26 @@ export function createWpsWrapper(): WpsWrapper {
 
   function disconnect(): void {
     if (player) {
+      // T8 (consistency-fixes E4)：断开前先 removeListener，避免老 listeners
+      // 继续回调污染新 player 状态（多次登入登出后会累积成「幽灵设备」）。
+      const refs = (player as unknown as {
+        __wpsListeners?: Array<{ event: string; fn: (p: unknown) => void }>;
+      }).__wpsListeners;
+      if (refs) {
+        for (const { event, fn } of refs) {
+          try {
+            if (typeof (player as unknown as {
+              removeListener?: (e: string, c: unknown) => void;
+            }).removeListener === 'function') {
+              (player as unknown as {
+                removeListener: (e: string, c: unknown) => void;
+              }).removeListener(event, fn);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
       try {
         player.disconnect();
       } catch {
@@ -340,7 +381,7 @@ export function createWpsWrapper(): WpsWrapper {
       player = null;
     }
     subs.clear();
-    getToken = null;
+    latestToken = null;
   }
 
   async function play(trackUri: string): Promise<void> {
@@ -348,7 +389,7 @@ export function createWpsWrapper(): WpsWrapper {
     // 通过 PUT /v1/me/player/play 切到本设备 + 播放
     const deviceId = (player as unknown as { _deviceId?: string })._deviceId;
     if (!deviceId) throw new Error('spotify-wps: device not ready');
-    const token = await getToken?.();
+    const token = latestToken;
     if (!token) throw new Error('spotify-wps: no token');
     wpsLog('play', `PUT /v1/me/player/play device=${deviceId} uri=${trackUri}`);
     const res = await spotifyApiWithRetry(
@@ -393,7 +434,7 @@ export function createWpsWrapper(): WpsWrapper {
       wpsWarn('transfer', 'no deviceId — skip transfer');
       return;
     }
-    const token = await getToken?.();
+    const token = latestToken;
     if (!token) {
       wpsWarn('transfer', 'no token — skip transfer');
       return;
@@ -449,7 +490,8 @@ export function createWpsWrapper(): WpsWrapper {
     onStateChange,
     connect,
     refreshToken(token: string): void {
-      getToken = async () => token;
+      // T8 E6：原地更新 latestToken → SDK getOAuthToken 回调下次触发拿到新值。
+      latestToken = token;
     },
     disconnect,
     play,

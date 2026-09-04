@@ -16,6 +16,7 @@ export {};
 const assert = require('node:assert');
 
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 
 function makeTrack(provider: string, id: string, title: string): any {
   return {
@@ -61,6 +62,9 @@ const likeSync = {
   enqueue: () => {},
 };
 
+const lyricsService = new LyricsService(
+  qq as any, netease as any, deezer as any, lyricsOvh as any,
+);
 const svc = new MusicService(
   fakeStorage,
   qq,
@@ -68,6 +72,7 @@ const svc = new MusicService(
   deezer,
   spotify,
   lyricsOvh,
+  lyricsService,
   match,
   likeSync,
 );
@@ -106,6 +111,7 @@ async function main() {
       deezer,
       spotify,
       lyricsOvh,
+      lyricsService,
       match,
       likeSync,
     );

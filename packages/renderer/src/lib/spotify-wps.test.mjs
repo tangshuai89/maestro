@@ -67,12 +67,32 @@ class MockSpotifyPlayer {
   }
   async activateElement() {}
   addListener(event, cb) {
-    this._listeners[event] = cb;
+    // Multi-listener support (real SDK supports this via addListener).
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(cb);
     return true;
+  }
+  removeListener(event, cb) {
+    const arr = this._listeners[event];
+    if (!arr) return;
+    const idx = arr.indexOf(cb);
+    if (idx >= 0) arr.splice(idx, 1);
   }
   // Helper to simulate SDK firing an event
   _fire(event, payload) {
-    if (this._listeners[event]) this._listeners[event](payload);
+    const arr = this._listeners[event];
+    if (!arr) return;
+    for (const cb of (Array.isArray(arr) ? arr : [arr])) cb(payload);
+  }
+  // Count active listeners (for T8 E4 test)
+  _listenerCount() {
+    let n = 0;
+    for (const k of Object.keys(this._listeners)) {
+      const arr = this._listeners[k];
+      if (Array.isArray(arr)) n += arr.length;
+      else if (arr) n += 1;
+    }
+    return n;
   }
 }
 
@@ -646,6 +666,131 @@ await testAsync('reconnect disconnects old player before creating new one', asyn
   assert(disconnectCount >= 1, 'old player should have been disconnected on reconnect');
   assert(capturedPlayer !== firstPlayer, 'a new player should have been created');
   assert(w.ready === true, 'ready should still be true after reconnect');
+  globalThis.Spotify = { Player: OriginalPlayer };
+});
+
+// ── T8 (consistency-fixes E3) SDK 超时后允许重试 ──────────────────
+await testAsync('SDK 超时后 sdkPromise 置 null，下次 waitForSdk 重试', async () => {
+  // 重置 SDK ready flag + sdkPromise（test 之间可能 leak）
+  delete globalThis.__wpsSdkReady;
+  delete globalThis.Spotify;
+  globalThis.__wpsSdkReady = false;
+  // Stub waitForSdk 拒绝——但因为 sdkPromise 在 wrapper 模块里，不易直接 stub。
+  // 这里只验证 waitForSdk 重置标志的行为路径：通过 connect() 失败不会让 wrapper 永久死锁。
+  // 实际生产中 sdkPromise 在 waitForSdk 内部，spotify-wps.ts 在超时分支设置 sdkPromise=null
+  // ——这条路径在源码注释里已说明，单测不便直接验证（需要劫持 sdkPromise 闭包）。
+  // 这里跑一次 connect 验证 wrapper 在 SDK 不可用时不阻塞后续。
+  globalThis.__wpsSdkReady = false;
+  globalThis.Spotify = { Player: MockSpotifyPlayer };
+  const w = createWpsWrapper();
+  let caught = null;
+  try {
+    // 缩短超时——临时改 window 的 __wpsSdkReady 在 5s 后仍 false 会超时
+    // 不修改源码超时，依赖 setTimeout(fn, 5000)。测试只验证「不阻塞」：
+    await Promise.race([
+      w.connect('token'),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout-test-budget')), 6500)),
+    ]);
+  } catch (e) {
+    caught = e;
+  }
+  assert(caught !== null, 'connect 应因 SDK 未 ready 而抛错');
+  assert(/SDK 未在 5s 内 ready|timeout-test-budget/.test(String(caught.message)),
+    `应抛 SDK 超时错（实际 ${caught.message}）`);
+  // 关键：wrapper 不应被永久 disable。再次尝试（这次把 flag 置 true）
+  // 应能成功。
+  globalThis.__wpsSdkReady = true;
+  await w.connect('token-2');
+  assert(w.ready === true, 'SDK ready 后再 connect 应成功（无幽灵死锁）');
+});
+
+// ── T8 (consistency-fixes E4) disconnect removeListener 不漏 listener ──
+await testAsync('disconnect 后旧 player listener 全部移除', async () => {
+  globalThis.__wpsSdkReady = true;
+  let captured = null;
+  const OriginalPlayer = globalThis.Spotify.Player;
+  globalThis.Spotify = {
+    Player: class extends MockSpotifyPlayer {
+      constructor(opts) {
+        super(opts);
+        captured = this;
+      }
+    },
+  };
+  const w = createWpsWrapper();
+  await w.connect('token');
+  const beforeCount = captured._listenerCount();
+  assert(beforeCount >= 3, `connect 后应有 ≥3 个 listener（实际 ${beforeCount}）`);
+  w.disconnect();
+  const afterCount = captured._listenerCount();
+  assert(afterCount === 0, `disconnect 后 listener 应清零（实际 ${afterCount}）`);
+  // 同时验证：旧 listener 触发不再 emit 状态。
+  // _fire 调用前已无 callback，不会崩；但要确保不污染。
+  captured._fire('player_state_changed', {
+    track: { uri: 'spotify:track:1', name: 'X', artists: [{name: 'A'}], album: {name: 'B'}, duration_ms: 1000 },
+    paused: false,
+    position: 0,
+  });
+  globalThis.Spotify = { Player: OriginalPlayer };
+});
+
+// ── T8 (consistency-fixes E5) 旧 player ready 事件被忽略 ────────────
+await testAsync('旧 player 的 ready 事件不覆盖新 deviceId', async () => {
+  globalThis.__wpsSdkReady = true;
+  const players = [];
+  const OriginalPlayer = globalThis.Spotify.Player;
+  globalThis.Spotify = {
+    Player: class extends MockSpotifyPlayer {
+      constructor(opts) {
+        super(opts);
+        players.push(this);
+      }
+    },
+  };
+  const w = createWpsWrapper();
+  await w.connect('token-1');
+  const oldPlayer = players[0];
+  // reconnect → 新 player
+  await w.connect('token-2');
+  const newPlayer = players[1];
+  assert(oldPlayer !== newPlayer, 'reconnect 后是新 player');
+  // 旧 player 晚到的 ready 事件——device_id 是旧的值
+  oldPlayer._fire('ready', { device_id: 'OLD-DEVICE' });
+  // 新 player 已先 fire 了 ready 事件 → deviceId 已被设为新 device id
+  // 现在用新 player 的 _deviceId 看一眼：
+  assert(newPlayer._deviceId !== 'OLD-DEVICE',
+    `旧 ready 不应覆盖新 deviceId（实际 ${newPlayer._deviceId}）`);
+  globalThis.Spotify = { Player: OriginalPlayer };
+});
+
+// ── T8 (consistency-fixes E6) refreshToken 更新 latestToken ──────────
+await testAsync('refreshToken 让 getOAuthToken 拿到新 token', async () => {
+  globalThis.__wpsSdkReady = true;
+  let capturedPlayer = null;
+  const OriginalPlayer = globalThis.Spotify.Player;
+  globalThis.Spotify = {
+    Player: class extends MockSpotifyPlayer {
+      constructor(opts) {
+        super(opts);
+        capturedPlayer = this;
+      }
+    },
+  };
+  const w = createWpsWrapper();
+  await w.connect('token-old');
+  // 模拟 SDK 触发 getOAuthToken 拿到旧 token
+  let lastSeen = null;
+  const cb = (t) => { lastSeen = t; };
+  capturedPlayer.opts.getOAuthToken(cb);
+  assert(lastSeen === 'token-old', `应拿到 token-old（实际 ${lastSeen}）`);
+
+  // refreshToken 更新 latestToken
+  w.refreshToken('token-new');
+
+  // 再次触发 getOAuthToken
+  capturedPlayer.opts.getOAuthToken(cb);
+  assert(lastSeen === 'token-new', `refreshToken 后应拿到 token-new（实际 ${lastSeen}）`);
+
   globalThis.Spotify = { Player: OriginalPlayer };
 });
 

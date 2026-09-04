@@ -22,6 +22,7 @@ process.env.STORAGE_DIR = tmpDir;
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 
 // ── Stubs ──────────────────────────────────────────────────────
 function makeThrowingProvider(): any {
@@ -76,9 +77,15 @@ const likeSync = {
 };
 
 function makeService(qq: any): any {
+  const lyricsService = new LyricsService(
+    makeEmptyProvider() as any,
+    makeEmptyProvider() as any,
+    qq as any,
+    lyricsOvh as any,
+  );
   return new MusicService(
     makeStorage(), qq, makeEmptyProvider(), makeEmptyProvider(),
-    makeEmptyProvider(), lyricsOvh, match, likeSync,
+    makeEmptyProvider(), lyricsOvh, lyricsService, match, likeSync,
   );
 }
 

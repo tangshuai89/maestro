@@ -40,6 +40,7 @@ export interface MinimalBrowserWindow {
   isDestroyed(): boolean;
   hide?(): void;
   close?(): void;
+  destroy?(): void;
   on?(event: 'closed', cb: () => void): void;
 }
 
@@ -117,6 +118,7 @@ export async function runLoginWindow<T>(
 ): Promise<T> {
   const deadline = cfg.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const pollMs = cfg.pollIntervalMs ?? DEFAULT_POLL_MS;
+  // eslint-disable-next-line no-console
   const log = cfg.log ?? ((m) => console.log(`[login-window] ${m}`));
   const markerNames = cfg.markerNames ?? [];
 
@@ -125,6 +127,12 @@ export async function runLoginWindow<T>(
   let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
   let resolved = false;
   let cookieListener: ((e: unknown, c: Cookie, cause: string, removed: boolean) => void) | null = null;
+  // T9 (consistency-fixes F3)：capture() 是否在途。用户关窗时如果
+  // capture() 已拿到结果但 resolve 还没跑（microtask 间隙），旧实现
+  // 直接 fail('LOGIN_CANCELLED') 把已捕到的 cookie 丢弃。capturing
+  // 旗位让 'closed' 监听在 capture() resolve 后再 fail（成功）或
+  // fail（真没捕到）。
+  let capturing = false;
 
   return new Promise<T>((resolve, reject) => {
     function cleanup(): void {
@@ -182,11 +190,14 @@ export async function runLoginWindow<T>(
 
     const tryCapture = async (): Promise<void> => {
       if (resolved || !win || win.isDestroyed()) return;
+      capturing = true;
       try {
         const out = await cfg.capture(win);
         if (out != null) succeed(out);
       } catch (err) {
         fail(wrapError('LOGIN_FAILED', (err as Error).message));
+      } finally {
+        capturing = false;
       }
     };
 
@@ -236,7 +247,17 @@ export async function runLoginWindow<T>(
     }, deadline);
 
     win.on?.('closed', () => {
-      if (!resolved) fail(wrapError('LOGIN_CANCELLED', 'login window closed'));
+      if (resolved) return;
+      // T9 F3：关窗时如果 capture() 在途（microtask 间隙）→ 等它落定。
+      // capture 成功（已捕到 cookie）→ succeed；capture 失败/返回 null
+      // → fail 'LOGIN_CANCELLED'。
+      if (capturing) {
+        setImmediate(() => {
+          if (!resolved) fail(wrapError('LOGIN_CANCELLED', 'login window closed'));
+        });
+      } else {
+        fail(wrapError('LOGIN_CANCELLED', 'login window closed'));
+      }
     });
 
     // Electron's BrowserWindow doesn't expose a "loaded" hook here; we

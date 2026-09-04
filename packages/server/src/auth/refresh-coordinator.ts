@@ -32,16 +32,21 @@ export class RefreshCoordinator {
    * to cast back when reading the in-flight entry — both the inserter and
    * the reader agree on `unknown`, and `T` is only on the return signature.
    */
-  run<T>(sessionId: string, doRefresh: () => Promise<T>): Promise<T> {
-    const existing = this.inflight.get(sessionId) as Promise<T> | undefined;
+  run<T>(
+    provider: string,
+    sessionId: string,
+    doRefresh: () => Promise<T>,
+  ): Promise<T> {
+    const key = `${provider}:${sessionId}`;
+    const existing = this.inflight.get(key) as Promise<T> | undefined;
     if (existing) {
-      this.logger.log(`refresh: sharing in-flight promise for session=${sessionId.slice(0, 8)}…`);
+      this.logger.log(`refresh: sharing in-flight promise for ${key}`);
       return existing;
     }
     const p: Promise<T> = doRefresh().finally(() => {
-      this.inflight.delete(sessionId);
+      this.inflight.delete(key);
     });
-    this.inflight.set(sessionId, p);
+    this.inflight.set(key, p);
     return p;
   }
 

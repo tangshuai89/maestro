@@ -20,6 +20,7 @@ const assert = require('node:assert');
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 const { LikeSyncQueue } = require('./like-sync.queue');
 const { warmupJa } = require('./translit');
 
@@ -69,6 +70,9 @@ const lyricsOvh = { getLyrics: async () => null };
 
 
 const likeSync = new LikeSyncQueue(); // 真队列，跑后台 discover + 同步
+const lyricsService = new LyricsService(
+  qq as any, netease as any, deezer as any, lyricsOvh as any,
+);
 const svc = new MusicService(
   fakeStorage,
   qq,
@@ -76,6 +80,7 @@ const svc = new MusicService(
   deezer,
   spotify,
   lyricsOvh,
+  lyricsService,
   match,
   likeSync,
 );

@@ -15,6 +15,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
 import { oauthBuffer } from './auth/oauth-buffer';
+import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
 // BOTH dev and packaged mode (~/Library/Application Support/Maestro). Without
@@ -75,10 +76,22 @@ const SIDECAR_PORT = Number(process.env.PORT ?? 3200);
 
 /** 等端口就绪（轮询 :3200/music/deezer/editorials 之类的轻量 endpoint）。 */
 async function waitForSidecar(port: number, timeoutMs = 30_000): Promise<void> {
+  // Audit A2 (consistency-fixes T1): probe with X-Maestro-Token. The
+  // /music/deezer/editorials route is now token-skipped (see
+  // music.controller.ts @SkipInternalToken), but the guard only skips
+  // when MAESTRO_INTERNAL_TOKEN is configured in the sidecar. Belt and
+  // braces: send the token explicitly so a future regression that adds
+  // the guard back doesn't silently break startup again.
+  const headers: Record<string, string> = maestroInternalToken
+    ? { 'X-Maestro-Token': maestroInternalToken }
+    : {};
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/music/deezer/editorials`);
+      const res = await fetch(
+        `http://127.0.0.1:${port}/music/deezer/editorials`,
+        { headers },
+      );
       if (res.ok) return;
     } catch {
       // not ready yet
@@ -101,7 +114,7 @@ function startSidecar(): Promise<void> {
       'server',
       'main.js',
     );
-    console.log(`[main] spawning sidecar: ${serverEntry}`);
+    logger.log(`spawning sidecar: ${serverEntry}`);
     // Persist under Electron's userData (~/Library/Application Support/Maestro
     // on macOS) so state + backups survive app updates and live in a stable,
     // user-discoverable place — not next to the read-only .app bundle. Backups
@@ -124,11 +137,11 @@ function startSidecar(): Promise<void> {
     sidecar.stdout?.on('data', (b) => process.stdout.write(`[sidecar] ${b}`));
     sidecar.stderr?.on('data', (b) => process.stderr.write(`[sidecar-err] ${b}`));
     sidecar.on('error', (err) => {
-      console.error('[main] sidecar spawn error:', err);
+      logger.error('sidecar spawn error:', err);
       reject(err);
     });
     sidecar.on('exit', (code) => {
-      console.log(`[main] sidecar exited with code=${code}`);
+      logger.log(`sidecar exited with code=${code}`);
       sidecar = null;
     });
     waitForSidecar(SIDECAR_PORT)
@@ -137,14 +150,24 @@ function startSidecar(): Promise<void> {
   });
 }
 
-/** 关闭 sidecar。app quit 时调。 */
-function stopSidecar(): void {
+/** 关闭 sidecar。app quit 时调。
+ *
+ * T10 (consistency-fixes G1)：发 SIGTERM 后同步等 ≤graceMs 让 sidecar 的
+ * SIGTERM handler 跑 storage.flushSync()。旧实现直接 kill 不等落定 →
+ * sidecar 200ms debounce 内的写入（红心/登录态）随进程死亡丢失。
+ * 用 Atomics.wait 同步阻塞——before-quit 里 async 等待不可靠（app 可能
+ * 在 promise 落定前退出）。sidecar 的 flushSync 是同步 I/O，实测 <50ms。 */
+function stopSidecar(graceMs = 0): void {
   if (!sidecar) return;
-  console.log('[main] killing sidecar');
+  logger.log('killing sidecar');
   try {
     sidecar.kill('SIGTERM');
   } catch {
     // ignore
+  }
+  if (graceMs > 0) {
+    // 给 sidecar 的 SIGTERM handler 一个同步宽限窗口写盘。
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, graceMs);
   }
   sidecar = null;
 }
@@ -179,7 +202,11 @@ function showMainWindow(): void {
 
 /** Send a transport command to the renderer's player. */
 function sendTrayCommand(command: 'playpause' | 'next' | 'prev'): void {
-  mainWindow?.webContents.send('tray:command', command);
+  // T9 (consistency-fixes F4)：mainWindow 在 quit/close 期间可能已 destroyed，
+  // 直接 send 会抛 `Object has been destroyed`。isDestroyed 检查后静默
+  // 丢弃——tray click 在 app 退出时本就没意义。
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('tray:command', command);
 }
 
 /** Rebuild the tray context menu + tooltip from the current playback state. */
@@ -323,7 +350,7 @@ function createWindow(): void {
     'console-message',
     (_e: unknown, level: number, message: string, line: number, source: string) => {
       const tag = ['DBG', 'LOG', 'WARN', 'ERR'][level] ?? 'LOG';
-      console.log(`[renderer ${tag}] ${message}  (${source}:${line})`);
+      logger.log(`[renderer ${tag}] ${message}  (${source}:${line})`);
     },
   );
 
@@ -416,6 +443,13 @@ async function readQqCookies(win: BrowserWindow): Promise<{
  * we just capture the browser's own login cookies.
  */
 function openQqLoginWindow(): Promise<QqLoginResult> {
+  // T9 (consistency-fixes F1)：每次用户点「登录 QQ 音乐」就清掉缓存结果。
+  // 旧实现：登出后再点「登录」→ 直接返回上一账号的 cached cookie，换不了
+  // 账号（直到重启 app）。新行为：忽略旧 cached → 强制重新 cookie 捕获
+  // 流程（新登录的 cookie 写到 __maestroLastResult）。
+  if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
+    (activeQqLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult = undefined;
+  }
   // Already-running window with a captured result → reuse.
   if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
     activeQqLoginWindow.show();
@@ -471,7 +505,7 @@ function openQqLoginWindow(): Promise<QqLoginResult> {
       const { cookie, uin, all, hasMarker } = await readQqCookies(realWin);
       if (!hasMarker) return null;
       const result: QqLoginResult = { cookie, uin, extraCookies: all };
-      console.log(
+      logger.log(
         `[qq-login] captured ${Object.keys(all).length} cookies, ` +
           `uin=${uin ?? '?'}, keys=[${Object.keys(all).join(',')}]`,
       );
@@ -545,6 +579,10 @@ async function readNeteaseCookies(win: BrowserWindow): Promise<{
  * trusts), and resolve once MUSIC_U appears in the window's session cookies.
  */
 function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
+  // T9 (consistency-fixes F1)：同 QQ —— 每次点击登录就清缓存，避免换账号失败。
+  if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
+    (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult = undefined;
+  }
   if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
     activeNeteaseLoginWindow.show();
     activeNeteaseLoginWindow.focus();
@@ -597,7 +635,7 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
         csrfToken: csrf,
         extraCookies: all,
       };
-      console.log(
+      logger.log(
         `[netease-login] captured MUSIC_U (len=${musicU.length}), ` +
           `${Object.keys(all).length} cookies`,
       );
@@ -703,7 +741,7 @@ if (!gotTheLock) {
  *  Extracted so 'open-url' (macOS) and 'second-instance' argv (Win/Linux)
  *  share one implementation. */
 function handleDeepLink(url: string): void {
-  console.log('[main] deep link:', url);
+  logger.log('deep link:', url);
   try {
     const parsed = new URL(url.replace(/\/\?/, '?'));
     // OAuth error: Spotify may redirect with ?error=access_denied&state=...
@@ -713,18 +751,18 @@ function handleDeepLink(url: string): void {
     const state = parsed.searchParams.get('state');
     if (error) {
       oauthBuffer.pushError(error, state ?? undefined, url);
-      console.log(`[main] oauth-buffer: pushed error=${error}`);
+      logger.log(`oauth-buffer: pushed error=${error}`);
       return;
     }
     const code = parsed.searchParams.get('code');
     if (!code || !state) {
-      console.error('[main] deep link 缺 code 或 state，忽略:', url);
+      logger.error('deep link 缺 code 或 state，忽略:', url);
       return;
     }
     oauthBuffer.push(code, state);
-    console.log('[main] oauth-buffer: pushed callback');
+    logger.log('oauth-buffer: pushed callback');
   } catch (err) {
-    console.error('[main] deep link parse failed:', err);
+    logger.error('deep link parse failed:', err);
   }
 }
 
@@ -747,7 +785,7 @@ app.whenReady().then(async () => {
     await components.whenReady();
     widevineReady = true;
     widevineStatus = components.status();
-    console.log('[main] widevine components ready:', widevineStatus);
+    logger.log('widevine components ready:', widevineStatus);
   } catch (err) {
     // 组件加载失败不阻塞启动——非 Spotify 源照常用，Spotify 自动退回 30s 预览。
     // 把 detail 也 stringify 出来（默认 devtools 只显示 [Object]）。
@@ -755,8 +793,8 @@ app.whenReady().then(async () => {
       try { return JSON.stringify(v, (_k, val) => typeof val === 'bigint' ? String(val) : val); }
       catch { return String(v); }
     };
-    console.error(
-      '[main] widevine components failed (Spotify 全曲不可用，退回 30s 预览):',
+    logger.error(
+      'widevine components failed (Spotify 全曲不可用，退回 30s 预览):',
       safeStr(err),
     );
   }
@@ -772,7 +810,7 @@ app.whenReady().then(async () => {
   try {
     await startSidecar();
   } catch (err) {
-    console.error('[main] failed to start sidecar:', err);
+    logger.error('failed to start sidecar:', err);
     // 不阻塞窗口打开——前端能展示一个错误面板，比黑屏好
   }
 
@@ -785,7 +823,7 @@ app.whenReady().then(async () => {
     try {
       app.dock?.setIcon(nativeImage.createFromPath(assetPath('icon.png')));
     } catch (err) {
-      console.warn('[main] dock.setIcon failed:', err);
+      logger.warn('dock.setIcon failed:', err);
     }
   }
 
@@ -797,7 +835,9 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-  stopSidecar();
+  // T10 (consistency-fixes G1)：发 SIGTERM 后等 ≤500ms 让 sidecar flushSync。
+  // 旧实现：直接 kill('SIGTERM') 不等落定 → sidecar 200ms debounce 内的写入丢失。
+  stopSidecar(500);
 });
 
 app.on('window-all-closed', () => {

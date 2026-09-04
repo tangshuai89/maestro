@@ -9,7 +9,8 @@
     "start": "electron dist/main.js",
     "gen-icons": "node scripts/gen-icons.cjs",
     "pack": "electron-builder --mac",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "electron-is-dev": "^2.0.0"
@@ -18,7 +19,11 @@
     "electron": "https://github.com/castlabs/electron-releases#8244344c33634d9323377c0d0fd1d9b7f9b69540",
     "electron-builder": "^24.13.3",
     "typescript": "^5.5.4",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@eslint/js": "^9.8.0",
+    "eslint": "^9.8.0",
+    "globals": "^15.9.0",
+    "typescript-eslint": "^8.0.0"
   },
   "build": {
     "appId": "io.github.tangshuai89.maestro",
@@ -28,7 +33,9 @@
     "protocols": [
       {
         "name": "Spotify OAuth Callback",
-        "schemes": ["maestro"]
+        "schemes": [
+          "maestro"
+        ]
       }
     ],
     "mac": {

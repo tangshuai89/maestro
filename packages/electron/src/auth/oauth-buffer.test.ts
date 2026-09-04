@@ -135,35 +135,42 @@ await withFakeTime(async () => {
 });
 
 // ── 10. concurrent consume (Strict Mode double-mount) ───────────────────
-// Two consume() calls back-to-back before push() — both must resolve to
-// the same payload when it arrives. Old single-consumer code overwrote
-// the second consumer's resolver with the first's, leaking the first
-// Promise forever. With the FIFO queue both Promises settle.
+// T9 (consistency-fixes F2)：每次 push 只 resolve 一个 waiter（FIFO 头）。
+// 旧测试期望「两个并发 consumer 都拿到 code」——这正是 spec 修复的 bug
+// （同一 PKCE code 被多次兑换 → 第二次 invalid_grant）。新语义：第一个
+// consumer 拿到 entry 并 resolve，第二个继续等下一次 push。
 await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   const p1 = b.consume();
   const p2 = b.consume();
-  // Both waiters enqueued before push.
   assert.strictEqual(b.peek(), null);
   b.push('code10', 'state10');
-  const [r1, r2] = (await Promise.all([p1, p2])) as [
-    BufferedCallback | null,
-    BufferedCallback | null,
-  ];
-  assert.ok(r1 && r2, 'both concurrent consumers must resolve');
+  const r1 = (await p1) as BufferedCallback | null;
+  assert.ok(r1);
   assert.strictEqual(r1!.code, 'code10');
-  assert.strictEqual(r2!.code, 'code10');
-  // FIFO order: first registered gets the first deliver call.
-  assert.strictEqual(r1!.state, 'state10');
-  console.log('✅ 10. concurrent consume (Strict Mode race): both resolve');
+  // p2 仍 pending（没拿到 code）
+  let r2Resolved = false;
+  void p2.then(() => {
+    r2Resolved = true;
+  });
+  await tick(50);
+  assert.strictEqual(r2Resolved, false,
+    'FIFO-head-only: 第二个 consumer 应继续等下一次 push');
+  // 推到下一个 push → p2 拿到新 code
+  b.push('code10b', 'state10b');
+  const r2 = (await p2) as BufferedCallback | null;
+  assert.ok(r2);
+  assert.strictEqual(r2!.code, 'code10b');
+  console.log('✅ 10. concurrent consume: 只有 FIFO 头 resolve（避免 PKCE code 重复兑换）');
 });
 
-// ── 11. FIFO order: consumers drain in registration order ───────────────
+// ── 11. FIFO head: only first registered gets the push ──────────────────
+// T9 F2：每次 push 只 resolve 队首一个 waiter。后续 consume() 仍排在
+// 队列里等下一次 push——避免一个 OAuth code 被多 consumer 兑换多次。
 await withFakeTime(async () => {
   const b = new OAuthCallbackBuffer();
   const order: number[] = [];
   const promises: Promise<BufferedOAuthEntry | null>[] = [];
-  // Register 5 waiters in order.
   for (let i = 0; i < 5; i++) {
     promises.push(
       b.consume().then((cb) => {
@@ -173,13 +180,21 @@ await withFakeTime(async () => {
     );
   }
   b.push('code11', 'state11');
-  await Promise.all(promises);
-  assert.deepStrictEqual(
-    order,
-    [0, 1, 2, 3, 4],
-    'consumers drain in FIFO order',
-  );
-  console.log('✅ 11. FIFO drain order preserved');
+  // 只有第一个 resolve
+  const r0 = (await promises[0]) as BufferedCallback | null;
+  assert.ok(r0);
+  assert.strictEqual(r0!.code, 'code11');
+  // 其他 4 个仍 pending
+  let othersResolved = false;
+  Promise.all(promises.slice(1)).then(() => {
+    othersResolved = true;
+  });
+  await tick(50);
+  assert.strictEqual(othersResolved, false,
+    'FIFO-head-only: 第 2-5 个 consumer 应继续 pending');
+  assert.deepStrictEqual(order, [0],
+    '只有第一个注册的 consumer resolve');
+  console.log('✅ 11. FIFO head: 只有队首 consumer 拿到 entry');
 });
 
 // ── 12. after push drain, late consume() blocks (one-shot semantics) ─────

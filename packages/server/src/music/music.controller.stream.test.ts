@@ -31,8 +31,13 @@ interface ServerLike {
 async function makeUpstream(
   handler: (req: any, res: any) => void,
 ): Promise<ServerLike> {
-  return await new Promise((resolve) => {
+  return await new Promise((resolve, reject) => {
     const srv = http.createServer(handler);
+    // ISSUES.md §1.1 同类修复：sandbox / 无 NET_BIND_SERVICE 环境下
+    // srv.listen(0) 会被 EPERM 拒——listen 回调不触发会让调用方永远挂住
+    // （之前的 hardExit 8s 后 exit 1 + 零输出）。现在 listen 失败显式
+    // reject，让 main 捕获 EPERM 后走 skip 分支干净退出。
+    srv.on('error', (err) => reject(err));
     srv.listen(0, () => {
       const addr = srv.address() as { port: number };
       resolve({ port: addr.port, close: () => new Promise((r) => srv.close(r)) });
@@ -80,6 +85,29 @@ async function pipeLikeFixMode(upstreamUrl: string) {
 }
 
 void (async () => {
+  try {
+    await runStreamTests();
+  } catch (err) {
+    // ISSUES.md §1.1 同类：sandbox / 无 NET_BIND_SERVICE 环境绑不了
+    // 本地端口（EPERM / EACCES）。这些语义测试必须真 socket（模拟 CDN
+    // reset / 客户端断连），无法像 controller e2e 那样 in-process——绑不上
+    // 就显式 skip 并干净退出，而不是靠 hardExit 兜底 exit 1 + 零输出
+    // 把 test.sh 整段掐断（electron/renderer 测试因此永远跑不到）。
+    const code = (err as { code?: string })?.code;
+    const msg = (err as Error)?.message ?? '';
+    if (code === 'EPERM' || code === 'EACCES' || /EPERM|EACCES/.test(msg)) {
+      console.log(
+        '⚠️ skip: 当前环境无 bind 端口权限（EPERM/EACCES），' +
+          '3 项 stream 语义测试跳过；CI 有权限时正常执行',
+      );
+      process.exit(0);
+    }
+    console.error('❌ stream 测试失败:', err);
+    process.exit(1);
+  }
+})();
+
+async function runStreamTests(): Promise<void> {
   // ── 跑测试期间若异常逃出 listener 会被这里截到，不会让 process 死。
   //    我们用 escapes 来在 test 3 里 *反断言* 这件事。
   const escapes: Error[] = [];
@@ -227,4 +255,4 @@ void (async () => {
   exitOk = true;
   clearTimeout(hardExit);
   process.exit(0);
-})();
+}

@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { MusicService, type LikeMeta } from './music.service';
+import { LyricsService } from './lyrics.service';
 import {
   normalizeProvider,
   MusicProvider,
@@ -23,6 +24,7 @@ import { SessionService } from '../common/session';
 import { DeezerMusicProvider } from './deezer.provider';
 import { QqQuality } from './qq.provider';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
+import { SkipInternalToken } from '../common/decorators/skip-internal-token.decorator';
 import type { FanOutLikeResponse, SourceInfo } from './types';
 
 /** 从请求体里宽松解析跨平台匹配元数据。缺字段 / 类型不对 → undefined，
@@ -70,6 +72,7 @@ export class MusicController {
 
   constructor(
     private readonly musicService: MusicService,
+    private readonly lyricsService: LyricsService,
     private readonly sessionService: SessionService,
   ) {}
 
@@ -137,6 +140,7 @@ export class MusicController {
    * fetches this once on first Deezer session to populate the preset
    * picker.
    */
+  @SkipInternalToken()
   @Get('deezer/editorials')
   deezerEditorials() {
     return { items: DeezerMusicProvider.getEditorials() };
@@ -163,7 +167,9 @@ export class MusicController {
       );
     }
     const session = this.sessionService.resolve(req, res);
-    session.prefs = { ...(session.prefs ?? {}), deezerPreset: preset };
+    // T10 (consistency-fixes G2)：走 setPref 而不是直接改 prefs，确保
+    // 重启后 preset 不丢失（旧实现只改内存没 persist）。
+    this.sessionService.setPref(session, 'deezerPreset', preset);
     return { ok: true, preset };
   }
 
@@ -455,6 +461,7 @@ export class MusicController {
     return { source };
   }
 
+  @SkipInternalToken()
   @Get('stream/:provider/:trackId')
   async stream(
     @Param('provider') providerParam: string,
@@ -519,6 +526,15 @@ export class MusicController {
     req: Request,
     res: Response,
   ): Promise<void> {
+    // ISSUES.md §4.3：先校验 host 在白名单内。失败返 403，避免把 controller
+    // 当开放代理（即使 url 来自受信任的 provider，污染或 redirect 也能挡）。
+    if (!MusicController.isStreamHostAllowed(url)) {
+      this.logger.warn(`proxyAudio: rejecting non-allowlisted host for url=${url}`);
+      res.status(403).json({
+        error: 'stream_host_not_allowed',
+      });
+      return;
+    }
     const headers: Record<string, string> = { ...extraHeaders };
     // Forward the browser's Range request so the CDN answers with a
     // 206 partial — required for smooth seeking on large FLAC/MP3.
@@ -608,6 +624,53 @@ export class MusicController {
     'mosaic.scdn.co',                   // Spotify（歌单拼图封面）
   ]);
 
+  /**
+   * Audio stream CDN 允许列表（ISSUES.md §4.3）。proxyAudio 不限 url 域
+   * 等于把 controller 当成开放代理——若 provider 返回被污染的 redirect
+   * URL，会扩大 SSRF 面。`exact` 是精确匹配 host；`suffix` 是子域通配
+   * （Deezer 预览 CDN 是轮询的 cdns-preview-{a,b,c}.dzcdn.net）。
+   *
+   * 实际风险低（url 来自 provider API 返回，受信任），但加白名单是廉价
+   * 防御，能挡掉「重定向到内网 / metadata.io / localhost:9200」类小坑。
+   */
+  private static readonly ALLOWED_STREAM_HOSTS_EXACT = new Set([
+    'ws.stream.qqmusic.qq.com',         // QQ 音频主 CDN
+    'dl.stream.qqmusic.qq.com',         // QQ 音频备用 CDN（少数歌曲）
+    'p.scdn.co',                        // Spotify 30s preview CDN
+    'preview.dzcdn.net',                // Deezer preview 直链
+    'm7.music.126.net',                 // 网易云音频 CDN（部分 song）
+    'm8.music.126.net',
+  ]);
+  /** Audio stream CDN 允许列表——suffix 通配（Deezer 轮询的 preview CDN）。 */
+  private static readonly ALLOWED_STREAM_HOSTS_SUFFIX: readonly string[] = [
+    '.stream.qqmusic.qq.com',           // 未来 QQ 新增 stream 子域
+    '.music.126.net',                   // 网易云所有 m*.music.126.net
+    '.scdn.co',                         // Spotify 所有 *.*.scdn.co 子域
+    '.dzcdn.net',                       // Deezer 所有 *.{cdn,preview}.dzcdn.net
+  ];
+
+  /**
+   * URL host 是否在 stream 白名单（exact + suffix）。
+   * 解析失败 / protocol 不是 http(s) 一律 false。
+   */
+  private static isStreamHostAllowed(rawUrl: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (MusicController.ALLOWED_STREAM_HOSTS_EXACT.has(host)) return true;
+    return MusicController.ALLOWED_STREAM_HOSTS_SUFFIX.some(
+      (suf) => host.endsWith(suf) && host.length > suf.length,
+    );
+  }
+
+  @SkipInternalToken()
   @Get('cover-proxy')
   async coverProxy(
     @Query('url') url: string | undefined,
@@ -695,6 +758,7 @@ export class MusicController {
    * Response: { lyrics: [{time, text}, ...] } or { lyrics: null }
    * when the provider or track has no lyrics.
    */
+  @SkipInternalToken()
   @Get('lyrics')
   async lyrics(
     @Query('provider') provider: string,
@@ -706,7 +770,7 @@ export class MusicController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    const result = await this.musicService.getLyricsAggregated(
+    const result = await this.lyricsService.getLyricsAggregated(
       session,
       normalizeProvider(provider),
       trackId ?? '',
@@ -760,7 +824,7 @@ export class MusicController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    return this.musicService.getLyricsAvailability(
+    return this.lyricsService.getLyricsAvailability(
       session,
       parseSourcesParam(sources),
     );

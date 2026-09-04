@@ -168,7 +168,22 @@ async function main() {
     );
   }
 
-  console.log('\n🎉 like-sync.queue 全部 4 项通过');
+  // ── 5. backoffMs 注入 rng → 精确值（ISSUES.md §2.11）─────────────
+  // 旧实现内联 Math.random，只能断言 jitter 落在区间内；现接受可选 rng
+  // 让单测断言「种子 X → 固定序列」。rng=() => 0.5 → jitter = floor(0.5*1000) = 500
+  {
+    const fixedRng = () => 0.5;
+    // attempt=2 → base = 1000*2^2 = 4000, jitter = 500 → 4500
+    const ms = (LikeSyncQueue as any).backoffMs(2, fixedRng);
+    assert.strictEqual(ms, 4500, 'rng=()=>0.5 时 backoffMs(2) 应严格 = 4500');
+    // attempt=0 → base = 1000, jitter = 500 → 1500
+    assert.strictEqual((LikeSyncQueue as any).backoffMs(0, fixedRng), 1500);
+    // attempt=5 → base = 32000, jitter = 500 → 32500
+    assert.strictEqual((LikeSyncQueue as any).backoffMs(5, fixedRng), 32500);
+    console.log('✅ 5. backoffMs 注入 rng → 精确值（4500 / 1500 / 32500）');
+  }
+
+  console.log('\n🎉 like-sync.queue 全部 5 项通过');
 }
 
 main().catch((err) => {

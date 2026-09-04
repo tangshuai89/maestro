@@ -13,8 +13,8 @@ void (async () => {
 // ── 1. run: single sessionId, sequential calls each fire ────────────────
 {
   const c = new RefreshCoordinator();
-  const a = await c.run('s1', async () => 'a');
-  const b = await c.run('s1', async () => 'b');
+  const a = await c.run('spotify', 's1', async () => 'a');
+  const b = await c.run('spotify', 's1', async () => 'b');
   assert.strictEqual(a, 'a');
   assert.strictEqual(b, 'b');
   assert.strictEqual(c.size(), 0, 'inflight cleaned up');
@@ -28,9 +28,9 @@ void (async () => {
   const slow = (): Promise<string> =>
     new Promise((r) => setTimeout(() => r((++calls).toString()), 20));
   const promises = [
-    c.run('s2', slow),
-    c.run('s2', slow),
-    c.run('s2', slow),
+    c.run('spotify', 's2', slow),
+    c.run('spotify', 's2', slow),
+    c.run('spotify', 's2', slow),
   ];
   const out = await Promise.all(promises);
   assert.strictEqual(calls, 1, 'doRefresh invoked exactly once');
@@ -49,9 +49,9 @@ void (async () => {
     return label;
   };
   const out = await Promise.all([
-    c.run('sA', slow('A')),
-    c.run('sB', slow('B')),
-    c.run('sC', slow('C')),
+    c.run('spotify', 'sA', slow('A')),
+    c.run('spotify', 'sB', slow('B')),
+    c.run('spotify', 'sC', slow('C')),
   ]);
   assert.strictEqual(calls, 3, 'one refresh per sessionId');
   assert.deepStrictEqual(out, ['A', 'B', 'C']);
@@ -67,9 +67,9 @@ void (async () => {
     if (calls === 1) return Promise.reject(new Error('boom'));
     return Promise.resolve('ok');
   };
-  await assert.rejects(c.run('sX', flaky));
+  await assert.rejects(c.run('spotify', 'sX', flaky));
   assert.strictEqual(c.size(), 0, 'inflight cleaned on failure');
-  const v = await c.run('sX', flaky);
+  const v = await c.run('spotify', 'sX', flaky);
   assert.strictEqual(v, 'ok');
   assert.strictEqual(calls, 2);
   console.log('✅ 4. failure: cleans inflight, retry runs again');
@@ -80,10 +80,10 @@ void (async () => {
   const c = new RefreshCoordinator();
   const hanging = (): Promise<string> =>
     new Promise((r) => setTimeout(() => r('late'), 100));
-  const p = c.run('sY', hanging);
+  const p = c.run('spotify', 'sY', hanging);
   c.reset();
   assert.strictEqual(c.size(), 0);
-  const v = await c.run('sY', () => Promise.resolve('fresh'));
+  const v = await c.run('spotify', 'sY', () => Promise.resolve('fresh'));
   assert.strictEqual(v, 'fresh');
   await p;
   console.log('✅ 5. reset: clears inflight, next call runs fresh');

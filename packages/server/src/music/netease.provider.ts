@@ -364,11 +364,20 @@ export class NeteaseMusicProvider {
     songId: string,
     level: string,
   ): Promise<SongUrlItem | undefined> {
+    // ISSUES.md §3.1: 防御性 cast。`Number('track-id-001') === NaN` 会拼出
+    // ids=[NaN]，网易云 API 必返 400 → controller 502。parseInt 校验失败即
+    // 早抛 BadRequestException，避免无效请求打远端。
+    const numericId = parseInt(songId, 10);
+    if (!Number.isFinite(numericId)) {
+      throw new BadRequestException(
+        `netease songId 必须可解析为数字，实际: ${songId}`,
+      );
+    }
     const data = await this.apiCall<SongUrlResponse>(
       session,
       'https://music.163.com/api/song/enhance/player/url/v1',
       {
-        ids: `[${Number(songId)}]`,
+        ids: `[${numericId}]`,
         level,
         encodeType: 'aac',
       },

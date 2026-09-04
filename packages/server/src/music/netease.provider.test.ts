@@ -503,7 +503,52 @@ async function main() {
     console.log('✅ 28. apiCall: 非 JSON 响应 → throws BadRequestException');
   }
 
-  console.log('\n🎉 netease.provider.test 全部 28 项通过');
+  // ── 29. fetchSongUrl: 非数字 songId → throws BadRequestException ──
+  // ISSUES.md §3.1：旧实现 `Number('track-id-001') === NaN`，拼 ids=[NaN]
+  // 网易云 API 必返 400 → controller 502。parseInt 校验失败应早抛。
+  {
+    const restore = mockFetch(() => ({ code: 200, data: [{ id: 1, url: 'x' }] }));
+    let threw = false;
+    try {
+      await prov.getStreamPath(SESSION, 'track-id-001');
+    } catch (e: any) {
+      threw = true;
+      assert.ok(
+        /netease songId 必须可解析为数字/.test(e.message),
+        `应抛 BadRequestException，实际: ${e.message}`,
+      );
+    } finally {
+      restore();
+    }
+    assert.ok(threw, '非数字 songId 应抛 BadRequestException');
+    console.log('✅ 29. fetchSongUrl: 非数字 songId → throws BadRequestException');
+  }
+
+  // ── 30. fetchSongUrl: 数字字符串（带前导零）→ 正常解析 ───────────
+  // 防御性 cast 不应误杀合法数字字符串（parseInt 会剥前导零，API 接受）。
+  // apiCall 用 application/x-www-form-urlencoded 转发 payload，所以
+  // body 里 ids=`[6003]` 经 URLSearchParams 编码为 `ids=%5B6003%5D`。
+  {
+    let receivedIds: string | undefined;
+    const restore = mockFetch((url, opts) => {
+      const body = String((opts as any)?.body ?? '');
+      // URL-encoded: ids=%5B6003%5D → 解码后 [6003]
+      const m = body.match(/ids=([^&]*)/);
+      if (m) {
+        receivedIds = decodeURIComponent(m[1]);
+      }
+      return {
+        code: 200,
+        data: [{ id: 6003, url: 'http://x', br: 128000, size: 1 }],
+      };
+    });
+    await prov.getStreamPath(SESSION, '06003');
+    restore();
+    assert.strictEqual(receivedIds, '[6003]', '前导零应被 parseInt 剥离');
+    console.log('✅ 30. fetchSongUrl: 数字字符串（带前导零）→ 正常解析');
+  }
+
+  console.log('\n🎉 netease.provider.test 全部 30 项通过');
 }
 
 main().catch((err) => {

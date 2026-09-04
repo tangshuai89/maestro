@@ -5,7 +5,9 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ConfigService } from '../config';
+import { SKIP_INTERNAL_TOKEN } from '../decorators/skip-internal-token.decorator';
 
 /**
  * Guards state-changing endpoints from CSRF / cross-process abuse.
@@ -17,8 +19,8 @@ import { ConfigService } from '../config';
  * page or another local app could mutate state without the user's consent.
  *
  * Mitigation: Electron main generates a random per-launch token, passes it
- * to the NestJS sidecar via env (MAESTRO_INTERNAL_TOKEN), and exposes it to
- * the renderer through preload's contextBridge. The renderer fetches with
+ * to the NestJS sidecar via env (MAESTRO_INTERNAL_TOKEN), and exposes it
+ * to the renderer through preload's contextBridge. The renderer fetches with
  * an `X-Maestro-Token` header. This guard verifies that header matches the
  * configured token.
  *
@@ -26,18 +28,33 @@ import { ConfigService } from '../config';
  * dev:server` without Electron), the guard logs a warning per request but
  * allows the request through. Production Electron always sets the token.
  *
- * The guard runs on EVERY method (POST/PUT/DELETE/GET) when the token is
- * configured. Some endpoints are read-only GETs — they don't strictly need
- * the token — but adding the check uniformly means a forgotten endpoint
- * (e.g. /auth/logout that mutates session) still gets protected.
+ * Audit A1 (consistency-fixes T1): media GET routes (`/music/stream/*`,
+ * `/music/cover-proxy`, `/music/lyrics*`, `/music/deezer/editorials`) are
+ * read-only and cannot carry an `X-Maestro-Token` header — `<audio>` /
+ * `<img>` don't allow custom headers. They opt out via
+ * `@SkipInternalToken()` and rely on the signed session cookie for
+ * identity (HttpOnly + SameSite=Strict makes cross-process forgery hard).
+ * State-changing routes (POST/PUT/DELETE plus auth/login/redeem) keep
+ * the strict token check.
  */
 @Injectable()
 export class RequireInternalTokenGuard implements CanActivate {
   private readonly logger = new Logger(RequireInternalTokenGuard.name);
 
-  constructor(private readonly cfg: ConfigService) {}
+  constructor(
+    private readonly cfg: ConfigService,
+    private readonly reflector: Reflector,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
+    // Audit A1: allow media-only GET endpoints to bypass the token gate.
+    // Check both the handler method and the controller class metadata.
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_INTERNAL_TOKEN, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (skip) return true;
+
     const req = context.switchToHttp().getRequest<{
       method: string;
       url: string;

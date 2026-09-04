@@ -14,6 +14,7 @@ export {};
 const assert = require('node:assert');
 
 const { MusicService } = require('./music.service');
+const { LyricsService } = require('./lyrics.service');
 
 const fakeStorage = {
   get: () => undefined,
@@ -56,6 +57,12 @@ function makeSvc(opts: {
     registerDiscoverResolver: () => {},
     enqueue: () => {},
   };
+  const lyricsService = new LyricsService(
+    netease as any,
+    deezer as any,
+    qq as any,
+    lyricsOvh as any,
+  );
   return new MusicService(
     fakeStorage,
     qq,
@@ -63,6 +70,7 @@ function makeSvc(opts: {
     deezer,
     spotify,
     lyricsOvh,
+    lyricsService,
     match,
     likeSync,
   );

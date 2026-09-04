@@ -180,7 +180,7 @@ export class SpotifyMusicProvider {
       // 没有 sessionId（开发/单测）就直接跑，不走单飞。
       return this.doRefreshAccessToken(session, refreshToken);
     }
-    return this.refreshCoordinator.run<string | null>(sessionId, () =>
+    return this.refreshCoordinator.run<string | null>('spotify', sessionId, () =>
       this.doRefreshAccessToken(session, refreshToken),
     );
   }
@@ -480,6 +480,17 @@ export class SpotifyMusicProvider {
     if (tok.expiresAt <= Date.now() + 30_000) {
       accessToken = await this.refreshAccessToken(session, tok.refreshToken);
       if (!accessToken) return null;
+      // T7 (consistency-fixes E2)：refresh 后**重新读** token 拿到新 expiresAt。
+      // 旧实现直接返回 `tok.expiresAt`（过期前的旧值）→ renderer 拿着 stale
+      // expiresAt 算下一次拉取时机，结果短时间内反复触发 refresh，且 WPS
+      // SDK 也以为 token 还差 60s 到期。
+      const retok = this.readToken(session);
+      if (!retok) return null;
+      return {
+        accessToken,
+        expiresAt: retok.expiresAt,
+        tier: retok.tier ?? null,
+      };
     }
     return {
       accessToken,

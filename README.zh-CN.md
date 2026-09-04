@@ -238,8 +238,22 @@ npm run dev
 ```
 
 Vite 开发服务器会把 `/api/*`（剥掉 `/api` 前缀）、`/music/*`、`/auth/*`、
-`/reco/*` 代理到 `:3200` 的 NestJS，因此开发时整个应用同源，共享同一个
-会话 cookie。
+`/reco/*` 代理到 `:3200` 的 NestJS，因此开发时整个应用同源，共享同一个会话 cookie。
+
+## 测试
+
+```bash
+npm test                # 全量跑（自动发现 packages/*/src/**/*.test.ts）
+npm run typecheck       # 全 workspaces tsc --noEmit
+npm run lint            # ESLint（renderer / server / common）
+npm test -- --watch     # 文件改动自动重跑
+npm test -- --ci        # 首个失败即退出（CI 模式）
+npm test -- --coverage  # c8 行覆盖率门槛（≥60%）
+```
+
+测试对 sandbox 友好：e2e 不走 `listen()` 真端口，而是通过
+`src/test-helpers/in-process-http.ts` 在进程内直接驱动 NestJS HTTP handler，
+所以即便 `bind()` 被拒（CI / sandbox 默认）也能完整跑 `npm test`。
 
 ## 环境变量
 

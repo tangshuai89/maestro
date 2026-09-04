@@ -658,7 +658,7 @@ void (async () => {
 {
   const recordedSids: string[] = [];
   const recordingCoordinator = {
-    run: (sid: string, fn: () => Promise<unknown>) => {
+    run: (_provider: string, sid: string, fn: () => Promise<unknown>) => {
       recordedSids.push(sid);
       return fn();
     },

@@ -256,6 +256,22 @@ Vite 開発サーバーは `/api/*`（`/api` プレフィックスを除去）�
 `/auth/*`、`/reco/*` を `:3200` の NestJS にプロキシします。そのため開発時は
 アプリ全体が同一オリジンとなり、1 つのセッション cookie を共有します。
 
+## テスト
+
+```bash
+npm test                # 全実行（packages/*/src/**/*.test.ts を自動検出）
+npm run typecheck       # 全 workspaces の tsc --noEmit
+npm run lint            # ESLint（renderer / server / common）
+npm test -- --watch     # ファイル変更で自動再実行
+npm test -- --ci        # 最初の失敗で終了（CI モード）
+npm test -- --coverage  # c8 行カバレッジゲート（≥60%）
+```
+
+テストはサンドボックス対応：e2e は `listen()` で本ポートを取らず、
+`src/test-helpers/in-process-http.ts` 経由で NestJS HTTP ハンドラを直接駆動
+します。`bind()` が拒否される環境（CI / デフォルト sandbox）でも
+`npm test` が完走できます。
+
 ## 環境変数
 
 開発時はすべて任意で、サーバーは妥当なデフォルトにフォールバックします。

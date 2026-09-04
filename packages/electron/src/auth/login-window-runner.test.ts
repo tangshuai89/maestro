@@ -55,6 +55,7 @@ function makeFake(): { win: MinimalBrowserWindow; state: FakeState } {
       },
     },
   };
+  let onClosed: () => void = () => {};
   const win: MinimalBrowserWindow = {
     webContents: { session, setWindowOpenHandler: () => undefined },
     isDestroyed() {
@@ -67,6 +68,17 @@ function makeFake(): { win: MinimalBrowserWindow; state: FakeState } {
       state.closed = true;
       state.destroyed = true;
     },
+    destroy() {
+      state.destroyed = true;
+    },
+    on(event: 'closed', cb: () => void) {
+      if (event === 'closed') onClosed = cb;
+    },
+  };
+  // Test helper: simulate the 'closed' event firing.
+  (win as unknown as { fireClosed: () => void }).fireClosed = () => {
+    state.destroyed = true;
+    onClosed();
   };
   return { win, state };
 }
@@ -326,5 +338,84 @@ void (async () => {
   console.log('✅ 9. cookie domain: lookalike hosts rejected (filter works)');
 }
 
-console.log('\n🎉 login-window-runner.test.ts: all 9 cases passed');
+
+// ── T9 (consistency-fixes F3): capture() 在途时关窗，等 capture 落定 ──────
+{
+  // 场景：capture() await 期间（promise pending）用户关窗。旧实现：
+  // fail('LOGIN_CANCELLED') 立即跑 → 已捕到 cookie 丢弃 + 报 cancel。
+  // 新行为：capture 落地后 succeed（关窗不再算取消）。
+  let resolveCapture: ((v: unknown) => void) | null = null;
+  const { win } = makeFake();
+  const result = runLoginWindow({
+    url: 'https://example.com',
+    title: 'test',
+    width: 800,
+    height: 600,
+    minWidth: 400,
+    minHeight: 300,
+    domains: ['example.com'],
+    capture: async () => {
+      return await new Promise((resolve) => {
+        resolveCapture = resolve as unknown as (v: unknown) => void;
+      });
+    },
+    createWindow: () => win,
+    deadlineMs: 30_000,
+    pollIntervalMs: 50,
+  });
+
+  // 等 capture() 进入 pending（poll 触发后）
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(resolveCapture, 'capture 应已被调用并 pending');
+
+  // 模拟关窗：win.isDestroyed() = true
+  win.destroy!();
+
+  // 触发 capture resolve（带 result）
+  resolveCapture!({ token: 'captured-cookie' });
+
+  // 期望：succeed（resolves with result），而不是 LOGIN_CANCELLED
+  const got = await result;
+  assert.deepStrictEqual(got, { token: 'captured-cookie' },
+    'capture 已 resolve → succeed，不报 LOGIN_CANCELLED');
+  console.log('✅ T9.F3 capture 在途时关窗 → 等 capture 落定后 succeed');
+}
+
+// ── T9 F3 反例：capture 没结果 + 关窗 → 报 LOGIN_CANCELLED ─────────────
+{
+  let resolveCapture: ((v: unknown) => void) | null = null;
+  const { win } = makeFake();
+  const result = runLoginWindow({
+    url: 'https://example.com',
+    title: 'test',
+    width: 800,
+    height: 600,
+    minWidth: 400,
+    minHeight: 300,
+    domains: ['example.com'],
+    capture: async () => {
+      return await new Promise((resolve) => {
+        resolveCapture = resolve as unknown as (v: unknown) => void;
+      });
+    },
+    createWindow: () => win,
+    deadlineMs: 30_000,
+    pollIntervalMs: 50,
+  });
+
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(resolveCapture);
+  // 关窗（fire 'closed' + mark destroyed）
+  (win as unknown as { fireClosed: () => void }).fireClosed();
+  // resolve 为 null（没捕到）
+  (resolveCapture as unknown as ((v: unknown) => void) | null)!(null);
+
+  await assert.rejects(result, (err: Error & { code: string }) => {
+    assert.strictEqual(err.code, 'LOGIN_CANCELLED');
+    return true;
+  });
+  console.log('✅ T9.F3 capture=null + 关窗 → LOGIN_CANCELLED');
+}
+
+console.log('\n🎉 login-window-runner.test.ts: all 11 cases passed');
 })();

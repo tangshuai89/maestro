@@ -35,6 +35,7 @@ import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
+import { LyricsService } from './lyrics.service';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
@@ -50,14 +51,6 @@ const IMPORT_FETCH_TIMEOUT_MS = 30_000;
  *  5000 对应重度用户 1-2 年的累计 ❤ 量，再多就是滥用。 */
 const FANOUT_MAX = 5_000;
 
-/** 歌词多源回退顺序——QQ 匿名可用且 LRC 最全，其次网易云（需登录），
- *  Deezer 大多没词（公共 API 不带 lyrics）。Spotify 无歌词 API，不在列。 */
-const LYRICS_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
-
-/** 歌词结果（含 miss）的内存缓存 TTL / 容量上限。 */
-const LYRICS_CACHE_TTL_MS = 10 * 60 * 1000;
-const LYRICS_CACHE_MAX = 2_000;
-
 /** 跨平台等价曲搜索（同 (session, platform, title+artist kw, 时长分桶)）的内存缓存。
  *  TTL 按结果性质分级：
  *  - **命中 / 干净缺席**（搜索成功但匹配不到——歌确实不在该平台）→ 1h。缺席是
@@ -70,8 +63,11 @@ const EQUIV_MATCH_CACHE_TTL_MS = 60 * 60 * 1000;
 const EQUIV_FAIL_CACHE_TTL_MS = 30_000;
 const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
 
-/** 有任何一行 time>0 才算 synced——lyrics.ovh / Deezer 纯文本歌词全部
- *  time=0，前端据此关掉滚动高亮和点击跳转。 */
+// IS_LYRIC_SOURCE_PRIORITY：仅 getLyricsByName 用（其它歌词聚合逻辑已迁
+// LyricsService）。getLyricsByName 留 MusicService 是因为它依赖本类的
+// searchEquivalent——避免循环依赖。
+const IS_LYRIC_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
+
 function isSynced(lines: LyricLine[]): boolean {
   return lines.some((l) => l.time > 0);
 }
@@ -120,6 +116,40 @@ const ANONYMOUS_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
 @Injectable()
 export class MusicService {
   private readonly logger = new Logger(MusicService.name);
+
+  /**
+   * T5 (consistency-fixes C2)：per-session 状态锁（promise-chain mutex）。
+   *
+   * 多个写路径（fanOutLike / toggleLike / dislikeMerged / markDisliked /
+   * getNextTrack refill / importLiked / detectLikedAndSync 的写段）都做
+   * loadState→改→saveState。无锁并发会让后写的覆盖前写的（lost update），
+   * 例如用户连点 ❤ → ❤ → 踩，三个请求交错执行时第一个 ❤ 的 state 修改
+   * 被踩的旧 state 写回去，红心没被取消。
+   *
+   * 实现：手写 promise-chain，不用新依赖（spec 要求）。每个 sessionId 一条
+   * 链，新任务 append 到链尾。链上 promise 不抛错（finally 隔离），让后
+   * 一个不写不必等前一个的 throw。
+   *
+   * 不可重入：**禁止**在锁内调用另一个 also 拿锁的方法（dislikeMerged 已
+   * 调 fanOutLike，detectLikedAndSync 内部不调其他锁方法）—— 若需嵌套，
+   * 调用方先退出当前锁再进新的。
+   */
+  private readonly stateLocks = new Map<string, Promise<unknown>>();
+  withStateLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.stateLocks.get(sessionId) ?? Promise.resolve();
+    const next = prev
+      .catch(() => {
+        // 链上前一个失败不要污染后续任务。
+      })
+      .then(() => fn());
+    // 始终把链更新为「next 自身 resolve/reject 后的清理后状态」，
+    // 防止无限增长（虽然 fn 通常会 resolve，但理论上可能 hang）。
+    this.stateLocks.set(
+      sessionId,
+      next.catch(() => undefined),
+    );
+    return next;
+  }
 
   /**
    * getLibrary 派生结果缓存（per session）。3000+ 首库 + ~5000 fanOut 条目
@@ -171,6 +201,7 @@ export class MusicService {
     private readonly deezer: DeezerMusicProvider,
     private readonly spotify: SpotifyMusicProvider,
     private readonly lyricsOvh: LyricsOvhProvider,
+    private readonly lyricsService: LyricsService,
     private readonly match: MatchService,
     private readonly likeSync: LikeSyncQueue,
   ) {
@@ -367,8 +398,12 @@ export class MusicService {
       const preset = session.prefs?.deezerPreset ?? 'all';
       batch = await this.deezer.fetchRadioBatch(ps as ProviderSession, preset);
     }
+    // T5 (consistency-fixes C2)：refill 的写段（queue.push + saveState）
+    // 拿锁避免与 ❤ / 踩 的 loadState/saveState 交错。
+    // 我们**先**过滤 + 装饰 batch（用 caller 传的 state），再单独进锁做 push。
+    // 锁内仅做最小的 state mutation。
     const psState = state.providers[provider];
-    batch = batch
+    const decorated = batch
       .filter((t) => !psState.disliked.has(t.id))
       .map((t) => {
         // Deezer's preview URL is a hot-linkable mp3. We expose it
@@ -388,8 +423,17 @@ export class MusicService {
           liked: psState.liked.has(t.id),
         };
       });
-    psState.queue.push(...batch);
-    this.saveState(session, state);
+    await this.withStateLock(session.id, async () => {
+      // 锁内重新 loadState，确保拿到最新（前面的 fetchRadioBatch 可能
+      // 耗时数秒，期间其他写路径可能已动 state.queue）。但 caller 传入的
+      // state 我们不能直接 push 进去——直接 push 会破坏 caller 的 state
+      // 引用。折中：锁内 load 新 state、push 进新 state、保存。
+      const fresh = this.loadState(session);
+      fresh.providers[provider].queue.push(...decorated);
+      this.saveState(session, fresh);
+      // 同步 caller 的 state 引用：让 getNextTrack 拿到的 queue 也是最新。
+      state.providers[provider].queue = fresh.providers[provider].queue;
+    });
   }
 
   /** Get the next track from the radio. Auto-refills if the queue is empty. */
@@ -729,11 +773,20 @@ export class MusicService {
     provider: MusicProvider,
     trackId: string,
   ): Promise<{ success: boolean }> {
-    const state = this.loadState(session);
-    state.providers[provider].disliked.add(trackId);
-    state.providers[provider].liked.delete(trackId);
-    this.saveState(session, state);
+    // T5 (consistency-fixes C2)：per-session mutex 包裹写段，避免 ❤ → 踩
+    // 快速切换场景下旧 state 被覆盖导致红心复活。
+    await this.withStateLock(session.id, async () => {
+      const state = this.loadState(session);
+      state.providers[provider].disliked.add(trackId);
+      // T2 (consistency-fixes B5)：原实现直接 .delete 绕过 setLike+缓存
+      // 同步，detect 下一轮 getLikedSet 拿到旧缓存（含该 trackId）→ 误判
+      // liked → 抹掉刚刚在官方 App 已取消但本地尚未同步的「红心」。
+      // 改用 writeLike(false) 同步 likedCache + state.liked。
+      this.writeLike(session, state, provider, trackId, false);
+      this.saveState(session, state);
+    });
 
+    // 锁外做 netease fmTrash（远端 IO，不动 state）。
     const ps = session.providers[provider];
     if (provider === 'netease' && ps?.musicU) {
       try {
@@ -766,21 +819,44 @@ export class MusicService {
     mergedId: string,
     sources: Array<{ platform: MusicProvider; trackId: string }>,
   ): Promise<{ success: boolean }> {
-    // 1. 取消跨平台红心（fanOutLike false 内部会 loadState/saveState + 入队，
-    //    await 完成后其状态已落盘，下面的 loadState 读到的是清理后的态）。
-    await this.fanOutLike(session, mergedId, sources, false);
-
-    // 2. 本地 disliked 标记（每平台一首，和 fan-out「每平台一首」口径一致）。
-    const state = this.loadState(session);
-    const byPlatform = this.groupByPlatform(sources);
+    // T5 (consistency-fixes C2)：整个 dislikeMerged 在 per-session 锁里。
+    // 锁内直接复用 fanOutLike 的内部逻辑（不调公开 fanOutLike，因为它也
+    // 会拿锁——withStateLock 不可重入）。这里 inline 同样的 state mutations。
+    // 任何 in-flight 的写路径都在本锁之后排队，避免 ❤ → 踩 的 lost update。
     const neteaseTargets: string[] = [];
-    for (const [platform, trackIds] of byPlatform) {
-      const trackId = trackIds[0];
-      state.providers[platform].disliked.add(trackId);
-      state.providers[platform].liked.delete(trackId); // fanOutLike 已清，双保险
-      if (platform === 'netease') neteaseTargets.push(trackId);
-    }
-    this.saveState(session, state);
+    await this.withStateLock(session.id, async () => {
+      // 1. 取消跨平台红心——inline fanOutLike 的 unlike 路径。
+      const state = this.loadState(session);
+      const canonicalId = this.canonicalMergedId(state, mergedId, sources);
+      const toUnlike = state.fanOut[canonicalId] ?? [];
+      const targets: Array<{ platform: MusicProvider; trackId: string }> = [];
+      for (const entry of toUnlike) {
+        if (!this.isLikeable(entry.platform)) continue;
+        const trackId =
+          entry.trackId ??
+          sources.find((s) => s.platform === entry.platform)?.trackId;
+        if (!trackId) continue;
+        this.writeLike(session, state, entry.platform, trackId, false);
+        targets.push({ platform: entry.platform, trackId });
+      }
+      delete state.fanOut[canonicalId];
+      this.saveState(session, state);
+      // 入队远端 unlike。enqueueLikeSync 是 fire-and-forget，不动 state。
+      this.enqueueLikeSync(session, canonicalId, false, targets, undefined);
+
+      // 2. 本地 disliked 标记（每平台一首，和 fan-out「每平台一首」口径一致）。
+      const state2 = this.loadState(session);
+      const byPlatform = this.groupByPlatform(sources);
+      for (const [platform, trackIds] of byPlatform) {
+        const trackId = trackIds[0];
+        state2.providers[platform].disliked.add(trackId);
+        // T2 (consistency-fixes B5)：原 .delete 绕过 cache 同步；改用
+        // writeLike(false) 让 disliked 写入也带动 likedCache 同步清理。
+        this.writeLike(session, state2, platform, trackId, false);
+        if (platform === 'netease') neteaseTargets.push(trackId);
+      }
+      this.saveState(session, state2);
+    });
 
     // 3. netease FM「不喜欢」（减少推荐）。best-effort，失败不影响踩本身。
     const ps = session.providers.netease;
@@ -877,6 +953,34 @@ export class MusicService {
       return true;
     }
     return false; // 已是目标态，无改变
+  }
+
+  /**
+   * B 类根因收口（consistency-fixes T2）：writeLike = setLike + 同步 likedCache。
+   *
+   * 历史缺陷：`state.providers[p].liked`（UI / detect 真值）与
+   * `likedCache`（getLikedSet 的 5min 读缓存）是同一事实的两个副本，
+   * 多处写路径只写其一 → detect 读到旧缓存把新 ❤ 抹掉（PR #75 修复的
+   * fanOutLike 模式）、radio ❤ 被抹（B2）、markDisliked 跨平台不等
+   * （B5）等。
+   *
+   * 全部写点（toggleLike / fanOutLike / detectLikedAndSync /
+   * resolveEquivalents / markDisliked / dislikeMerged / healLibraryItem /
+   * mergeSiblingLibraryLikes）一律改走这个 helper，杜绝再次分裂。
+   *
+   * @returns 是否发生了实际变化（同 setLike）；无变化时不触发缓存写，
+   *   因为缓存已是目标态。
+   */
+  private writeLike(
+    session: Session,
+    state: MusicSessionState,
+    platform: MusicProvider,
+    trackId: string,
+    liked: boolean,
+  ): boolean {
+    const changed = this.setLike(state, platform, trackId, liked);
+    if (changed) this.updateLikedCache(session, platform, trackId, liked);
+    return changed;
   }
 
   /** 某平台当前 session 是否具备写红心的能力（有收藏概念 + 已登录）。
@@ -1079,7 +1183,23 @@ export class MusicService {
       ...task.targets,
       ...targets,
     ]);
-    for (const m of targets) this.setLike(state, m.platform, m.trackId, true);
+    // T4 (consistency-fixes C 类根因)：用户搜索期间可能取消了 ❤
+    // （dislikeMerged  delete state.fanOut[mergedId]）。再次 loadState 后，
+    // state.fanOut[fullCanonicalId] 已不存在 → discover 结果是给一首用户
+    // 已经不喜欢的歌点灯，是 resurrection bug。直接丢弃结果并 log。
+    if (!state.fanOut[fullCanonicalId]) {
+      this.logger.log(
+        `resolveEquivalents "${meta.title}": 用户中途取消了 ❤，` +
+          `canonicalId=${fullCanonicalId} 已不存在，discarding discover 结果`,
+      );
+      return [];
+    }
+    // T2 (consistency-fixes B5)：resolveEquivalents 旧实现只 setLike
+    // 不动 likedCache；后台 discover 跨平台匹配点亮后，紧接着 detect 轮询
+    // getLikedSet 拿到旧缓存 → 看不到新 ❤ → 抹掉。改用 writeLike 同步。
+    for (const m of targets) {
+      this.writeLike(task.session, state, m.platform, m.trackId, true);
+    }
     state.fanOut[fullCanonicalId] = this.mergeFanOutEntries(
       state.fanOut[fullCanonicalId] ?? [],
       targets,
@@ -1188,6 +1308,11 @@ export class MusicService {
       if (copyrighted) item.bestSource = copyrighted.platform;
     }
     this.storage.set(this.libraryKey(session.id), stored);
+    // T10 (consistency-fixes G5)：mutation 后 libraryCache.delete。
+    // 旧实现：patch 后 storage 是新的，但 cache 还指向旧对象——getLibrary
+    // 命中 cache 后 return 旧 stored（newSources 不存在）→ likedPlatforms
+    // 看不到新平台，badge 漏算直到重启。delete 让下次 getLibrary 重新 load。
+    this.libraryCache.delete(session.id);
     this.logger.log(
       `library patched: "${item.title} - ${item.artist}" += ` +
         newSources.map((s) => s.platform).join(', '),
@@ -1276,6 +1401,13 @@ export class MusicService {
       state.fanOut[item.id] ?? [],
       fresh,
     );
+    // T2 (consistency-fixes B5)：fanOut-only 写点补 providers.liked。
+    // 否则下次 reconcileLiked 远端返回不含这些 trackId → 把它们从 fanOut
+    // 抹掉 → 角标闪现又消失（spec B5 healLibraryItem / mergeSiblingLibraryLikes
+    // 子项）。writeLike 同步 setLike + likedCache，detect 也不会再误判。
+    for (const m of matches) {
+      this.writeLike(session, state, m.provider, m.id, true);
+    }
     this.saveState(session, state);
     this.logger.log(
       `healLibrary: "${item.title} - ${item.artist}" += ` +
@@ -2085,6 +2217,26 @@ export class MusicService {
     else entry.set.delete(trackId);
   }
 
+  /**
+   * T3 (consistency-fixes B4)：登录 / 登出时主动失效 likedCache。
+   *
+   * 背景：换账号后 5 分钟内仍显示上一账号的红心——全仓 0 处
+   * likedCache.delete/clear 调用（除测试）。AuthController 登录成功 / 登出
+   * 后调用，下一次 getLikedSet 重新拉远端。
+   *
+   * @param provider 省略 → 清该 session 全部平台；指定 → 只清该平台
+   *   （同一 session 多账号并行场景用得到）。
+   */
+  invalidateLikedCache(session: Session, provider?: MusicProvider): void {
+    if (provider) {
+      this.likedCache.delete(this.likedCacheKey(session, provider));
+    } else {
+      for (const p of MUSIC_PROVIDERS as readonly MusicProvider[]) {
+        this.likedCache.delete(this.likedCacheKey(session, p));
+      }
+    }
+  }
+
   /** 用一份已拉到的红心列表整体填充缓存。importLiked 拉全量收藏时顺手复用，
    *  避免紧接着的切歌 detect 又把 QQ 1000+ 首重拉一遍（importLiked 与 detect
    *  之前是各拉各的，互不复用）。 */
@@ -2101,46 +2253,73 @@ export class MusicService {
   }
 
   /**
-   * 两套真值源主动对账（#5）：拿到一份**新鲜的**远端红心全量后，把本地
-   * `providers[p].liked` 收敛到「远端 ∪ 同步队列在途的 like − 在途的 unlike」。
-   * 远端是权威；在途的乐观写还没落到远端，不能被当作失配抹掉。
-   * 只在远端拉取**成功**时调用（失败保留本地状态，绝不误清）；未登录 /
-   * Deezer 永远不会走到这里。顺带把 fanOut 记录里该平台已不再红心的条目
-   * 移除（外部在官方 App 取消了收藏 → 角标不再多算）。
+   * 计算对账后的 `next` 集合（远端 ∪ 在途 like − 在途 unlike），不写 state。
+   * T2 (consistency-fixes B1)：分离「计算」与「落地」——
+   *   - getLikedSet 用它缓存**reconciled**集合（不是 raw remote），
+   *     否则 in-flight like 被 detect 当成失配抹掉（PR #75 同类问题）；
+   *   - reconcileLiked 用它比较是否需要落 state；
+   *   - 末尾回写 likedCache，使 cache 与 state.providers[p].liked 永远
+   *     是同一个 reconciled 集合的视图，杜绝双真值源分裂。
+   *
+   * CONSERVATIVE GUARD（保留原行为）：远端=0 + 本地>0 视为拉取失败（fetchLiked
+   * 找不到歌单时也会返回空集），跳过对账避免一次性抹掉用户的 ❤ 列表。
+   * 返回 null 表示「跳过对账」（调用方应保留现有缓存）。
    */
-  private reconcileLiked(
+  private computeReconciledLiked(
     session: Session,
     provider: MusicProvider,
     remote: Set<string>,
-  ): void {
-    if (!this.isLikeable(provider)) return;
-    const state = this.loadState(session);
-    const local = state.providers[provider].liked;
-
-    // CONSERVATIVE GUARD: 各 provider 的 fetchLiked 在「找不到对应歌单」
-    // （NetEase 缺 specialType=5 / QQ 缺 dirid=201 / Spotify 接口 shape 变
-    // 化）等场景下都会返回空 Set——这不是「用户真的没有 ❤」而是「拉不到数据」。
-    // 当前空远端 + 非空本地 → 跳过 reconcile，避免一次性抹掉用户多年的
-    // ❤ 列表。下次成功的拉取会自然收敛。代价：用户真在官方 App 取消全部
-    // ❤ 后，本地角标要等下一次 fetch 才同步；这是更小的代价。
-    if (remote.size === 0 && local.size > 0) {
+    localSize: number,
+  ): Set<string> | null {
+    if (!this.isLikeable(provider)) return null;
+    if (remote.size === 0 && localSize > 0) {
       this.logger.warn(
-        `reconcileLiked(${provider}): remote=0 but local=${local.size}, ` +
+        `computeReconciledLiked(${provider}): remote=0 but local=${localSize}, ` +
           'treating as transient fetch miss; skipping reconcile to avoid clobber',
       );
-      return;
+      return null;
     }
-
     const next = new Set(remote);
     for (const t of this.likeSync.pendingTargets(session.id)) {
       if (t.platform !== provider) continue;
       if (t.liked) next.add(t.trackId);
       else next.delete(t.trackId);
     }
+    return next;
+  }
+
+  /**
+   * 两套真值源主动对账（#5）：拿到一份**新鲜的**远端红心全量后，把本地
+   * `providers[p].liked` 收敛到「远端 ∪ 同步队列在途的 like − 在途的 unlike」。
+   * 远端是权威；在途的乐观写还没落到远端，不能被当作失配抹掉。
+   * 只在远端拉取**成功**时调用（失败保留本地状态，绝不误清）；未登录 /
+   * Deezer 永远不会走到这里。顺带把 fanOut 记录里该平台已不再红心的条目
+   * 移除（外部在官方 App 取消了收藏 → 角标不再多算）。
+   *
+   * T2 (consistency-fixes B1)：返回值改为 `next`（reconciled 集合），方便
+   * 调用方同步回写 likedCache，让 cache 永远反映「真值」。mutate 行为不变。
+   */
+  private reconcileLiked(
+    session: Session,
+    provider: MusicProvider,
+    remote: Set<string>,
+  ): Set<string> | null {
+    if (!this.isLikeable(provider)) return null;
+    const state = this.loadState(session);
+    const local = state.providers[provider].liked;
+
+    const next = this.computeReconciledLiked(session, provider, remote, local.size);
+    if (!next) return null;
 
     const unchanged =
       next.size === local.size && [...next].every((id) => local.has(id));
-    if (unchanged) return;
+    // 即使无变化也回写缓存：cache 可能是陈旧的 raw remote，下次 detect
+    // 读到会误判 in-flight like 为失配。直接 set cache 保证反映 reconciled next。
+    this.likedCache.set(this.likedCacheKey(session, provider), {
+      set: new Set(next),
+      at: Date.now(),
+    });
+    if (unchanged) return next;
 
     state.providers[provider].liked = next;
     for (const [mergedId, entries] of Object.entries(state.fanOut)) {
@@ -2152,9 +2331,17 @@ export class MusicService {
       else delete state.fanOut[mergedId];
     }
     this.saveState(session, state);
+    // T2 (consistency-fixes B1)：把 reconciled next 回写 likedCache——
+    // 之前实现只缓存 raw remote，in-flight like 永远不在 cache 眼里，
+    // 下次 getLikedSet 读到旧 cache 抹掉刚刚点亮的红心。
+    this.likedCache.set(this.likedCacheKey(session, provider), {
+      set: new Set(next),
+      at: Date.now(),
+    });
     this.logger.log(
       `reconciled ${provider} liked: local ${local.size} → ${next.size}`,
     );
+    return next;
   }
 
   /**
@@ -2212,11 +2399,13 @@ export class MusicService {
         `getLikedSet(${provider}) failed: ${(err as Error).message}`,
       );
     }
-    if (set) {
-      this.likedCache.set(key, { set, at: Date.now() });
-      this.reconcileLiked(session, provider, set);
-    }
-    return set;
+    if (!set) return new Set<string>();
+    // T2 (consistency-fixes B1)：先对账，再把 **reconciled** 集合缓存 + 返回。
+    // 旧实现缓存 raw remote，in-flight like 永远不在 cache 眼里 → 下次
+    // detect 读到旧 cache 把刚刚点亮的红心抹掉（PR #75 同类问题的根因）。
+    // reconcileLiked 内部已同步写回 likedCache。
+    const reconciled = this.reconcileLiked(session, provider, set);
+    return reconciled ?? set;
   }
 
   private async isLikedOn(
@@ -2339,46 +2528,52 @@ export class MusicService {
     //  - 已红心的平台：确认态，反映到本地 + 计入角标；
     //  - 还没红心但能写的平台：乐观点亮本地 + 入队（每平台一首）后台补；
     //  - 不能写红心的平台（deezer/未登录）：既不入队也不计角标。
-    const state = this.loadState(session);
-    // mergedId 漂移归一（#6）：若同一首歌已挂在老 key 下，复用老 key。
-    const canonicalId = this.canonicalMergedId(state, mergedId, sources);
-    const fresh: FanOutEntry[] = [];
-    const targets: Array<{ platform: MusicProvider; trackId: string }> = [];
-    for (const p of perPlatform) {
-      if (p.liked) {
-        this.setLike(state, p.platform, p.repId, true);
-        this.updateLikedCache(session, p.platform, p.repId, true);
-        fresh.push({ platform: p.platform, trackId: p.repId });
-      } else if (p.canSync) {
-        this.setLike(state, p.platform, p.repId, true); // 乐观点亮
-        this.updateLikedCache(session, p.platform, p.repId, true);
-        fresh.push({ platform: p.platform, trackId: p.repId });
-        targets.push({ platform: p.platform, trackId: p.repId });
+    // T5 (consistency-fixes C2)：写段（loadState → 改 → saveState + enqueue）
+    // 拿锁。**6s waitForSettled 不在锁内**——否则 ❤ 点击会被 detect 阻塞。
+    let canonicalId = mergedId;
+    await this.withStateLock(session.id, async () => {
+      const state = this.loadState(session);
+      // mergedId 漂移归一（#6）：若同一首歌已挂在老 key 下，复用老 key。
+      canonicalId = this.canonicalMergedId(state, mergedId, sources);
+      const fresh: FanOutEntry[] = [];
+      const targets: Array<{ platform: MusicProvider; trackId: string }> = [];
+      for (const p of perPlatform) {
+        if (p.liked) {
+          // writeLike（T2 收口）：确认态 + likedCache 同步，否则下一轮
+          // detect 拉到旧缓存把它当作失配抹掉。
+          this.writeLike(session, state, p.platform, p.repId, true);
+          fresh.push({ platform: p.platform, trackId: p.repId });
+        } else if (p.canSync) {
+          // writeLike（T2 收口）：乐观点亮 + likedCache 同步。
+          this.writeLike(session, state, p.platform, p.repId, true);
+          fresh.push({ platform: p.platform, trackId: p.repId });
+          targets.push({ platform: p.platform, trackId: p.repId });
+        }
       }
-    }
-    // 与已有 fanOut 记录**合并**而非覆盖：某次搜索可能没返回某平台的 source
-    // （平台超时缺席 / 变体聚类不同），但那首歌在该平台仍是红心的——直接覆盖
-    // 会把它从记录里抹掉、角标少算。合并保留旧平台（dislikeMerged 已 delete
-    // 整条记录，所以这里不会复活被取消的红心）。只留 likeable 平台。
-    const merged = this.mergeFanOutEntries(
-      state.fanOut[canonicalId] ?? [],
-      fresh,
-    );
-    state.fanOut[canonicalId] = merged;
-    this.saveState(session, state);
+      // 与已有 fanOut 记录**合并**而非覆盖：某次搜索可能没返回某平台的 source
+      // （平台超时缺席 / 变体聚类不同），但那首歌在该平台仍是红心的——直接覆盖
+      // 会把它从记录里抹掉、角标少算。合并保留旧平台（dislikeMerged 已 delete
+      // 整条记录，所以这里不会复活被取消的红心）。只留 likeable 平台。
+      const merged = this.mergeFanOutEntries(
+        state.fanOut[canonicalId] ?? [],
+        fresh,
+      );
+      state.fanOut[canonicalId] = merged;
+      this.saveState(session, state);
 
-    // 关键改动：远端写不再在切歌时内联执行，而是推入同步队列（MQ 思路）——
-    // 每平台一首、失败自动重试、不阻塞播放。检测→入队→后台同步解耦。
-    // discover：这首歌已有红心 → 顺带去「其余已登录但还没这首 source」的平台
-    // 跨平台匹配补齐（后台，严格 ±3s）。targets 可能为空（已红心平台不需要
-    // 重写远端）但 discover 仍要跑，所以 enqueue 允许 discover-only。
-    this.enqueueLikeSync(
-      session,
-      canonicalId,
-      true,
-      targets,
-      this.buildDiscover(meta, [...byPlatform.keys()]),
-    );
+      // 关键改动：远端写不再在切歌时内联执行，而是推入同步队列（MQ 思路）——
+      // 每平台一首、失败自动重试、不阻塞播放。检测→入队→后台同步解耦。
+      // discover：这首歌已有红心 → 顺带去「其余已登录但还没这首 source」的平台
+      // 跨平台匹配补齐（后台，严格 ±3s）。targets 可能为空（已红心平台不需要
+      // 重写远端）但 discover 仍要跑，所以 enqueue 允许 discover-only。
+      this.enqueueLikeSync(
+        session,
+        canonicalId,
+        true,
+        targets,
+        this.buildDiscover(meta, [...byPlatform.keys()]),
+      );
+    });
 
     // 等 discover 落定再返回 fannedOutTo——否则前端 refreshLikedState 的 detect
     // 会和后台搜索竞态：响应里的角标数还是「补平台之前」的状态，UI 上永远
@@ -2396,14 +2591,29 @@ export class MusicService {
       6000,
     );
     const stateAfterWait = this.loadState(session);
+    // T4 (consistency-fixes)：waitForSettled 期间 discover 跑了 resolveEquivalents，
+    // 可能写了别处的 fanOut；用最新 state 重算。如果 canonicalId 漂移
+    // （resolveEquivalents 把 mergedId 归一到另一 key），用新 key 而不是
+    // 入口处的旧 key——否则 mergeSiblingLibraryLikes 写到旧 key，新 key
+    // 下的记录拿不到这次补的平台，角标漏算。
+    const canonicalIdAfterWait = this.canonicalMergedId(
+      stateAfterWait,
+      mergedId,
+      sources,
+    );
     // 同曲不同版本（时长差 >±3s → mergeLibrary 拆成独立 item / 独立 fanOut
     // 记录）的兄弟库条目：把它们已红心的 source 平台并入当前记录，让 ❤ 角标
     // 按「歌」算而不是按「版本」算。canonicalMergedId 只按 (platform, trackId)
     // 桥——兄弟版本 trackId 不同，桥不到，不加这步角标就漏（用户播放 258s
     // 版本时看不到 275s 版本已补上的 qq/spotify）。
-    this.mergeSiblingLibraryLikes(stateAfterWait, session, canonicalId, meta);
+    this.mergeSiblingLibraryLikes(
+      stateAfterWait,
+      session,
+      canonicalIdAfterWait,
+      meta,
+    );
     this.saveState(session, stateAfterWait);
-    const record = stateAfterWait.fanOut[canonicalId] ?? [];
+    const record = stateAfterWait.fanOut[canonicalIdAfterWait] ?? [];
     return {
       liked: true,
       fannedOutTo: record.map((e) => e.platform),
@@ -2453,6 +2663,12 @@ export class MusicService {
     }
     if (!extra.length) return;
     state.fanOut[canonicalId] = this.mergeFanOutEntries(record, extra);
+    // T2 (consistency-fixes B5)：同 healLibraryItem，fanOut-only 写点
+    // 补 providers.liked；否则下次 reconcile 把这些条目抹掉。
+    for (const e of extra) {
+      if (!e.trackId) continue; // FanOutEntry.trackId is optional — defensive
+      this.writeLike(session, state, e.platform, e.trackId, true);
+    }
   }
 
   async toggleLike(
@@ -2465,10 +2681,21 @@ export class MusicService {
     if (!this.isLikeable(provider)) {
       return { success: true, liked: false };
     }
-    const state = this.loadState(session);
-    const wasLiked = this.applyLikeToggle(state, provider, trackId);
-    this.saveState(session, state);
-    const nowLiked = !wasLiked;
+    // T5 (consistency-fixes C2)：per-session mutex 包裹写段。竞态例子：
+    // 用户点 ❤（toggleLike）→ 立刻取消 ❤（enqueue 触发的 detect 发现已心
+    // 然后 state.liked 又被覆盖）。锁住写段避免 lost update。
+    let nowLiked = false;
+    await this.withStateLock(session.id, async () => {
+      const state = this.loadState(session);
+      // T2 (consistency-fixes B2)：radio ❤ 路径。旧实现用 applyLikeToggle
+      // 只翻 state.liked 不动 likedCache，detect 下一轮 getLikedSet 读到
+      // 旧缓存（含该 trackId 的旧值）→ 误判 → 抹掉刚点的红心。
+      // 改用 writeLike：state.liked 与 likedCache 同步翻转。
+      const wasLiked = state.providers[provider].liked.has(trackId);
+      nowLiked = !wasLiked;
+      this.writeLike(session, state, provider, trackId, nowLiked);
+      this.saveState(session, state);
+    });
     // 远端同步走队列（best-effort + 重试，不阻塞本地）。单平台用一个稳定
     // 的合成 key，避免和统一搜索的 mergedId 撞车。
     // discover：这是电台单平台 track（如 QQ 私人 FM），点 ❤ 时顺带去其余
@@ -2519,6 +2746,10 @@ export class MusicService {
      */
     fannedOutTo: MusicProvider[];
   }> {
+    // T5 (consistency-fixes C2)：per-session mutex 包裹写段。
+    // 多个 fanOutLike 并发执行会让后写的覆盖前写的（lost update）。
+    // 锁 promise-chain 序列化所有写路径，按到达顺序执行。
+    return this.withStateLock(session.id, async () => {
     const state = this.loadState(session);
     // mergedId 漂移归一（#6）：若同一首歌已挂在老 key 下，复用老 key——
     // 保证“同一首歌只有一条 fan-out 记录”，unlike/踩能找到完整平台列表。
@@ -2536,13 +2767,9 @@ export class MusicService {
         if (!this.isLikeable(platform)) continue;
         const trackId = trackIds[0];
         fresh.push({ platform, trackId });
-        // setLike 是幂等的：已心动的不会被翻回 unlike（本地即时可见）。
-        this.setLike(state, platform, trackId, true);
-        // 乐观更新 likedCache：fanOutLike 写完本地 state 后，紧接着的
-        // detectLikedAndSync（由 refreshLikedStateUntilStable 轮询触发）会调
-        // getLikedSet 读缓存。如果不更新缓存，detect 读到的是 like 写入前的
-        // 旧集合 → 看不到新 ❤ → 返 liked=false → UI 红心被抹掉。
-        this.updateLikedCache(session, platform, trackId, true);
+        // writeLike（T2 收口）：setLike + 同步 likedCache，杜绝 cache
+        // 与 state.liked 双真值源分裂（detect 读到旧缓存把新 ❤ 抹掉）。
+        this.writeLike(session, state, platform, trackId, true);
         targets.push({ platform, trackId });
       }
       // 与已有记录合并：这次 sources 里没列的旧平台也保留——避免“老
@@ -2562,9 +2789,9 @@ export class MusicService {
           entry.trackId ??
           sources.find((s) => s.platform === entry.platform)?.trackId;
         if (!trackId) continue;
-        this.setLike(state, entry.platform, trackId, false);
-        // 乐观更新缓存（与 like 方向同理，防止 detect 读到旧缓存把红心复活）。
-        this.updateLikedCache(session, entry.platform, trackId, false);
+        // writeLike（T2 收口）：unlike 方向也同步 likedCache，否则 detect
+        // 下一轮拉到旧缓存（含已取消的 trackId）→ 误判 liked → 红心复活。
+        this.writeLike(session, state, entry.platform, trackId, false);
         targets.push({ platform: entry.platform, trackId });
       }
       delete state.fanOut[canonicalId];
@@ -2586,6 +2813,7 @@ export class MusicService {
       ? (state.fanOut[canonicalId] ?? []).map((e) => e.platform)
       : [];
     return { success: true, liked, fannedOutTo };
+    }); // withStateLock
   }
 
   /** 当前 session 中某 mergedId 是否已被 fan-out 心动过。 */
@@ -2610,7 +2838,44 @@ export class MusicService {
    * 单平台失败不阻塞——返回的 `sources` 数组里如实记录每个平台的拉取状态
    * （{provider, count, error?}），前端可以分别展示。
    */
+  /**
+   * T5 (consistency-fixes C1)：importLiked 单飞（per-session）。
+   * 同一 session 第二次 import 进来时复用第一次的 in-flight Promise，
+   * 不并发执行两次清 fanOut / 拉远端。第二次以及后续调用直接 await
+   * 同一个 Promise 即可。
+   */
+  private readonly importInFlight = new Map<string, Promise<unknown>>();
   async importLiked(session: Session): Promise<{
+    items: UnifiedSearchItem[];
+    sources: Array<{
+      provider: MusicProvider;
+      count: number;
+      error?: string;
+    }>;
+    importedAt: number;
+  }> {
+    // T5 (consistency-fixes C1)：per-session 单飞。第二次 importLiked 复用
+    // in-flight Promise，避免 fanOut 清空与拉远端的并发执行（两次同时清
+    // + 两次同时写 storage 会让中间态暴露给 detect）。
+    const inflight = this.importInFlight.get(session.id);
+    if (inflight) return inflight as Promise<{
+      items: UnifiedSearchItem[];
+      sources: Array<{
+        provider: MusicProvider;
+        count: number;
+        error?: string;
+      }>;
+      importedAt: number;
+    }>;
+    const p = this._importLikedImpl(session);
+    this.importInFlight.set(session.id, p);
+    p.catch(() => undefined).finally(() => {
+      this.importInFlight.delete(session.id);
+    });
+    return p;
+  }
+
+  private async _importLikedImpl(session: Session): Promise<{
     items: UnifiedSearchItem[];
     sources: Array<{
       provider: MusicProvider;
@@ -2777,16 +3042,23 @@ export class MusicService {
     // 逻辑（裸 isCrossScript）误并的**同名不同艺人**组（wacci/铃木爱理/Lefty 那种），
     // 导致 badge 与平台计数虚高。全量 import 时清空 fanOut，让它按收紧后的 detect
     // 逻辑重新积累——避免污染跟着走。远端红心不动（用户此前的决定）。
-    const musicState = this.loadState(session);
-    const hadFanOut = Object.keys(musicState.fanOut).length;
-    if (hadFanOut) {
-      musicState.fanOut = {};
-      this.saveState(session, musicState);
-      this.logger.log(
-        `importLiked: cleared ${hadFanOut} fanOut group(s) for rebuild ` +
-          `(session=${session.id.slice(0, 8)}…)`,
-      );
-    }
+    // T5 (consistency-fixes C1)：fanOut 清空放到 per-session 锁里。
+    // import 期间用户点 ❤ / 踩 / detect fanOut 写入 → 与无条件清空交错
+    // 会把 in-flight 写入也清掉（lost update）。锁住整个 import body 让
+    // 清空、primeLikedCache、storage.set 这几步原子化（相对 session 内的
+    // 其他写路径）。
+    await this.withStateLock(session.id, async () => {
+      const musicState = this.loadState(session);
+      const hadFanOut = Object.keys(musicState.fanOut).length;
+      if (hadFanOut) {
+        musicState.fanOut = {};
+        this.saveState(session, musicState);
+        this.logger.log(
+          `importLiked: cleared ${hadFanOut} fanOut group(s) for rebuild ` +
+            `(session=${session.id.slice(0, 8)}…)`,
+        );
+      }
+    });
 
     return { items: enrichedItems, sources: sourceResults, importedAt };
   }
@@ -3004,48 +3276,9 @@ export class MusicService {
     provider: MusicProvider,
     trackId: string,
   ): Promise<LyricLine[] | null> {
-    const cacheKey = `${provider}:${trackId}`;
-    const cached = this.lyricsCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < LYRICS_CACHE_TTL_MS) {
-      return cached.lines;
-    }
-    let lines: LyricLine[] | null = null;
-    try {
-      if (provider === 'netease') {
-        const ps = this.requireProviderSession(session, provider);
-        if (ps) lines = await this.netease.getLyrics(ps, trackId);
-      } else if (provider === 'deezer') {
-        lines = await this.deezer.getLyrics(trackId);
-      } else if (provider === 'qq') {
-        // QQ: lyrics work anonymously; pass the session cookie if we have
-        // one (harmless) but fall back to an empty session otherwise.
-        lines = await this.qq.getLyrics(session.providers.qq ?? {}, trackId);
-      }
-      // Spotify exposes no lyrics API — falls through as null.
-    } catch (err) {
-      this.logger.warn(
-        `lyrics fetch failed (${provider}/${trackId}): ${(err as Error).message}`,
-      );
-      return null; // 失败不缓存，下次还有机会
-    }
-    this.lyricsCache.set(cacheKey, { at: Date.now(), lines });
-    this.pruneLyricsCache();
-    return lines;
-  }
-
-  /** (provider:trackId | ovh:artist|title) → 最近一次歌词结果。miss（null）
-   *  也缓存，availability 扫描一页搜索结果时不至于反复打同一批接口。 */
-  private readonly lyricsCache = new Map<
-    string,
-    { at: number; lines: LyricLine[] | null }
-  >();
-
-  private pruneLyricsCache(): void {
-    if (this.lyricsCache.size <= LYRICS_CACHE_MAX) return;
-    for (const key of this.lyricsCache.keys()) {
-      this.lyricsCache.delete(key);
-      if (this.lyricsCache.size <= LYRICS_CACHE_MAX) break;
-    }
+    // 拆分到 LyricsService（ISSUES.md §5.1）。本方法保留以兼容已有调用
+    // 点（lyrics-aggregate.e2e.test.ts 等）；controller 已直注 LyricsService。
+    return this.lyricsService.getLyrics(session, provider, trackId);
   }
 
   /** (sessionId|platform|kw|时长分桶) → 最近一次等价曲搜索结果。null 也缓存。
@@ -3086,40 +3319,9 @@ export class MusicService {
     synced: boolean;
     source: MusicProvider | 'lyricsovh' | null;
   }> {
-    const tried = new Set<string>();
-    const attempts: Array<{ platform: MusicProvider; trackId: string }> = [];
-    if (trackId) attempts.push({ platform: provider, trackId });
-    for (const p of LYRICS_SOURCE_PRIORITY) {
-      for (const e of extras) {
-        if (e.platform === p && e.trackId) attempts.push(e);
-      }
-    }
-    for (const a of attempts) {
-      const key = `${a.platform}:${a.trackId}`;
-      if (tried.has(key)) continue;
-      tried.add(key);
-      const lines = await this.getLyrics(session, a.platform, a.trackId);
-      if (lines && lines.length > 0) {
-        return { lines, synced: isSynced(lines), source: a.platform };
-      }
-    }
-    // 第三方兜底（纯文本，无时间戳）
-    if (title && artist) {
-      const ovhKey = `ovh:${artist}|${title}`;
-      const cached = this.lyricsCache.get(ovhKey);
-      let lines: LyricLine[] | null;
-      if (cached && Date.now() - cached.at < LYRICS_CACHE_TTL_MS) {
-        lines = cached.lines;
-      } else {
-        lines = await this.lyricsOvh.getLyrics(artist, title);
-        this.lyricsCache.set(ovhKey, { at: Date.now(), lines });
-        this.pruneLyricsCache();
-      }
-      if (lines && lines.length > 0) {
-        return { lines, synced: false, source: 'lyricsovh' };
-      }
-    }
-    return { lines: null, synced: false, source: null };
+    return this.lyricsService.getLyricsAggregated(
+      session, provider, trackId, extras, title, artist,
+    );
   }
 
   /**
@@ -3144,7 +3346,7 @@ export class MusicService {
   }> {
     if (!title || !artist) return { lines: null, synced: false, source: null };
     const tried = new Set<string>();
-    for (const platform of LYRICS_SOURCE_PRIORITY) {
+    for (const platform of IS_LYRIC_SOURCE_PRIORITY) {
       if (tried.has(platform)) continue;
       tried.add(platform);
       const t = await this.searchEquivalent(session, platform, {
@@ -3170,20 +3372,7 @@ export class MusicService {
     session: Session,
     sources: Array<{ platform: MusicProvider; trackId: string }>,
   ): Promise<{ available: boolean; source: MusicProvider | null }> {
-    const ordered = [...sources].sort(
-      (a, b) =>
-        LYRICS_SOURCE_PRIORITY.indexOf(a.platform) -
-        LYRICS_SOURCE_PRIORITY.indexOf(b.platform),
-    );
-    for (const s of ordered) {
-      if (!s.trackId) continue;
-      if (!LYRICS_SOURCE_PRIORITY.includes(s.platform)) continue;
-      const lines = await this.getLyrics(session, s.platform, s.trackId);
-      if (lines && lines.length > 0) {
-        return { available: true, source: s.platform };
-      }
-    }
-    return { available: false, source: null };
+    return this.lyricsService.getLyricsAvailability(session, sources);
   }
 
   /** When the provider is unavailable, return a minimal placeholder so the UI

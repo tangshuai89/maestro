@@ -759,7 +759,59 @@ async function main() {
     console.log('✅ 33. 多页 search 参数（w/n/t/new_json）正确传递');
   }
 
-  console.log('\n🎉 qq.provider.test 全部 33 项通过');
+  // ── 34. randomGuid: 32 字符 hex，每次调用唯一 ──────────────────
+  // ISSUES.md §3.2：旧实现 Math.random × 32，非密码学安全；现改
+  // crypto.randomBytes(16).toString('hex')。验证格式（32 hex char）和
+  // 多次调用不同（碰撞概率 2^-128，1000 次必不重复）。
+  {
+    const prov2 = new (prov.constructor as any)();
+    const guidRe = /^[0-9a-f]{32}$/;
+    const guids = new Set<string>();
+    for (let i = 0; i < 100; i++) guids.add(prov2.randomGuid());
+    assert.ok(guidRe.test([...guids][0]), 'randomGuid 应为 32 字符 hex');
+    assert.strictEqual(guids.size, 100, '100 次 randomGuid 应全部唯一');
+    console.log('✅ 34. randomGuid: 32 hex char + 100 次调用全唯一');
+  }
+
+  // ── 35. fetchRadioBatch: 注入 rng → Fisher-Yates 顺序确定 ─────────
+  // ISSUES.md §3.3：旧实现内联 Math.random，顺序无法断言；现抽出 shuffle
+  // 静态助手 + fetchRadioBatch 接受可选 rng 参数。同一 rng 序列应产出
+  // 同一顺序（确定性种子 → 可重放测试）。
+  {
+    // mock search 返回固定的 6 首（让 shuffle 决定相对顺序）
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [1, 2, 3, 4, 5, 6].map((i) => ({
+              mid: `m${i}`,
+              name: `歌${i}`,
+              singer: [{ name: '歌手', mid: 's' }],
+              album: { name: '专辑', mid: 'a' },
+              interval: 200,
+              file: { strMediaMid: `MM${i}` },
+              pay: { pay_play: 0 },
+            })),
+          },
+        },
+      }),
+    }));
+    // 固定 rng 序列：[0.5, 0.5, 0.5, 0.5, ...] → shuffle 后顺序可手工验
+    const fixedRng = () => 0.5;
+    const tracks1 = await prov.fetchRadioBatch(sess(), 0, 6, fixedRng);
+    const tracks2 = await prov.fetchRadioBatch(sess(), 0, 6, fixedRng);
+    restore();
+    assert.strictEqual(tracks1.length, 6, '应返回 6 首');
+    assert.deepStrictEqual(
+      tracks1.map((t: any) => t.id),
+      tracks2.map((t: any) => t.id),
+      '同一 rng 序列 → 同一顺序（可重放）',
+    );
+    console.log('✅ 35. fetchRadioBatch: 注入 rng → 顺序确定（两次跑一致）');
+  }
+
+  console.log('\n🎉 qq.provider.test 全部 35 项通过');
 }
 
 main().catch((err) => {
