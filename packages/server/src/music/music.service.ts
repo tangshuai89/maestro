@@ -1043,9 +1043,23 @@ export class MusicService {
     if (provider === 'spotify') {
       if (!ps?.spotify) return;
       this.spotify.bindSessionId(ps, session.id);
-      const res = liked
-        ? await this.spotify.like(ps, trackId)
-        : await this.spotify.unlike(ps, trackId);
+      // 写操作 5s 兜底（与 search/fetch 统一超时档）。LikeSyncQueue 自身
+      // 还有 8s hard timeout，但用户点 ❤ 不该等 8s；网络抖一下就 5s 抛错
+      // 让上层按 retry 走，比静默挂住好。
+      const res = await withTimeout(
+        () =>
+          liked
+            ? this.spotify.like(ps, trackId)
+            : this.spotify.unlike(ps, trackId),
+        5_000,
+        () =>
+          this.logger.warn(
+            `spotify ${liked ? 'like' : 'unlike'} ${trackId} timed out (>5s)`,
+          ),
+      );
+      if (!res) {
+        throw new Error(`spotify ${liked ? 'like' : 'unlike'} timed out`);
+      }
       if (!res.success) {
         throw new Error(`spotify ${liked ? 'like' : 'unlike'} failed`);
       }

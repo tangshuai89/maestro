@@ -53,6 +53,13 @@ export class LyricsService {
     { at: number; lines: LyricLine[] | null }
   >();
 
+  /**
+   * In-flight coalescing for `getLyrics`（稳定性扫描：同 searchEquivalent
+   * 的 race 模式）。availability 扫描（getLyricsAvailability 顺序调每个源）
+   * 会同 key 触发多次——加 inflight 让 N 个 awaiter 共享一次 fetch。
+   */
+  private readonly inflightLyrics = new Map<string, Promise<LyricLine[] | null>>();
+
   constructor(
     private readonly netease: NeteaseMusicProvider,
     private readonly deezer: DeezerMusicProvider,
@@ -73,28 +80,40 @@ export class LyricsService {
     if (cached && Date.now() - cached.at < LYRICS_CACHE_TTL_MS) {
       return cached.lines;
     }
-    let lines: LyricLine[] | null = null;
-    try {
-      if (provider === 'netease') {
-        const ps = this.requireProviderSession(session, provider);
-        if (ps) lines = await this.netease.getLyrics(ps, trackId);
-      } else if (provider === 'deezer') {
-        lines = await this.deezer.getLyrics(trackId);
-      } else if (provider === 'qq') {
-        // QQ: lyrics work anonymously; pass session cookie if we have one
-        // (harmless) but fall back to an empty session otherwise.
-        lines = await this.qq.getLyrics(session.providers.qq ?? {}, trackId);
+    // In-flight coalescing：同 key 已有未完成请求 → 共享同一 Promise。
+    const inflight = this.inflightLyrics.get(cacheKey);
+    if (inflight) return inflight;
+    const p = (async () => {
+      let lines: LyricLine[] | null = null;
+      try {
+        if (provider === 'netease') {
+          const ps = this.requireProviderSession(session, provider);
+          if (ps) lines = await this.netease.getLyrics(ps, trackId);
+        } else if (provider === 'deezer') {
+          lines = await this.deezer.getLyrics(trackId);
+        } else if (provider === 'qq') {
+          // QQ: lyrics work anonymously; pass session cookie if we have one
+          // (harmless) but fall back to an empty session otherwise.
+          lines = await this.qq.getLyrics(session.providers.qq ?? {}, trackId);
+        }
+        // Spotify exposes no lyrics API — falls through as null.
+      } catch (err) {
+        this.logger.warn(
+          `lyrics fetch failed (${provider}/${trackId}): ${(err as Error).message}`,
+        );
+        return null; // 失败不缓存，下次还有机会
       }
-      // Spotify exposes no lyrics API — falls through as null.
-    } catch (err) {
-      this.logger.warn(
-        `lyrics fetch failed (${provider}/${trackId}): ${(err as Error).message}`,
-      );
-      return null; // 失败不缓存，下次还有机会
-    }
-    this.lyricsCache.set(cacheKey, { at: Date.now(), lines });
-    this.pruneLyricsCache();
-    return lines;
+      this.lyricsCache.set(cacheKey, { at: Date.now(), lines });
+      this.pruneLyricsCache();
+      return lines;
+    })();
+    this.inflightLyrics.set(cacheKey, p);
+    p.finally(() => {
+      if (this.inflightLyrics.get(cacheKey) === p) {
+        this.inflightLyrics.delete(cacheKey);
+      }
+    });
+    return p;
   }
 
   /**
