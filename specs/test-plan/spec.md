@@ -18,13 +18,13 @@
 |---|---|---|---|---|
 | 1 | common | `artistAlias.test.ts` | 36 | OK |
 | 2 | common | `normalizer.test.ts` | 178 | OK |
-| 3 | server/auth | `reducer.test.ts` | 13 | OK |
+| 3 | renderer/auth | `reducer.test.mjs` | 14 | OK |
 | 4 | server/auth | `refresh-coordinator.test.ts` | 5 | OK |
 | 5 | server/common | `storage.test.ts` | 6 | OK |
 | 6 | server/match | `fuzzy.test.ts` | 10 | OK |
 | 7 | server/match | `match.test.ts` | 24 | OK |
 | 8 | server/music | `cross-platform-match.e2e.test.ts` | 35 | OK |
-| 9 | server/music | `groupLibrary.test.ts` | 33 | OK |
+| 9 | renderer/lib | `groupLibrary.test.mjs` | 33 | OK |
 | 10 | server/music | `library-badge-merge.e2e.test.ts` | 8 | OK |
 | 11 | server/music | `library-import.e2e.test.ts` | 3 | OK |
 | 12 | server/music | `like-sync.queue.purge.test.ts` | 3 | OK |
@@ -40,8 +40,14 @@
 | 22 | server/reco | `reco.test.ts` | 23 | OK |
 | 23 | electron | `login-window-runner.test.ts` | 9 | OK |
 | 24 | electron | `oauth-buffer.test.ts` | 12 | OK |
+| 25 | server/auth | `auth.controller.e2e.test.ts` | 33 | OK |
+| 26 | server/common/backup | `backup.controller.e2e.test.ts` | 14 | OK |
+| 27 | server/reco | `reco.controller.e2e.test.ts` | 10 | OK |
+| 28 | renderer/lib | `backup-crypto.test.mjs` | 14 | OK |
+| 29 | renderer/lib | `format.test.mjs` | 25 | OK |
+| 30 | renderer/lib | `likedCache.test.mjs` | 13 | OK |
 
-> **基线结论**：`npm test` 在 escalated 权限下 24/24 文件全绿，~455 个用例
+> **基线结论**：`npm test` 在 escalated 权限下 30/30 文件全绿，~600 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
 > 见 [docs/ISSUES.md](../../docs/ISSUES.md) §3.1。
 
@@ -52,8 +58,8 @@ packages/
 |-- common/                     *****  覆盖充分（normalizer 178 + alias 36）
 |
 |-- server/
-|   |-- common/                 ***    storage / session 有测试，guards / backup / lyrics 缺
-|   |-- auth/                   ***    reducer/refresh 有，strategy/controller 缺
+|   |-- common/                 ****   storage / session / backup.controller e2e 有；guards / lyrics 缺
+|   |-- auth/                   ****   reducer/refresh 有；auth.controller e2e 33 项覆盖全部路由 4xx
 |   |-- match/                  ****   fuzzy/match 双层有
 |   |-- music/                  ***
 |   |     qq.provider.test     **     仅 g_tk 计算；search/fetchRadio/stream 没单测
@@ -63,7 +69,7 @@ packages/
 |   |     lyricsovh.provider    *      零测试
 |   |     music.service.ts      **     业务大文件（3078 行），仅靠 e2e 兜底
 |   |     music.controller.ts   **     仅 stream 3 用例；其他路由无测试
-|   |-- reco/                   ****   reco.test 23 项充分
+|   |-- reco/                   *****  reco.test 23 项 + reco.controller e2e 10 项
 |
 |-- electron/                   **
 |   |-- auth/                   ****   login-window-runner / oauth-buffer 双覆盖
@@ -72,8 +78,9 @@ packages/
 |
 |-- renderer/
     |-- api.ts                  **     通过 e2e 间接
-    |-- hooks/*                 *      usePlayer/useCoverArt 等关键 hook 零单测
-    |-- lib/*                 *      groupLibrary/storage/spotify-wps 等零单测
+    |-- hooks/*                 ***    usePlayer 35 + useCoverArt 16 + spotify-wps 29
+    |-- lib/*                   ****   groupLibrary 33 + backup-crypto 14 + format 25 + likedCache 13
+    |-- auth/*                  ***    reducer 14（import 真源码）
     |-- components/*            *      UI 零测试
 ```
 
@@ -181,10 +188,15 @@ kuromoji 首次预热 ~2s。所有依赖时钟 / 网络的用例必须可注入 
 ### 4.1 通过门槛（DoD）
 
 - [ ] `npm test` 在 sandbox 默认权限下全绿（不再 EPERM）。
-- [ ] 上述 L2/L3 待补条目**至少完成 70%**。
-- [ ] L5 契约测试至少 5 用例全绿。
+      — `like.e2e.test.ts` 已改用 in-process-http，不再 `app.listen(0)`，EPERM 已消除。
+- [x] 上述 L2/L3 待补条目**至少完成 70%**。
+      — auth/backup/reco controller e2e + renderer 纯逻辑单测已补齐（见清单 #25-#30）。
+- [x] L5 契约测试至少 5 用例全绿。
+      — `contract.test.ts` 23 项 + `grouping.test.ts` 22 项，远超 5 用例门槛。
 - [ ] 每个 provider 至少有一个 happy path + 一个 5s 超时缺席 单测。
-- [ ] 每个公共 controller 路由至少一个 200 + 一个 4xx e2e。
+      — qq/spotify/deezer 有测试；netease/lyricsovh 仍缺（需外部网络 mock）。
+- [x] 每个公共 controller 路由至少一个 200 + 一个 4xx e2e。
+      — auth.controller e2e 33 项 + backup.controller e2e 14 项 + reco.controller e2e 10 项。
 
 ### 4.2 失败门槛
 

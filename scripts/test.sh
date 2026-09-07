@@ -100,11 +100,15 @@ if [ "$COVERAGE" -eq 1 ]; then
     echo "── coverage: ${pkg} ──"
     for f in $files; do
       if [[ "$f" == *.mjs ]]; then
-        ( cd "$PKG_ROOT" && npx c8 --reporter=text --reporter=lcov \
+        # --clean=false: don't wipe .tmp between files — we need to accumulate
+        # coverage across all test files for a correct merged report.
+        # --extension .ts: .mjs tests import .ts source via the ESM loader;
+        # without this c8 only counts .js files and the coverage is 0%.
+        ( cd "$PKG_ROOT" && npx c8 --clean=false --reporter=lcov \
             --report-dir="$COVERAGE_DIR" --temp-directory="$COVERAGE_DIR/.tmp" \
-            node "$f" ) || true
+            --extension .ts node "$f" ) || true
       else
-        ( cd "$PKG_ROOT" && npx c8 --reporter=text --reporter=lcov \
+        ( cd "$PKG_ROOT" && npx c8 --clean=false --reporter=lcov \
             --report-dir="$COVERAGE_DIR" --temp-directory="$COVERAGE_DIR/.tmp" \
             --extension .ts npx ts-node "$f" ) || true
       fi
@@ -113,21 +117,26 @@ if [ "$COVERAGE" -eq 1 ]; then
 
   # Merge per-package reports and check threshold
   echo "── merging coverage reports ──"
-  if npx c8 report --reporter=text --reporter=text-summary \
-      --report-dir="$COVERAGE_DIR" --temp-directory="$COVERAGE_DIR/.tmp" 2>/dev/null; then
-    echo "── coverage report written to ${COVERAGE_DIR}/ ──"
-  else
-    echo "── coverage report written to ${COVERAGE_DIR}/ (merge skipped) ──"
-  fi
+  # c8 report reads all accumulated V8 coverage from .tmp and produces a merged
+  # text table (stdout) + lcov.info. The text table has an "All files" row with
+  # per-column percentages.
+  REPORT=$(npx c8 report --reporter=text --reporter=lcov \
+      --report-dir="$COVERAGE_DIR" --temp-directory="$COVERAGE_DIR/.tmp" 2>/dev/null || true)
+  echo "$REPORT"
+  echo "── coverage report written to ${COVERAGE_DIR}/ ──"
 
   # Threshold gate: ≥60% lines
-  LINES=$(cat "$COVERAGE_DIR"/*.txt 2>/dev/null | grep -E '^\s*All files' | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9.]+%?$/) {print $i; exit}}' | tr -d '%' || echo "0")
+  # Parse the "All files" row from the text report. Columns are pipe-delimited:
+  # File | % Stmts | % Branch | % Funcs | % Lines | Uncovered Ln.
+  # Field 5 (1-indexed by awk -F'|') is % Lines.
+  LINES=$(echo "$REPORT" | grep -E 'All files' | tail -1 | awk -F'|' '{gsub(/[ %]/, "", $5); print $5}')
+  if [ -z "$LINES" ]; then LINES=0; fi
   echo "── total line coverage: ${LINES}% ──"
-  if [ -z "$LINES" ] || [ "$LINES" -lt 60 ] 2>/dev/null; then
-    echo "── ⚠️  coverage below 60% threshold (got ${LINES:-0}%) ──"
-    # Don't fail in initial rollout — warn only
-    # exit 1
+  if [ "$LINES" -lt 60 ] 2>/dev/null; then
+    echo "── ⚠️  coverage below 60% threshold (got ${LINES}%) ──"
+    exit 1
   fi
+  echo "── ✅ coverage meets 60% line threshold ──"
   exit 0
 fi
 
