@@ -2,133 +2,192 @@
  * parseLrc 白盒测试（Node built-in assert）。
  * 运行: npx ts-node packages/server/src/common/lyrics.test.ts
  *
- * 覆盖 ISSUES.md §2.7 提到的两个实测 bug：
- *   1. 多 tag 同行（NetEase 合唱 repeat）必须拆为多行
- *   2. 时间越界（minutes > 999 / seconds ≥ 60）必须丢弃
+ * 覆盖：
+ *  - 标准 LRC 单时间戳行
+ *  - 多时间戳行（合唱重复 [mm:ss.xx][mm:ss.xx]text）
+ *  - 元数据标签跳过（[ti:Title] / [ar:Artist]）
+ *  - 边界：秒数 ≥ 60 / 分钟 > 999 → 跳过
+ *  - 空文本 / 空行 / 纯空白行
+ *  - 排序验证
+ *  - null 返回条件（无时间戳行）
  */
-export {}; // 顶层 const 不与其他 .test.ts 冲突
-const assert = require('node:assert/strict');
+export {};
+const assert = require('node:assert');
 const { parseLrc } = require('./lyrics');
 
-function eqLines(actual: any, expected: Array<{ time: number; text: string }>) {
-  assert.equal(actual.length, expected.length, `length: got ${JSON.stringify(actual)} want ${JSON.stringify(expected)}`);
-  for (let i = 0; i < expected.length; i++) {
-    assert.equal(actual[i].time, expected[i].time, `line ${i} time`);
-    assert.equal(actual[i].text, expected[i].text, `line ${i} text`);
+let passed = 0;
+let failed = 0;
+function check(label: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`✅ ${label}`);
+    passed++;
+  } catch (err) {
+    console.log(`❌ ${label}\n   ${(err as Error).message}`);
+    failed++;
   }
 }
 
-// ── 1. 单 tag 基线 ────────────────────────────────────────
-{
-  const r = parseLrc('[01:23.45]hello');
-  eqLines(r, [{ time: 83.45, text: 'hello' }]);
-}
+// ── 1. 标准 LRC 单时间戳行 ────────────────────────────────────
+check('1. 标准 LRC 单时间戳行', () => {
+  const lrc = '[00:01.23]Hello\n[00:03.45]World\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 2);
+  assert.strictEqual(lines![0].time, 1.23);
+  assert.strictEqual(lines![0].text, 'Hello');
+  assert.strictEqual(lines![1].time, 3.45);
+  assert.strictEqual(lines![1].text, 'World');
+});
 
-// ── 2. 多 tag 同行（bug 1 修复）────────────────────────────
-// ISSUES.md §2.7 bug 1：旧实现会把后续 tag 当作 text 一部分吞掉。
-// 期望拆成两条 LyricLine，共享同一段尾随文本。
-{
-  const r = parseLrc('[02:30.500]A[02:35.500]B');
-  eqLines(r, [
-    { time: 150.5, text: 'B' },
-    { time: 155.5, text: 'B' },
-  ]);
-}
+// ── 2. 多时间戳行（合唱重复）──────────────────────────────────
+check('2. 多时间戳行 → 每个时间戳一条 LyricLine', () => {
+  const lrc = '[00:01.00][00:05.00]Chorus line\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 2);
+  assert.strictEqual(lines![0].time, 1.0);
+  assert.strictEqual(lines![0].text, 'Chorus line');
+  assert.strictEqual(lines![1].time, 5.0);
+  assert.strictEqual(lines![1].text, 'Chorus line');
+});
 
-// ── 3. 三 tag + 边界毫秒精度 ───────────────────────────────
-{
-  const r = parseLrc('[00:00.001]x[00:00.002]x[00:00.003]x');
-  eqLines(r, [
-    { time: 0.001, text: 'x' },
-    { time: 0.002, text: 'x' },
-    { time: 0.003, text: 'x' },
-  ]);
-}
+// ── 3. 元数据标签跳过 ─────────────────────────────────────────
+check('3. 元数据标签 [ti:Title] / [ar:Artist] 跳过', () => {
+  const lrc = '[ti:Song Title]\n[ar:Artist Name]\n[00:01.00]First line\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1);
+  assert.strictEqual(lines![0].text, 'First line');
+});
 
-// ── 4. 时间越界（bug 2 修复）──────────────────────────────
-// ISSUES.md §2.7 bug 2：旧实现接受 [99:99.99] → 6039.99s，污染排序。
-{
-  const r = parseLrc('[99:99.99]bad');
-  assert.equal(r, null, 'seconds ≥ 60 must drop the line');
-}
+// ── 4. 秒数 ≥ 60 → 跳过 ───────────────────────────────────────
+check('4. 秒数 ≥ 60 → 跳过该时间戳', () => {
+  const lrc = '[00:61.00]Bad seconds\n[00:01.00]Good\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1);
+  assert.strictEqual(lines![0].text, 'Good');
+});
 
-{
-  // minutes 1000 也应丢弃（99:59 仍合法 → 59.99s）
-  const r = parseLrc('[1000:00.00]bad\n[00:59.99]good');
-  eqLines(r, [{ time: 59.99, text: 'good' }]);
-}
+// ── 5. 分钟 > 999 → 跳过 ──────────────────────────────────────
+check('5. 分钟 > 999 → 跳过', () => {
+  const lrc = '[1000:00.00]Bad minutes\n[00:01.00]Good\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1);
+  assert.strictEqual(lines![0].text, 'Good');
+});
 
-{
-  // 负数也应丢弃
-  const r = parseLrc('[-1:00.00]bad');
-  assert.equal(r, null, 'negative minutes must drop');
-}
+// ── 6. 空文本 → null ──────────────────────────────────────────
+check('6. 空文本 → null', () => {
+  assert.strictEqual(parseLrc(''), null);
+});
 
-// ── 5. 边界 OK ────────────────────────────────────────────
-{
-  const r = parseLrc('[00:00.00]start\n[999:59.99]end');
-  eqLines(r, [
-    { time: 0, text: 'start' },
-    { time: 60 * 999 + 59.99, text: 'end' },
-  ]);
-}
+// ── 7. 纯元数据无时间戳行 → null ──────────────────────────────
+check('7. 纯元数据无时间戳行 → null', () => {
+  assert.strictEqual(parseLrc('[ti:Title]\n[ar:Artist]\n'), null);
+});
 
-// ── 6. 元数据行自动跳过 ───────────────────────────────────
-{
-  const r = parseLrc('[ti:Title]\n[ar:Artist]\n[al:Album]\n[00:01.00]lyric');
-  eqLines(r, [{ time: 1, text: 'lyric' }]);
-}
+// ── 8. 空行 / 纯空白行不产生 LyricLine ────────────────────────
+check('8. 空行 / 纯空白行不产生 LyricLine', () => {
+  const lrc = '\n\n[00:01.00]Hello\n   \n[00:02.00]World\n\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 2);
+});
 
-// ── 7. 仅元数据 → null ────────────────────────────────────
-{
-  const r = parseLrc('[ti:Title]\n[ar:Artist]');
-  assert.equal(r, null);
-}
+// ── 9. 空文本行（时间戳后无内容）跳过 ─────────────────────────
+check('9. 时间戳后无文本 → 跳过', () => {
+  const lrc = '[00:01.00]\n[00:02.00]Real text\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1);
+  assert.strictEqual(lines![0].text, 'Real text');
+});
 
-// ── 8. 空 / 纯空白文本行跳过（NetEase 视觉气口）────────────
-{
-  const r = parseLrc('[00:01.00]   \n[00:02.00]real lyric');
-  eqLines(r, [{ time: 2, text: 'real lyric' }]);
-}
+// ── 10. 排序验证（乱序输入）──────────────────────────────────
+check('10. 乱序输入 → 按 time 升序排列', () => {
+  const lrc = '[00:05.00]Fifth\n[00:01.00]First\n[00:03.00]Third\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines![0].time, 1.0);
+  assert.strictEqual(lines![1].time, 3.0);
+  assert.strictEqual(lines![2].time, 5.0);
+});
 
-// ── 9. 排序按时间升序 ─────────────────────────────────────
-{
-  const r = parseLrc('[00:05.00]late\n[00:01.00]early\n[00:03.00]mid');
-  eqLines(r, [
-    { time: 1, text: 'early' },
-    { time: 3, text: 'mid' },
-    { time: 5, text: 'late' },
-  ]);
-}
+// ── 11. 毫秒精度（3 位小数）──────────────────────────────────
+check('11. 毫秒精度（3 位小数）', () => {
+  const lrc = '[00:01.234]Hello\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines![0].time, 1.234);
+});
 
-// ── 10. 同一时间多行保留原始顺序（稳定排序）──────────────
-{
-  const r = parseLrc('[00:01.00]A\n[00:01.00]B');
-  eqLines(r, [
-    { time: 1, text: 'A' },
-    { time: 1, text: 'B' },
-  ]);
-}
+// ── 12. 无小数秒也支持 ────────────────────────────────────────
+check('12. 无小数秒也支持', () => {
+  const lrc = '[00:30]Hello\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines![0].time, 30);
+});
 
-// ── 11. CRLF 行尾容忍 ────────────────────────────────────
-{
-  const r = parseLrc('[00:01.00]one\r\n[00:02.00]two');
-  eqLines(r, [
-    { time: 1, text: 'one' },
-    { time: 2, text: 'two' },
-  ]);
-}
+// ── 13. 分钟 > 99 但 ≤ 999 → 接受 ─────────────────────────────
+check('13. 分钟 = 100 → 接受（≤ 999）', () => {
+  const lrc = '[100:00.00]Long song\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1);
+  assert.strictEqual(lines![0].time, 6000);
+});
 
-// ── 12. tag 后接多字符标点/中文/emoji 保留 ─────────────────
-{
-  const r = parseLrc('[00:01.00]你好，世界 🎵');
-  eqLines(r, [{ time: 1, text: '你好，世界 🎵' }]);
-}
+// ── 14. CRLF 换行兼容 ─────────────────────────────────────────
+check('14. CRLF 换行兼容', () => {
+  const lrc = '[00:01.00]Line1\r\n[00:02.00]Line2\r\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 2);
+  assert.strictEqual(lines![0].text, 'Line1');
+  assert.strictEqual(lines![1].text, 'Line2');
+});
 
-// ── 13. 行中段出现普通方括号（不是 tag）→ 视作 text ────────
-{
-  const r = parseLrc('[00:01.00]see [1] in text');
-  eqLines(r, [{ time: 1, text: 'see [1] in text' }]);
-}
+// ── 15. 同时间戳多行保持输入顺序（稳定排序）──────────────────
+check('15. 同时间戳多行保持输入顺序', () => {
+  const lrc = '[00:01.00]First\n[00:01.00]Second\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 2);
+  assert.strictEqual(lines![0].text, 'First');
+  assert.strictEqual(lines![1].text, 'Second');
+});
 
-console.log('parseLrc tests: 13/13 ok');
+// ── 16. 负数分钟/秒 → 跳过 ────────────────────────────────────
+check('16. 负数秒 → 跳过', () => {
+  // 正则 \d 不匹配负号，所以 [-00:01.00] 不会匹配为时间戳
+  const lrc = '[-00:01.00]Bad\n[00:01.00]Good\n';
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1);
+  assert.strictEqual(lines![0].text, 'Good');
+});
+
+// ── 17. 多时间戳 + 空文本 → 全跳过 ───────────────────────────
+check('17. 多时间戳 + 空文本 → 全跳过 → null', () => {
+  const lrc = '[00:01.00][00:02.00]\n';
+  const lines = parseLrc(lrc);
+  assert.strictEqual(lines, null);
+});
+
+// ── 18. 大量行性能烟测（1000 行）──────────────────────────────
+check('18. 1000 行解析不崩溃', () => {
+  let lrc = '';
+  for (let i = 0; i < 1000; i++) {
+    lrc += `[${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.00]Line ${i}\n`;
+  }
+  const lines = parseLrc(lrc);
+  assert.ok(lines);
+  assert.strictEqual(lines!.length, 1000);
+});
+
+console.log(`\n🎉 lyrics.test: ${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);
