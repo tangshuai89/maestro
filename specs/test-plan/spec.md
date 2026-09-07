@@ -50,8 +50,11 @@
 | 32 | server/music | `search.util.test.ts` | 26 | OK |
 | 33 | server/common | `session.test.ts` | 16 | OK |
 | 34 | server/music | `music.controller.e2e.test.ts` | 30 | OK |
+| 35 | server/music | `qq-crypto.test.ts` | 16 | OK |
+| 36 | renderer/lib | `placeholderCover.test.mjs` | 12 | OK |
+| 37 | renderer/lib | `debug.test.mjs` | 16 | OK |
 
-> **基线结论**：`npm test` 在 escalated 权限下 34/34 文件全绿，~700 个用例
+> **基线结论**：`npm test` 在 escalated 权限下 37/37 文件全绿，~750 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
 > 见 [docs/ISSUES.md](../../docs/ISSUES.md) §3.1。
 
@@ -98,7 +101,7 @@ packages/
 
 **待补**：
 - ~~`packages/server/src/common/lyrics.ts`（`parseLrc`）~~ ✅ 18 项
-- `packages/server/src/music/qq-crypto.ts`（剩余 encrypt/decrypt 路径）
+- ~~`packages/server/src/music/qq-crypto.ts`（剩余 encrypt/decrypt 路径）~~ ✅ 16 项
 - ~~`packages/server/src/common/session.ts`（cookie 解析、tier 推断）~~ ✅ 16 项
 - ~~`packages/server/src/music/search.util.ts`（bestSource 选取 / dedup）~~ ✅ 26 项
 
