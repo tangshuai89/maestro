@@ -56,8 +56,10 @@
 | 38 | renderer/lib | `storage.test.mjs` | 70 | OK |
 | 39 | renderer/hooks | `usePlayer.test.mjs` | 60 | OK（扩 25 项） |
 | 40 | renderer | `api.test.mjs` | 82 | OK |
+| 41 | server/auth | `qq.strategy.test.ts` | 36 | OK |
+| 42 | server/auth | `netease-auth.strategy.test.ts` | 46 | OK |
 
-> **基线结论**：`npm test` 在 escalated 权限下 40/40 文件全绿，~920 个用例
+> **基线结论**：`npm test` 在 escalated 权限下 42/42 文件全绿，~1000 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
 > 见 [docs/ISSUES.md](../../docs/ISSUES.md) §3.1。
 
