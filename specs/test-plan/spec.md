@@ -53,8 +53,11 @@
 | 35 | server/music | `qq-crypto.test.ts` | 16 | OK |
 | 36 | renderer/lib | `placeholderCover.test.mjs` | 12 | OK |
 | 37 | renderer/lib | `debug.test.mjs` | 16 | OK |
+| 38 | renderer/lib | `storage.test.mjs` | 70 | OK |
+| 39 | renderer/hooks | `usePlayer.test.mjs` | 60 | OK（扩 25 项） |
+| 40 | renderer | `api.test.mjs` | 82 | OK |
 
-> **基线结论**：`npm test` 在 escalated 权限下 37/37 文件全绿，~750 个用例
+> **基线结论**：`npm test` 在 escalated 权限下 40/40 文件全绿，~920 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
 > 见 [docs/ISSUES.md](../../docs/ISSUES.md) §3.1。
 

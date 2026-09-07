@@ -58,6 +58,7 @@ const {
   pickFallbackSource,
   pickUpgradeSource,
   shouldApplyLikeResult,
+  parsePlayableQueue,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
 } = mod;
@@ -303,6 +304,151 @@ async function main() {
       picked = pickUpgradeSource(sources, tried);
     }
     check('30. 升级链只 qq+netease（非 premium）', chain, ['qq', 'netease']);
+  }
+
+  // ── parsePlayableQueue ─────────────────────────────────────────────
+  // 31. 空数组 → 空 tracks + 空 unifiedItems
+  {
+    const result = parsePlayableQueue([]);
+    check('31. parsePlayableQueue 空数组', result.tracks, []);
+    check('31b. parsePlayableQueue 空数组 unifiedItems', result.unifiedItems, []);
+  }
+
+  // 32. WPS 关 → pickPlayableTrack 选 bestSource
+  {
+    const items = [{
+      title: '晴天', artist: '周杰伦', album: '叶惠美', coverUrl: '/cover.jpg',
+      duration: 270, bestSource: 'qq',
+      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
+    }];
+    const result = parsePlayableQueue(items, { wpsReady: false });
+    check('32. parsePlayableQueue WPS 关 → pickPlayableTrack', result.tracks.length, 1);
+    check('32b. track provider = qq', result.tracks[0].provider, 'qq');
+    check('32c. track audioUrl = /qq/stream', result.tracks[0].audioUrl, '/qq/stream');
+    check('32d. unifiedItems 对齐', result.unifiedItems.length, 1);
+  }
+
+  // 33. WPS 开 → Spotify 源优先（audioUrl 留空）
+  {
+    const items = [{
+      title: 'Test', artist: 'Artist', album: 'Album', coverUrl: '/cover.jpg',
+      duration: 200, bestSource: 'qq',
+      sources: [
+        { platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' },
+        { platform: 'spotify', trackId: 'sp-1', url: '/sp/preview', mediaMid: 'mm2' },
+      ],
+    }];
+    const result = parsePlayableQueue(items, { wpsReady: true });
+    check('33. parsePlayableQueue WPS 开 → spotify 源', result.tracks.length, 1);
+    check('33b. track provider = spotify', result.tracks[0].provider, 'spotify');
+    check('33c. track audioUrl = ""（WPS 接管）', result.tracks[0].audioUrl, '');
+    check('33d. track mediaMid = mm2', result.tracks[0].mediaMid, 'mm2');
+  }
+
+  // 34. WPS 开但无 spotify 源 → 回退 pickPlayableTrack
+  {
+    const items = [{
+      title: 'Test', artist: 'Artist', album: 'Album', coverUrl: '/cover.jpg',
+      duration: 200, bestSource: 'qq',
+      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
+    }];
+    const result = parsePlayableQueue(items, { wpsReady: true });
+    check('34. WPS 开但无 spotify → 回退 pickPlayableTrack', result.tracks[0].provider, 'qq');
+    check('34b. audioUrl 非空', result.tracks[0].audioUrl, '/qq/stream');
+  }
+
+  // 35. bestSource = null → pickPlayableTrack 返回 null → 跳过
+  {
+    const items = [{
+      title: 'Test', artist: 'Artist', album: 'Album', coverUrl: '/cover.jpg',
+      duration: 200, bestSource: null,
+      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
+    }];
+    const result = parsePlayableQueue(items);
+    check('35. bestSource=null → 跳过', result.tracks, []);
+    check('35b. unifiedItems 也空', result.unifiedItems, []);
+  }
+
+  // 36. 混合：有 bestSource 和无 bestSource 的 items
+  {
+    const items = [
+      {
+        title: 'A', artist: 'X', album: 'Al', coverUrl: '/c.jpg',
+        duration: 200, bestSource: 'qq',
+        sources: [{ platform: 'qq', trackId: '1', url: '/u1', mediaMid: 'm1' }],
+      },
+      {
+        title: 'B', artist: 'Y', album: 'Bl', coverUrl: '/c2.jpg',
+        duration: 180, bestSource: null,
+        sources: [{ platform: 'netease', trackId: '2', url: '/u2', mediaMid: 'm2' }],
+      },
+      {
+        title: 'C', artist: 'Z', album: 'Cl', coverUrl: '/c3.jpg',
+        duration: 220, bestSource: 'netease',
+        sources: [{ platform: 'netease', trackId: '3', url: '/u3', mediaMid: 'm3' }],
+      },
+    ];
+    const result = parsePlayableQueue(items);
+    check('36. 混合 items → 只保留可播的', result.tracks.length, 2);
+    check('36b. 第一首 A', result.tracks[0].title, 'A');
+    check('36c. 第二首 C（B 被跳过）', result.tracks[1].title, 'C');
+    check('36d. unifiedItems 对齐', result.unifiedItems.length, 2);
+  }
+
+  // 37. wpsReady 默认 false（不传 opts）
+  {
+    const items = [{
+      title: 'T', artist: 'A', album: 'Al', coverUrl: '/c.jpg',
+      duration: 200, bestSource: 'qq',
+      sources: [
+        { platform: 'qq', trackId: '1', url: '/u1', mediaMid: 'm1' },
+        { platform: 'spotify', trackId: '2', url: '/sp', mediaMid: 'm2' },
+      ],
+    }];
+    const result = parsePlayableQueue(items);
+    check('37. 不传 opts → wpsReady=false → 选 qq', result.tracks[0].provider, 'qq');
+  }
+
+  // 38. getFullSongProviders: premium-duo 也含 spotify
+  {
+    check('38. getFullSongProviders(premium-duo) 含 spotify',
+      getFullSongProviders('premium-duo'), ['qq', 'netease', 'spotify']);
+    check('38b. getFullSongProviders(premium-family) 含 spotify',
+      getFullSongProviders('premium-family'), ['qq', 'netease', 'spotify']);
+  }
+
+  // 39. pickUpgradeSource: vipLocked 跳过
+  {
+    const sources = [
+      makeSource('qq', { vipLocked: true }),
+      makeSource('netease'),
+    ];
+    const picked = pickUpgradeSource(sources, new Set());
+    check('39. pickUpgradeSource: qq vipLocked → 跳到 netease', picked?.platform, 'netease');
+  }
+
+  // 40. pickUpgradeSource: 全 vipLocked → undefined
+  {
+    const sources = [
+      makeSource('qq', { vipLocked: true }),
+      makeSource('netease', { vipLocked: true }),
+    ];
+    const picked = pickUpgradeSource(sources, new Set());
+    check('40. pickUpgradeSource: 全 vipLocked → undefined', picked, undefined);
+  }
+
+  // 41. pickFallbackSource: 自定义 priority
+  {
+    const sources = ['qq', 'netease', 'deezer'].map((p) => makeSource(p));
+    const picked = pickFallbackSource(sources, new Set(), ['deezer', 'netease', 'qq']);
+    check('41. pickFallbackSource 自定义 priority → deezer 优先', picked?.platform, 'deezer');
+  }
+
+  // 42. pickUpgradeSource: 自定义 fullProviders
+  {
+    const sources = ['qq', 'netease', 'deezer', 'spotify'].map((p) => makeSource(p));
+    const picked = pickUpgradeSource(sources, new Set(), ['spotify', 'deezer']);
+    check('42. pickUpgradeSource 自定义 fullProviders → spotify 优先', picked?.platform, 'spotify');
   }
 
   console.log(`\n🎉 usePlayer.test 通过 ${passed} 项，失败 ${failed} 项`);
