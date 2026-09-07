@@ -46,8 +46,12 @@
 | 28 | renderer/lib | `backup-crypto.test.mjs` | 14 | OK |
 | 29 | renderer/lib | `format.test.mjs` | 25 | OK |
 | 30 | renderer/lib | `likedCache.test.mjs` | 13 | OK |
+| 31 | server/common | `lyrics.test.ts` | 18 | OK |
+| 32 | server/music | `search.util.test.ts` | 26 | OK |
+| 33 | server/common | `session.test.ts` | 16 | OK |
+| 34 | server/music | `music.controller.e2e.test.ts` | 30 | OK |
 
-> **基线结论**：`npm test` 在 escalated 权限下 30/30 文件全绿，~600 个用例
+> **基线结论**：`npm test` 在 escalated 权限下 34/34 文件全绿，~700 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
 > 见 [docs/ISSUES.md](../../docs/ISSUES.md) §3.1。
 
@@ -58,10 +62,10 @@ packages/
 |-- common/                     *****  覆盖充分（normalizer 178 + alias 36）
 |
 |-- server/
-|   |-- common/                 ****   storage / session / backup.controller e2e 有；guards / lyrics 缺
+|   |-- common/                 *****  storage / session / lyrics / backup.controller e2e 全有；guards 缺
 |   |-- auth/                   ****   reducer/refresh 有；auth.controller e2e 33 项覆盖全部路由 4xx
 |   |-- match/                  ****   fuzzy/match 双层有
-|   |-- music/                  ***
+|   |-- music/                  ****   search.util 26 + music.controller e2e 30 + provider tests
 |   |     qq.provider.test     **     仅 g_tk 计算；search/fetchRadio/stream 没单测
 |   |     spotify.test          **     仅 OAuth+refresh 部分；search/like/WPS 没单测
 |   |     deezer.provider       *      零测试
@@ -93,10 +97,10 @@ packages/
 **已有**：common 全部、match 全部、auth reducer。
 
 **待补**：
-- `packages/server/src/common/lyrics.ts`（`parseLrc`）
+- ~~`packages/server/src/common/lyrics.ts`（`parseLrc`）~~ ✅ 18 项
 - `packages/server/src/music/qq-crypto.ts`（剩余 encrypt/decrypt 路径）
-- `packages/server/src/common/session.ts`（cookie 解析、tier 推断）
-- `packages/server/src/music/search.util.ts`（bestSource 选取 / dedup）
+- ~~`packages/server/src/common/session.ts`（cookie 解析、tier 推断）~~ ✅ 16 项
+- ~~`packages/server/src/music/search.util.ts`（bestSource 选取 / dedup）~~ ✅ 26 项
 
 ### 2.2 L2 — Provider unit（mock fetch）
 
@@ -136,12 +140,12 @@ library-import、like-sync.queue、search-unified、lyrics-aggregate。
 library-import.e2e.test.ts（3 用例）。
 
 **待补**：
-- `/music/search` 输入清洗（XSS 字符 / 空串 / 超长）
+- ~~`/music/search` 输入清洗（XSS 字符 / 空串 / 超长）~~ ✅ music.controller e2e
 - `/music/lyrics/aggregate` cache hit
-- `/music/library` 漏掉 fanOut / 脏数据
-- `/music/deezer/preset` 切换持久化
-- `/music/dislike/merged` 路由顺序
-- `/auth/*` controller + guard（`RequireInternalTokenGuard` 校验）
+- ~~`/music/library` 漏掉 fanOut / 脏数据~~ ✅ music.controller e2e (404 路径)
+- ~~`/music/deezer/preset` 切换持久化~~ ✅ music.controller e2e (合法/非法/缺失)
+- ~~`/music/dislike/merged` 路由顺序~~ ✅ music.controller e2e (400 路径)
+- ~~`/auth/*` controller + guard（`RequireInternalTokenGuard` 校验）~~ ✅ auth.controller e2e 33 项
 
 ### 2.5 L5 — 跨包契约
 
