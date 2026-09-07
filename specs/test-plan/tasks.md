@@ -76,7 +76,7 @@
   - 提取纯函数 pickFallbackSource / pickUpgradeSource + 30 用例
 - [x] **F2** `useCoverArt` epoch 取消 / race — 2026-08-28 完成
   - 导出 applyCoverImage + 16 用例
-- [x] **F3** `lib/groupLibrary.ts` 多 COVER / 多 LIVE 折叠 — `groupLibrary.test.ts` 已存在
+- [x] **F3** `lib/groupLibrary.ts` 多 COVER / 多 LIVE 折叠 — `groupLibrary.test.mjs` 已存在（已从 server 副本迁移为 import 真源码）
 - [x] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播 — 2026-08-28 完成
   - 25 用例（connect/disconnect/play/fatal events/reconnect）
 - [x] **F5** `lib/storage.ts` Provider/Quality 读写 + 缺字段兜底 — `storage.test.ts` 已存在
@@ -87,7 +87,8 @@
 - [x] **G2** `test:ci` 子命令（`--bail --reporter=spec`）— 2026-08-28 完成
   - `scripts/test.sh --ci` 模式：首个失败即退出 + `▸`/`✓` spec 格式输出
   - CI workflow 切到 `npm run test:ci`
-- [x] **G3** 覆盖率（c8）报告 + 阈值门禁（≥60% 行）— 2026-08-28 完成
+- [x] **G3** 覆盖率（c8）报告 + 阈值门禁（≥60% 行）— 2026-09-07 修复
   - `scripts/test.sh --coverage` 模式：c8 逐包包裹 → lcov 报告
-  - CI workflow 加覆盖率步骤（`continue-on-error: true`，warn-only 阶段）
-  - 当前 server 52.95% 行；B 组测试补完后切硬门禁
+  - CI workflow 覆盖率步骤已去掉 `continue-on-error`，现在是硬门禁
+  - 修复 c8 `--clean=true` 覆盖率被清空 + 阈值解析读 .txt 文件不存在两个 bug
+  - 当前全量覆盖率 77.85% 行（远超 60% 门槛）

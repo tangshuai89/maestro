@@ -454,7 +454,7 @@ const STAGE_NAME_ALIASES: Record<string, string[]> = {
   藤井風: ['Fujii Kaze'], // 藤井风
   ミレイ: ['milet'], // ミレイ
   キタニタツヤ: ['Tatsuya Kitani'], // キタニタツヤ
-  // ── 2026-08-07 补全：groupLibrary.test #15-#25 策展别名（QQ 红心列表导出未覆盖）──
+  // ── 2026-08-07 补全：groupLibrary.test.mjs #15-#25 策展别名（QQ 红心列表导出未覆盖）──
   馬賽克樂隊: ['马赛克', '馬賽克'], // 马赛克乐队 (同乐队带/不带后缀)
   陳綺貞: ['Cheer Chen', '陈绮贞'], // 陈绮贞
   范逸臣: ['Fan Yi Chen', '范逸臣'], // 范逸臣
