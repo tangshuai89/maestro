@@ -145,6 +145,65 @@
       "props": {
         "state": { "figmaProp": "state", "type": "enum" }
       }
+    },
+    {
+      "figmaComponent": "Screen/Search/Modal",
+      "figmaNodeId": "466:2",
+      "reactComponent": "SearchPanel",
+      "reactPath": "packages/renderer/src/components/search/SearchPanel.tsx",
+      "_d1Status": "DONE — D1 已跑，figmaNodeId 为真实 node id",
+      "props": {
+        "onPlay": { "figmaProp": "(回调，无 figma 属性)", "type": "function" },
+        "onClose": { "figmaProp": "(回调，无 figma 属性)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Liked/Modal",
+      "figmaNodeId": "467:2",
+      "reactComponent": "LikedLibraryModal",
+      "reactPath": "packages/renderer/src/components/modals/LikedLibraryModal.tsx",
+      "_d1Status": "DONE — D1 已跑，figmaNodeId 为真实 node id",
+      "props": { "session": "(session 对象)", "onClose": "function" }
+    },
+    {
+      "figmaComponent": "Screen/Settings/Full",
+      "figmaNodeId": "476:2",
+      "reactComponent": "SettingsModal",
+      "reactPath": "packages/renderer/src/components/modals/SettingsModal.tsx",
+      "_d1Status": "DONE — D1 已跑，figmaNodeId 为真实 node id",
+      "props": { "onClose": "function" }
+    },
+    {
+      "figmaComponent": "Screen/RecoKey/Modal",
+      "figmaNodeId": "477:2",
+      "reactComponent": "RecoKeyModal",
+      "reactPath": "packages/renderer/src/components/modals/RecoKeyModal.tsx",
+      "_d1Status": "DONE — D1 已跑，figmaNodeId 为真实 node id",
+      "props": { "onSave": "function", "onClose": "function" }
+    },
+    {
+      "figmaComponent": "Screen/AuthError/Full",
+      "figmaNodeId": "478:2",
+      "reactComponent": "AuthErrorPanel",
+      "reactPath": "packages/renderer/src/components/common/AuthErrorPanel.tsx",
+      "_d1Status": "DONE — D1 已跑，figmaNodeId 为真实 node id",
+      "props": {
+        "provider": "enum[qq,netease,deezer,spotify]",
+        "error": "AuthError | null",
+        "onRetry": "function",
+        "onReLogin": "function",
+        "onSwitch": "function",
+        "onPasteCookie": "function? (qq/netease only)",
+        "onDismiss": "function"
+      }
+    },
+    {
+      "figmaComponent": "Screen/EmptyState/Full",
+      "figmaNodeId": "479:2",
+      "reactComponent": "TheaterView (conditional render)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_d1Status": "DONE — D1 已跑，figmaNodeId 为真实 node id",
+      "props": {}
     }
   ]
 }

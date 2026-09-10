@@ -1,9 +1,17 @@
 # Theme — Design System & Tokens
 
-Source: `packages/renderer/src/styles/` (SCSS via `sass`, no Tailwind). Single entry `main.scss` imported once in `main.tsx`. There are **two visual worlds** in this app:
+Source: `packages/renderer/src/styles/` (SCSS via `sass`, no Tailwind). Single entry `main.scss` imported once in `main.tsx`. **Single visual world: AETHER**.
 
-1. **Glass Cosmic** (app shell, titlebar, modals, source picker) — token-driven CSS custom properties, light/dark themes.
-2. **Monster Beats** (main player view `MonsterBeatsView`) — a separate flat cartoon palette hardcoded in `styles/components/_monster-beats.scss`, layered over/around the glass UI.
+> **D2 收敛（2026-09-10）**：早期文档说"两个视觉世界"（Glass Cosmic 壳 + Monster Beats 主视图）。
+> 实际上 Monster Beats 视觉（`MonsterBeatsView.tsx` + `_monster-beats.scss` + `mb-*` 类）已**全部删除**，
+> 主视图已迁移到 `TheaterView.tsx`（AETHER 剧场稿）。`--accent` / `--ease-spring` 等令牌全局统一。
+>
+> 本文件内遗留的 Monster Beats 视觉描述（`.mb-creature-card` / `.mb-battle-menu` /
+> `.mb-bottom-rainbow` 等 CSS 代码块）保留为**历史归档**——未来重构如需清理可一次性删除。
+> 切勿重新引入这些类：当前代码无引用。
+>
+> Figma 端 v3 Monster Beats 视觉稿保留在 `99 · Archive` 页（设计基准，不做扩展）；
+> 顶部加 `Archive README` frame 说明（见 `scripts/figma-aether-v4-archive-readme.js`）。
 
 ---
 

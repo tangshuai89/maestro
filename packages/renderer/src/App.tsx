@@ -201,7 +201,7 @@ export default function App() {
   }, [player.track?.audioUrl]);
 
   // Demo helper: ?demo=qq / ?demo=netease / ?demo=spotify / ?demo=deezer in the
-  // URL forces a provider so the Monster Beats view can be reviewed without
+  // URL forces a provider so the AETHER Theater view can be reviewed without
   // going through the real source picker (which needs the NestJS server up).
   if (!player.provider) {
     if (typeof window !== 'undefined') {

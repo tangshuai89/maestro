@@ -528,5 +528,5 @@ export default function SourceChip({
 
 ## Notes on page-specific / legacy player components
 
-- `components/player/CoverCard.tsx`, `NowPlayingCard.tsx`, `LyricsCard.tsx`, `LyricsPanel.tsx` are **legacy pre-Monster-Beats player-view components**. They are no longer imported by any active view (MonsterBeatsView replaced the old hero/side-card layout; only a comment references CoverCard). They are page-specific leftovers — not shared primitives — and are omitted here.
-- The current main player view (`MonsterBeatsView`) is fully self-contained: its subcomponents (`HUDStat`, `CreatureStat`, `MbIcon`, `BotAvatar`, plus helpers) are defined inside `components/views/MonsterBeatsView.tsx`, not in separate files. See `pages.md` / `extractable-components.md`.
+- `components/player/CoverCard.tsx`, `NowPlayingCard.tsx`, `LyricsCard.tsx`, `LyricsPanel.tsx` are **legacy pre-Monster-Beats player-view components** (AETHER 之前的两代：英雄侧栏布局 → Monster Beats Pokémon 风格 → AETHER Theater 剧场稿). They are no longer imported by any active view (`TheaterView` replaced the old hero/side-card layout and the Monster Beats visual; only a comment references CoverCard). They are page-specific leftovers — not shared primitives — and are omitted here.
+- **D2 收敛（2026-09-10）**：当前主视图是 `TheaterView`（AETHER 剧场稿），不是 `MonsterBeatsView`。Monster Beats 视觉（`mb-*` 类、`_monster-beats.scss`、`MbBattleMenu` 等内嵌组件）已全部删除。主视图自包含的子组件（`ThIcon`、`StatTag`、`ProgressRing`、`SoundRing` 等 AETHER 风格）定义在 `components/views/TheaterView.tsx` 内联，不在独立文件。见 `pages.md` / `extractable-components.md`。
