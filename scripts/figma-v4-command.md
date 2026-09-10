@@ -67,6 +67,14 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
 
 ## 必须遵守的规则
 
+0. **每个新建节点必含 description 模板**（D6 强制段）：
+   - 任何 COMPONENT / COMPONENT_SET / 顶层 FRAME（Screen/ 开头、README、MOTION SPEC、Archive README）
+     的 description 必须含 `---AI_CONTRACT:---` 段，必填 4 字段：`react:` / `props:` / `a11y:` / `states:`
+   - 完整模板见 `specs/d6-description-template/template.md`
+   - 审计：`npm run test:description`（REST 模式，需 FIGMA_TOKEN）或 `node scripts/figma-aether-v4-audit-d6.mjs --fixture /tmp/d6`（fixture 模式，无需 token）
+
+
+
 1. **不要改动 `99 · Archive` 页**（v3 画布原样保留，改造完成后由用户决定是否删除）。
 2. **屏幕必须用组件实例组装**（02 页的组件集），禁止在 03 页画"裸"交互元素；
    面板内容放进 Card/Glass 实例的 `Content` 槽位（实例 → findAllWithCriteria SLOT → appendChild）。

@@ -10,11 +10,17 @@
 
 在 Figma `99 · Archive` 页**顶部**加一个 `Archive README` frame：
 - 红色 4px outline（dashed）作为视觉警告
-- 内容：「ARCHIVED — DO NOT EXTEND」+ 说明此页是 v3 Monster Beats 视觉稿作为设计基准保留
-- 链接到 `03 · Screens · AETHER THEATER 剧场稿`（v4-ABC + D1 6 屏）
+- 内容：「BASELINE — DO NOT EXTEND」+ 说明此页是 **AETHER THEATER 宇宙剧场 A / B / C
+  三版探索稿**（v4 视觉基准，只读参考）
+- 链接到 `03 · Screens`（v4-ABC 12 屏 + D1 6 屏）
 
-> 原因：D2 收敛（2026-09-10）删除 `MonsterBeatsView.tsx` 后，未来 contributor 打开 99 · Archive
-> 可能误以为这是"待开发"页面。README frame 显式标注 ARCHIVED 状态避免误扩展。
+> 原因：未来 contributor 打开 99 · Archive 可能误以为这是"待开发"页面，在上面扩新屏。
+> README frame 显式标注 BASELINE / 只读状态避免误改。
+>
+> ⚠️ **2026-09-10 实跑修正**：本手册初稿（和 spec）写的是「v3 Monster Beats 视觉稿 / ARCHIVED」，
+> 实际读出来这页装的是 AETHER THEATER A/B/C（x=1540/3140/4740, y=0），是 `03 · Screens` 的
+> 视觉基准来源——见 `figma-v4-command.md` L10 与 `figma-aether-v4-screens.js` 头注释。
+> 照初稿写会把 v4 基准页错标成 v3 死稿，文案已整体改写。
 
 ## 前置条件
 
@@ -42,7 +48,7 @@ node scripts/figma-v4-smoke-d2.mjs
 
 | 步骤 | SEG | 目标 page | 内容 | 完成后验证 |
 |---|---|---|---|---|
-| D2-1 | SEG1 | 99 · Archive | Archive README frame | 截图 + 确认 y=-320（在所有 v3 frame 之上） |
+| D2-1 | SEG1 | 99 · Archive | Archive README frame | 截图 + 确认 x=1540 / y=-320（对齐 A 稿正上方；A/B/C 都在 y=0） |
 
 参数：
 - `currentPage` 不需要手切（脚本内自定位 `99 · Archive`）
@@ -54,7 +60,11 @@ node scripts/figma-v4-smoke-d2.mjs
 FIGMA_TOKEN=<token> node scripts/figma-aether-v4-audit.mjs
 ```
 
-确认 v4 23/25 基线不破（Archive README 是新 frame，不在原 audit 检查项；可能引起 Screen/ 计数变化但不影响核心 25 项）。
+确认基线不破。**2026-09-10 实测：34/36**（1 FAIL + 1 SKIP，与跑 D2 之前完全一致）：
+- FAIL「03 页自有填充绑定 ≤30% 未绑定」= v4-ABC 遗留屏的硬编码填充，非 D1/D2 引入
+- SKIP「变量接口可访问」= PAT 缺 `file_variables` scope（Enterprise 功能）
+
+另跑 `node scripts/figma-aether-v4-audit-d1.mjs` 确认 D2 没影响 D1（实测 18/18）。
 
 ## Step 5 — 视觉确认
 

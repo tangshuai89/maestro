@@ -60,10 +60,13 @@ function setTextProps(inst, map) {
   }
   return applied;
 }
+// JetBrains Mono 没有 'Semi Bold'（只有 Bold / Medium / ExtraBold）——按字族取各自的加粗名
+const BOLD_STYLE = { 'Inter': 'Semi Bold', 'JetBrains Mono': 'Bold' };
 function textNode(name, str, size, color, mono = false, bold = false, ls) {
   const t = figma.createText();
+  const family = mono ? 'JetBrains Mono' : 'Inter';
   t.name = name; t.characters = str; t.fontSize = size;
-  t.fontName = { family: mono ? 'JetBrains Mono' : 'Inter', style: bold ? 'Semi Bold' : 'Regular' };
+  t.fontName = { family, style: bold ? BOLD_STYLE[family] : 'Regular' };
   t.fills = [color];
   if (ls !== undefined) t.letterSpacing = { value: ls, unit: 'PIXELS' };
   return t;
@@ -271,10 +274,13 @@ function setTextProps(inst, map) {
   }
   return applied;
 }
+// JetBrains Mono 没有 'Semi Bold'（只有 Bold / Medium / ExtraBold）——按字族取各自的加粗名
+const BOLD_STYLE = { 'Inter': 'Semi Bold', 'JetBrains Mono': 'Bold' };
 function textNode(name, str, size, color, mono = false, bold = false, ls) {
   const t = figma.createText();
+  const family = mono ? 'JetBrains Mono' : 'Inter';
   t.name = name; t.characters = str; t.fontSize = size;
-  t.fontName = { family: mono ? 'JetBrains Mono' : 'Inter', style: bold ? 'Semi Bold' : 'Regular' };
+  t.fontName = { family, style: bold ? BOLD_STYLE[family] : 'Regular' };
   t.fills = [color];
   if (ls !== undefined) t.letterSpacing = { value: ls, unit: 'PIXELS' };
   return t;
@@ -491,10 +497,13 @@ function setTextProps(inst, map) {
   }
   return applied;
 }
+// JetBrains Mono 没有 'Semi Bold'（只有 Bold / Medium / ExtraBold）——按字族取各自的加粗名
+const BOLD_STYLE = { 'Inter': 'Semi Bold', 'JetBrains Mono': 'Bold' };
 function textNode(name, str, size, color, mono = false, bold = false, ls) {
   const t = figma.createText();
+  const family = mono ? 'JetBrains Mono' : 'Inter';
   t.name = name; t.characters = str; t.fontSize = size;
-  t.fontName = { family: mono ? 'JetBrains Mono' : 'Inter', style: bold ? 'Semi Bold' : 'Regular' };
+  t.fontName = { family, style: bold ? BOLD_STYLE[family] : 'Regular' };
   t.fills = [color];
   if (ls !== undefined) t.letterSpacing = { value: ls, unit: 'PIXELS' };
   return t;
@@ -727,10 +736,13 @@ function setTextProps(inst, map) {
   }
   return applied;
 }
+// JetBrains Mono 没有 'Semi Bold'（只有 Bold / Medium / ExtraBold）——按字族取各自的加粗名
+const BOLD_STYLE = { 'Inter': 'Semi Bold', 'JetBrains Mono': 'Bold' };
 function textNode(name, str, size, color, mono = false, bold = false, ls) {
   const t = figma.createText();
+  const family = mono ? 'JetBrains Mono' : 'Inter';
   t.name = name; t.characters = str; t.fontSize = size;
-  t.fontName = { family: mono ? 'JetBrains Mono' : 'Inter', style: bold ? 'Semi Bold' : 'Regular' };
+  t.fontName = { family, style: bold ? BOLD_STYLE[family] : 'Regular' };
   t.fills = [color];
   if (ls !== undefined) t.letterSpacing = { value: ls, unit: 'PIXELS' };
   return t;
@@ -906,10 +918,13 @@ function setTextProps(inst, map) {
   }
   return applied;
 }
+// JetBrains Mono 没有 'Semi Bold'（只有 Bold / Medium / ExtraBold）——按字族取各自的加粗名
+const BOLD_STYLE = { 'Inter': 'Semi Bold', 'JetBrains Mono': 'Bold' };
 function textNode(name, str, size, color, mono = false, bold = false, ls) {
   const t = figma.createText();
+  const family = mono ? 'JetBrains Mono' : 'Inter';
   t.name = name; t.characters = str; t.fontSize = size;
-  t.fontName = { family: mono ? 'JetBrains Mono' : 'Inter', style: bold ? 'Semi Bold' : 'Regular' };
+  t.fontName = { family, style: bold ? BOLD_STYLE[family] : 'Regular' };
   t.fills = [color];
   if (ls !== undefined) t.letterSpacing = { value: ls, unit: 'PIXELS' };
   return t;
@@ -1075,10 +1090,13 @@ function setTextProps(inst, map) {
   }
   return applied;
 }
+// JetBrains Mono 没有 'Semi Bold'（只有 Bold / Medium / ExtraBold）——按字族取各自的加粗名
+const BOLD_STYLE = { 'Inter': 'Semi Bold', 'JetBrains Mono': 'Bold' };
 function textNode(name, str, size, color, mono = false, bold = false, ls) {
   const t = figma.createText();
+  const family = mono ? 'JetBrains Mono' : 'Inter';
   t.name = name; t.characters = str; t.fontSize = size;
-  t.fontName = { family: mono ? 'JetBrains Mono' : 'Inter', style: bold ? 'Semi Bold' : 'Regular' };
+  t.fontName = { family, style: bold ? BOLD_STYLE[family] : 'Regular' };
   t.fills = [color];
   if (ls !== undefined) t.letterSpacing = { value: ls, unit: 'PIXELS' };
   return t;

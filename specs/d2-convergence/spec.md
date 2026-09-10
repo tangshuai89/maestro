@@ -24,13 +24,20 @@
 | L531-532：MonsterBeatsView → TheaterView（历史顺序重写） | `.superdesign/init/components.md` | 文档 |
 | 6 处 MonsterBeatsView 引用 → TheaterView；mb-* 类说明 | `.superdesign/init/extractable-components.md` | 文档 |
 | 加"D2 收敛 2026-XX-XX 完成" | `docs/figma-driven-frontend.md` §5/§9 | 文档 |
-| 在 99 · Archive 顶部加 Archive README frame（红色 outline + 警告 + 链接） | `scripts/figma-aether-v4-archive-readme.js`（新）+ `figma-v4-d2-command.md` | Figma |
+| 在 99 · Archive 顶部加 Archive README frame（红色 outline + BASELINE 警告 + 链接） | `scripts/figma-aether-v4-archive-readme.js`（新）+ `figma-v4-d2-command.md` | Figma |
+
+> **2026-09-10 实跑修正**：`99 · Archive` 装的**不是** v3 Monster Beats 视觉稿，而是
+> **AETHER THEATER 宇宙剧场 A / B / C 三版探索稿**（v4 视觉基准，`figma-aether-v4-screens.js`
+> 照 A 稿画）。README 文案已按此改写为 BASELINE 口径，不是 ARCHIVED。
 
 ## 2. 不在 D2 范围
 
 - **删除 99 · Archive 页**——保留作为 v3 视觉基准（v4-command.md 明确"不要动"）
 - **视觉回归保护**（Playwright 截图 baseline）——升级到 D6 阶段 5 或独立 P3
 - **AETHER 主题令牌扩展**（如缺 `--cover-glow` 之类的视觉 token）——如发现再加，不在 D2 范围
+  - **例外（2026-09-10 经确认加入）**：新建 Figma 变量 `Color/semantic/status-error`
+    （别名 → `Color/primitive/heart-red`）。这不是「扩展」而是**补一个已被引用但不存在的名字**——
+    D1 `Screen/AuthError/Full` 和 D2 README 都在用它，缺失时 `varColor` 回退品红哨兵。
 
 ## 3. 验收
 

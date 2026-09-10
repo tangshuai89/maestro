@@ -24,8 +24,12 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build:common",
     "test": "bash scripts/test.sh",
-    "test:ci": "bash scripts/test.sh --ci",
-    "test:coverage": "bash scripts/test.sh --coverage"
+    "test:ci": "bash scripts/test.sh --ci && node scripts/figma-code-connect-validate.mjs",
+    "test:coverage": "bash scripts/test.sh --coverage",
+    "test:code-connect": "node scripts/figma-code-connect-validate.mjs",
+    "test:code-connect:strict": "node scripts/figma-code-connect-validate.mjs --strict",
+    "test:description": "node scripts/figma-aether-v4-audit-d6.mjs",
+    "test:motion": "node scripts/figma-aether-v4-audit-d10.mjs"
   },
   "author": "tangshuai89",
   "license": "MIT",

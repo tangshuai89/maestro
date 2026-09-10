@@ -24,7 +24,18 @@ class MockNode {
     this.primaryAxisSizingMode = 'FIXED'; this.counterAxisSizingMode = 'FIXED';
     this.primaryAxisAlignItems = 'MIN'; this.counterAxisAlignItems = 'MIN';
     this.visible = true; this.clipsContent = false;
-    this.description = '';
+    // 真实 Plugin API 里 description 只在 PublishableMixin（COMPONENT / COMPONENT_SET）上，
+    // 写 FRAME 会抛 "no such property 'description' on FRAME node"——mock 必须同构，否则漏抓
+    if (type === 'COMPONENT' || type === 'COMPONENT_SET') {
+      let desc = '';
+      Object.defineProperty(this, 'description', { get() { return desc; }, set(v) { desc = v; }, configurable: true });
+    } else {
+      Object.defineProperty(this, 'description', {
+        get() { return undefined; },
+        set() { throw new Error(`in set_description: no such property 'description' on ${type} node`); },
+        configurable: true,
+      });
+    }
   }
   set layoutSizingHorizontal(v) {
     if ((v === 'FILL' || v === 'HUG') && (!this.parent || this.parent.layoutMode === 'NONE')) {
@@ -70,6 +81,12 @@ const figma = {
     },
   },
   createPage() { const p = new MockNode('PAGE', 'Page'); p.parent = figma.root; figma.root.children.push(p); return p; },
+  async getNodeByIdAsync(id) {
+    let hit = null;
+    const walk = (n) => { if (n.id === id) hit = n; for (const c of n.children || []) walk(c); };
+    for (const p of figma.root.children) walk(p);
+    return hit;
+  },
   createFrame() { return new MockNode('FRAME', 'Frame'); },
   async setCurrentPageAsync(p) { figma.currentPage = p; },
   createText() { const t = new MockNode('TEXT', 'Text'); t.characters = ''; t.fontSize = 12; t.fontName = { family: 'Inter', style: 'Regular' }; t.letterSpacing = null; return t; },
@@ -115,10 +132,14 @@ const readme = archivePage.children.find(n => n.name === 'Archive README');
 assert('Archive README frame 存在（99 · Archive）', !!readme, readme ? '' : '99 · Archive 无 Archive README frame');
 if (readme) {
   assert('Archive README y 坐标 < 0（在最顶部）', readme.y < 0, `y=${readme.y}`);
-  assert('Archive README 有 ARCHIVE_README description', readme.description && readme.description.includes('ARCHIVE_README:'), readme.description?.slice(0, 60) || '无');
-  assert('description 含 v3 Monster Beats 视觉说明', readme.description && readme.description.includes('Monster Beats'), '');
-  assert('description 含 replacement 链接', readme.description && readme.description.includes('replacement:'), '');
-  assert('frame 有 4 children（titleRow + body + linkRow + 1 hidden）', readme.children.length >= 3, `实际 ${readme.children.length}`);
+  // FRAME 无 description 属性——元数据存在隐藏 TEXT 子节点 ARCHIVE_README 上
+  const meta = (readme.children || []).find(c => c.type === 'TEXT' && c.name === 'ARCHIVE_README')?.characters || '';
+  assert('Archive README 有 ARCHIVE_README 元数据节点', meta.includes('ARCHIVE_README:'), meta.slice(0, 60) || '无');
+  assert('元数据描述的是 AETHER THEATER A/B/C（这页的真实内容）', meta.includes('AETHER THEATER') && !meta.includes('Monster Beats'), meta.includes('Monster Beats') ? '仍写着 Monster Beats——这页装的不是 v3 稿' : '');
+  assert('元数据含 replacement 链接', meta.includes('replacement:'), '');
+  assert('frame 有 4 children（ARCHIVE_README + titleRow + body + linkRow）', readme.children.length === 4, `实际 ${readme.children.length}`);
+  const visibleText = readme.findAll ? readme.findAll(n => n.type === 'TEXT' && n.visible).map(n => n.characters).join(' ') : '';
+  assert('可见文案不提 Monster Beats', !visibleText.includes('Monster Beats'), visibleText.slice(0, 80));
   // stroke = red dashed outline
   assert('Archive README 有 strokeWeight=4', readme.strokeWeight === 4, `实际 ${readme.strokeWeight}`);
   assert('Archive README 有 dashPattern（虚线）', Array.isArray(readme.dashPattern) && readme.dashPattern.length > 0, JSON.stringify(readme.dashPattern));
@@ -130,6 +151,7 @@ if (dumpPrefix) {
   const serNode = (n) => {
     const out = { type: n.type, name: n.name, id: n.id, x: n.x, y: n.y, width: n.width, height: n.height };
     if (n.description) out.description = n.description;
+    if (typeof n.characters === 'string') out.characters = n.characters; // ARCHIVE_README 节点靠这个被读到
     if (n.children && n.children.length) out.children = n.children.map(serNode);
     return out;
   };
