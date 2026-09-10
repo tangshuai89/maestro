@@ -80,6 +80,24 @@
 - [x] **F4** `lib/spotify-wps.ts` SDK 初始化 / 错误传播 — 2026-08-28 完成
   - 25 用例（connect/disconnect/play/fatal events/reconnect）
 - [x] **F5** `lib/storage.ts` Provider/Quality 读写 + 缺字段兜底 — `storage.test.ts` 已存在
+- [x] **F6** React 组件测试（解决 B1 缺陷）— 2026-09-10 完成
+  - 引入 Vitest 1.6 + @testing-library/react 14 + happy-dom 15
+  - `packages/renderer/vitest.config.ts`：happy-dom env，绝对路径 include 防止 monorepo 根误扫
+  - `src/test/setup.ts`：jest-dom matchers + cleanup + clipboard/URL mock
+  - 6 个组件 43 用例全绿：
+    - `common/Modal.tsx` (5 用例) — scrim 点击、panel 冒泡拦截、panelClassName
+    - `common/ErrorPanel.tsx` (5 用例) — 折叠/展开/首行截断/clipboard.copy
+    - `common/AuthErrorPanel.tsx` (8 用例) — error=null 不渲染、FRIENDLY/SEVERITY 映射、paste cookie 平台限制、stack vs detail、5 按钮回调、ESC
+    - `modals/RecoKeyModal.tsx` (7 用例) — 链接属性、8 字符启用、Enter 提交、scrim/× 关闭
+    - `modals/SettingsModal.tsx` (10 用例) — getBackupInfo 成功/失败、ESC、备份成功/失败、导出加密（getStateSnapshot + encryptBundle + a.click）、导入 4 个分支（缺文件/缺口令/成功/解密错）
+    - `search/SearchPanel.tsx` (8 用例) — debounce 300ms、点击播放（bestSource 有/无）、source 切换调 searchOne、ESC、空结果/错误、占位文案
+  - `scripts/test.sh` 加 .test.tsx 分支（仅 renderer 包走 vitest；其它包照常 ts-node + node）
+  - 注意事项：
+    - vi.mock 必须用 `vi.hoisted` 同步声明 mock 引用
+    - mock 函数直接传 `vi.fn` 引用，**不要**套 `() => mocks.fn()`（后者 vi.fn 默认返回 undefined → .then 报 TypeError）
+    - `beforeEach` 用 `mockClear` 不要 `mockReset`（后者清掉默认实现）
+    - `<pre>` 多行文本用 `el.textContent` 断言，不要 `getByText`（换行符会断片）
+    - vi.useFakeTimers + waitFor 不兼容（fakeTimer 下 setTimeout 不动），改用 `act(() => advanceTimersByTime)` + 同步断言
 
 ## Phase G — CI 收尾
 
@@ -87,8 +105,17 @@
 - [x] **G2** `test:ci` 子命令（`--bail --reporter=spec`）— 2026-08-28 完成
   - `scripts/test.sh --ci` 模式：首个失败即退出 + `▸`/`✓` spec 格式输出
   - CI workflow 切到 `npm run test:ci`
-- [x] **G3** 覆盖率（c8）报告 + 阈值门禁（≥60% 行）— 2026-09-07 修复
+- [x] **G3** 覆盖率（c8）报告 + 阈值门禁（≥60% 行）— 2026-09-07 修复，2026-09-08 修阈值比较 bug
   - `scripts/test.sh --coverage` 模式：c8 逐包包裹 → lcov 报告
   - CI workflow 覆盖率步骤已去掉 `continue-on-error`，现在是硬门禁
   - 修复 c8 `--clean=true` 覆盖率被清空 + 阈值解析读 .txt 文件不存在两个 bug
-  - 当前全量覆盖率 77.85% 行（远超 60% 门槛）
+  - 修复阈值比较 bug：`[ "$LINES" -lt 60 ]` 对小数（如 85.48）报 "integer expression expected"
+    被 `2>/dev/null` 吞掉 → 改用 `awk -v l="$LINES" 'BEGIN{exit !(l < 60)}'` 做浮点比较
+  - 当前全量覆盖率 85.48% 行（远超 60% 门槛）
+- [x] **G4** 每个 provider 一个 5s 超时缺席单测 — 2026-09-08 补齐
+  - qq.provider.test: search + fetchLiked 超时缺席（withTimeout 5s → null）
+  - netease.provider.test: search + fetchLiked 超时缺席
+  - deezer.provider.test: search + fetchRadioBatch 超时缺席
+  - spotify.test: refreshAccessToken 内部 withTimeout + search 超时缺席
+  - lyricsovh.provider.test: getLyrics 超时缺席（已有）
+  - 修复 library-badge-merge.e2e flaky：固定 2s sleep → 轮询 12s（kuromoji warmup 慢机器不够）

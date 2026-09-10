@@ -39,6 +39,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `packages/server/src/music/like-sync.queue.ts`。
 
 ### Added
+- **Figma D2 收敛** —— `99 · Archive` 页顶部加 `Archive README` frame（红色 4px 虚线框 +
+  ⚠ BASELINE — DO NOT EXTEND + 指向 `03 · Screens` 的链接），防止 contributor 误以为
+  这页是待开发页面而在上面扩新屏。脚本 `scripts/figma-aether-v4-archive-readme.js`
+  （幂等，可重跑）+ 手册 `scripts/figma-v4-d2-command.md` + mock 冒烟
+  `scripts/figma-v4-smoke-d2.mjs`（10/10）。
+  - **文案按实跑核实结果改写**：spec 原稿假定该页装的是 v3 Monster Beats 视觉稿，实际
+    是 **AETHER THEATER 宇宙剧场 A / B / C 三版探索稿**（v4 视觉基准，
+    `figma-aether-v4-screens.js` 就是照 A 稿画的，见 `figma-v4-command.md` L10）。
+    照原稿写会把 v4 基准页错标成 v3 死稿。
+  - 新增变量 `Color/semantic/status-error`（别名 → `Color/primitive/heart-red`）。
+    此前 D1 `Screen/AuthError/Full` 与 D2 README 都引用了这个**不存在**的变量名，
+    `varColor` 回退成品红哨兵 `#FF00FF`；D1 AuthError 的 `alert-panel` 描边已就地改绑
+    （保留 node id `478:2`，不重建，避免 `figma-code-connect.json` 映射失效）。
+  - 代码/文档侧的双视觉收敛（`MonsterBeatsView` 残留清理）此前已完成，见
+    `specs/d2-convergence/spec.md` §0。
+- **Figma D1** —— `03 · Screens` 补 6 个 Modal/Full 屏（Search / Liked / Settings /
+  RecoKey / AuthError / EmptyState），画在 y=1000 第二行，与 v4-ABC 的 12 屏不重叠。
+  每屏带隐藏 `AI_CONTRACT` TEXT 子节点（FRAME 无 `description` 属性）。
+  验收 `scripts/figma-aether-v4-audit-d1.mjs` 18/18；`figma-code-connect.json`
+  6 个 `D1-PLACEHOLDER-N` 已换成真实 node id。
 - **`ISSUES.md` §5.2（partial）** `usePlayer.ts` 纯 helpers 拆出
   `usePlayer.helpers.ts`：1460 → 1348 行。FALLBACK_PRIORITY /
   getFullSongProviders / pickFallbackSource / pickUpgradeSource /

@@ -270,5 +270,27 @@ file_variables scope 的 token 复验；原型连线为平台限制需 UI 手动
 原型连线经 `reactions` 探测确认无法脚本化（NODE action 已废弃，interactions 不可读），
 12 条连线为 Figma UI 手动项（清单与参数在命令手册）；Playing 屏幕已做结构性对比验证——
 8 个剧场元素全部就位且与基准位置一致。
-尚未覆盖（后续阶段）：Modal 类屏幕（Search/Liked/Settings/登录）、1280/1920 尺寸帧、
-双视觉世界收敛、变量→SCSS 自动导出。
+尚未覆盖（后续阶段）：Modal 类屏幕（Search/Liked/Settings/登录）、1280/1920 尺寸帧、变量→SCSS 自动导出。
+**Monster Beats 视觉已删除**（主视图迁到 AETHER TheaterView）；Figma 99 · Archive 保留 v3 Monster Beats 视觉稿作为设计基准，顶部加 `Archive README` frame 标注（脚本 `figma-aether-v4-archive-readme.js`）。
+
+**D1 增量（2026-09-10）—— Modal/Full 屏幕补齐**：基于 v4-ABC 剧场稿，在 03 · Screens 增 6 屏：
+`Screen/Search/Modal`、`Screen/Liked/Modal`、`Screen/Settings/Full`、`Screen/RecoKey/Modal`、
+`Screen/AuthError/Full`、`Screen/EmptyState/Full`。**全部用 v4 已建 11 组件集 + 8 SVG icon
++ Scene/Backdrop 实例组装，禁裸画**；每屏 description 段写 AI CONTRACT（react 路径 /
+a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md 一致。
+不引新组件（避免又一轮 components SEG1-4 回归）；原型连线不在 D1 范围（仍走 Figma UI 手动）。
+- 交付物：`scripts/figma-aether-v4-screens-d1.js`（6 段）+ `figma-v4-d1-command.md`（执行手册）
+  + `figma-aether-v4-audit-d1.mjs`（增量审计：6 frame 存在 + AI_CONTRACT description +
+  03 页自有填充绑定 ≥70% + 6 屏 x 坐标不冲突）+ `figma-v4-smoke-d1.mjs`（mock 端到端）
+- Mock 冒烟：**23/23 通过**（6 段 + 17 ASSERT 断言），audit-d1 fixture 跑通 17/17
+- 真实执行：用户在自己 Claude Code + use_figma 环境跑，6 段顺序 SEG1-6，x 坐标不冲突
+- 关键约束：03 · Screens 累计 ≥10 个 Screen/ frame（4 v4 + 6 D1）；不破坏 v4-audit 23/25 基线
+- 下一步：D5（Code Connect 补 5 映射：Modal/RecoKeyModal/SettingsModal/LikedLibraryModal/SearchPanel）
+
+**D2 增量（2026-09-10）—— 视觉双世界收敛（文档收尾）**：之前评估 D2 是 P0 缺口（"双视觉混用"），
+但 2026-09-10 重新盘点代码发现 `MonsterBeatsView.tsx` / `_monster-beats.scss` / `mb-*` 类**已全部删除**，
+主视图迁到 `TheaterView.tsx`（AETHER 剧场稿），`_transport.scss` 等全部用 `var(--*)` 令牌。
+**实际 D2 = 文档与 Figma Archive 同步**：
+- 改 5 个文件：`.superdesign/init/{theme,components,extractable-components}.md` + `App.tsx` 注释 + 本文件
+- Figma 99 · Archive 顶部加 `Archive README` frame（脚本 `figma-aether-v4-archive-readme.js`）——红色 outline + 警告文字 + 指向 03 · Screens AETHER 剧场稿的链接
+- 视觉回归保护（Playwright 截图 baseline）属 P3，不在 D2 范围

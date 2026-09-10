@@ -43,12 +43,37 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
 `module.exports` 行），脚本本身已含幂等清理与返回节点 ID，直接执行即可。
 每步完成后用 get_screenshot 验证；脚本返回的 createdNodeIds 要保留在对话里供后续引用。
 
+## D1 增量（2026-09-10）—— 03 · Screens 补 6 个 Modal/Full frame
+
+> 详见 `scripts/figma-v4-d1-command.md`（独立执行手册）与 `specs/d1-screens/spec.md`
+> 范围：Search / Liked / Settings / RecoKey / AuthError / EmptyState 共 6 屏，全部用 02 页 11 组件集 + 8 SVG icon + Scene/Backdrop 实例组装，**不引新组件**。每个 frame 带 `AI_CONTRACT:` description 段。
+
+| 步骤 | 当前页面 | 脚本段 | 内容 | 完成后验证 |
+|---|---|---|---|---|
+| D1-1 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG1` | Screen/Search/Modal（x=1480） | 截图 + `figma-v4-smoke-d1.mjs` |
+| D1-2 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG2` | Screen/Liked/Modal（x=2960） | 截图 |
+| D1-3 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG3` | Screen/Settings/Full（x=4440） | 截图 |
+| D1-4 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG4` | Screen/RecoKey/Modal（x=5920） | 截图 |
+| D1-5 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG5` | Screen/AuthError/Full（x=7400） | 截图 |
+| D1-6 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG6` | Screen/EmptyState/Full（x=8880） | 截图 |
+| D1-7 | 全部 | 验收 | `figma-aether-v4-audit-d1.mjs`（≥17 项 PASS） + 原 v4-audit 回归 |
+
+执行前置：先跑 `node scripts/figma-v4-smoke-d1.mjs`（无需 FIGMA_TOKEN）确认 6 段逻辑无 error。
+
 > 页面自定位说明：每次 use_figma 调用 currentPage 都会重置回第一页，因此所有段已在
 > 脚本内按页面名自定位（`figma.root.children.find(p => p.name === '目标页')`），上表的
 > 「当前页面」列仅为执行参考，不需要手动切页。SEG0 已幂等化（99 · Archive 存在则跳过
 > 改名，4 页存在则跳过创建），重复执行安全。
 
 ## 必须遵守的规则
+
+0. **每个新建节点必含 description 模板**（D6 强制段）：
+   - 任何 COMPONENT / COMPONENT_SET / 顶层 FRAME（Screen/ 开头、README、MOTION SPEC、Archive README）
+     的 description 必须含 `---AI_CONTRACT:---` 段，必填 4 字段：`react:` / `props:` / `a11y:` / `states:`
+   - 完整模板见 `specs/d6-description-template/template.md`
+   - 审计：`npm run test:description`（REST 模式，需 FIGMA_TOKEN）或 `node scripts/figma-aether-v4-audit-d6.mjs --fixture /tmp/d6`（fixture 模式，无需 token）
+
+
 
 1. **不要改动 `99 · Archive` 页**（v3 画布原样保留，改造完成后由用户决定是否删除）。
 2. **屏幕必须用组件实例组装**（02 页的组件集），禁止在 03 页画"裸"交互元素；

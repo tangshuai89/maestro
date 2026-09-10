@@ -383,14 +383,19 @@ async function main() {
     'getLibrary 同步返回时 likedPlatforms 仍是 netease（自愈是异步）',
   );
   svc2.healLibraryItem(session2, libBefore.items[0]);
-  // 等异步任务完成。注意：searchEquivalent 现在会先 await warmupJa()
-  // （kuromoji 词典首次加载 ~几百 ms-1s，2026-08-07 星野源 恋 修复引入），
-  // 200ms 不够，等 2s 覆盖首次词典加载。
-  await new Promise((r) => setTimeout(r, 2000));
-  // 再读一次 storage：library 应已补 QQ/Spotify source（netease 本来就有）
-  const stored: any = fakeStorage2.get(`library:${session2.id}`);
-  const libItem = stored.items[0];
-  const sourcePlatforms = libItem.sources.map((s: any) => s.platform).sort();
+  // 等异步任务完成。searchEquivalent 会先 await warmupJa()（kuromoji 词典
+  // 首次加载 ~几百 ms-1s），且两个平台串行搜索各带 withTimeout(5s)。
+  // 固定 sleep 在慢机器上不够 → 改成轮询：最多等 12s，每 200ms 检查一次
+  // storage 里 library item 的 source 数量是否达到 3。
+  let libItem: any = null;
+  let sourcePlatforms: string[] = [];
+  for (let waited = 0; waited < 12_000; waited += 200) {
+    await new Promise((r) => setTimeout(r, 200));
+    const stored: any = fakeStorage2.get(`library:${session2.id}`);
+    libItem = stored?.items?.[0];
+    sourcePlatforms = (libItem?.sources ?? []).map((s: any) => s.platform).sort();
+    if (sourcePlatforms.length >= 3) break;
+  }
   assert.deepStrictEqual(
     sourcePlatforms,
     ['netease', 'qq', 'spotify'],

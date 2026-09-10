@@ -1,12 +1,19 @@
 {
-  "$comment": "Figma Code Connect 映射 — 组件 → React 实现。未来导入 Figma Dev Mode。",
+  "$comment": "Figma Code Connect 映射 — 组件 → React 实现。导入 Figma Dev Mode 后 AI agent 看到 Figma 节点就能定位源码。",
   "$figmaFileKey": "FtbRZXvzlCp4Sq9e322cQQ",
+  "$history": {
+    "v4-ABC 阶段（2026-08-20）": "建 15 个 v4-ABC 映射，引用 components/player/cover/lyrics 子组件；后 D2 收敛（2026-09-10）将这些子组件内联到 TheaterView.tsx，文件目录删除，映射变 PENDING_REFACTOR（保留历史对照）",
+    "D1 阶段（2026-09-10）": "在 03 · Screens 增 6 屏，6 个 D1-PLACEHOLDER 占位由用户跑完 D1 后替换为真实 node_id",
+    "D5 阶段（2026-09-10）": "校正 reactPath（4 个改为 TheaterView.tsx + _inlineIn 标记）；加 9 个新真实独立组件映射（Modal/ErrorPanel/RecoLoading/SourceChip/SourceSelect/Titlebar/QualityMenu/SourceMenu/NeteaseCookieModal）；LikedLibraryModal props 补全 4 个"
+  },
   "mappings": [
     {
       "figmaComponent": "Button/Like",
       "figmaNodeId": "263:106",
       "reactComponent": "LikeButton",
-      "reactPath": "packages/renderer/src/components/player/TransportBar.tsx",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (D2 收敛后内联，原 components/player/TransportBar.tsx 已删；如需独立 export 见未来 task)",
       "props": {
         "liked": { "figmaProp": "state", "map": { "liked": true, "unliked": false, "fanout": true } },
         "fanOutCount": { "figmaProp": "fanOutCount", "type": "number" }
@@ -17,6 +24,8 @@
       "figmaNodeId": "295:98",
       "reactComponent": "ThIcon",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (line 148 function ThIcon)",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum" },
         "size": { "figmaProp": "size", "map": { "sm": 16, "md": 20 } },
@@ -28,6 +37,8 @@
       "figmaNodeId": "295:115",
       "reactComponent": "PlatformBadge",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (PLATFORM_META 常量代替；未来如需独立 chip 组件，提取 PLATFORM_META 即可)",
       "props": {
         "platform": { "figmaProp": "provider", "type": "enum" },
         "active": { "figmaProp": "state", "map": { "active": true, "inactive": false } }
@@ -38,6 +49,8 @@
       "figmaNodeId": "263:81",
       "reactComponent": "RecoCard",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (建议未来提取为独立 RecoCard 组件；现为 inline JSX)",
       "props": {
         "type": { "figmaProp": "type", "type": "enum" },
         "match": { "figmaProp": "match", "type": "number" }
@@ -47,7 +60,9 @@
       "figmaComponent": "Controls/Transport",
       "figmaNodeId": "263:158",
       "reactComponent": "TransportBar",
-      "reactPath": "packages/renderer/src/components/player/TransportBar.tsx",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (transport-row CSS 区块；原 components/player/TransportBar.tsx 已删)",
       "props": {
         "playing": { "figmaProp": "state", "map": { "playing": true, "paused": false } }
       }
@@ -56,7 +71,9 @@
       "figmaComponent": "Hologram/Cover",
       "figmaNodeId": "257:174",
       "reactComponent": "CoverCard",
-      "reactPath": "packages/renderer/src/components/cover/CoverCard.tsx",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (Hologram JSX；原 components/cover/CoverCard.tsx 已删)",
       "props": {
         "coverUrl": { "figmaProp": "coverUrl", "type": "string" }
       }
@@ -65,7 +82,9 @@
       "figmaComponent": "Lyrics/Line",
       "figmaNodeId": "257:184",
       "reactComponent": "LyricsLine",
-      "reactPath": "packages/renderer/src/components/lyrics/LyricsView.tsx",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (lyric-stream JSX；原 components/lyrics/LyricsView.tsx 已删)",
       "props": {
         "state": { "figmaProp": "state", "type": "enum" }
       }
@@ -75,6 +94,8 @@
       "figmaNodeId": "257:206",
       "reactComponent": "PlayButton",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (Core/Play JSX 区块)",
       "props": {
         "playing": { "figmaProp": "state", "map": { "playing": true, "paused": false } }
       }
@@ -84,6 +105,8 @@
       "figmaNodeId": "313:139",
       "reactComponent": "SoundRing",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (.sound-rings JSX)",
       "props": {
         "playing": { "figmaProp": "state", "map": { "playing": true, "idle": false } }
       }
@@ -93,6 +116,8 @@
       "figmaNodeId": "313:182",
       "reactComponent": "ProgressRing",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (.star-orbit JSX)",
       "props": {
         "progress": { "figmaProp": "progress", "type": "number" }
       }
@@ -102,6 +127,8 @@
       "figmaNodeId": "295:152",
       "reactComponent": "StatTag",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (Tag/Stat 实例化；如需独立提取可参考 components/.../StatusLine.tsx 模式)",
       "props": {
         "tone": { "figmaProp": "tone", "type": "enum" },
         "label": { "figmaProp": "label", "type": "string" }
@@ -110,8 +137,10 @@
     {
       "figmaComponent": "Icon/Dislike",
       "figmaNodeId": "431:66",
-      "reactComponent": "ThIcon",
+      "reactComponent": "ThIcon (icon=dislike)",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；用 icon=dislike 区分)",
       "props": {
         "icon": { "figmaProp": "icon", "map": { "dislike": "thumbsDown" } }
       }
@@ -121,6 +150,8 @@
       "figmaNodeId": "440:85",
       "reactComponent": "button",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (内联 button；未来如独立提取，可参考 modals/SettingsModal 中 mkButton 模式)",
       "props": {
         "tone": { "figmaProp": "tone", "type": "enum", "map": { "default": "", "accent": "accent", "danger": "danger" } },
         "state": { "figmaProp": "state", "type": "enum" },
@@ -132,6 +163,8 @@
       "figmaNodeId": "441:72",
       "reactComponent": "input",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (内联 input；modals/SettingsModal 中 .set-input CSS 已有实现)",
       "props": {
         "state": { "figmaProp": "state", "type": "enum" },
         "placeholder": { "figmaProp": "placeholder", "type": "string" }
@@ -142,8 +175,210 @@
       "figmaNodeId": "441:83",
       "reactComponent": "SkeletonCard",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (内联；modals/LikedLibraryModal 中 .liked-skeleton 已有 CSS)",
       "props": {
         "state": { "figmaProp": "state", "type": "enum" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Search/Modal",
+      "figmaNodeId": "466:2",
+      "reactComponent": "SearchPanel",
+      "reactPath": "packages/renderer/src/components/search/SearchPanel.tsx",
+      "_status": "D1_DONE",
+      "props": {
+        "onPlay": { "figmaProp": "(回调)", "type": "function", "args": "items: UnifiedSearchItem[], index: number" },
+        "onClose": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Liked/Modal",
+      "figmaNodeId": "467:2",
+      "reactComponent": "LikedLibraryModal",
+      "reactPath": "packages/renderer/src/components/modals/LikedLibraryModal.tsx",
+      "_status": "D1_DONE",
+      "props": {
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "onPlay": { "figmaProp": "(回调)", "type": "function", "args": "items: UnifiedSearchItem[], index: number" },
+        "refreshSignal": { "figmaProp": "(数据刷新信号)", "type": "number?", "default": "undefined" },
+        "onImportSettled": { "figmaProp": "(回调)", "type": "function?", "args": "newCount: number | undefined" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Settings/Full",
+      "figmaNodeId": "476:2",
+      "reactComponent": "SettingsModal",
+      "reactPath": "packages/renderer/src/components/modals/SettingsModal.tsx",
+      "_status": "D1_DONE",
+      "props": {
+        "onClose": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/RecoKey/Modal",
+      "figmaNodeId": "477:2",
+      "reactComponent": "RecoKeyModal",
+      "reactPath": "packages/renderer/src/components/modals/RecoKeyModal.tsx",
+      "_status": "D1_DONE",
+      "props": {
+        "onSave": { "figmaProp": "(回调)", "type": "function", "args": "key: string" },
+        "onClose": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/AuthError/Full",
+      "figmaNodeId": "478:2",
+      "reactComponent": "AuthErrorPanel",
+      "reactPath": "packages/renderer/src/components/common/AuthErrorPanel.tsx",
+      "_status": "D1_DONE",
+      "props": {
+        "provider": { "figmaProp": "provider", "type": "enum[qq|netease|deezer|spotify]" },
+        "error": { "figmaProp": "error", "type": "AuthError | null" },
+        "onRetry": { "figmaProp": "(回调)", "type": "function" },
+        "onReLogin": { "figmaProp": "(回调)", "type": "function" },
+        "onSwitch": { "figmaProp": "(回调)", "type": "function" },
+        "onPasteCookie": { "figmaProp": "(回调，可选)", "type": "function?", "note": "仅 provider=qq|netease 时显示按钮" },
+        "onDismiss": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/EmptyState/Full",
+      "figmaNodeId": "479:2",
+      "reactComponent": "TheaterView",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "D1_DONE",
+      "_note": "EmptyState 嵌入到 TheaterView 的 hasTrack=false 条件渲染（无独立 React 组件）",
+      "props": {}
+    },
+    {
+      "figmaComponent": "Modal/Shell",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "Modal",
+      "reactPath": "packages/renderer/src/components/common/Modal.tsx",
+      "_status": "D5_NEW",
+      "_note": "Figma 端目前无独立 Modal 组件集（在 6 屏内联 raw panel 节点）；未来可在 02 · Components 加 Shell/Modal 组件集后填真实 nodeId",
+      "props": {
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "panelClassName": { "figmaProp": "(额外 class)", "type": "string?", "default": "undefined" },
+        "children": { "figmaProp": "(ReactNode 槽位)", "type": "ReactNode" }
+      }
+    },
+    {
+      "figmaComponent": "Modal/ErrorPanel",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "ErrorPanel",
+      "reactPath": "packages/renderer/src/components/common/ErrorPanel.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "message": { "figmaProp": "message", "type": "string" },
+        "onClose": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Modal/RecoLoading",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "RecoLoading",
+      "reactPath": "packages/renderer/src/components/common/RecoLoading.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "librarySize": { "figmaProp": "librarySize", "type": "number" },
+        "onClose": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "SourceChip",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "SourceChip",
+      "reactPath": "packages/renderer/src/components/search/SourceChip.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "source": { "figmaProp": "source", "type": "UnifiedSourceInfo" },
+        "isBest": { "figmaProp": "isBest", "type": "boolean" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/SourceSelect",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "SourceSelect",
+      "reactPath": "packages/renderer/src/components/source-select/SourceSelect.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "onSelect": { "figmaProp": "(回调)", "type": "function", "args": "provider: MusicProvider" }
+      }
+    },
+    {
+      "figmaComponent": "Titlebar",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "Titlebar",
+      "reactPath": "packages/renderer/src/components/layout/Titlebar.tsx",
+      "_status": "D5_NEW",
+      "_note": "Titlebar 是个复杂组件（多个回调）；v4 剧场稿屏幕（Playing/Paused/Buffering）顶部 HUD 用 raw frame 表达，未提独立组件。Figma 端无独立 Titlebar 组件集。",
+      "props": {
+        "provider": { "figmaProp": "provider", "type": "MusicProvider" },
+        "onSwitchProvider": { "figmaProp": "(回调)", "type": "function", "args": "p: MusicProvider" },
+        "deezerEditorials": { "figmaProp": "deezerEditorials", "type": "DeezerEditorial[]" },
+        "deezerPreset": { "figmaProp": "deezerPreset", "type": "string" },
+        "onChangeDeezerPreset": { "figmaProp": "(回调)", "type": "function", "args": "p: string" },
+        "onOpenSearch": { "figmaProp": "(回调)", "type": "function" },
+        "recoStatus": { "figmaProp": "recoStatus", "type": "{ configured: boolean } | null" },
+        "recoRunning": { "figmaProp": "recoRunning", "type": "boolean" },
+        "onReco": { "figmaProp": "(回调)", "type": "function" },
+        "qqQuality": { "figmaProp": "qqQuality", "type": "QqQuality" },
+        "onChangeQuality": { "figmaProp": "(回调)", "type": "function", "args": "q: QqQuality" },
+        "onLogin": { "figmaProp": "(回调)", "type": "function" },
+        "onAccount": { "figmaProp": "(回调)", "type": "function" },
+        "onReset": { "figmaProp": "(回调)", "type": "function" },
+        "likedCount": { "figmaProp": "likedCount", "type": "number" },
+        "onOpenLiked": { "figmaProp": "(回调)", "type": "function" },
+        "onOpenSettings": { "figmaProp": "(回调)", "type": "function" },
+        "loggingIn": { "figmaProp": "loggingIn", "type": "boolean" },
+        "accountName": { "figmaProp": "accountName", "type": "string?" }
+      }
+    },
+    {
+      "figmaComponent": "Layout/QualityMenu",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "QualityMenu",
+      "reactPath": "packages/renderer/src/components/layout/QualityMenu.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "quality": { "figmaProp": "quality", "type": "enum[standard|high|lossless]" },
+        "onSelect": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Layout/SourceMenu",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "SourceMenu",
+      "reactPath": "packages/renderer/src/components/layout/SourceMenu.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "provider": { "figmaProp": "provider", "type": "MusicProvider" },
+        "onSelect": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Layout/DeezerPresetSelect",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "DeezerPresetSelect",
+      "reactPath": "packages/renderer/src/components/layout/DeezerPresetSelect.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "editorials": { "figmaProp": "editorials", "type": "Array" },
+        "value": { "figmaProp": "value", "type": "string" },
+        "onChange": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Modal/NeteaseCookie",
+      "figmaNodeId": "TBD-FIGMA",
+      "reactComponent": "NeteaseCookieModal",
+      "reactPath": "packages/renderer/src/components/modals/NeteaseCookieModal.tsx",
+      "_status": "D5_NEW",
+      "props": {
+        "onSuccess": { "figmaProp": "(回调)", "type": "function" },
+        "onClose": { "figmaProp": "(回调)", "type": "function" }
       }
     }
   ]

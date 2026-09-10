@@ -548,7 +548,43 @@ async function main() {
     console.log('✅ 30. fetchSongUrl: 数字字符串（带前导零）→ 正常解析');
   }
 
-  console.log('\n🎉 netease.provider.test 全部 30 项通过');
+  // ── 31. 超时缺席：fetch 永不 resolve → withTimeout 5s 后返回 null ──
+  {
+    const { withTimeout } = require('../common/timeout');
+    const real = globalThis.fetch;
+    (globalThis as any).fetch = async () => new Promise(() => {}); // 永不 resolve
+    const start = Date.now();
+    const r = await withTimeout(
+      () => prov.search(SESSION, 'test', 20),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    globalThis.fetch = real;
+    assert.strictEqual(r, null, '挂起的 search 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 31. 超时缺席：fetch 永不 resolve → withTimeout 5s 后 null（${elapsed}ms）`);
+  }
+
+  // ── 32. fetchLiked 超时缺席 ──
+  {
+    const { withTimeout } = require('../common/timeout');
+    const real = globalThis.fetch;
+    (globalThis as any).fetch = async () => new Promise(() => {}); // 永不 resolve
+    const start = Date.now();
+    const r = await withTimeout(
+      () => prov.fetchLiked(SESSION, 100),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    globalThis.fetch = real;
+    assert.strictEqual(r, null, '挂起的 fetchLiked 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 32. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
+  }
+
+  console.log('\n🎉 netease.provider.test 全部 32 项通过');
 }
 
 main().catch((err) => {

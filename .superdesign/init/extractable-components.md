@@ -1,6 +1,9 @@
 # Extractable Components — Catalog for Superdesign DraftComponent Extraction
 
-Candidates below can be extracted as reusable design components. **Layout** = chrome that appears across screens; **basic** = shared primitives used in many places; **pattern** = page-specific UI that defines a strong, reusable visual pattern (currently defined inline in MonsterBeatsView — needs extraction before reuse). All paths relative to `packages/renderer/src/`.
+Candidates below can be extracted as reusable design components. **Layout** = chrome that appears across screens; **basic** = shared primitives used in many places; **pattern** = page-specific UI that defines a strong, reusable visual pattern. All paths relative to `packages/renderer/src/`.
+
+> **D2 收敛（2026-09-10）**：原 `MonsterBeatsView` 已删除；Pattern 组件描述保留为**历史归档**。
+> 提取工作如要继续，参考主视图 `TheaterView.tsx`（AETHER 剧场稿）的 AETHER 风格等价物。
 
 ---
 
@@ -103,59 +106,63 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 
 ---
 
-## Pattern Components (page-specific, strong reusable UI — currently defined inline in MonsterBeatsView)
+## Pattern Components (page-specific, strong reusable UI — currently defined inline in TheaterView, NOT MonsterBeatsView)
+
+> **D2 收敛（2026-09-10）**：以下 Pattern 组件原 `MonsterBeatsView` 已删除（`components/views/MonsterBeatsView.tsx`）。
+> 描述保留为**历史归档**——可作为 AETHER 后续提取同类组件的参考。切勿重新引入 mb-* 类：
+> 当前代码无引用，主视图是 `TheaterView`（AETHER 剧场稿）。
 
 ## MbBattleMenu
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-battle-menu` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-battle-menu` block, inline)
 - Category: pattern
 - Description: Pokémon-style battle menu — symmetric 2×2 color button columns (FIGHT/BAG/PKMN/RUN | prev/next/shuffle/repeat) flanking a mega circular play button; chunky 3D-press buttons (box-shadow offset).
 - Extractable props: liked (boolean), loading (boolean), playing (boolean), hasTrack (boolean), onDislike, onLike, onOpenLiked, onSwitchProvider, onPlayPause, onPrev, onSkip
 - Hardcoded: button labels (FIGHT/BAG/PKMN/RUN), icon SVGs, color variants (red/yellow/green/blue/pink/white), `.mb-menu-*` / `.mb-mega-play` CSS, 1440×900 stage coordinates
 
 ## MbCreatureCard
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-creature-card` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-creature-card` block, inline)
 - Category: pattern
 - Description: "Legendary creature" track card — white card, -3° rotation, yellow border, black banner, cover art with shine + holographic overlays, navy nameplate, 2×2 stat bars (HP/ATK/DEF/SPD), element-type badge.
 - Extractable props: track (Track|null), coverBackdropRef (RefObject), stats derived in-view (hp/atk/def/spd/level), cardType (string)
 - Hardcoded: "LEGENDARY CREATURE" banner, stat labels, TYPE_COLORS map, star icon, `.mb-creature-*` CSS
 
 ## MbHudStats
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-hud-stats` block, inline; `HUDStat` subcomponent)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-hud-stats` block, inline; `HUDStat` subcomponent)
 - Category: pattern
 - Description: Top-strip HUD — row of circular icon chips (❤⚡🗡🛡) each with a colored fill track; plus sync-bar and bag counter.
 - Extractable props: fanOutCount (number), progressPct (number), loading (boolean), track (Track|null), likedCount (number)
 - Hardcoded: icon set (heart/zap/swords/shield via MbIcon), labels (跨平台红心/播放进度/战斗能量/同步完成度), "Syncing n/4" text, `.mb-hud-*` / `.mb-sync-*` / `.mb-bag` CSS
 
 ## MbRadar
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-radar` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-radar` block, inline)
 - Category: pattern
 - Description: Animated radar disc half-hanging from the top strip — crosshair rings, conic sweep, blip, "YOU" label.
 - Extractable props: none (purely decorative)
 - Hardcoded: ring/sweep/blip styles, "YOU" label, `.mb-radar*` CSS + `mb-radar-spin` keyframes
 
 ## MbSourceBadges
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-source-badges` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-source-badges` block, inline)
 - Category: pattern
 - Description: Four 96px circular provider badges (Q/N/D/S) with italic letters, star/heart corner badges, active ring highlight.
 - Extractable props: provider (MusicProvider), fanOutCount (number)
 - Hardcoded: PROVIDER_BADGE map (letters/colors/names), fake heart counts (PROVIDER_HEART_DEFAULT), `.mb-source-badge*` CSS
 
 ## MbBattleDialog
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-battle-dialog` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-battle-dialog` block, inline)
 - Category: pattern
 - Description: Cream rounded dialog showing synced lyrics (prev/current/next lines with blinking ▶ cursor), status pill row (LV/YEAR/TYPE/SOURCE), speaker portrait, half-hanging NEXT button.
 - Extractable props: lyrics lines (prevLine/currentLine/nextLine), lyricsSource, loading (boolean), accountName, fanOutCount, stats (level/year), provider, qqQuality, trialFellBack, onSkip
 - Hardcoded: status labels, blinking cursor, red/yellow/green dots, NEXT button, `.mb-battle-*` CSS
 
 ## MbEncounterLog
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-encounter` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-encounter` block, inline)
 - Category: pattern
 - Description: "DEEP.SEEK ENCOUNTER LOG" — red banner + 3-column grid of AI-recommendation mini creature cards (BotAvatar, type, name, match %), yellow footer pill.
 - Extractable props: recoSuggestions (array), recoConfigured (boolean), recoLibrarySize (number), recoMatchRate (number)
 - Hardcoded: "#092 · DEEP.SEEK · ENCOUNTER LOG" banner text, empty-state copy, BotAvatar seed derivation, `.mb-encounter-*` / `.mb-mini-card*` CSS
 
 ## MbProgressBar
-- Source: `components/views/MonsterBeatsView.tsx` (`.mb-progress` block, inline)
+- Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-progress` block, inline)
 - Category: pattern
 - Description: Bottom full-width seek bar — navy pill, yellow border, yellow→orange fill, cream handle, mono time codes.
 - Extractable props: currentTime (number), duration (number), onSeek (seconds => void)
