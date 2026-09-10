@@ -759,5 +759,64 @@ void (async () => {
   }
 }
 
-console.log('\n🎉 spotify.test 全部 30 项通过');
+// ── 31. 超时缺席：refreshAccessToken fetch 永不 resolve → 5s 后返回 null ──
+// spotify.provider 内部 doRefreshAccessToken 套了 withTimeout(5000ms)。
+// 挂起的 fetch 会在 5s 后被 race 兜底为 null（而非永远挂起）。
+{
+  process.env.SPOTIFY_CLIENT_ID = 'test-client-id';
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Promise(() => {})) as typeof fetch; // 永不 resolve
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'expired',
+        refreshToken: 'r',
+        expiresAt: 0, // 已过期 → 触发 refresh
+      },
+    };
+    const start = Date.now();
+    const tok: string | null = await svc.getValidAccessToken(session as any);
+    const elapsed = Date.now() - start;
+    assert.strictEqual(tok, null, '挂起的 refresh 应在 5s 后返回 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 31. 超时缺席：refresh fetch 永不 resolve → 5s 后 null（${elapsed}ms）`);
+  } finally {
+    globalThis.fetch = origFetch;
+    delete process.env.SPOTIFY_CLIENT_ID;
+  }
+}
+
+// ── 32. search 超时缺席（withTimeout 包裹） ──
+// spotify.search 自身无内部 withTimeout（超时由 music.service 包裹），
+// 这里用 withTimeout 包一层验证挂起时 5s 后 null。
+{
+  const { withTimeout } = require('../common/timeout');
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Promise(() => {})) as typeof fetch; // 永不 resolve
+
+  try {
+    const session = {
+      spotify: {
+        accessToken: 'valid-tok',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+      },
+    };
+    const start = Date.now();
+    const r = await withTimeout(
+      () => svc.search(session as any, 'test', 20),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    assert.strictEqual(r, null, '挂起的 search 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 32. search 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+console.log('\n🎉 spotify.test 全部 32 项通过');
 })();

@@ -205,8 +205,10 @@ kuromoji 首次预热 ~2s。所有依赖时钟 / 网络的用例必须可注入 
       — auth/backup/reco controller e2e + renderer 纯逻辑单测已补齐（见清单 #25-#30）。
 - [x] L5 契约测试至少 5 用例全绿。
       — `contract.test.ts` 23 项 + `grouping.test.ts` 22 项，远超 5 用例门槛。
-- [ ] 每个 provider 至少有一个 happy path + 一个 5s 超时缺席 单测。
-      — qq/spotify/deezer 有测试；netease/lyricsovh 仍缺（需外部网络 mock）。
+- [x] 每个 provider 至少有一个 happy path + 一个 5s 超时缺席 单测。
+      — qq（37 项，含 search/fetchLiked 超时缺席）、netease（32 项，含 search/fetchLiked 超时缺席）、
+        deezer（20 项，含 search/fetchRadioBatch 超时缺席）、spotify（32 项，含 refresh/search 超时缺席）、
+        lyricsovh（11 项，含 getLyrics 超时缺席）。全部用 mock fetch + withTimeout 验证 5s 兜底。
 - [x] 每个公共 controller 路由至少一个 200 + 一个 4xx e2e。
       — auth.controller e2e 33 项 + backup.controller e2e 14 项 + reco.controller e2e 10 项。
 

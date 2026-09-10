@@ -408,7 +408,43 @@ async function main() {
     console.log('✅ 18. toTrack 优先 title_short，缺失时回退 title');
   }
 
-  console.log('\n🎉 deezer.provider.test 全部 18 项通过');
+  // ── 19. 超时缺席：fetch 永不 resolve → withTimeout 5s 后返回 null ──
+  {
+    const { withTimeout } = require('../common/timeout');
+    const real = globalThis.fetch;
+    (globalThis as any).fetch = async () => new Promise(() => {}); // 永不 resolve
+    const start = Date.now();
+    const r = await withTimeout(
+      () => prov.search({} as any, 'test', 20),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    globalThis.fetch = real;
+    assert.strictEqual(r, null, '挂起的 search 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 19. 超时缺席：fetch 永不 resolve → withTimeout 5s 后 null（${elapsed}ms）`);
+  }
+
+  // ── 20. fetchRadioBatch 超时缺席 ──
+  {
+    const { withTimeout } = require('../common/timeout');
+    const real = globalThis.fetch;
+    (globalThis as any).fetch = async () => new Promise(() => {}); // 永不 resolve
+    const start = Date.now();
+    const r = await withTimeout(
+      () => prov.fetchRadioBatch({} as any, 'rock', 5),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    globalThis.fetch = real;
+    assert.strictEqual(r, null, '挂起的 fetchRadioBatch 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 20. fetchRadioBatch 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
+  }
+
+  console.log('\n🎉 deezer.provider.test 全部 20 项通过');
 }
 
 main().catch((err) => {

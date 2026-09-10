@@ -811,7 +811,46 @@ async function main() {
     console.log('✅ 35. fetchRadioBatch: 注入 rng → 顺序确定（两次跑一致）');
   }
 
-  console.log('\n🎉 qq.provider.test 全部 35 项通过');
+  // ── 36. 超时缺席：fetch 永不 resolve → withTimeout 5s 后返回 null ──
+  // provider 自身无内部 withTimeout（超时由 music.service 的 searchOneProvider
+  // 包裹）。这里验证：用 withTimeout 包 prov.search，挂起的 fetch 会在 5s 后
+  // 被 race 兜底为 null，而非永远挂起。这扣住 AGENTS.md「单平台 5s 超时即缺席」。
+  {
+    const { withTimeout } = require('../common/timeout');
+    const real = globalThis.fetch;
+    (globalThis as any).fetch = async () => new Promise(() => {}); // 永不 resolve
+    const start = Date.now();
+    const r = await withTimeout(
+      () => prov.search(sess(), 'test', 20),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    globalThis.fetch = real;
+    assert.strictEqual(r, null, '挂起的 search 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 36. 超时缺席：fetch 永不 resolve → withTimeout 5s 后 null（${elapsed}ms）`);
+  }
+
+  // ── 37. fetchLiked 超时缺席 ──
+  {
+    const { withTimeout } = require('../common/timeout');
+    const real = globalThis.fetch;
+    (globalThis as any).fetch = async () => new Promise(() => {}); // 永不 resolve
+    const start = Date.now();
+    const r = await withTimeout(
+      () => prov.fetchLiked(sess(), 100),
+      5_000,
+      () => {},
+    );
+    const elapsed = Date.now() - start;
+    globalThis.fetch = real;
+    assert.strictEqual(r, null, '挂起的 fetchLiked 应在 5s 后被 withTimeout 兜底为 null');
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
+    console.log(`✅ 37. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
+  }
+
+  console.log('\n🎉 qq.provider.test 全部 37 项通过');
 }
 
 main().catch((err) => {
