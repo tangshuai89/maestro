@@ -139,6 +139,42 @@ for (const item of parsed.spec) {
 }
 check(`所有 spec 必填字段合规`, fail === 0, `${pass}/${parsed.spec.length} PASS，${fail} FAIL`);
 
+// ── 5. 双向漂移校验：Figma 端 spec vs 仓库 specs/motion-spec.json（仅真 Figma 模式）──
+if (!FIXTURE) try {
+  const repoSpec = JSON.parse(readFileSync('specs/motion-spec.json', 'utf8'));
+  const figmaIds = new Set(parsed.spec.map((s) => s.id));
+  const repoIds = new Set(repoSpec.spec.map((s) => s.id));
+  const onlyInFigma = [...figmaIds].filter((id) => !repoIds.has(id));
+  const onlyInRepo = [...repoIds].filter((id) => !figmaIds.has(id));
+  if (onlyInFigma.length === 0 && onlyInRepo.length === 0) {
+    check('Figma ↔ 仓库 spec id 集合一致', true, `共 ${parsed.spec.length} 条`);
+  } else {
+    const details = [];
+    if (onlyInFigma.length) details.push(`Figma 多: ${onlyInFigma.join(', ')}`);
+    if (onlyInRepo.length) details.push(`仓库多: ${onlyInRepo.join(', ')}`);
+    check('Figma ↔ 仓库 spec id 集合一致', false, details.join('；'));
+  }
+  // 字段值一致性（仅对比有共同 id 的项）
+  for (const f of parsed.spec) {
+    const r = repoSpec.spec.find((x) => x.id === f.id);
+    if (!r) continue; // 已在集合检查报过
+    const drift = [];
+    for (const k of ['category', 'component', 'trigger', 'duration_ms', 'easing', 'driver', 'description']) {
+      if (JSON.stringify(f[k]) !== JSON.stringify(r[k])) drift.push(`${k}: 仓库=${JSON.stringify(r[k])} Figma=${JSON.stringify(f[k])}`);
+    }
+    if (drift.length) {
+      check(`spec[${f.id}] 字段一致`, false, drift.join('；'));
+      fail++;
+    }
+  }
+} catch (e) {
+  if (!FIXTURE) {
+    // 真 Figma 模式但仓库 spec 不存在（异常）
+    check('Figma ↔ 仓库 spec 对比', false, `读 specs/motion-spec.json 失败: ${e.message}`);
+  }
+  // fixture 模式：跳过（Figma 端已用仓库 spec 生成，不算漂移）
+} else { check('Figma ↔ 仓库 spec 对比（仅真 Figma 模式）', true, 'fixture 模式跳过'); }
+
 // ── 5. 汇总 ──
 const lines = results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
 if (AS_JSON) {
