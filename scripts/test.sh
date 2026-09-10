@@ -41,7 +41,9 @@ run_pkg() {
   tsx_files=$(find "$root/packages/$pkg/src" -type f -name '*.test.tsx' 2>/dev/null | sort)
   files="${ts_files}${mjs_files:+$'\n'${mjs_files}}"
   if [ -z "$files" ] && [ -z "$tsx_files" ]; then return; fi
-  local count=$(( $(printf '%s\n' "$files" 2>/dev/null | grep -c . || echo 0) + $(printf '%s\n' "$tsx_files" 2>/dev/null | grep -c . || echo 0) ))
+  # 注意：`grep -c .` 零匹配时会**同时**打印 "0" 和以 1 退出，所以 `|| echo 0` 会再补一个 "0"，
+  # 命令替换拿到 "0\n0"，算术展开直接语法错误（$(( 4 + 0⏎0 ))）。用 `|| true` 只吞退出码。
+  local count=$(( $(printf '%s\n' "$files" 2>/dev/null | grep -c . || true) + $(printf '%s\n' "$tsx_files" 2>/dev/null | grep -c . || true) ))
   echo "── ${pkg} (${count} test files) ──"
   local f
   for f in $files; do
