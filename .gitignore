@@ -20,3 +20,7 @@ packages/server/.storage/
 # Superdesign temp design artifacts
 .superdesign/tmp/
 coverage/
+
+# figma-code-connect-inject.mjs 备份（避免污染 git status）
+figma-code-connect.json.bak
+figma-code-connect.json.bak2
