@@ -88,3 +88,26 @@ export function wpsError(category: string, ...args: unknown[]): void {
   if (!isWpsDebug()) return;
   console.error(`[wps-debug][${category}]`, ...args);
 }
+
+/**
+ * Auth 流程调试日志——和 wpsLog/wpsWarn/wpsError 同样的开关控制，复用
+ * isWpsDebug()（一次打开同时开两套调试日志，避免再加独立开关）。前缀
+ * `[auth-debug]` 便于在控制台搜索过滤。
+ *
+ * Bug #1 (stability-bug1-spotify-120s-timeout) 排查用：handleSpotifyLogin
+ * 每步打日志，下次复现"Spotify 登录 120s 超时"能秒定位卡哪。
+ */
+export function authLog(category: string, ...args: unknown[]): void {
+  if (!isWpsDebug()) return;
+  console.log(`[auth-debug][${category}]`, ...args);
+}
+
+export function authWarn(category: string, ...args: unknown[]): void {
+  if (!isWpsDebug()) return;
+  console.warn(`[auth-debug][${category}]`, ...args);
+}
+
+export function authError(category: string, ...args: unknown[]): void {
+  if (!isWpsDebug()) return;
+  console.error(`[auth-debug][${category}]`, ...args);
+}
