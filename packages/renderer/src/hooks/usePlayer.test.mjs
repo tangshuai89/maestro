@@ -58,6 +58,7 @@ const {
   pickFallbackSource,
   pickUpgradeSource,
   shouldApplyLikeResult,
+  shouldStopWpsBeforeTransition,
   parsePlayableQueue,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
@@ -450,6 +451,46 @@ async function main() {
     const picked = pickUpgradeSource(sources, new Set(), ['spotify', 'deezer']);
     check('42. pickUpgradeSource 自定义 fullProviders → spotify 优先', picked?.platform, 'spotify');
   }
+
+  // ── shouldStopWpsBeforeTransition (Bug #2 stability-bug2-wps-double-play) ──
+  // 43. WPS 没播过 → false（不必 stop）
+  check('43. wpsLastPlayedId=null → false',
+    shouldStopWpsBeforeTransition(null, { provider: 'qq', id: 'q-1' }, true), false);
+
+  // 44. nextTrack=null → false（没新歌谈不上 stop）
+  check('44. nextTrack=null → false',
+    shouldStopWpsBeforeTransition('sp-A', null, true), false);
+
+  // 45. 同 spotify track、wpsReady=true → false（不应该打断 pause/resume）
+  check('45. spotify→同 spotify id, wpsReady=true → false（保留 resume）',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-A' }, true), false);
+
+  // 46. (A) spotify→QQ → true（必须停 WPS，否则旧 URI 续播 → 两路叠加）
+  check('46. spotify→QQ, wpsReady=true → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'qq', id: 'q-1' }, true), true);
+
+  // 47. (B) 同 spotify provider 但 id 变 → true（wpsReady=true 也要 stop 旧的）
+  check('47. spotify A→spotify B, wpsReady=true → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-B' }, true), true);
+
+  // 48. (B) spotify→spotify, wpsReady 翻 false（token/EME race）→ true
+  check('48. spotify A→spotify B, wpsReady=false → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-B' }, false), true);
+
+  // 49. (C) spotify→QQ→spotify A（id 相同但中间离开过）→ true
+  //     这里模拟的是：上一首 WPS 播 A → 切到 QQ → 又切回 spotify A。
+  //     此时虽然 id 相同，但 wpsPlayedIdRef 已被 presentTrack 清成 null，
+  //     所以新一次 useEffect 进来时 wpsLastPlayedId=null → 走 false 分支。
+  //     本测试验证「ref 没被清」的另一条路径：直接喂 wpsLastPlayedId='sp-A' +
+  //     跳到 spotify A → 仍要 stop（虽然 id 相同，但中间有过换 provider，
+  //     WPS 状态不可信）。这个场景的实际防御在 presentTrack 里清 ref；这里
+  //     测纯函数在「同 id 但 wpsReady=false」下的判定。
+  check('49. spotify→spotify 同 id, wpsReady=false → true（不可信）',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-A' }, false), true);
+
+  // 50. nextTrack.id 是空字符串 → 不视作 spotify id，仍要 stop
+  check('50. spotify→spotify 空 id → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: '' }, true), true);
 
   console.log(`\n🎉 usePlayer.test 通过 ${passed} 项，失败 ${failed} 项`);
   if (failed > 0) process.exit(1);

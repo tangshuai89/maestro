@@ -137,3 +137,55 @@ export function parsePlayableQueue(
   }
   return { tracks, unifiedItems };
 }
+
+
+/**
+ * Decide whether the WPS wrapper should be paused+forgotten before
+ * transitioning to `nextTrack`. Bug #2 — 切下一曲后两首歌同时播放。
+ *
+ * Three paths that previously caused WPS + <audio> to both play audio:
+ *
+ *  A) WPS is playing spotify:track:A → user switches to a QQ track.
+ *     useEffect re-runs, `useWps` flips false, <audio>.play() starts the
+ *     new track. WPS still has A on its deck → two streams overlap.
+ *
+ *  B) WPS is playing spotify:track:A → user switches to spotify:track:B
+ *     but `wpsReady` flips false mid-transition (token refresh / EME
+ *     error / `not_ready` SDK event). Same race.
+ *
+ *  C) WPS played A → user switches to QQ → back to spotify:track:A.
+ *     `wpsPlayedIdRef` still points at A, so useEffect's
+ *     `wpsPlayedIdRef.current !== track.id` check is false and we call
+ *     `wps.resume()` on a deck that already moved on. Net effect: new
+ *     track never starts playing through WPS while <audio> tries the
+ *     30s preview, overlap.
+ *
+ * Returns true when we should call `wps.pause()` AND null out the
+ * `wpsPlayedIdRef` so the next transition starts clean. The check is
+ * intentionally pure (no React, no refs) so it's unit-testable.
+ *
+ * @param wpsLastPlayedId  the id we last sent through `wps.play(uri)`;
+ *                         null if WPS hasn't been used yet (or was reset).
+ * @param nextTrack        the track about to be presented; null = no track.
+ * @param wpsReady         current `wpsRef.current?.wpsReady` snapshot.
+ */
+export function shouldStopWpsBeforeTransition(
+  wpsLastPlayedId: string | null,
+  nextTrack: { provider: string; id: string } | null,
+  wpsReady: boolean,
+): boolean {
+  // Nothing to stop. WPS never played anything yet (or has been reset).
+  if (!wpsLastPlayedId) return false;
+  // No track → renderer's useEffect early-returns on `!track` anyway;
+  // nothing more to decide here.
+  if (!nextTrack) return false;
+  // Same track still eligible for WPS → don't disturb a possibly-paused
+  // deck; the useEffect's `playing` branch handles play/resume correctly.
+  const stillWpsEligible =
+    wpsReady && nextTrack.provider === 'spotify' && Boolean(nextTrack.id);
+  if (stillWpsEligible && wpsLastPlayedId === nextTrack.id) return false;
+  // Everything else → we must stop WPS so it doesn't keep the old URI
+  // alive while <audio> (or a fresh WPS.play) takes over. Covers (A),
+  // (B), and (C): provider changed, wpsReady flipped, or the id changed.
+  return true;
+}

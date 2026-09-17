@@ -39,6 +39,7 @@ import {
   FULL_SONG_PROVIDERS,
   getFullSongProviders,
   shouldApplyLikeResult,
+  shouldStopWpsBeforeTransition,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
   parsePlayableQueue,
@@ -65,6 +66,7 @@ export {
   FULL_SONG_PROVIDERS,
   getFullSongProviders,
   shouldApplyLikeResult,
+  shouldStopWpsBeforeTransition,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
   pickFallbackSource,
@@ -264,6 +266,12 @@ export function usePlayer(
         serverEquivTriedRef.current = false;
         trialServerTriedRef.current = false;
         forcedStandardRef.current = false;
+        // Bug #2 (stability-bug2-wps-double-play)：换歌 / 切 provider 时
+        // 清掉上次 WPS.play 的 track id——否则切到 QQ 再切回 spotify 同一
+        // 首时 useEffect 的 `wpsPlayedIdRef.current !== track.id` 判 false
+        // 会走 wps.resume()（deck 上其实已经没有这首歌了）。useEffect 顶
+        // 部守卫会在切歌瞬间 pause 一次 WPS，这里只是把 ref 也同步清掉。
+        wpsPlayedIdRef.current = null;
       }
       triedPlatformsRef.current.add(next.provider);
       // 每次上源（含跨平台切换）都要对新源重做一次试听判定。
@@ -950,6 +958,20 @@ export function usePlayer(
     // 否则会被 30s 预览代理劫持成 mp3 字节流）。wpsRef 引用稳定，effect 只在
     // playing / track 变化时跑，此处懒读 .current 拿最新 WPS 实例。
     const wps = wpsRef?.current ?? null;
+    // Bug #2 (stability-bug2-wps-double-play)：切歌 / 换 provider / wpsReady
+    // 翻 false 时，先确保旧 WPS URI 停掉——不然下面的 useWps=false 分支会走
+    // <audio>.play()，旧 WPS 还在播 → 两路叠加。shouldStopWpsBeforeTransition
+    // 是 usePlayer.helpers 里的纯函数，单测覆盖。
+    if (
+      shouldStopWpsBeforeTransition(
+        wpsPlayedIdRef.current,
+        { provider: track.provider, id: track.id },
+        Boolean(wps?.wpsReady),
+      )
+    ) {
+      void wps?.pause().catch(() => {});
+      wpsPlayedIdRef.current = null;
+    }
     const useWps = Boolean(
       wps?.wpsReady && track.provider === 'spotify' && track.id,
     );
