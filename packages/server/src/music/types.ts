@@ -40,6 +40,16 @@ export interface SourceInfo {
   vipLocked?: boolean;
 }
 
+/** 单一录音版本（同 (key, type) 内一个 duration cluster = 一个版本）。 */
+export interface VersionEntry {
+  id: string;
+  duration: number;
+  sources: SourceInfo[];
+  bestSource: MusicProvider | null;
+  /** UI 标签（Phase 3 可加：从 main.album/title 提取"短版"/"长版"）。Phase 2 留空。 */
+  label?: string;
+}
+
 /** 去重合并后的一条搜索结果。 */
 export interface UnifiedSearchItem {
   id: string;
@@ -56,6 +66,10 @@ export interface UnifiedSearchItem {
    *  多个 mid/平台合并成 1 条 item；不同 version（studio/live/acoustic/remix/
    * instrumental）各自成条。UI 用 versionTypeBadge() 显示 [LIVE] 等角标。 */
   versionType: 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
+  /** Phase 2：同 (key, type) 内的多个录音版本（不同 duration / 不同录音 master）。
+   *  默认折叠时 item.sources/bestSource/duration = versions[0]（最短版本）；UI
+   *  toggle "显示所有版本" 打开后展开每个 version 为可独立播放的一行。 */
+  versions: VersionEntry[];
   /**
    * UI 角标显示用：用户在哪些平台 ❤ 了这首歌（来自 sources.import + 运行时 fanOut）。
    * 与 `sources` 的区别：sources = 这首歌在哪些平台有可播放版本（catalog 维

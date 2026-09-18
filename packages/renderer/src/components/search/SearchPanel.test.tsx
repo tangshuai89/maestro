@@ -53,6 +53,7 @@ const SAMPLE: UnifiedSearchItem[] = [
     duration: 269,
     bestSource: 'qq',
     versionType: 'studio',
+    versions: [{ id: 'ver-1', duration: 269, sources: [{ platform: 'qq', trackId: '1', hasCopyright: true, url: '/qq/1' }], bestSource: 'qq' }],
     sources: [{ platform: 'qq', trackId: '1', hasCopyright: true, url: '/qq/1' }],
   },
   {
@@ -64,6 +65,7 @@ const SAMPLE: UnifiedSearchItem[] = [
     duration: 0,
     bestSource: null,
     versionType: 'studio',
+    versions: [{ id: 'ver-2', duration: 0, sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }], bestSource: null }],
     sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }],
   },
 ];

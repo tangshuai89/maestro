@@ -159,7 +159,7 @@ check('10. buildUnifiedItems：同歌同版本跨平台合并为一条', () => {
   assert.strictEqual(items.length, 1, '同歌同版本应合并为 1 条');
   assert.strictEqual(items[0].sources.length, 2, 'sources 含两个平台');
   assert.strictEqual(items[0].bestSource, 'qq', 'bestSource = qq');
-  assert.strictEqual(items[0].id, 'merged-qq-qq-1', 'id 用 main 平台');
+    assert.strictEqual(items[0].id, 'merged-qq-qq-1-studio', 'Phase 2 id = merged-<provider>-<id>-<versionType>');
 });
 
 // ── Bug #5 (stability-bug5-search-dup-platform) ───────────────────
@@ -202,14 +202,21 @@ check('11c. cluster 内多 platform + 同 platform 多 mid 混合', () => {
   assert.strictEqual(items[0].sources.length, 3, 'qq×3 → 1 个 qq + netease + spotify = 3 sources');
 });
 
-// ── 11. buildUnifiedItems：不同版本各自成条 ───────────────────
-check('11. buildUnifiedItems：同名同歌手不同时长 → 各自成条', () => {
+// ── 11. buildUnifiedItems Phase 2：同名同 type 不同 duration → 1 item + 2 versions ──
+check('11. buildUnifiedItems：同名同 type 不同 duration → 1 item + 2 versions', () => {
+  // Phase 2：同 (key, type) 不管 duration 差多少都合并成 1 item，duration 差
+  // 体现在 versions 数组里（每个 cluster = 1 version）。toggle 展开时给用户选。
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 310 }) },
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270, album: 'X' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 310, album: 'Y' }) },
   ];
   const items = buildUnifiedItems(new Map(), entries);
-  assert.strictEqual(items.length, 2, '差 > 3s 应分成 2 条');
+  assert.strictEqual(items.length, 1, 'Phase 2：同 (key, type) → 1 item（不论 duration）');
+  assert.strictEqual(items[0].versions.length, 2, 'duration 差 > 3s → 2 versions');
+  assert.strictEqual(items[0].versionType, 'studio');
+  assert.strictEqual(items[0].duration, 270, '默认折叠显示最短版本（primary = versions[0]）');
+  assert.strictEqual(items[0].versions[0].duration, 270);
+  assert.strictEqual(items[0].versions[1].duration, 310);
 });
 
 // ── 12. buildUnifiedItems：duration ≤ 0 全部并入一个 cluster ──

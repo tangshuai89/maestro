@@ -526,6 +526,16 @@ export interface UnifiedSourceInfo {
 }
 
 /** 统一搜索结果（去重合并后）单条。 */
+/** 单一录音版本（同 (key, type) 内一个 duration cluster = 一个版本）。镜像 server。 */
+export interface VersionEntry {
+  id: string;
+  duration: number;
+  sources: UnifiedSourceInfo[];
+  bestSource: MusicProvider | null;
+  /** UI 标签（Phase 3 可加）。Phase 2 留空。 */
+  label?: string;
+}
+
 export interface UnifiedSearchItem {
   id: string;
   title: string;
@@ -536,8 +546,12 @@ export interface UnifiedSearchItem {
   sources: UnifiedSourceInfo[];
   bestSource: MusicProvider | null;
   /** 录音版本类型（[LIVE] / [ACOUSTIC] / [REMIX] / [INSTRUMENTAL]）。
-   *  studio 不显示角标。Phase 1 加，Phase 2 toggle 用作折叠非 studio。 */
+   *  studio 不显示角标。 */
   versionType: 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
+  /** Phase 2：同 (key, type) 内的多个录音版本（不同 duration / 不同录音 master）。
+   *  默认折叠时 item.sources/bestSource/duration = versions[0]（最短版本）；UI
+   *  toggle "显示所有版本" 打开后展开每个 version 为可独立播放的一行。 */
+  versions: VersionEntry[];
   /** UI 角标显示用：用户在哪些平台 ❤ 了这首歌（import + 运行时 fanOut 合并）。
    *  缺失时回退到 sources.map(s => s.platform)。 */
   likedPlatforms?: MusicProvider[];
@@ -607,6 +621,7 @@ export async function searchOne(
     // 单平台搜索结果没有 versionType 分类（接口返回原始 Track），默认 studio。
     // 跨平台 searchUnified 由服务端 classifyVersion 标注。
     versionType: 'studio',
+    versions: [],  // 单平台搜索没 versionType 分类，默认空数组（自己）。
     sources: [
       {
         platform: t.provider,

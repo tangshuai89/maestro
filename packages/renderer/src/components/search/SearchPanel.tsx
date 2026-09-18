@@ -64,6 +64,22 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
   const [searched, setSearched] = useState(false);
   const [lyricsAvail, setLyricsAvail] = useState<Record<string, boolean>>({});
   const [sourceMode, setSourceMode] = useState<SourceMode>('all');
+  // Phase 2: 默认折叠所有 version（每个 item 只显示 1 行）。展开后每个 version
+  // 独立显示一行可独立播放。状态持久化 localStorage（跨刷新保留）。
+  const [showVersions, setShowVersions] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('maestro:search-show-versions') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('maestro:search-show-versions', showVersions ? '1' : '0');
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [showVersions]);
 
   const abortRef = useRef<AbortController | null>(null);
   const emptyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -216,10 +232,21 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const handleRowClick = (index: number) => {
+  /**
+   * Phase 2: 接受 versionIdx 让 sub-row 播放指定 version。构造 view items
+   * （把 items[index] 的 sources/bestSource/duration 临时换成所选 version），
+   * 不改 onPlay 签名（保持向后兼容）。
+   */
+  const handleRowClick = (index: number, versionIdx: number = 0) => {
     const item = items[index];
-    if (!item || !item.bestSource) return;
-    onPlay(items, index);
+    if (!item) return;
+    const v = item.versions[versionIdx];
+    if (!v || !v.bestSource) return;
+    const view = items.map((it, idx) => {
+      if (idx !== index) return it;
+      return { ...it, sources: v.sources, bestSource: v.bestSource, duration: v.duration };
+    });
+    onPlay(view, index);
   };
 
   const handleLoadMore = () => {
@@ -251,6 +278,19 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
           <div className="sp-hud-brand">
             <span className="sp-hud-title">AETHER ENGINE v3.0</span>
             <span className="sp-hud-kicker">SYSTEM PROTOCOL</span>
+          </div>
+          <div className="sp-hud-actions">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showVersions}
+              title={showVersions ? '折叠多版本（每个 item 只显示 1 行）' : '展开多版本（每个录音版本独立显示）'}
+              className={`sp-toggle-versions${showVersions ? ' is-on' : ''}`}
+              onClick={() => setShowVersions((v) => !v)}
+            >
+              <span className="sp-toggle-dot" aria-hidden="true" />
+              <span className="sp-toggle-label">显示所有版本</span>
+            </button>
           </div>
           <div className="sp-hud-toggle" role="tablist" aria-label="搜索 source">
             <button
@@ -324,12 +364,22 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
           )}
           {error && <div className="sp-error">{error}</div>}
           {items.map((it, i) => {
-            const playable = it.bestSource !== null;
-            return (
+            // Phase 2: 折叠时只渲染 versions[0]（默认），展开时如果 versions > 1
+            // 渲染主 version + N-1 个 sub-row（每个可独立播放）。
+            const visibleVersions = showVersions && it.versions.length > 1
+              ? it.versions
+              : [it.versions[0]];
+            return visibleVersions.map((v, vi) => {
+              const versionIdx = vi === 0 ? 0 : it.versions.indexOf(v);
+              const rowKey = vi === 0 ? it.id : `${it.id}-v${vi}`;
+              const playable = v.bestSource !== null;
+              return (
               <button
-                key={it.id}
-                className={`sp-row${playable ? '' : ' sp-row--disabled'}`}
-                onClick={() => handleRowClick(i)}
+                key={rowKey}
+                className={`sp-row${playable ? '' : ' sp-row--disabled'}${
+                  vi > 0 ? ' sp-row--sub' : ''
+                }`}
+                onClick={() => handleRowClick(i, versionIdx)}
                 disabled={!playable}
                 title={playable ? `播放：${it.title} - ${it.artist}` : '所有平台都无版权'}
               >
@@ -351,19 +401,23 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                         {versionTypeBadge(it.versionType)}
                       </span>
                     )}
+                    {showVersions && vi > 0 && (
+                      <span className="sp-ver-num" title="第 {vi + 1} 个版本">v{vi + 1}</span>
+                    )}
                   </div>
                   <div className="sp-row-sub">
                     {clampText(it.artist, 30)}
                     {it.album ? ` · ${clampText(it.album, 20)}` : ''}
-                    {it.duration > 0 ? ` · ${formatDuration(it.duration)}` : ''}
+                    {v.duration > 0 ? ` · ${formatDuration(v.duration)}` : ''}
+                    {showVersions && it.versions.length > 1 ? ` · ${vi + 1}/${it.versions.length}` : ''}
                   </div>
                 </div>
                 <div className="sp-row-sources">
-                  {it.sources.map((s, si) => (
+                  {v.sources.map((s, si) => (
                     <SourceChip
                       key={`${s.platform}-${s.trackId}-${si}`}
                       source={s}
-                      isBest={s.platform === it.bestSource}
+                      isBest={s.platform === v.bestSource}
                     />
                   ))}
                 </div>
@@ -378,7 +432,8 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                   <span className="sp-no-rights">无版权</span>
                 )}
               </button>
-            );
+              );
+            });
           })}
           {loadingMore && <div className="sp-loading-more">加载更多…</div>}
         </div>

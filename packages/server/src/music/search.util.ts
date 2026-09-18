@@ -238,9 +238,17 @@ export function buildUnifiedItems(
 
   const items: UnifiedSearchItem[] = [];
   for (const group of byGroup.values()) {
-    // 2) 组内按 duration 聚类（同 version 不同录音 master 容差 3s；同 version
-    // 多个 mid 按 Bug #5 同 platform 去重）。
-    for (const cluster of clusterByDuration(group.entries)) {
+    // Phase 2 redesign：search "盲选" 之前会出现十几条 album/live/remix 不同
+    // 录音版本。Phase 1 按 versionType 分组但同 type 内还按 3s duration 拆 cluster，
+    // 结果是专辑短版/长版/Live 短版/Live 长版...各自成 item，仍然太多。
+    //
+    // Phase 2：同 (normalizeKey, versionType) → 1 个 UnifiedSearchItem，item 内
+    // 保留 `versions: VersionEntry[]`（每个 cluster = 1 个录音版本）。默认折叠
+    // 视图只显示 1 行（播放 versions[0]）；toggle ON 后展开所有 versions 给用户选。
+    const clusters = clusterByDuration(group.entries);
+
+    // 每个 cluster → 1 个 VersionEntry。
+    const versions: import('./types').VersionEntry[] = clusters.map((cluster, idx) => {
       // Bug #5 (stability-bug5-search-dup-platform)：cluster 内同 platform 多 mid 去重。
       const seenPlatform = new Set<MusicProvider>();
       const dedupedCluster = cluster.filter((e) => {
@@ -261,20 +269,41 @@ export function buildUnifiedItems(
           cluster.find((e) => e.track.provider === p),
         ).find(Boolean)?.track ?? cluster[0].track;
       const bestSource = selectBestSource(sources);
-      const clusterCover =
-        main.coverUrl || cluster.map((e) => e.track.coverUrl).find(Boolean) || '';
-      items.push({
-        id: `merged-${main.provider}-${main.id}`,
-        title: main.title,
-        artist: main.artist,
-        album: main.album,
-        coverUrl: clusterCover,
+      return {
+        id: `ver-${group.key}-${group.versionType}-${idx}`,
         duration: main.duration,
         sources,
         bestSource,
-        versionType: group.versionType,
-      });
-    }
+        label: undefined,  // Phase 3 可加：从 main.album/title 提取"短版"/"长版"
+      };
+    });
+
+    // 按 duration 升序：最短版本作为默认（通常是最常听的"原版"）。
+    versions.sort((a, b) => a.duration - b.duration);
+    const primary = versions[0];
+    const primaryCluster = clusters[0];
+
+    // 用 primary cluster 的第一个 platform 优先级 track 作为 title/artist 来源。
+    const titleSource =
+      PLAY_PRIORITY.map((p) => primaryCluster.find((e) => e.track.provider === p))
+        .find(Boolean)?.track ?? primaryCluster[0].track;
+
+    // 封面：跨 platform 取第一个非空。
+    const clusterCover =
+      primaryCluster.find((e) => e.track.coverUrl)?.track.coverUrl || '';
+
+    items.push({
+      id: `merged-${titleSource.provider}-${titleSource.id}-${group.versionType}`,
+      title: titleSource.title,
+      artist: titleSource.artist,
+      album: titleSource.album,
+      coverUrl: clusterCover,
+      duration: primary.duration,
+      sources: primary.sources,
+      bestSource: primary.bestSource,
+      versionType: group.versionType,
+      versions,
+    });
   }
   return items;
 }
