@@ -90,11 +90,28 @@ async function main() {
   check('3. TRIAL_MAX_SEC = 120', TRIAL_MAX_SEC, 120);
   check('4. TRIAL_GAP_SEC = 45', TRIAL_GAP_SEC, 45);
 
-  // ── getFullSongProviders ────────────────────────────────────────────
-  check('5. getFullSongProviders(premium) 含 spotify', getFullSongProviders('premium'), ['qq', 'netease', 'spotify']);
-  check('6. getFullSongProviders(free) 不含 spotify', getFullSongProviders('free'), ['qq', 'netease']);
+  // ── getFullSongProviders (Bug #3: 必须 tier premium AND wpsReady 才含 spotify) ──
+  // 5. premium tier + WPS 就绪 → 含 spotify（全曲流，WPS 接管）
+  check('5. getFullSongProviders(premium, true) 含 spotify',
+    getFullSongProviders('premium', true), ['qq', 'netease', 'spotify']);
+  // 5b. premium-duo + WPS 就绪 → 含 spotify
+  check('5b. getFullSongProviders(premium-duo, true) 含 spotify',
+    getFullSongProviders('premium-duo', true), ['qq', 'netease', 'spotify']);
+  // 5c. premium-family + WPS 就绪 → 含 spotify
+  check('5c. getFullSongProviders(premium-family, true) 含 spotify',
+    getFullSongProviders('premium-family', true), ['qq', 'netease', 'spotify']);
+  // 6. premium tier 但 WPS 没就绪 → **不含** spotify（Bug #3 根因修复）
+  //    否则 trial upgrade 会换到 30s preview URL，UI 显 00:30 而不是 04:34。
+  check('6. getFullSongProviders(premium, false) 不含 spotify',
+    getFullSongProviders('premium', false), ['qq', 'netease']);
+  // 6b. 默认参数 wpsReady=false → 同 6
+  check('6b. getFullSongProviders(premium) 默认 wpsReady=false → 不含 spotify',
+    getFullSongProviders('premium'), ['qq', 'netease']);
   check('7. getFullSongProviders(null) 不含 spotify', getFullSongProviders(null), ['qq', 'netease']);
   check('8. getFullSongProviders(undefined) 不含 spotify', getFullSongProviders(undefined), ['qq', 'netease']);
+  // 8b. free + WPS 就绪 → 仍不含（tier 不是 premium 系列）
+  check('8b. getFullSongProviders(free, true) 不含 spotify',
+    getFullSongProviders('free', true), ['qq', 'netease']);
 
   // ── pickFallbackSource ──────────────────────────────────────────────
   // 9. 空 sources → undefined
@@ -412,10 +429,12 @@ async function main() {
 
   // 38. getFullSongProviders: premium-duo 也含 spotify
   {
-    check('38. getFullSongProviders(premium-duo) 含 spotify',
-      getFullSongProviders('premium-duo'), ['qq', 'netease', 'spotify']);
-    check('38b. getFullSongProviders(premium-family) 含 spotify',
-      getFullSongProviders('premium-family'), ['qq', 'netease', 'spotify']);
+    // Bug #3: 必须 tier premium-* AND wpsReady=true 才含 spotify。
+    // 老测试 38/38b 不传 wpsReady（默认 false）→ 期望不变（不含 spotify）。
+    check('38. getFullSongProviders(premium-duo, false) 默认不含 spotify',
+      getFullSongProviders('premium-duo'), ['qq', 'netease']);
+    check('38b. getFullSongProviders(premium-family, false) 默认不含 spotify',
+      getFullSongProviders('premium-family'), ['qq', 'netease']);
   }
 
   // 39. pickUpgradeSource: vipLocked 跳过

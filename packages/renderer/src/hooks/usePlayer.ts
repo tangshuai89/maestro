@@ -398,7 +398,8 @@ export function usePlayer(
     // 1) item 内其它平台 source。
     const inItem = FALLBACK_PRIORITY.filter((p) => !tried.has(p))
       .map((p) =>
-        unified.sources.find((s) => s.platform === p && s.hasCopyright),
+        // Bug #3 防御性：过滤 vipLocked——否则 code=4 后切到 vipLocked 源仍是 30s。
+        unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
       )
       .find((s): s is UnifiedSourceInfo => Boolean(s));
     if (inItem) {
@@ -832,19 +833,25 @@ export function usePlayer(
       // VIP 30s 试听检测（每个音源判一次）：只对完整曲流平台（qq/网易云），
       // 且实际音频远短于元数据全长 → 判定为被 VIP 锁成的试听片段，去别的完整
       // 平台搜全曲换过去。Deezer/Spotify 的 30s 是正常预览，provider 已排除。
+      // Bug #3 UI 提示：trial 检测触发时无条件 setTrialFellBack(true)，让
+      // TheaterView 显示 TRIAL 角标；升级成功（isTrial=false）时 reset false。
       if (!trialEvaluatedRef.current) {
         trialEvaluatedRef.current = true;
         const cur = trackRef.current;
         const audioDur = audio.duration;
-        if (
+        const isTrial =
           cur &&
           FULL_SONG_PROVIDERS.includes(cur.provider) &&
           Number.isFinite(audioDur) &&
           audioDur > 0 &&
           audioDur <= TRIAL_MAX_SEC &&
-          cur.duration > audioDur + TRIAL_GAP_SEC
-        ) {
+          cur.duration > audioDur + TRIAL_GAP_SEC;
+        if (isTrial) {
+          setTrialFellBack(true);
           void handleTrialDetected();
+        } else {
+          // 升级成功 / 切到非 trial 平台 / 跨平台换源后新源是全曲 → reset。
+          setTrialFellBack(false);
         }
       }
     };
