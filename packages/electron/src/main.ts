@@ -752,6 +752,12 @@ function handleDeepLink(url: string): void {
     if (error) {
       oauthBuffer.pushError(error, state ?? undefined, url);
       logger.log(`oauth-buffer: pushed error=${error}`);
+      // 同 success 路径：主动推给 renderer，让 useAuth else 分支立即 bail。
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('spotify:oauth-protocol', { error, state });
+        }
+      }
       return;
     }
     const code = parsed.searchParams.get('code');
@@ -761,6 +767,17 @@ function handleDeepLink(url: string): void {
     }
     oauthBuffer.push(code, state);
     logger.log('oauth-buffer: pushed callback');
+    // Bug #1 修复：主动 webContents.send 给所有窗口——renderer 端 useAuth
+    // else 分支注册的 spotify:oauth-protocol listener 立即收到，无需依赖
+    // consumeOAuthCallback() 的 IPC 双向同步（后者在某些时序下不可靠——
+    // 比如 buffer 已有 entry 但 consume 调用还没发起）。Buffer 仍保留以
+    // 支持跨 window / 后启动 renderer 的场景。
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('spotify:oauth-protocol', { code, state });
+      }
+    }
+    logger.log('oauth-buffer: pushed + sent spotify:oauth-protocol IPC');
   } catch (err) {
     logger.error('deep link parse failed:', err);
   }

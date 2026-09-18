@@ -398,22 +398,47 @@ export function useAuth(
           const cleanups: Array<() => void> = [];
           let spoiled = false;
           const result = await new Promise<{ code: string; state: string }>(
-            (resolve) => {
+            (resolve, reject) => {
               const finish = (cb: { code: string; state: string }): void => {
                 if (spoiled) return;
                 spoiled = true;
                 resolve(cb);
               };
+              const finishErr = (msg: string): void => {
+                if (spoiled) return;
+                spoiled = true;
+                reject(new Error(msg));
+              };
+              // Bug #1 修复后：main 端 handleDeepLink 现在主动 webContents.send
+              // 这条 channel（带 {code,state} 或 {error,state}），listener 立即
+              // 收到。同时 poll buffer 兜底（main 端没 send 的旧版本也兼容）。
               const ipcUnsub = window.electronAPI!.onIpc<{
-                code: string;
-                state: string;
-              }>('spotify:oauth-protocol', (data) => finish(data));
+                code?: string;
+                state?: string;
+                error?: string;
+              }>('spotify:oauth-protocol', (data) => {
+                if (data.error) {
+                  authLog('IPC 收到 error 分支:', data.error);
+                  finishErr(`Spotify 登录被拒绝：${data.error}`);
+                  return;
+                }
+                if (data.code && data.state) {
+                  authLog('IPC 收到 code+state');
+                  finish({ code: data.code, state: data.state });
+                }
+              });
               cleanups.push(ipcUnsub);
               const poll = async (): Promise<void> => {
                 try {
                   const p =
                     (await window.electronAPI?.consumeOAuthCallback?.()) ?? null;
-                  if (p && 'code' in p && p.code && p.state) {
+                  if (!p) return;
+                  if ('error' in p && p.error) {
+                    authLog('poll 拿到 buffer error:', p.error);
+                    finishErr(`Spotify 登录被拒绝：${p.error}`);
+                    return;
+                  }
+                  if ('code' in p && p.code && p.state) {
                     authLog('poll 拿到 buffer entry');
                     finish({ code: p.code, state: p.state });
                   }
