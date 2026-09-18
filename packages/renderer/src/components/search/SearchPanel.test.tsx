@@ -148,8 +148,8 @@ describe('SearchPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('无版权歌')).toBeInTheDocument();
     });
-    const row = screen.getByText('无版权歌').closest('.sp-row') as HTMLButtonElement;
-    expect(row.disabled).toBe(true);
+    const row = screen.getByText('无版权歌').closest('.sp-row') as HTMLElement;
+    expect(row.classList.contains('sp-row--disabled')).toBe(true);
     fireEvent.click(row);
     expect(onPlay).not.toHaveBeenCalled();
   });

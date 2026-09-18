@@ -263,7 +263,7 @@
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.sp-row:hover:not(:disabled) {
+.sp-row:hover:not(.sp-row--disabled) {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
 }
@@ -271,6 +271,47 @@
 .sp-row--disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Phase 2 修订：每个 item 是一个 flex 列容器（main-row + 展开后的 sub-rows）。
+ * gap 让 sub-row 与 main-row 之间保留间距；.sp-results 的 gap 现在只作用于 item 之间。 */
+.sp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 多版本展开按钮（对齐 LikedLibraryModal 的 lib-toggle chevron 交互） */
+.sp-ver-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: transparent;
+  color: rgba(245, 240, 232, 0.5);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.sp-ver-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f5f0e8;
+}
+
+.sp-ver-count {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sp-ver-chevron {
+  font-size: 9px;
+  line-height: 1;
 }
 
 /* Bug #6 (stability-bug6-toggle-bubble) + Phase 2 视觉区分：
@@ -281,7 +322,6 @@
  * 半透明 background，让用户一眼看出 v1 (主) vs v2/v3 (副)。
  */
 .sp-row--sub {
-  margin-top: 2px;
   padding-left: 48px;
   height: 56px;  /* 比 main-row 略矮一点，进一步视觉区分 */
   background: rgba(255, 255, 255, 0.025);
@@ -289,7 +329,7 @@
   opacity: 0.85;
 }
 
-.sp-row--sub:hover:not(:disabled) {
+.sp-row--sub:hover:not(.sp-row--disabled) {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.15);
   opacity: 1;
@@ -297,6 +337,15 @@
 
 .sp-row--sub .sp-row-title {
   font-size: 14px;  /* main 是 16px，sub 略小 */
+}
+
+/* sub-row 左侧的版本指示点（对齐 lib-subrow-dot） */
+.sp-sub-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(91, 43, 255, 0.55);
+  flex-shrink: 0;
 }
 
 /* v2/v3 序号 chip（轻量、紫色调） */

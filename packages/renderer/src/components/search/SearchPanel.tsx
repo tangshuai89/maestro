@@ -64,22 +64,17 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
   const [searched, setSearched] = useState(false);
   const [lyricsAvail, setLyricsAvail] = useState<Record<string, boolean>>({});
   const [sourceMode, setSourceMode] = useState<SourceMode>('all');
-  // Phase 2: 默认折叠所有 version（每个 item 只显示 1 行）。展开后每个 version
-  // 独立显示一行可独立播放。状态持久化 localStorage（跨刷新保留）。
-  const [showVersions, setShowVersions] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('maestro:search-show-versions') === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem('maestro:search-show-versions', showVersions ? '1' : '0');
-    } catch {
-      /* ignore quota / private mode */
-    }
-  }, [showVersions]);
+  // Phase 2 修订：每个 item 独立展开/折叠版本，交互对齐 LikedLibraryModal 的
+  // chevron（▸/▾）。点击 chevron 只展开版本，不触发播放；点击行体才播放。
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const abortRef = useRef<AbortController | null>(null);
   const emptyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -279,25 +274,6 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
             <span className="sp-hud-title">AETHER ENGINE v3.0</span>
             <span className="sp-hud-kicker">SYSTEM PROTOCOL</span>
           </div>
-          <div className="sp-hud-actions">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={showVersions}
-              title={showVersions ? '折叠多版本（每个 item 只显示 1 行）' : '展开多版本（每个录音版本独立显示）'}
-              className={`sp-toggle-versions${showVersions ? ' is-on' : ''}`}
-              onClick={(e) => {
-                // Bug #6 (stability-bug6-toggle-bubble)：stopPropagation 防止
-                // click 冒泡到外层 backdrop / onClose handler——之前点 toggle 会
-                // 误触搜索面板关闭，让用户"选不中下面的版本"。
-                e.stopPropagation();
-                setShowVersions((v) => !v);
-              }}
-            >
-              <span className="sp-toggle-dot" aria-hidden="true" />
-              <span className="sp-toggle-label">显示所有版本</span>
-            </button>
-          </div>
           <div className="sp-hud-toggle" role="tablist" aria-label="搜索 source">
             <button
               role="tab"
@@ -379,81 +355,135 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
           )}
           {error && <div className="sp-error">{error}</div>}
           {items.map((it, i) => {
-            // Phase 2: 折叠时只渲染 versions[0]（默认），展开时如果 versions > 1
-            // 渲染主 version + N-1 个 sub-row（每个可独立播放）。
-            const visibleVersions = showVersions && it.versions.length > 1
-              ? it.versions
-              : [it.versions[0]];
-            return visibleVersions.map((v, vi) => {
-              const versionIdx = vi === 0 ? 0 : it.versions.indexOf(v);
-              const rowKey = vi === 0 ? it.id : `${it.id}-v${vi}`;
-              const playable = v.bestSource !== null;
-              return (
-              <button
-                key={rowKey}
-                className={`sp-row${playable ? '' : ' sp-row--disabled'}${
-                  vi > 0 ? ' sp-row--sub' : ''
-                }`}
-                onClick={(e) => {
-                  // Bug #6 (stability-bug6-toggle-bubble) 防御性：sub-row 也
-                  // stopPropagation 防止冒泡触发外层 onClose 或 backdrop dismiss。
-                  e.stopPropagation();
-                  handleRowClick(i, versionIdx);
-                }}
-                disabled={!playable}
-                title={playable ? `播放：${it.title} - ${it.artist}` : '所有平台都无版权'}
-              >
-                {it.coverUrl ? (
-                  <img className="sp-cover" src={it.coverUrl} alt="" />
-                ) : (
-                  <div className="sp-cover sp-cover-ph">
-                    <span className="sp-cover-note" aria-hidden="true">♪</span>
+            const hasVersions = it.versions.length > 1;
+            const isExpanded = expandedIds.has(it.id);
+            const mainPlayable = it.bestSource !== null;
+            const rowTitle = mainPlayable
+              ? `播放：${it.title} - ${it.artist}`
+              : '所有平台都无版权';
+            return (
+              <div key={it.id} className={`sp-item${isExpanded ? ' is-open' : ''}`}>
+                <div
+                  className={`sp-row${mainPlayable ? '' : ' sp-row--disabled'}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleRowClick(i, 0)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleRowClick(i, 0);
+                    }
+                  }}
+                  title={rowTitle}
+                >
+                  {it.coverUrl ? (
+                    <img className="sp-cover" src={it.coverUrl} alt="" />
+                  ) : (
+                    <div className="sp-cover sp-cover-ph">
+                      <span className="sp-cover-note" aria-hidden="true">♪</span>
+                    </div>
+                  )}
+                  <div className="sp-row-meta">
+                    <div className="sp-row-title">
+                      {clampText(it.title, 40)}
+                      {it.versionType && it.versionType !== 'studio' && (
+                        <span
+                          className={`sp-ver-badge sp-ver-badge--${it.versionType}`}
+                          title={`${it.versionType} 版本`}
+                        >
+                          {versionTypeBadge(it.versionType)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="sp-row-sub">
+                      {clampText(it.artist, 30)}
+                      {it.album ? ` · ${clampText(it.album, 20)}` : ''}
+                      {it.duration > 0 ? ` · ${formatDuration(it.duration)}` : ''}
+                    </div>
                   </div>
-                )}
-                <div className="sp-row-meta">
-                  <div className="sp-row-title">
-                    {clampText(it.title, 40)}
-                    {it.versionType && it.versionType !== 'studio' && (
-                      <span
-                        className={`sp-ver-badge sp-ver-badge--${it.versionType}`}
-                        title={`${it.versionType} 版本`}
+                  <div className="sp-row-sources">
+                    {it.sources.map((s, si) => (
+                      <SourceChip
+                        key={`${s.platform}-${s.trackId}-${si}`}
+                        source={s}
+                        isBest={s.platform === it.bestSource}
+                      />
+                    ))}
+                  </div>
+                  {lyricsAvail[it.id] && (
+                    <span className="sp-lyrics-badge" title="有歌词" aria-label="有歌词">词</span>
+                  )}
+                  {hasVersions && (
+                    <button
+                      type="button"
+                      className="sp-ver-toggle"
+                      aria-label={isExpanded ? '收起版本' : '展开版本'}
+                      aria-expanded={isExpanded}
+                      title={`${it.versions.length} 个录音版本`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpanded(it.id);
+                      }}
+                    >
+                      <span className="sp-ver-count">{it.versions.length}</span>
+                      <span className="sp-ver-chevron">{isExpanded ? '▾' : '▸'}</span>
+                    </button>
+                  )}
+                  {mainPlayable ? (
+                    <svg className="sp-play-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  ) : (
+                    <span className="sp-no-rights">无版权</span>
+                  )}
+                </div>
+                {isExpanded &&
+                  it.versions.slice(1).map((v, vi) => {
+                    const versionIdx = vi + 1;
+                    const playable = v.bestSource !== null;
+                    return (
+                      <div
+                        key={`${it.id}-v${versionIdx}`}
+                        className={`sp-row sp-row--sub${playable ? '' : ' sp-row--disabled'}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleRowClick(i, versionIdx)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleRowClick(i, versionIdx);
+                          }
+                        }}
+                        title={playable ? `播放：${it.title} - ${it.artist}` : '所有平台都无版权'}
                       >
-                        {versionTypeBadge(it.versionType)}
-                      </span>
-                    )}
-                    {showVersions && vi > 0 && (
-                      <span className="sp-ver-num" title="第 {vi + 1} 个版本">v{vi + 1}</span>
-                    )}
-                  </div>
-                  <div className="sp-row-sub">
-                    {clampText(it.artist, 30)}
-                    {it.album ? ` · ${clampText(it.album, 20)}` : ''}
-                    {v.duration > 0 ? ` · ${formatDuration(v.duration)}` : ''}
-                    {showVersions && it.versions.length > 1 ? ` · ${vi + 1}/${it.versions.length}` : ''}
-                  </div>
-                </div>
-                <div className="sp-row-sources">
-                  {v.sources.map((s, si) => (
-                    <SourceChip
-                      key={`${s.platform}-${s.trackId}-${si}`}
-                      source={s}
-                      isBest={s.platform === v.bestSource}
-                    />
-                  ))}
-                </div>
-                {lyricsAvail[it.id] && (
-                  <span className="sp-lyrics-badge" title="有歌词" aria-label="有歌词">词</span>
-                )}
-                {playable ? (
-                  <svg className="sp-play-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                ) : (
-                  <span className="sp-no-rights">无版权</span>
-                )}
-              </button>
-              );
-            });
+                        <span className="sp-sub-row-dot" aria-hidden="true" />
+                        <div className="sp-row-meta">
+                          <div className="sp-row-title">
+                            <span className="sp-ver-num">v{versionIdx + 1}</span>
+                          </div>
+                          <div className="sp-row-sub">{formatDuration(v.duration)}</div>
+                        </div>
+                        <div className="sp-row-sources">
+                          {v.sources.map((s, si) => (
+                            <SourceChip
+                              key={`${s.platform}-${s.trackId}-${si}`}
+                              source={s}
+                              isBest={s.platform === v.bestSource}
+                            />
+                          ))}
+                        </div>
+                        {playable ? (
+                          <svg className="sp-play-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        ) : (
+                          <span className="sp-no-rights">无版权</span>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            );
           })}
           {loadingMore && <div className="sp-loading-more">加载更多…</div>}
         </div>
