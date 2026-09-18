@@ -141,7 +141,36 @@ async function main() {
   );
   console.log('✅ 10. 大写 host → allow（case-insensitive）');
 
-  console.log('\n🎉 全部 10 个 allowlist 测试通过');
+  // ── Bug #4 Level 2 (stability-bug4-cdn-allowlist)：dev mode fail-open ──
+  // NODE_ENV=production → 严格（不允许 bypass）
+  const origNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  assert.strictEqual(
+    MusicController.shouldBypassHostCheckInDev(),
+    false,
+    'prod NODE_ENV 应 deny bypass（严格 403）',
+  );
+  console.log('✅ 11. NODE_ENV=production → deny bypass');
+  // NODE_ENV=development → 允许 bypass
+  process.env.NODE_ENV = 'development';
+  assert.strictEqual(
+    MusicController.shouldBypassHostCheckInDev(),
+    true,
+    'dev NODE_ENV 应 allow bypass（fail-open + WARN log）',
+  );
+  console.log('✅ 12. NODE_ENV=development → allow bypass');
+  // NODE_ENV undefined → 允许 bypass（保守：默认非 prod 视为 dev）
+  delete process.env.NODE_ENV;
+  assert.strictEqual(
+    MusicController.shouldBypassHostCheckInDev(),
+    true,
+    '未设 NODE_ENV 应 allow bypass（保守）',
+  );
+  console.log('✅ 13. NODE_ENV 未设 → allow bypass（保守）');
+  // 恢复原 NODE_ENV 不影响后续测试
+  if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+
+  console.log('\n🎉 全部 13 个 allowlist 测试通过');
 }
 
 main().catch((err) => {

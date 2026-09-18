@@ -505,7 +505,7 @@ export class MusicController {
         headers.Referer =
           provider === 'qq' ? 'https://y.qq.com/' : 'https://music.163.com/';
       }
-      await this.proxyAudio(upstream, headers, req, res);
+      await this.proxyAudio(upstream, headers, req, res, provider);
     } catch (err) {
       res.status(502).json({
         error: 'stream_unavailable',
@@ -525,15 +525,29 @@ export class MusicController {
     extraHeaders: Record<string, string>,
     req: Request,
     res: Response,
+    // provider 仅用于诊断日志（reject / dev-bypass 时打印），不影响 SSRF 保护。
+    provider?: string,
   ): Promise<void> {
     // ISSUES.md §4.3：先校验 host 在白名单内。失败返 403，避免把 controller
     // 当开放代理（即使 url 来自受信任的 provider，污染或 redirect 也能挡）。
+    // Level 2 dev fail-open（stability-bug4-cdn-allowlist）：dev 模式下未识别
+    // host → WARN log + 自动放行，让开发不被上游 CDN 域名变更阻断；prod 严格 403。
     if (!MusicController.isStreamHostAllowed(url)) {
-      this.logger.warn(`proxyAudio: rejecting non-allowlisted host for url=${url}`);
-      res.status(403).json({
-        error: 'stream_host_not_allowed',
-      });
-      return;
+      const isDev = MusicController.shouldBypassHostCheckInDev();
+      if (isDev) {
+        this.logger.warn(
+          `proxyAudio: dev-bypass non-allowlisted host (provider=${provider ?? '?'}) ` +
+          `url=${url}\n` +
+          `  → 上游又出新 CDN 节点。请同步 ALLOWED_STREAM_HOSTS_EXACT 或 ` +
+          `ALLOWED_STREAM_HOSTS_SUFFIX (packages/server/src/music/music.controller.ts)`,
+        );
+      } else {
+        this.logger.warn(`proxyAudio: rejecting non-allowlisted host for url=${url}`);
+        res.status(403).json({
+          error: 'stream_host_not_allowed',
+        });
+        return;
+      }
     }
     const headers: Record<string, string> = { ...extraHeaders };
     // Forward the browser's Range request so the CDN answers with a
@@ -650,6 +664,16 @@ export class MusicController {
     '.scdn.co',                         // Spotify 所有 *.*.scdn.co 子域
     '.dzcdn.net',                       // Deezer 所有 *.{cdn,preview}.dzcdn.net
   ];
+
+  /**
+   * Bug #4 Level 2 (stability-bug4-cdn-allowlist)：dev 模式下未识别 host
+   * → 自动放行 + WARN log，让开发不被上游 CDN 域名变更阻断；prod 严格 403
+   * 保护 SSRF。`NODE_ENV !== 'production'` 涵盖 development / test 等所有非
+   * prod 环境（NestJS CLI nest start --watch 默认设 NODE_ENV=development）。
+   */
+  static shouldBypassHostCheckInDev(): boolean {
+    return process.env.NODE_ENV !== 'production';
+  }
 
   /**
    * URL host 是否在 stream 白名单（exact + suffix）。
