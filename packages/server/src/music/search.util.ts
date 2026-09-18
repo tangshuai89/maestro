@@ -181,7 +181,18 @@ export function buildUnifiedItems(
   for (const entries of byKey.values()) {
     // 2) 组内按 duration 聚类成版本
     for (const cluster of clusterByDuration(entries)) {
-      const sources: SourceInfo[] = cluster.map(({ track }) => ({
+      // Bug #5 (stability-bug5-search-dup-platform)：cluster 内同 platform 多个
+      // entry（QQ 高品质 M800 + QQ 标准 C400 同歌同 duration 不同 mid）→ 之前
+      // 每个都生成 source → 搜索结果"两个 QQ"。去重保留第一次出现的 entry。
+      // 不同版本（cluster 内 duration 差 > 3s）已经在 clusterByDuration 阶段拆开，
+      // 所以这里同 platform 出现多次意味着"同 version 多 mid"，应该合并。
+      const seenPlatform = new Set<MusicProvider>();
+      const dedupedCluster = cluster.filter((e) => {
+        if (seenPlatform.has(e.track.provider)) return false;
+        seenPlatform.add(e.track.provider);
+        return true;
+      });
+      const sources: SourceInfo[] = dedupedCluster.map(({ track }) => ({
         platform: track.provider,
         trackId: track.id,
         // QQ/网易云的搜索结果默认有版权（搜索阶段无法完全判断，
