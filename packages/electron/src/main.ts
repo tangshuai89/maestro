@@ -651,46 +651,6 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
   return neteaseLoginInFlight;
 }
 
-// ── IPC wiring ──────────────────────────────────────────────────────────────
-
-ipcMain.handle('qq:login', async () => {
-  try {
-    const result = await openQqLoginWindow();
-    return { success: true, ...result };
-  } catch (err) {
-    return { success: false, error: (err as Error).message };
-  }
-});
-
-ipcMain.handle('netease:login', async () => {
-  try {
-    const result = await openNeteaseLoginWindow();
-    return { success: true, ...result };
-  } catch (err) {
-    return { success: false, error: (err as Error).message };
-  }
-});
-
-/**
- * Renderer pulls the latest buffered Spotify OAuth callback. Returns
- * `null` if nothing buffered or the buffered entry has aged out (10 min).
- * Renderer calls this on mount; if the main process hasn't received a
- * callback yet, the call hangs until one arrives (or the TTL elapses).
- */
-ipcMain.handle('consume-oauth-callback', () => oauthBuffer.consume());
-
-/**
- * Open URL in the OS default browser (Spotify OAuth authorizeUrl, etc.).
- * Renderer hands the URL through main rather than calling shell.openExternal
- * directly because Electron's renderer-side window.open has different
- * semantics across platforms.
- */
-ipcMain.handle('shell:open-external', async (_event, url: string) => {
-  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
-    throw new Error('openExternal: only http(s) URLs are allowed');
-  }
-  await shell.openExternal(url);
-});
 
 /** Renderer → main: current playback state, so the tray label/tooltip reflect
  * what's actually playing. Fire-and-forget (ipcRenderer.send). */
@@ -818,6 +778,46 @@ app.whenReady().then(async () => {
   // Renderer 端 WPS 初始化失败时（"No supported keysystem was found"）用来
   // 排查：Widevine CDM 在本机到底 ready 没。让 renderer 也能看到 main 端
   // 状态，不用切到 npm run dev 启动终端。
+  // Bug #1 兜底（stability-bug1-spotify-120s-timeout）：把 IPC handlers 移到
+  // app.whenReady() 之后注册。Electron 文档没强制要求，但实测在 module
+  // top-level 注册的 handler 在 renderer 第一次 invoke 时可能不被触发（renderer
+  // 端 await consumeOAuthCallback() 永远不 resolve）。统一在 ready 后注册。
+
+  ipcMain.handle('qq:login', async () => {
+    try {
+      const result = await openQqLoginWindow();
+      return { success: true, ...result };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('netease:login', async () => {
+    try {
+      const result = await openNeteaseLoginWindow();
+      return { success: true, ...result };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  /** Renderer pulls the latest buffered Spotify OAuth callback. */
+  ipcMain.handle('consume-oauth-callback', () => {
+    // 诊断：handler invoke 时间 + buffer 状态，确认 IPC 真的到达 main 端。
+    const peeked = oauthBuffer.peek();
+    logger.log(`[consume-oauth-callback] invoked, hasPending=${peeked !== null}` +
+      (peeked ? `, kind=${'code' in peeked ? 'code' : 'error'}` : ', no pending'));
+    return oauthBuffer.consume();
+  });
+
+  /** Open URL in the OS default browser (Spotify OAuth authorizeUrl, etc.). */
+  ipcMain.handle('shell:open-external', async (_event, url: string) => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      throw new Error('openExternal: only http(s) URLs are allowed');
+    }
+    await shell.openExternal(url);
+  });
+
   ipcMain.handle('widevine:status', () => ({
     ready: widevineReady,
     status: widevineStatus,

@@ -357,8 +357,21 @@ export function useAuth(
         authLog('openExternal resolved');
         // Wait for the OAuth callback (buffered or live). The buffer may
         // already have a value from before the window was ready.
-        const pending =
-          (await window.electronAPI?.consumeOAuthCallback?.()) ?? null;
+        authLog('about to call consumeOAuthCallback');
+        // Bug #1 兜底（stability-bug1-spotify-120s-timeout）：给 consumeOAuthCallback
+        // 加 2s 硬超时。Buffer 有 entry 时 IPC 立即返回（< 10ms）；buffer 空时
+        // IPC 挂在 waiters 队列等 push 来 resolve。实测有概率 IPC invoke 永远不
+        // resolve（handler 被 invoke 了但结果不传回 renderer，原因待定），加
+        // timeout 强制超时后进 else 分支，让 IPC listener + 短 poll 兜底
+        // （listener 收 main 主动 send，poll 改用同样 2s 超时避免再卡）。
+        const consumeResult = await Promise.race<Awaited<ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>> | null>([
+          window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
+          new Promise<null>((r) => setTimeout(() => {
+            authLog('consumeOAuthCallback 2s 超时 → 进 else 分支（依赖 IPC listener + poll 兜底）');
+            r(null);
+          }, 2_000)),
+        ]);
+        const pending = consumeResult ?? null;
         authLog('consumeOAuthCallback resolved', {
           hasPending: Boolean(pending),
           kind: pending && 'error' in pending
@@ -430,8 +443,11 @@ export function useAuth(
               cleanups.push(ipcUnsub);
               const poll = async (): Promise<void> => {
                 try {
-                  const p =
-                    (await window.electronAPI?.consumeOAuthCallback?.()) ?? null;
+                  // 同样 2s timeout——避免 poll 也卡死整个登录流程。
+                  const p = await Promise.race<Awaited<ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>> | null>([
+                    window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
+                    new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+                  ]);
                   if (!p) return;
                   if ('error' in p && p.error) {
                     authLog('poll 拿到 buffer error:', p.error);
