@@ -78,6 +78,57 @@ const FULL_SONG_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
 ]);
 
 /**
+ * 录音版本分类（Phase 1 of unified-search dedup redesign）：
+ * 同一首歌在搜索结果里会出现多个版本（专辑原版 / Live / Acoustic / Remix / 纯伴奏），
+ * 全列出来对用户太杂。`classifyVersion` 按 title + album 关键字判定属于哪一类，
+ * buildUnifiedItems 再按 (normalizeKey, versionType) 二元组合并——专辑版合并成 1
+ * 条、Live 合并成 1 条、互不混淆。
+ *
+ * 优先级：live > acoustic > remix > instrumental > studio。
+ * 如果 title 和 album 同时带多个关键字（如"晴天 (Live Acoustic)"），高优先级胜出。
+ */
+export type VersionType =
+  | 'studio'
+  | 'live'
+  | 'acoustic'
+  | 'remix'
+  | 'instrumental';
+
+// 英文 keyword 用 \b 包围（避免 "live" 误匹配 "deliver"）；中文 keyword 不用
+// \b（JS regex \b 基于 \w，中文字符两侧不是 \b 边界）。中文 keyword 直接 substring 匹配。
+const VERSION_PATTERNS: ReadonlyArray<{
+  type: VersionType;
+  pattern: RegExp;
+}> = [
+  { type: 'live',          pattern: /(\b(live|live版|concert)\b|现场|演唱会|实况)/i },
+  { type: 'acoustic',      pattern: /(\b(acoustic|unplugged)\b|不插电|原声)/i },
+  { type: 'remix',         pattern: /(\b(remix|extended|remaster)\b|混音)/i },
+  { type: 'instrumental',  pattern: /(\b(instrumental|karaoke)\b|纯音乐|伴奏|卡拉ok)/i },
+];
+
+/** Classify a search result entry into a version bucket. Title and album are
+ *  concatenated (lowercased) before matching. Default `studio` for tracks
+ *  without any keyword signal. Pure (no side effects), unit-testable. */
+export function classifyVersion(title: string, album: string): VersionType {
+  const text = `${title} ${album}`;
+  for (const { type, pattern } of VERSION_PATTERNS) {
+    if (pattern.test(text)) return type;
+  }
+  return 'studio';
+}
+
+/** UI 角标文字。`studio` 返回 null（不显示角标——专辑原版是默认形态）。 */
+export function versionTypeBadge(type: VersionType): string | null {
+  switch (type) {
+    case 'live':         return '[LIVE]';
+    case 'acoustic':     return '[ACOUSTIC]';
+    case 'remix':        return '[REMIX]';
+    case 'instrumental': return '[INSTRUMENTAL]';
+    case 'studio':       return null;
+  }
+}
+
+/**
  * 选 bestSource：三档优先——「能出全曲」 → 「非 VIP 锁」 → 「best-effort 试听」。
  *  1. **完整曲流平台里，有版权且非 VIP 锁**的（qq/网易云中能出全曲的）→ 按平台
  *     优先级选。这样"网易云免费全曲、QQ 绿钻独占"会直接选网易云，不再选中 QQ
@@ -168,24 +219,29 @@ export function buildUnifiedItems(
   _deduped: Map<string, Track>,
   all: RawSearchEntry[],
 ): UnifiedSearchItem[] {
-  // 1) 按 normalizeKey 分组
-  const byKey = new Map<string, RawSearchEntry[]>();
+  // 1) 按 (normalizeKey, versionType) 分组（Phase 1 redesign）：
+  // 同一首歌（normalizeKey 相同）的不同 version（studio / live / acoustic /
+  // remix / instrumental）→ 不同 item；同 version 内部继续按 duration 聚类。
+  // 旧版只按 normalizeKey 分组，结果是 Live / Remix 都跟 studio 各自成 cluster
+  // ——搜索"盲选"一下十几条，根本看不过来。
+  type Group = { key: string; versionType: VersionType; entries: RawSearchEntry[] };
+  const byGroup = new Map<string, Group>();
   for (const e of all) {
     const key = normalizeKey(e.track.title, e.track.artist);
-    const arr = byKey.get(key) ?? [];
-    arr.push(e);
-    byKey.set(key, arr);
+    const versionType = classifyVersion(e.track.title, e.track.album);
+    const groupKey = `${key}\u0001${versionType}`; // \u0001 = 不会出现在 normalizeKey 里
+    const g =
+      byGroup.get(groupKey) ?? { key, versionType, entries: [] };
+    g.entries.push(e);
+    byGroup.set(groupKey, g);
   }
 
   const items: UnifiedSearchItem[] = [];
-  for (const entries of byKey.values()) {
-    // 2) 组内按 duration 聚类成版本
-    for (const cluster of clusterByDuration(entries)) {
-      // Bug #5 (stability-bug5-search-dup-platform)：cluster 内同 platform 多个
-      // entry（QQ 高品质 M800 + QQ 标准 C400 同歌同 duration 不同 mid）→ 之前
-      // 每个都生成 source → 搜索结果"两个 QQ"。去重保留第一次出现的 entry。
-      // 不同版本（cluster 内 duration 差 > 3s）已经在 clusterByDuration 阶段拆开，
-      // 所以这里同 platform 出现多次意味着"同 version 多 mid"，应该合并。
+  for (const group of byGroup.values()) {
+    // 2) 组内按 duration 聚类（同 version 不同录音 master 容差 3s；同 version
+    // 多个 mid 按 Bug #5 同 platform 去重）。
+    for (const cluster of clusterByDuration(group.entries)) {
+      // Bug #5 (stability-bug5-search-dup-platform)：cluster 内同 platform 多 mid 去重。
       const seenPlatform = new Set<MusicProvider>();
       const dedupedCluster = cluster.filter((e) => {
         if (seenPlatform.has(e.track.provider)) return false;
@@ -195,25 +251,18 @@ export function buildUnifiedItems(
       const sources: SourceInfo[] = dedupedCluster.map(({ track }) => ({
         platform: track.provider,
         trackId: track.id,
-        // QQ/网易云的搜索结果默认有版权（搜索阶段无法完全判断，
-        // 播放时 getStreamUrl 才最终裁决）。
         hasCopyright: true,
         url: track.audioUrl,
-        // 透传 QQ 的 media_mid，让统一搜索结果走「标准→320→无损」时仍可升级。
         mediaMid: track.mediaMid,
-        // 透传 VIP 锁标记，selectBestSource 据此避开只能出试听的源。
         vipLocked: track.vipLocked,
       }));
-      // main：取 cluster 内优先级最高平台的 track（决定 id / 展示信息），
-      // 保证同一版本的 id 稳定、标题优先用 QQ/网易云的中文名。
       const main =
         PLAY_PRIORITY.map((p) =>
           cluster.find((e) => e.track.provider === p),
         ).find(Boolean)?.track ?? cluster[0].track;
       const bestSource = selectBestSource(sources);
-      // 封面抽取（跨源）：主平台可能没封面（如 QQ 搜索偶发空 albummid / 网易云 picUrl
-      // 缺失），同簇其他平台有封面就用它的——避免「AI 推荐 / 搜索结果无封面」。
-      const clusterCover = main.coverUrl || cluster.map((e) => e.track.coverUrl).find(Boolean) || '';
+      const clusterCover =
+        main.coverUrl || cluster.map((e) => e.track.coverUrl).find(Boolean) || '';
       items.push({
         id: `merged-${main.provider}-${main.id}`,
         title: main.title,
@@ -223,6 +272,7 @@ export function buildUnifiedItems(
         duration: main.duration,
         sources,
         bestSource,
+        versionType: group.versionType,
       });
     }
   }

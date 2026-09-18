@@ -16,6 +16,8 @@ const {
   dedupTracks,
   selectBestSource,
   buildUnifiedItems,
+  classifyVersion,
+  versionTypeBadge,
   isCrossScript,
   mergeCrossScript,
   PLAY_PRIORITY,
@@ -357,5 +359,118 @@ check('23. buildUnifiedItems：mediaMid 透传', () => {
   assert.strictEqual(items[0].sources[0].mediaMid, 'mid123');
 });
 
-console.log(`\n🎉 search.util.test: ${passed} passed, ${failed} failed`);
+// ── classifyVersion：版本类型识别（Phase 1 of dedup redesign）──
+check('24. classifyVersion: 晴天 → studio', () => {
+  assert.strictEqual(classifyVersion('晴天', '叶惠美'), 'studio');
+});
+check('24b. classifyVersion: 晴天 (Live) → live', () => {
+  assert.strictEqual(classifyVersion('晴天 (Live)', '叶惠美'), 'live');
+});
+check('24c. classifyVersion: 现场版 / 演唱会 / 实况 → live', () => {
+  assert.strictEqual(classifyVersion('盲选 (现场版)', '...'), 'live');
+  assert.strictEqual(classifyVersion('X', '演唱会实况'), 'live');
+  assert.strictEqual(classifyVersion('Y', 'Concert Live'), 'live');
+});
+check('24d. classifyVersion: 优先级 live > acoustic', () => {
+  assert.strictEqual(classifyVersion('X (Live Acoustic)', 'Y'), 'live');
+});
+check('24e. classifyVersion: acoustic > remix', () => {
+  assert.strictEqual(classifyVersion('X (Acoustic)', 'Y Remix'), 'acoustic');
+});
+check('24f. classifyVersion: remix / instrumental', () => {
+  assert.strictEqual(classifyVersion('X (Remix)', 'Y'), 'remix');
+  assert.strictEqual(classifyVersion('X', '伴奏'), 'instrumental');
+});
+
+// ── versionTypeBadge ─────────────────────────────────────────
+check('25. versionTypeBadge: studio → null', () => {
+  assert.strictEqual(versionTypeBadge('studio'), null);
+});
+check('25b. versionTypeBadge: live → [LIVE]', () => {
+  assert.strictEqual(versionTypeBadge('live'), '[LIVE]');
+});
+check('25c. versionTypeBadge: 其余 → 对应文字', () => {
+  assert.strictEqual(versionTypeBadge('acoustic'), '[ACOUSTIC]');
+  assert.strictEqual(versionTypeBadge('remix'), '[REMIX]');
+  assert.strictEqual(versionTypeBadge('instrumental'), '[INSTRUMENTAL]');
+});
+
+// ── Phase 1 buildUnifiedItems: 按 (normalizeKey, versionType) 二元组合并 ───
+check('26. 同歌 studio + live → 2 条（之前会因 cluster 差 > 3s 也 2 条；现在按 type 拆分）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'qq-l', provider: 'qq', title: '晴天 (Live)', artist: '周杰伦', duration: 280, album: '叶惠美 Live' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, 'studio + live → 2 条');
+  const types = items.map((it) => it.versionType).sort();
+  assert.deepStrictEqual(types, ['live', 'studio']);
+});
+check('27. 同歌同 type (studio) 多平台 → 1 条 studio', () => {
+  // 同 artist 跨平台 → 1 条 studio（normalizeKey 一致）。
+  const entries = [
+    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'ne-s', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'sp-s', provider: 'spotify', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同 studio + 同 duration → 1 条');
+  assert.strictEqual(items[0].versionType, 'studio');
+  assert.strictEqual(items[0].sources.length, 3, '3 平台各 1 source');
+});
+check('28. 不同 type 同 key → 各自成条，sources 不混合', () => {
+  // 同 artist 跨平台 + 同 title（仅 album 含 Live 关键字触发 versionType）→
+  // studio + live 各 1 条，sources 不混合。
+  // 注：title 里的 "(Live)" 因 normalizeKey 不调 stripParensContent 会让 key
+  // 不同（"盲选" vs "盲选live"），那是 spec 既定设计——下面用 album 触发 type。
+  const entries = [
+    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
+    { track: mkTrack({ id: 'ne-s', provider: 'netease', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
+    { track: mkTrack({ id: 'qq-l', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 250, album: 'X (Live)' }) },
+    { track: mkTrack({ id: 'sp-l', provider: 'spotify', title: '盲选', artist: '黄霄云', duration: 250, album: 'X Live' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, 'studio + live → 2 条');
+  const studio = items.find((it) => it.versionType === 'studio');
+  const live = items.find((it) => it.versionType === 'live');
+  assert.ok(studio && live);
+  assert.strictEqual(studio.sources.length, 2, 'studio: qq + netease');
+  assert.strictEqual(live.sources.length, 2, 'live: qq + spotify');
+});
+check('29. classifyVersion 与 buildUnifiedItems 集成（不破坏测试 10/11）', () => {
+  // 测试 10 同歌同版本跨平台合并 → versionType='studio'（默认）
+  const t10 = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 270, album: '叶惠美' }) },
+  ];
+  const i10 = buildUnifiedItems(new Map(), t10);
+  assert.strictEqual(i10[0].versionType, 'studio');
+});
+
+console.log(`\n// 跨脚本同名：spec 设计上 mergeCrossScript 不用于 search（仅 library import），
+// 所以 search 阶段同 (key, type) + 不同 normalizeKey 仍拆开。这是有意为之——
+// 把跨脚本合并留给 library import 路径（避免 search 误合并 coverUrl/album
+// 不同的同名项）。
+check('28b. 跨脚本同歌同 type → 各自成条（spec 设计：跨脚本合并留给 library）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '盲选', artist: 'Huang Xiaoyun', duration: 240, album: 'X' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, '不同 artist → 不同 normalizeKey → 各自成条（spec 设计）');
+});
+
+// 中文关键字 "\b" 边界修复：原 pattern 用 \b 包围，中文字符两侧不形成 \b 边界，
+// 所以 "现场"/"演唱会"/"伴奏" 等中文关键字永远不匹配。修复：中文关键字去 \b。
+check('28c. classifyVersion 中文关键字：现场/演唱会/实况/不插电/原声/混音/伴奏', () => {
+  assert.strictEqual(classifyVersion('X', '现场版'), 'live');
+  assert.strictEqual(classifyVersion('X', '演唱会实况'), 'live');
+  assert.strictEqual(classifyVersion('X (Live)', 'Y'), 'live');
+  assert.strictEqual(classifyVersion('X', '不插电'), 'acoustic');
+  assert.strictEqual(classifyVersion('X', '原声版'), 'acoustic');
+  assert.strictEqual(classifyVersion('X', '混音版'), 'remix');
+  assert.strictEqual(classifyVersion('X', '伴奏'), 'instrumental');
+});
+
+🎉 search.util.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

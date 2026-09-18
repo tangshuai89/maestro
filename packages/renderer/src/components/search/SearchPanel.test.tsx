@@ -52,6 +52,7 @@ const SAMPLE: UnifiedSearchItem[] = [
     coverUrl: '',
     duration: 269,
     bestSource: 'qq',
+    versionType: 'studio',
     sources: [{ platform: 'qq', trackId: '1', hasCopyright: true, url: '/qq/1' }],
   },
   {
@@ -62,6 +63,7 @@ const SAMPLE: UnifiedSearchItem[] = [
     coverUrl: '',
     duration: 0,
     bestSource: null,
+    versionType: 'studio',
     sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }],
   },
 ];

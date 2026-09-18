@@ -57,11 +57,24 @@ Error:
   注：单平台失败 → 200 + sources[].error；不会 502（partial results 设计）。
 ```
 
-### 去重规则
+### 去重规则（Phase 1：versionType 分类 + 同 type 合并）
 
 1. 主键：normalizeKey(title, artist)（全角→半角、去空格、去标点、全小写；CJK 跨写法归一）
-2. duration gate：同 normalizeKey 但 duration 差 >3s → 不合并（remix/live）
-3. ISRC：未接入（接口没暴露），保留 hook 待将来扩展
+2. **versionType 分类**（按 title + album 关键字匹配，优先级 live > acoustic > remix > instrumental > studio）：
+   - `live`：含 `live` / `现场` / `演唱会` / `实况` / `concert` / `live版`
+   - `acoustic`：含 `acoustic` / `不插电` / `原声` / `unplugged`
+   - `remix`：含 `remix` / `混音` / `extended` / `remaster`
+   - `instrumental`：含 `instrumental` / `纯音乐` / `伴奏` / `karaoke`
+   - `studio`：默认（专辑原版）
+3. **同 normalizeKey + 同 versionType** 才合并为一个 UnifiedSearchItem；不同 type 分开成多条。
+4. 同 type 内 clusterByDuration 容差 3s（同 type 不同录音 master 容差，album vs remix 各自成 cluster）。
+5. cluster 内同 platform 多 mid 去重（保留第一个；QQ 高品质 + QQ 标准合并为一个 source）。
+6. ISRC：未接入（接口没暴露），保留 hook 待将来扩展。
+
+### UI 展示规则（Phase 1）
+
+- 每条 UnifiedSearchItem 标题后显示 versionType 角标：`[LIVE]` / `[ACOUSTIC]` / `[REMIX]` / `[INSTRUMENTAL]`（`studio` 不显示）。
+- Phase 2 再加 toggle "显示所有版本" 开关（默认 OFF，只显示 studio + 折叠非 studio 到 "+N 其他"）。
 
 ### 播放优先级
 

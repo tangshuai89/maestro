@@ -51,6 +51,11 @@ export interface UnifiedSearchItem {
   sources: SourceInfo[];
   /** 推荐播放平台（按优先级 + hasCopyright 选出）。 */
   bestSource: MusicProvider | null;
+  /** 录音版本类型（Phase 1 of unified-search dedup redesign）：
+   *  buildUnifiedItems 按 (normalizeKey, versionType) 二元组合并，同 version
+   *  多个 mid/平台合并成 1 条 item；不同 version（studio/live/acoustic/remix/
+   * instrumental）各自成条。UI 用 versionTypeBadge() 显示 [LIVE] 等角标。 */
+  versionType: 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
   /**
    * UI 角标显示用：用户在哪些平台 ❤ 了这首歌（来自 sources.import + 运行时 fanOut）。
    * 与 `sources` 的区别：sources = 这首歌在哪些平台有可播放版本（catalog 维

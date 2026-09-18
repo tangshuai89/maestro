@@ -3,6 +3,20 @@ import { searchUnified, searchOne, fetchLyricsAvailability } from '../../api';
 import type { MusicProvider, UnifiedSearchItem } from '../../api';
 import { PROVIDER_LABELS } from '../../api';
 import { formatDuration, clampText } from '../../lib/format';
+
+/** 镜像 server search.util.ts:versionTypeBadge。single source of truth 应该在
+ * common 包但当前 common 只放归一函数——加 type 字符串 UI 字段会让 common 越界。
+ * 维护方式：server 端加新 VersionType 时同步更新这里。 */
+type VersionType = 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
+function versionTypeBadge(type: VersionType): string {
+  switch (type) {
+    case 'live':         return '[LIVE]';
+    case 'acoustic':     return '[ACOUSTIC]';
+    case 'remix':        return '[REMIX]';
+    case 'instrumental': return '[INSTRUMENTAL]';
+    case 'studio':       return '';
+  }
+}
 import SourceChip from './SourceChip';
 
 /**
@@ -327,7 +341,17 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                   </div>
                 )}
                 <div className="sp-row-meta">
-                  <div className="sp-row-title">{clampText(it.title, 40)}</div>
+                  <div className="sp-row-title">
+                    {clampText(it.title, 40)}
+                    {it.versionType && it.versionType !== 'studio' && (
+                      <span
+                        className={`sp-ver-badge sp-ver-badge--${it.versionType}`}
+                        title={`${it.versionType} 版本`}
+                      >
+                        {versionTypeBadge(it.versionType)}
+                      </span>
+                    )}
+                  </div>
                   <div className="sp-row-sub">
                     {clampText(it.artist, 30)}
                     {it.album ? ` · ${clampText(it.album, 20)}` : ''}
