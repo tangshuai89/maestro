@@ -286,7 +286,13 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
               aria-checked={showVersions}
               title={showVersions ? '折叠多版本（每个 item 只显示 1 行）' : '展开多版本（每个录音版本独立显示）'}
               className={`sp-toggle-versions${showVersions ? ' is-on' : ''}`}
-              onClick={() => setShowVersions((v) => !v)}
+              onClick={(e) => {
+                // Bug #6 (stability-bug6-toggle-bubble)：stopPropagation 防止
+                // click 冒泡到外层 backdrop / onClose handler——之前点 toggle 会
+                // 误触搜索面板关闭，让用户"选不中下面的版本"。
+                e.stopPropagation();
+                setShowVersions((v) => !v);
+              }}
             >
               <span className="sp-toggle-dot" aria-hidden="true" />
               <span className="sp-toggle-label">显示所有版本</span>
@@ -339,7 +345,16 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
             autoComplete="off"
           />
           {loading && <span className="sp-spinner" aria-hidden="true" />}
-          <button className="sp-close" onClick={onClose} aria-label="关闭" title="关闭">
+          <button
+            className="sp-close"
+            onClick={(e) => {
+              // Bug #6 防御性：stopPropagation 防止冒泡。
+              e.stopPropagation();
+              onClose();
+            }}
+            aria-label="关闭"
+            title="关闭"
+          >
             ×
           </button>
         </div>
@@ -379,7 +394,12 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                 className={`sp-row${playable ? '' : ' sp-row--disabled'}${
                   vi > 0 ? ' sp-row--sub' : ''
                 }`}
-                onClick={() => handleRowClick(i, versionIdx)}
+                onClick={(e) => {
+                  // Bug #6 (stability-bug6-toggle-bubble) 防御性：sub-row 也
+                  // stopPropagation 防止冒泡触发外层 onClose 或 backdrop dismiss。
+                  e.stopPropagation();
+                  handleRowClick(i, versionIdx);
+                }}
                 disabled={!playable}
                 title={playable ? `播放：${it.title} - ${it.artist}` : '所有平台都无版权'}
               >
