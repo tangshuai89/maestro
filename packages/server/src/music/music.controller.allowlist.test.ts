@@ -29,6 +29,29 @@ async function main() {
   );
   console.log('✅ 1. QQ ws.stream.qqmusic.qq.com → allow');
 
+  // Bug #4（stability-bug4-qq-new-cdn-blocked）：QQ 2026 切到 aqqmusic.tc.qq.com
+  // 新 CDN 节点，原 allowlist 没同步 → proxyAudio 拒绝 → audio code=4 →
+  // trial upgrade chain → 30s 试听 + buffer = '00:42' 体验。
+  // 修法：加 exact (aqqmusic.tc.qq.com) + suffix (.tc.qq.com) 兜底 b/c/d 等新节点。
+  assert.strictEqual(
+    isAllowed('https://aqqmusic.tc.qq.com/M800002hvbU61qiK30.mp3?guid=xxx&vkey=xxx'),
+    true,
+    'QQ aqqmusic.tc.qq.com 应 allow (Bug #4)',
+  );
+  console.log('✅ 1b. QQ aqqmusic.tc.qq.com → allow (Bug #4)');
+  assert.strictEqual(
+    isAllowed('https://bqqmusic.tc.qq.com/song.mp3'),
+    true,
+    'QQ bqqmusic.tc.qq.com 应 allow（.tc.qq.com suffix 兜底）',
+  );
+  console.log('✅ 1c. QQ bqqmusic.tc.qq.com → allow (.tc.qq.com suffix)');
+  assert.strictEqual(
+    isAllowed('https://tc.qq.com/song.mp3'),
+    false,
+    'QQ tc.qq.com 应 deny（suffix 要求子域前缀）',
+  );
+  console.log('✅ 1d. QQ tc.qq.com → deny（suffix 要求子域）');
+
   // ── 2. NetEase suffix .music.126.net ──────────────────────────
   assert.strictEqual(
     isAllowed('https://m7.music.126.net/2024/abc/mp3'),

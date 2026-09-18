@@ -634,8 +634,9 @@ export class MusicController {
    * 防御，能挡掉「重定向到内网 / metadata.io / localhost:9200」类小坑。
    */
   private static readonly ALLOWED_STREAM_HOSTS_EXACT = new Set([
-    'ws.stream.qqmusic.qq.com',         // QQ 音频主 CDN
+    'ws.stream.qqmusic.qq.com',         // QQ 音频主 CDN（老节点）
     'dl.stream.qqmusic.qq.com',         // QQ 音频备用 CDN（少数歌曲）
+    'aqqmusic.tc.qq.com',               // QQ 音频新 CDN（2026+ 主节点；GetVkey sip[0] 现在返回这个）
     'p.scdn.co',                        // Spotify 30s preview CDN
     'preview.dzcdn.net',                // Deezer preview 直链
     'm7.music.126.net',                 // 网易云音频 CDN（部分 song）
@@ -644,6 +645,7 @@ export class MusicController {
   /** Audio stream CDN 允许列表——suffix 通配（Deezer 轮询的 preview CDN）。 */
   private static readonly ALLOWED_STREAM_HOSTS_SUFFIX: readonly string[] = [
     '.stream.qqmusic.qq.com',           // 未来 QQ 新增 stream 子域
+    '.tc.qq.com',                       // QQ 所有 *.tc.qq.com 新 CDN（a/b/c.../xqqmusic.tc.qq.com 等）
     '.music.126.net',                   // 网易云所有 m*.music.126.net
     '.scdn.co',                         // Spotify 所有 *.*.scdn.co 子域
     '.dzcdn.net',                       // Deezer 所有 *.{cdn,preview}.dzcdn.net
