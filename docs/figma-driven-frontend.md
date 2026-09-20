@@ -294,3 +294,29 @@ a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md �
 - 改 5 个文件：`.superdesign/init/{theme,components,extractable-components}.md` + `App.tsx` 注释 + 本文件
 - Figma 99 · Archive 顶部加 `Archive README` frame（脚本 `figma-aether-v4-archive-readme.js`）——红色 outline + 警告文字 + 指向 03 · Screens AETHER 剧场稿的链接
 - 视觉回归保护（Playwright 截图 baseline）属 P3，不在 D2 范围
+
+**D4 增量（2026-09-20）—— 变量 ↔ SCSS 双向漂移闭环**：把 §2.4 的映射表从"文档约定"变成
+**CI 可执行的门禁**。之前只有单向手跑导出，且比对脚本自带第二套命名映射（`toCssName()` vs 导出
+脚本的 `kebab()`），对同一变量给出不同名字 —— 实测 51 处**全假 FAIL**，等于门禁根本不存在。
+
+- **单一映射实现**：新增 `scripts/lib/aether-tokens.mjs`（render / parse / 遮蔽分析），
+  `figma-export-tokens.mjs` 与 `check-token-drift.mjs` 共用同一份，消灭"两套映射"这个根因
+  （与 `packages/common/src/normalizer.ts` 同一条教训）。
+- **两条腿**：① Figma → SCSS（dump 渲染物与提交的 `_tokens.generated.scss` 逐字节比）；
+  ② SCSS → Figma（扫 `_tokens.scss` 手写声明，报"遮蔽"与"代码独有"）。
+- **三级判定**：FAIL（真漂移）/ WARN（遮蔽、代码独有，不阻断）/ OK。豁免要写进
+  `scripts/token-drift-allowlist.json` 且**必须带 reason**。
+- **CI**：离线腿接进 `npm run test:ci`（每次 push/PR，无 secret）；实时腿在
+  `.github/workflows/token-drift.yml`（每日 09:00 SGT + 手动），无 `FIGMA_TOKEN` 时跳过而非失败。
+- **实时拉取不用等 PAT**：本次通过 Figma MCP `use_figma` 只读段（OAuth）直接取到 52 个变量 +
+  渲染后的 SCSS；该段已固化为 `scripts/figma-tokens-dump-seg.js`，并配 mock 冒烟
+  `figma-v4-smoke-tokens-seg.mjs`（断言渲染结果与仓库生成物逐字节一致）。
+  REST 路径 `scripts/figma-tokens-pull.mjs` 也在，缺 scope 时退出码 3 降级。
+  **实测结论（spec §8）**：手上两条 PAT 一条 401（失效）、一条 `/v1/me` 200 但
+  `variables/local` 403（缺 `file_variables:read`，属 Enterprise 能力）——
+  所以 CI 的实时腿要么换带 scope 的 token，要么改走 MCP 手动刷新。
+- **顺带修掉一处真漂移**：快照 51 → 52，补上 D1/D2 期间新建的 `Color/semantic/status-error`
+  （`#ff3b5c`）。
+- **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：
+  `--text-dim` 手写层的 WCAG 覆盖（0.55）**被生成层 0.4 静默盖掉**，实际生效是 0.4；
+  `--ease-spring` / `--ease-out` 手写行是等值死代码。

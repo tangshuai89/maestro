@@ -1,0 +1,13 @@
+{
+  "_comment": "已登记的『手写层被生成层覆盖』。每条必须有 reason，否则视为未登记（CI 会当未登记打印）。",
+  "allow": [
+    {
+      "name": "--ease-spring",
+      "reason": "值与生成层相同（仅逗号后空格不同），手写行是死代码；待 D4 C1 清理 _tokens.scss 时一并删除"
+    },
+    {
+      "name": "--ease-out",
+      "reason": "同上：与生成层 cubic-bezier(0.16,1,0.3,1) 等价，手写行为死代码"
+    }
+  ]
+}
