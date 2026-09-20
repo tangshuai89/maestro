@@ -141,11 +141,20 @@ export function versionTypeBadge(type: VersionType): string | null {
  *  3. 全部都锁（罕见：所有平台都是 VIP 独占 / 区域限制）→ 退回「按平台优先级
  *     选第一个有版权的」（best-effort：QQ 试听仍优于 Deezer 预览，保持以前
  *     行为，不让任何平台都不可选导致黑屏）。
+ *
+ * `priority` 默认 = `PLAY_PRIORITY`。Settings 暴露的「渠道优先级」走这个形参透传
+ * 给所有 caller（music.service.searchUnified / findPlayableEquivalent /
+ * patchLibraryWithSources）。三档 ladder 不变，priority 只影响每档内迭代序 —
+ * VIP 锁源仍优先跳过。如果用户从 priority 删了某平台（Settings UI），该平台
+ * **永远不会被自动选**（包括第三档 best-effort 兜底）— 这是设计选择，避免
+ * 用户隐藏的源被偷偷复活。
  */
-export function selectBestSource(sources: SourceInfo[]): MusicProvider | null {
+export function selectBestSource(
+  sources: SourceInfo[],
+  priority: MusicProvider[] = PLAY_PRIORITY,
+): MusicProvider | null {
   const byPriority = (pred: (s: SourceInfo) => boolean): MusicProvider | null =>
-    PLAY_PRIORITY.find((p) => sources.some((s) => s.platform === p && pred(s))) ??
-    null;
+    priority.find((p) => sources.some((s) => s.platform === p && pred(s))) ?? null;
   return (
     byPriority(
       (s) => s.hasCopyright && !s.vipLocked && FULL_SONG_PROVIDERS.has(s.platform),
@@ -274,6 +283,7 @@ function toVersionEntry(
   cluster: RawSearchEntry[],
   group: RawGroup,
   idx: number,
+  priority: MusicProvider[] = PLAY_PRIORITY,
 ): VersionEntry {
   // Bug #5 (stability-bug5-search-dup-platform)：cluster 内同 platform 多 mid 去重。
   const seenPlatform = new Set<MusicProvider>();
@@ -291,16 +301,16 @@ function toVersionEntry(
     vipLocked: track.vipLocked,
   }));
   const main =
-    PLAY_PRIORITY.map((p) =>
+    priority.map((p) =>
       cluster.find((e) => e.track.provider === p),
     ).find(Boolean)?.track ?? cluster[0].track;
   return {
     id: `ver-${group.key}-${group.versionType}-${idx}`,
     duration: main.duration,
     sources,
-    bestSource: selectBestSource(sources),
+    bestSource: selectBestSource(sources, priority),
     label: undefined,  // Phase 3 可加：从 main.album/title 提取"短版"/"长版"
-    // 该版本的原始元数据（main = cluster 内 PLAY_PRIORITY 代表 track）。
+    // 该版本的原始元数据（main = cluster 内 priority 代表 track）。
     // UI 展开后每行显示真实歌名/歌手/专辑，而不是 "v2 / 2:35"。
     title: main.title,
     artist: main.artist,
@@ -319,6 +329,7 @@ function toUnifiedItem(
   group: RawGroup,
   versions: VersionEntry[],
   canonical: VersionEntry,
+  priority: MusicProvider[] = PLAY_PRIORITY,
 ): UnifiedSearchItem {
   const ordered = [
     canonical,
@@ -327,7 +338,7 @@ function toUnifiedItem(
       .sort((a, b) => a.duration - b.duration),
   ];
   const rep =
-    PLAY_PRIORITY.map((p) => canonical.sources.find((s) => s.platform === p)).find(Boolean) ??
+    priority.map((p) => canonical.sources.find((s) => s.platform === p)).find(Boolean) ??
     canonical.sources[0];
   return {
     id: `merged-${rep.platform}-${rep.trackId}-${group.versionType}`,
@@ -346,6 +357,7 @@ function toUnifiedItem(
 export function buildUnifiedItems(
   _deduped: Map<string, Track>,
   all: RawSearchEntry[],
+  priority: MusicProvider[] = PLAY_PRIORITY,
 ): UnifiedSearchItem[] {
   // 1) 按 (normalizeKey, versionType) 分组（Phase 1 redesign）：
   // 同一首歌（normalizeKey 相同）的不同 version（studio / live / acoustic /
@@ -374,7 +386,9 @@ export function buildUnifiedItems(
     // 保留 `versions: VersionEntry[]`（每个 cluster = 1 个录音版本）。默认折叠
     // 视图只显示 1 行（播放 versions[0]）；toggle ON 后展开所有 versions 给用户选。
     const clusters = clusterByDuration(group.entries);
-    const versions = clusters.map((cluster, idx) => toVersionEntry(cluster, group, idx));
+    const versions = clusters.map((cluster, idx) =>
+      toVersionEntry(cluster, group, idx, priority),
+    );
 
     // Phase 3（2026-09-20）：主版本 = 跨平台共识最多（并列取最长）的那条，不再是
     // "最短"。用户搜"盲选"时折叠行原本显示 1:20 的片段（最短 cluster），点开就播它。
@@ -385,8 +399,8 @@ export function buildUnifiedItems(
     const sameRecording = versions.filter((v) => isSameRecording(v, canonical));
     const others = versions.filter((v) => !isSameRecording(v, canonical));
 
-    items.push(toUnifiedItem(group, sameRecording, canonical));
-    for (const v of others) items.push(toUnifiedItem(group, [v], v));
+    items.push(toUnifiedItem(group, sameRecording, canonical, priority));
+    for (const v of others) items.push(toUnifiedItem(group, [v], v, priority));
   }
   return items;
 }
@@ -430,7 +444,10 @@ export function isCrossScript(a: string, b: string): boolean {
  *
  * 仅用于 library import 路径（不做在线搜索合并，那个用严格 normalizeKey）。
  */
-export function mergeCrossScript(items: UnifiedSearchItem[]): UnifiedSearchItem[] {
+export function mergeCrossScript(
+  items: UnifiedSearchItem[],
+  priority: MusicProvider[] = PLAY_PRIORITY,
+): UnifiedSearchItem[] {
   const n = items.length;
   const dead = new Set<number>();
 
@@ -495,6 +512,6 @@ export function mergeCrossScript(items: UnifiedSearchItem[]): UnifiedSearchItem[
     .map((it) => {
       // bestSource is a function of sources — after cross-script merge the
       // item has more platforms, so re-run the selector.
-      return { ...it, bestSource: selectBestSource(it.sources) };
+      return { ...it, bestSource: selectBestSource(it.sources, priority) };
     });
 }

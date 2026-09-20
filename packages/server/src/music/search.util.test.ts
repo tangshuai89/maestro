@@ -555,5 +555,91 @@ check('28c. classifyVersion 中文关键字：现场/演唱会/实况/不插电/
   assert.strictEqual(classifyVersion('X', '伴奏'), 'instrumental');
 });
 
+// ── selectBestSource 接收 priority（§6.2 渠道优先级） ──────────
+check('P1. selectBestSource 默认 = PLAY_PRIORITY（无参时不破坏旧行为）', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: true, url: '' },
+    { platform: 'netease', trackId: '2', hasCopyright: true, url: '' },
+  ];
+  assert.strictEqual(selectBestSource(sources), 'qq');
+});
+
+check('P2. selectBestSource 接受 priority：users order wins over PLAY_PRIORITY', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: true, url: '' },
+    { platform: 'netease', trackId: '2', hasCopyright: true, url: '' },
+    { platform: 'spotify', trackId: '3', hasCopyright: true, url: '' },
+  ];
+  // 把 spotify 提到最前 → 它该胜出
+  assert.strictEqual(
+    selectBestSource(sources, ['spotify', 'qq', 'netease', 'deezer']),
+    'spotify',
+  );
+  // 把 netease 提到最前 → 它该胜出
+  assert.strictEqual(
+    selectBestSource(sources, ['netease', 'spotify', 'qq', 'deezer']),
+    'netease',
+  );
+});
+
+check('P3. selectBestSource priority = 缺某平台 → 该平台永远不返回', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: false, url: '' },  // 无版权
+    { platform: 'deezer', trackId: '2', hasCopyright: true, url: '' }, // 唯一有版权
+  ];
+  // user 从 priority 里删了 deezer → 即使 deezer 是唯一有版权源也不选
+  assert.strictEqual(
+    selectBestSource(sources, ['qq', 'netease', 'spotify']),
+    null,
+  );
+});
+
+check('P4. selectBestSource VIP ladder 不变：priority 仅影响每档内迭代', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: true, url: '', vipLocked: true },
+    { platform: 'netease', trackId: '2', hasCopyright: true, url: '', vipLocked: false },
+    { platform: 'deezer', trackId: '3', hasCopyright: true, url: '', vipLocked: false },
+  ];
+  // qq VIP 锁 → 跳过；剩下 netease / deezer 都是非锁，priority=[deezer,...]
+  // → 但 netease 在 FULL_SONG_PROVIDERS（qq/netease），deezer 不在 → 仍选 netease
+  assert.strictEqual(
+    selectBestSource(sources, ['deezer', 'netease', 'qq', 'spotify']),
+    'netease',
+  );
+});
+
+check('P5. buildUnifiedItems 透传 priority：bestSource 按用户序选', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: 'G', artist: 'A' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: 'G', artist: 'A' }) },
+  ];
+  const items = buildUnifiedItems(
+    new Map(),
+    entries,
+    ['netease', 'qq', 'deezer', 'spotify'],
+  );
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].bestSource, 'netease');
+});
+
+check('P6. mergeCrossScript 透传 priority：合并后 bestSource 按用户序重选', () => {
+  const items: UnifiedSearchItem[] = [
+    {
+      id: 'qq-1', title: '横顔', artist: 'Yama', album: '', coverUrl: '',
+      duration: 200, sources: [mkSource('qq', { trackId: '1' })], bestSource: 'qq' as const,
+      versionType: 'studio' as const, versions: [],
+    },
+    {
+      id: 'sp-1', title: 'Yokogao', artist: 'Yama', album: '', coverUrl: '',
+      duration: 200, sources: [mkSource('spotify', { trackId: '2' })], bestSource: 'spotify' as const,
+      versionType: 'studio' as const, versions: [],
+    },
+  ];
+  const merged = mergeCrossScript(items, ['spotify', 'qq', 'netease', 'deezer']);
+  assert.strictEqual(merged.length, 1);
+  // sources 含 qq + spotify，按 user priority 选 spotify
+  assert.strictEqual(merged[0].bestSource, 'spotify');
+});
+
 🎉 search.util.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

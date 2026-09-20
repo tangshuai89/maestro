@@ -168,6 +168,18 @@ export class RecoService {
     return { ok: true, tail };
   }
 
+  /**
+   * §5 Settings：清掉用户的 DeepSeek key（reset）。删 storage + 清内存 env，
+   *  下次 status() 立即返回 configured=false。**绝不** log 老 key（哪怕 tail）—
+   *  reset 是用户主动操作，logger 留 ok/无敏感字段即可。
+   */
+  resetApiKey(): { ok: true } {
+    this.storage.delete(SECRETS_KEY);
+    delete process.env.DEEPSEEK_API_KEY;
+    this.logger.log('DeepSeek key reset');
+    return { ok: true };
+  }
+
   /** 探测当前是否已设 key（不返回 key 本身）。 */
   isConfigured(): boolean {
     return Boolean(this.getApiKey());

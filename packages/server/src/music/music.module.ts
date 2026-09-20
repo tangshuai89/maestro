@@ -10,6 +10,7 @@ import { LyricsService } from './lyrics.service';
 import { CommonModule } from '../common/common.module';
 import { MatchService } from '../match/match.service';
 import { LikeSyncQueue } from './like-sync.queue';
+import { SourceHealthService } from './source-health.service';
 
 @Module({
   imports: [CommonModule],
@@ -19,6 +20,7 @@ import { LikeSyncQueue } from './like-sync.queue';
     LyricsService,
     MatchService,
     LikeSyncQueue,
+    SourceHealthService,
     QqMusicProvider,
     NeteaseMusicProvider,
     DeezerMusicProvider,
@@ -31,6 +33,7 @@ import { LikeSyncQueue } from './like-sync.queue';
     MatchService,
     SpotifyMusicProvider,
     LikeSyncQueue,
+    SourceHealthService,
   ],
 })
 export class MusicModule {}

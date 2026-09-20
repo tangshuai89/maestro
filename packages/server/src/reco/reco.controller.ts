@@ -127,4 +127,10 @@ export class RecoController {
     }
     return this.reco.setApiKey(body.apiKey);
   }
+
+  /** §5 Settings：清掉用户的 DeepSeek key。无 body 参数。 */
+  @Post('key/reset')
+  resetKey() {
+    return this.reco.resetApiKey();
+  }
 }

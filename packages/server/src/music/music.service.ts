@@ -28,6 +28,8 @@ import {
   VERSION_DURATION_TOLERANCE_SEC,
   DIFFERENT_VERSION_DURATION_TOLERANCE_SEC,
   mergeCrossScript,
+  PLAY_PRIORITY,
+  selectBestSource,
 } from './search.util';
 import { extractVersionTag, splitArtists, type VersionTag } from '@maestro/common';
 import { MatchService } from '../match/match.service';
@@ -37,6 +39,7 @@ import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
 import { LyricsService } from './lyrics.service';
+import { SourceHealthService } from './source-health.service';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
@@ -122,6 +125,23 @@ const ANONYMOUS_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
   'deezer',
 ]);
 
+/**
+ * No-op SourceHealthService stub：给不走 NestJS 容器的直接 `new MusicService()`
+ * 测试用（避免每个测试文件都造一个 SourceHealthService 实例）。生产路径永远
+ * 注入真实 SourceHealthService。
+ */
+const NOOP_SOURCE_HEALTH: SourceHealthService = {
+  record() {
+    /* no-op */
+  },
+  snapshot() {
+    return [];
+  },
+  resetForTests() {
+    /* no-op */
+  },
+} as unknown as SourceHealthService;
+
 @Injectable()
 export class MusicService {
   private readonly logger = new Logger(MusicService.name);
@@ -192,6 +212,26 @@ export class MusicService {
     }
   >();
 
+  /** §6.2 渠道优先级：从 session.prefs['channelPriority'] 解析用户自定义序。
+   *  - 缺字段 / 解析失败 / 全空 → 回退 PLAY_PRIORITY
+   *  - 未知 provider / 重复项静默丢弃
+   *  - 用户可任意移除某平台（留空 = 该平台永不被 bestSource 自动选；
+   *    见 search.util.ts selectBestSource JSDoc） */
+  readChannelPriority(session: Session): MusicProvider[] {
+    const raw = (session.prefs ?? {})['channelPriority'];
+    if (!raw) return PLAY_PRIORITY;
+    const seen = new Set<MusicProvider>();
+    const out: MusicProvider[] = [];
+    for (const part of raw.split(',')) {
+      const p = part.trim() as MusicProvider;
+      if (!MUSIC_PROVIDERS.includes(p)) continue;
+      if (seen.has(p)) continue;
+      seen.add(p);
+      out.push(p);
+    }
+    return out.length ? out : PLAY_PRIORITY;
+  }
+
   private fanOutSignature(fanOut: Record<string, FanOutEntry[]>): string {
     const keys = Object.keys(fanOut);
     let h = `${keys.length}|`;
@@ -213,6 +253,9 @@ export class MusicService {
     private readonly lyricsService: LyricsService,
     private readonly match: MatchService,
     private readonly likeSync: LikeSyncQueue,
+    // 可选：直接 new MusicService() 的测试（不走 NestJS 容器）不传此参时
+    // 自动用 no-op stub；生产路径（NestJS DI）永远注入真实 SourceHealthService。
+    private readonly health: SourceHealthService = NOOP_SOURCE_HEALTH,
   ) {
     // 把「同步一首歌的红心到某平台」的实际写操作交给同步队列的 worker 回调。
     // 队列负责合并去重 / 串行 / 退避重试；这里只提供「怎么写一次」的逻辑。
@@ -520,7 +563,10 @@ export class MusicService {
     seedProvider: MusicProvider,
     seed: LikeMeta,
   ): Promise<SourceInfo | null> {
-    const priority: MusicProvider[] = ['qq', 'netease', 'spotify'];
+    // §6.2：用用户渠道优先级，只在 canSyncLike（已登录且能写红心）的子集里
+    // 查找。Deezer 不参与（匿名+不可写红心），缺省排序里也通常排在末位。
+    const userPriority = this.readChannelPriority(session);
+    const priority = userPriority.filter((p) => p !== 'deezer');
     const candidates = priority.filter(
       (p) => p !== seedProvider && this.canSyncLike(session, p),
     );
@@ -629,8 +675,13 @@ export class MusicService {
     // 去重: 歌名+歌手标准化 → 第一个出现的 track 作为主记录。
     const deduped = dedupTracks(allTracks);
 
+    // 渠道优先级（§6.2）：Settings 里用户改的持久化序；缺省 = PLAY_PRIORITY。
+    // 读 prefs 是 cheap（Map.get）— 不缓存到本次请求的局部变量，逻辑简单且
+    // 单次请求内一致。
+    const priority = this.readChannelPriority(session);
+
     // 构建 UnifiedSearchItem，每个 item 聚合各平台的 source。
-    const items = buildUnifiedItems(deduped, allTracks);
+    const items = buildUnifiedItems(deduped, allTracks, priority);
 
     // 分页（服务端分页，不依赖前端截断）。
     const total = items.length;
@@ -780,7 +831,8 @@ export class MusicService {
     }));
   }
 
-  /** 查单个平台，带 5 秒超时。失败返回空 track + error。 */
+  /** 查单个平台，带 5 秒超时。失败返回空 track + error。
+ *  §5 「源连接健康」：每次请求结果记录到 SourceHealthService（成功 / 失败）。 */
   private async searchOneProvider(
     session: Session,
     provider: MusicProvider,
@@ -794,17 +846,25 @@ export class MusicService {
           `unified search "${keyword}" on ${provider} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
         ),
     ).then(
-      (res) => res ?? { platform: provider, tracks: [], total: 0, error: 'timeout' },
+      (res) => {
+        // res 有 tracks → 成功（即便 total=0 也是合法"该平台没匹配"的信号，
+        // 不是网络失败）。res === null → withTimeout 超时，记失败。
+        this.health.record(provider, res !== null && !res.error);
+        return res ?? { platform: provider, tracks: [], total: 0, error: 'timeout' };
+      },
       // 兜底：doSearchOneProvider 契约上不 throw，但如果它意外 reject
       // （withTimeout 只 race、不 catch），这里必须把 reject 转成 error 结果。
       // 绝不能让单平台的 reject 冒泡到 searchUnified 的 Promise.all——否则
       // 一个平台没登录就会把整个统一搜索打成 404/500（回归 bug）。
-      (err: unknown) => ({
-        platform: provider,
-        tracks: [],
-        total: 0,
-        error: (err as Error)?.message ?? 'error',
-      }),
+      (err: unknown) => {
+        this.health.record(provider, false);
+        return {
+          platform: provider,
+          tracks: [],
+          total: 0,
+          error: (err as Error)?.message ?? 'error',
+        };
+      },
     );
   }
 
@@ -1440,10 +1500,15 @@ export class MusicService {
       changed = true;
     }
     if (!changed) return;
-    // 原本没有可播放 bestSource（罕见）→ 用新补的有版权源兜底。
+    // 原本没有可播放 bestSource（罕见）→ 跑 selectBestSource 兜底，按用户的
+    // 渠道优先级挑（§6.2）。顺带修一个潜在 bug：旧实现只挑 newSources[0]，
+    // 忽略了之前可能已经有但都没被选 bestSource 的源；现在 selectBestSource
+    // 遍历**全 sources**（new + old）。
     if (!item.bestSource) {
-      const copyrighted = newSources.find((s) => s.hasCopyright);
-      if (copyrighted) item.bestSource = copyrighted.platform;
+      item.bestSource = selectBestSource(
+        item.sources,
+        this.readChannelPriority(session),
+      );
     }
     this.storage.set(this.libraryKey(session.id), stored);
     // T10 (consistency-fixes G5)：mutation 后 libraryCache.delete。
@@ -1455,6 +1520,78 @@ export class MusicService {
       `library patched: "${item.title} - ${item.artist}" += ` +
         newSources.map((s) => s.platform).join(', '),
     );
+  }
+
+  /**
+   * §5 Settings「库管理」：把指定平台的贡献从整个 library 剥掉。
+   *  - item.sources[] / versions[*].sources[] / likedPlatforms[] 三处都剥 p
+   *  - 重新跑 selectBestSource 选新的可播源（用户 channelPriority 优先）
+   *  - 没有 source 又没有 likedPlatforms 的 item → 整条删
+   *  - library.sources[]（顶部每平台计数）里 p 那条也删 / count 调整
+   *  - likedCache 失效 + likeSync 队列里该 provider 的在途任务 purge
+   *    （复用 logout 路径，与 clearProvider 对齐 — 用户切走的源不应留尾巴）
+   * 返回删除 / 修改的 item 数。
+   */
+  clearLibraryForProvider(session: Session, p: MusicProvider): number {
+    const stored = this.storage.get<{ items: UnifiedSearchItem[] }>(
+      this.libraryKey(session.id),
+    );
+    if (!stored?.items?.length) return 0;
+    const priority = this.readChannelPriority(session);
+    const before = stored.items.length;
+    const kept: UnifiedSearchItem[] = [];
+    let touched = 0;
+    for (const item of stored.items) {
+      const beforeSources = item.sources.length;
+      item.sources = item.sources.filter((s) => s.platform !== p);
+      for (const v of item.versions ?? []) {
+        v.sources = v.sources.filter((s) => s.platform !== p);
+        v.bestSource = selectBestSource(v.sources, priority);
+      }
+      if (Array.isArray(item.likedPlatforms)) {
+        item.likedPlatforms = item.likedPlatforms.filter((lp) => lp !== p);
+      }
+      // 重新选 bestSource（含 items 级 fallback：合并各 version 的 sources）
+      const allSources = [
+        ...item.sources,
+        ...(item.versions ?? []).flatMap((v) => v.sources),
+      ];
+      // 去重（同 platform 多 trackId 不常见，但 patchLibraryWithSources 路径会
+      // 留下重复 — 用 map 保证 selectBestSource 看到唯一的 platform）
+      const uniq = new Map<MusicProvider, SourceInfo>();
+      for (const s of allSources) if (!uniq.has(s.platform)) uniq.set(s.platform, s);
+      item.bestSource = selectBestSource([...uniq.values()], priority);
+      const dropped = beforeSources - item.sources.length;
+      if (dropped > 0) touched++;
+      const hasAny =
+        item.sources.length > 0 ||
+        (item.likedPlatforms?.length ?? 0) > 0;
+      if (hasAny) kept.push(item);
+    }
+    stored.items = kept;
+    const removed = before - kept.length;
+    this.storage.set(this.libraryKey(session.id), stored);
+    this.libraryCache.delete(session.id);
+    this.invalidateLikedCache(session, p);
+    this.likeSync.purgeForProvider(session.id, p);
+    this.logger.log(
+      `library cleared for ${p}: ${touched} items touched, ${removed} items removed`,
+    );
+    return removed;
+  }
+
+  /**
+   * §5 Settings「库管理」：清空整库（所有平台的 liked 贡献都剥）。
+   *  注意：仅清 library:<sid> 这一份"主库"——其它顶层 key（sessions, music:*, libraryCache）不动。
+   */
+  clearAllLibraries(session: Session): void {
+    this.storage.delete(this.libraryKey(session.id));
+    this.libraryCache.delete(session.id);
+    for (const p of MUSIC_PROVIDERS) {
+      this.invalidateLikedCache(session, p);
+      this.likeSync.purgeForProvider(session.id, p);
+    }
+    this.logger.log('library cleared: all providers');
   }
 
   /**

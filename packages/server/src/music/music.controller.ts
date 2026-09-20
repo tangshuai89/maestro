@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -26,6 +27,8 @@ import { QqQuality } from './qq.provider';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 import { SkipInternalToken } from '../common/decorators/skip-internal-token.decorator';
 import type { FanOutLikeResponse, SourceInfo } from './types';
+import { PLAY_PRIORITY } from './search.util';
+import { SourceHealthService } from './source-health.service';
 
 /** 从请求体里宽松解析跨平台匹配元数据。缺字段 / 类型不对 → undefined，
  *  服务端退化成「只写已有 source」的老行为（不因 meta 脏数据 400）。 */
@@ -74,6 +77,7 @@ export class MusicController {
     private readonly musicService: MusicService,
     private readonly lyricsService: LyricsService,
     private readonly sessionService: SessionService,
+    private readonly health: SourceHealthService,
   ) {}
 
   @Get('next')
@@ -171,6 +175,80 @@ export class MusicController {
     // 重启后 preset 不丢失（旧实现只改内存没 persist）。
     this.sessionService.setPref(session, 'deezerPreset', preset);
     return { ok: true, preset };
+  }
+
+  /**
+   * §6.2 渠道优先级：保存用户拖拽排序后的渠道优先级列表。
+   * Body: { priority: MusicProvider[] }
+   * 400 if 不是合法 provider / 重复项。
+   * 缺省值 = PLAY_PRIORITY（QQ > 网易云 > Deezer > Spotify），用户删某平台
+   * 等同"该平台永不被自动选 bestSource"。
+   */
+  @Put('channel-priority')
+  setChannelPriority(
+    @Body() body: { priority?: MusicProvider[] },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!Array.isArray(body?.priority)) {
+      throw new BadRequestException('priority 必须是 MusicProvider[]');
+    }
+    const cleaned: MusicProvider[] = [];
+    const seen = new Set<MusicProvider>();
+    for (const p of body.priority) {
+      if (!MUSIC_PROVIDERS.includes(p)) {
+        throw new BadRequestException(`未知 provider "${p}"`);
+      }
+      if (seen.has(p)) {
+        throw new BadRequestException(`provider "${p}" 重复`);
+      }
+      seen.add(p);
+      cleaned.push(p);
+    }
+    const session = this.sessionService.resolve(req, res);
+    // 持久化（逗号分隔字符串）。readChannelPriority 会拆 + 过滤未知 provider；
+    // 这里我们已经清洗过，所以原样 join 即可。
+    this.sessionService.setPref(
+      session,
+      'channelPriority',
+      cleaned.join(','),
+    );
+    return { ok: true as const, priority: cleaned };
+  }
+
+  /** 当前用户的渠道优先级（缺省回退 PLAY_PRIORITY）。renderer Settings 启动时
+   *  拉一次，UI 用 fallback 兜底首帧。 */
+  @Get('channel-priority')
+  getChannelPriority(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    return {
+      priority: this.musicService.readChannelPriority(session),
+      default: PLAY_PRIORITY,
+    };
+  }
+
+  /** 重置到 PLAY_PRIORITY（删除 pref key，让 readChannelPriority 自然回退）。 */
+  @Delete('channel-priority')
+  resetChannelPriority(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    delete session.prefs!['channelPriority'];
+    // session 引用与 SessionService 内部 blob 共享 → mutate 后 persist() 落盘
+    this.sessionService['persist']();
+    return { ok: true as const, priority: PLAY_PRIORITY };
+  }
+
+  /** §5 源连接健康：每个平台最近 24h 的成功率计数（进程内 Map，不持久化）。
+   *  total=0 表示近 24h 无请求（首次启动常见）。 */
+  @SkipInternalToken()
+  @Get('source-health')
+  sourceHealth() {
+    return { items: this.health.snapshot() };
   }
 
   /**
@@ -397,6 +475,38 @@ export class MusicController {
       return { error: 'library_not_imported' };
     }
     return lib;
+  }
+
+  /**
+   * §5 Settings「库管理」：清空指定平台在 library 里的所有贡献。
+   * 400 if provider === 'deezer'（匿名音源，没用户库）。
+   */
+  @Post('library/:provider/clear')
+  async clearLibraryForProvider(
+    @Param('provider') provider: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const p = normalizeProvider(provider);
+    if (p === 'deezer') {
+      throw new BadRequestException(
+        'deezer 是匿名音源，没有用户库贡献',
+      );
+    }
+    const session = this.sessionService.resolve(req, res);
+    const removed = this.musicService.clearLibraryForProvider(session, p);
+    return { ok: true as const, removed };
+  }
+
+  /** §5 Settings「库管理」：一键清空整库（所有平台的 liked 贡献）。 */
+  @Delete('library')
+  async clearAllLibraries(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    this.musicService.clearAllLibraries(session);
+    return { ok: true as const };
   }
 
   /**
