@@ -214,21 +214,23 @@ check('11. buildUnifiedItems：同名同 type 不同 duration → 1 item + 2 ver
   assert.strictEqual(items.length, 1, 'Phase 2：同 (key, type) → 1 item（不论 duration）');
   assert.strictEqual(items[0].versions.length, 2, 'duration 差 > 3s → 2 versions');
   assert.strictEqual(items[0].versionType, 'studio');
-  assert.strictEqual(items[0].duration, 270, '默认折叠显示最短版本（primary = versions[0]）');
-  assert.strictEqual(items[0].versions[0].duration, 270);
-  assert.strictEqual(items[0].versions[1].duration, 310);
+  // Phase 3：主版本不再取"最短"。两个 cluster 各 1 个源（并列）→ 取**更长**的那条
+  //（片段/剪辑版总是更短，不能让折叠行显示片段）。
+  assert.strictEqual(items[0].duration, 310, '主版本 = 源数最多 → 时长最长');
+  assert.strictEqual(items[0].versions[0].duration, 310, 'versions[0] 必定是主版本');
+  assert.strictEqual(items[0].versions[1].duration, 270);
   // 每个 version 带自己的原始元数据（UI 展开时逐行显示真实歌名/专辑，而不是 v2/v3）。
   // cluster 代表 track 按 PLAY_PRIORITY 选：qq > netease。
   assert.strictEqual(items[0].versions[0].title, '晴天');
   assert.strictEqual(items[0].versions[0].artist, '周杰伦');
-  assert.strictEqual(items[0].versions[0].album, 'X');
-  assert.strictEqual(items[0].versions[1].album, 'Y', '版本级 album 取该 cluster 代表 track，不能串到别的 cluster');
+  assert.strictEqual(items[0].versions[0].album, 'Y');
+  assert.strictEqual(items[0].versions[1].album, 'X', '版本级 album 取该 cluster 代表 track，不能串到别的 cluster');
 });
 
 // ── 11b. versions 的元数据必须区分同名不同版本（用户看不到区别就没法选）──
-check('11b. buildUnifiedItems：同名不同 album 的两条各自保留自己的专辑/时长', () => {
+check('11b. buildUnifiedItems：同录音（时长偏差 ≤50%）合并，各自保留专辑/时长', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80, album: '首发单曲' }) },
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 240, album: '首发单曲' }) },
     { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287, album: '精选集' }) },
   ];
   const items = buildUnifiedItems(new Map(), entries);
@@ -238,12 +240,59 @@ check('11b. buildUnifiedItems：同名不同 album 的两条各自保留自己�
   assert.deepStrictEqual(
     versions.map((v) => [v.title, v.artist, v.album, v.duration]),
     [
-      ['盲选', '黄霄雲', '首发单曲', 80],
       ['盲选', '黄霄雲', '精选集', 287],
+      ['盲选', '黄霄雲', '首发单曲', 240],
     ],
-    '每个版本带自己 cluster 的元数据（album 不能互串）',
+    '主版本在前；每个版本带自己 cluster 的元数据（album 不能互串）',
   );
-  assert.strictEqual(items[0].album, '首发单曲', 'item 级元数据 = versions[0]');
+  assert.strictEqual(items[0].album, '精选集', 'item 级元数据 = versions[0]（主版本）');
+});
+
+// ── 11c. Phase 3：跨平台共识优先于时长（短片段若多平台都在，也算主版本）──
+check('11c. buildUnifiedItems：主版本按跨平台源数选，不够长的单平台条目让位', () => {
+  const entries = [
+    // 80s 那条三平台都有 → 跨平台共识
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    // 287s 只有 QQ 一条（时长虽长，但只有单平台）
+    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, '80s 与 287s 时长差 >50% → 拆成 2 条');
+  const main = items.find((it) => it.sources.length === 3);
+  assert.ok(main, '跨平台共识那条应作为主 item');
+  assert.strictEqual(main!.duration, 80, '主版本 = 源数最多（即使更短）');
+  assert.strictEqual(main!.versions.length, 1);
+  const outlier = items.find((it) => it.sources.length === 1);
+  assert.ok(outlier, '单平台的 287s 应单独成条');
+  assert.strictEqual(outlier!.duration, 287);
+  assert.notStrictEqual(outlier!.id, main!.id, 'item id 必须唯一（renderer 用 id 做 key/展开态）');
+});
+
+// ── 11d. Phase 3：偏离主版本时长 >50% 的孤立 cluster 不再混进 versions ──
+check('11d. buildUnifiedItems：片段/剪辑版（时长 -50% 以上）拆成独立 item', () => {
+  const entries = [
+    // 4:47 三平台共识 = 正式版本
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+    // 1:20 只在 QQ，且比主版本短 72% → 不是"版本"
+    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    // 2:50 偏 -41%，仍在阈值内 → 保留为版本
+    { track: mkTrack({ id: 'qq-3', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 170 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, '1:20 拆走 → 主 item + 1 条独立 item');
+  const main = items.find((it) => it.sources.length === 2)!;
+  assert.strictEqual(main.duration, 287, '主版本 = 跨平台共识的 4:47');
+  assert.deepStrictEqual(
+    main.versions.map((v) => v.duration),
+    [287, 170],
+    '主版本在前，阈值内的 2:50 仍是版本',
+  );
+  const clip = items.find((it) => it.sources.length === 1)!;
+  assert.strictEqual(clip.duration, 80, '1:20 片段单独成条');
+  assert.strictEqual(clip.versions.length, 1);
 });
 
 // ── 12. buildUnifiedItems：duration ≤ 0 全部并入一个 cluster ──

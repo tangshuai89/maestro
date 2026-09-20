@@ -18,3 +18,7 @@
       hover 遮罩（Bug #7：行尾 ▶ 被当成展开箭头误点 → 直接播放）；版本行显示该版本
       真实歌名/歌手/专辑/时长（`VersionEntry.title/artist/album/coverUrl`，服务端从
       cluster 代表 track 填充），点击版本行时队列/播放器元数据同步换成该版本
+- [x] 17. Phase 3 版本口径收敛（`buildUnifiedItems`）：主版本改为「跨平台源数最多 →
+      时长最长」——旧口径取最短，导致"盲选"折叠行显示 1:20 的片段；并把偏离主版本
+      时长 >50% 的孤立 cluster 拆成独立 item（片段/剪辑不再混进 versions）。
+      `versions[0]` = 主版本的不变量写进注释与 spec；新增 11b/11c/11d 三个白盒用例
