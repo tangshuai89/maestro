@@ -428,7 +428,7 @@ export default function TheaterView(props: TheaterViewProps) {
           )}
         </section>
 
-        {/* TrialFallback 降级标签（1440 稿 560,640） */}
+        {/* TrialFallback 降级标签（1440 稿 560,640 → 实装 560,755：长歌名会压住它） */}
         {trialFellBack && (
           <div className="th-trial-tag" aria-label="试听降级">
             <span className="th-trial-tag-dot" aria-hidden="true" />

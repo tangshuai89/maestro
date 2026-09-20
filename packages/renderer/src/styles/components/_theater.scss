@@ -658,11 +658,14 @@
   text-transform: uppercase;
 }
 
-// TrialFallback：在 (560, 640) 显示 30S TRIAL Tag/Stat（cyan + 红点）
+// TrialFallback：显示 30S TRIAL Tag/Stat（cyan + 红点）
+// 设计稿 (560,640) 会落在标题带的右侧 —— 歌名最长 460px（居中于 430 → 右边界 660），
+// 长歌名时标签会被压在歌名上。改到控制带右侧的空白区：(560, 755)，与 72px 的
+// 能量核心同一条水平中线；左邻控制带右边界 530，上邻音质行 709，右邻推荐块 1000。
 .th-trial-tag {
   position: absolute;
   left: 560px;
-  top: 640px;
+  top: 755px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
