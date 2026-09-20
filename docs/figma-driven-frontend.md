@@ -372,6 +372,25 @@ Modal/NeteaseCookie），`figma-code-connect.json` 的 10 个 `TBD-FIGMA` 占位
   且旧文档里"第 10-12 条与 3 条自动轮播"经实测**目前在文件里并不存在**
   （AFTER_TIMEOUT 只在 `99 · Archive` 的 AETHER THEATER 三帧上），已在
   `docs/prototype-wiring-checklist.md` 顶部加状态更正。
+
+**D8 增量（2026-09-20）—— 桌面尺寸适配改写：不是"尺寸帧"，是"紧凑档 + 内容减法"**：
+计划里 D8 是"做 1280/1920 两个尺寸帧"。实量后发现这个前提不成立：
+
+- 代码是**固定 1440×900 画布 + `transform: scale()`**（`TheaterView.tsx:175`），不是流式重排；
+  而 1440 稿的**最小可用宽度是 1330px**（封面簇右边缘 670 + 歌词宽 560 + 右边距 60），
+  窗口默认却只有 **1200**、最小 **960** —— 改成重排必然压住（1200 压 70px、960 压 310px），
+  这就是"动不动这个压住那个"的真实根因。
+- 1920 档**不需要设计帧**：缩放在大窗口是 1.29×，9px 小字实际渲染 11.6px，比设计稿还清楚。
+  真正不可读的是 960×800 时的 0.67×（9px → 6px）。
+- **所以改的是"减法"不是"重排"**：三档 `regular ≥1280` / `compact 1100–1279`（歌词 5→3 行）/
+  `narrow <1100`（换 960×800 紧凑画布，砍声波环与推荐卡、歌词只留当前行）。
+- **Figma 侧**：`Screen/NowPlaying` 加 `density=narrow` 变体（`518:1881`，960×800），
+  原有三变体补 `density=regular`；紧凑档各块**保持原生尺寸纵向堆叠** ——
+  实测发现**实例内部不随实例 resize 缩放**，强行压小会把进度环的圆弧与时间码顶到歌词上。
+- **代码侧**：新增 `lib/theaterLayout.ts`（纯函数，20 条单测）+ `data-density` 接入 +
+  `_theater.scss` 的紧凑档规则；顺带清掉 `Ring/Progress` 的 `progress-arc` 噪声方框描边
+  （1440 稿也有，非本档引入）。
+- 未做：**真机视觉验收**（本环境无 GUI）；跨档切换是整张画布跳变，未做形变过渡。
 - **顺带修掉一处真漂移**：快照 51 → 52，补上 D1/D2 期间新建的 `Color/semantic/status-error`
   （`#ff3b5c`）。
 - **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：

@@ -1255,3 +1255,30 @@
   .th-lyric--current { animation-duration: 0.5s !important; }
   .th-orbit-arc, .th-orbit-dot { transition-duration: 0.3s !important; }
 }
+
+// ── 紧凑档（窗口宽 < 1100px）：换 960×800 画布 ──
+// 与 Figma `Screen/NowPlaying` 的 `density=narrow` 变体（516:1884 / 518:1881）一一对应。
+// 各块**保持原生尺寸、纵向堆叠** —— 不做"把实例压小"：实例内部不随 resize 缩放
+// （2026-09-20 实测，压小进度环会把圆弧与时间码顶到歌词上）。
+// 本档的减法：声波环整块移除、推荐卡隐藏、歌词只留当前行（由 TSX 按 density 收敛）。
+.th-canvas[data-density='narrow'] {
+  width: 960px;
+  height: 800px;
+
+  // HUD 收紧内边距与间距，让 brand + telemetry + badges 在 960 宽内排得下
+  .th-hud { top: 16px; padding: 0 32px; gap: 16px; }
+
+  // 封面中心：1440 稿中心 (430,450)、实装 (430,420)——代码比稿高 30px；
+  // 紧凑稿中心 (480,320) 同步减 30 → (480,290)
+  .th-cover-stage { left: 480px; top: 290px; }
+
+  .th-lyrics-panel { left: 200px; top: 596px; width: 560px; }
+  .th-core-cluster { left: 348px; top: 690px; }
+  // 试听降级标签从 (560,755) 提到 HUD 下方，避免与紧凑档控制条抢 14px 的空隙
+  .th-trial-tag { left: 200px; top: 64px; }
+
+  // 窄档减法：声波环 + 推荐卡（含"未配置"态）
+  .th-ring,
+  .th-reco,
+  .th-reco-unconfigured { display: none; }
+}

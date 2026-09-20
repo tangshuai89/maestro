@@ -68,8 +68,10 @@
 
 ## 变体间连线操作单（D7 之后 · 只能用 Figma UI 手连）
 
-节点名（D7 后）：组件集 **`Screen/NowPlaying`**（`516:1884`），三个变体
-`state=Playing` / `state=Paused` / `state=Buffering`。
+节点名（D7 建、D8 补了密度轴）：组件集 **`Screen/NowPlaying`**（`516:1884`），
+变体名是 **`state=Playing, density=regular`** / `state=Paused, density=regular` /
+`state=Buffering, density=regular`（D8 还加了 `state=Playing, density=narrow` 紧凑档，
+与下面的连线无关 —— 连线连的是 `density=regular` 那三个）。
 
 ### 一、3 条点击连线（在变体内部实例上起手）
 
