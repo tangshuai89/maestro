@@ -534,6 +534,13 @@ export interface VersionEntry {
   bestSource: MusicProvider | null;
   /** UI 标签（Phase 3 可加）。Phase 2 留空。 */
   label?: string;
+  /** 该版本的原始元数据（server: cluster 内 PLAY_PRIORITY 代表 track）。
+   *  UI 展开多版本时逐行显示，让用户能区分 `盲选 1:20` / `盲选 (Live) 4:47`。
+   *  可选：老缓存 / 单平台搜索路径没有这些字段，UI 回退到 item 级元数据。 */
+  title?: string;
+  artist?: string;
+  album?: string;
+  coverUrl?: string;
 }
 
 export interface UnifiedSearchItem {

@@ -48,6 +48,18 @@ export interface VersionEntry {
   bestSource: MusicProvider | null;
   /** UI 标签（Phase 3 可加：从 main.album/title 提取"短版"/"长版"）。Phase 2 留空。 */
   label?: string;
+  /**
+   * 该版本的原始元数据（cluster 内按 PLAY_PRIORITY 选出的代表 track）。
+   *
+   * 为什么要存：UI 展开多版本时必须让用户**看清每个版本是什么**——同名同 type
+   * 不代表元数据相同（`盲选` vs `盲选 (Live)`、不同专辑、不同歌手合作版、时长
+   * 1:20 vs 6:07）。只显示 "v2 / 2:35" 用户没法选（用户反馈："太蠢了，把原歌名
+   * 之类的都放出来"）。
+   */
+  title: string;
+  artist: string;
+  album: string;
+  coverUrl: string;
 }
 
 /** 去重合并后的一条搜索结果。 */

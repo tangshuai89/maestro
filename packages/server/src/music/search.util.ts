@@ -275,6 +275,12 @@ export function buildUnifiedItems(
         sources,
         bestSource,
         label: undefined,  // Phase 3 可加：从 main.album/title 提取"短版"/"长版"
+        // 该版本的原始元数据（main = cluster 内 PLAY_PRIORITY 代表 track）。
+        // UI 展开后每行显示真实歌名/歌手/专辑，而不是 "v2 / 2:35"。
+        title: main.title,
+        artist: main.artist,
+        album: main.album,
+        coverUrl: main.coverUrl,
       };
     });
 

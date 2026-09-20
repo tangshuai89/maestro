@@ -217,6 +217,33 @@ check('11. buildUnifiedItems：同名同 type 不同 duration → 1 item + 2 ver
   assert.strictEqual(items[0].duration, 270, '默认折叠显示最短版本（primary = versions[0]）');
   assert.strictEqual(items[0].versions[0].duration, 270);
   assert.strictEqual(items[0].versions[1].duration, 310);
+  // 每个 version 带自己的原始元数据（UI 展开时逐行显示真实歌名/专辑，而不是 v2/v3）。
+  // cluster 代表 track 按 PLAY_PRIORITY 选：qq > netease。
+  assert.strictEqual(items[0].versions[0].title, '晴天');
+  assert.strictEqual(items[0].versions[0].artist, '周杰伦');
+  assert.strictEqual(items[0].versions[0].album, 'X');
+  assert.strictEqual(items[0].versions[1].album, 'Y', '版本级 album 取该 cluster 代表 track，不能串到别的 cluster');
+});
+
+// ── 11b. versions 的元数据必须区分同名不同版本（用户看不到区别就没法选）──
+check('11b. buildUnifiedItems：同名不同 album 的两条各自保留自己的专辑/时长', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80, album: '首发单曲' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287, album: '精选集' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同名同 type → 1 item');
+  const versions = items[0].versions;
+  assert.strictEqual(versions.length, 2, 'duration 差 > 3s → 2 versions');
+  assert.deepStrictEqual(
+    versions.map((v) => [v.title, v.artist, v.album, v.duration]),
+    [
+      ['盲选', '黄霄雲', '首发单曲', 80],
+      ['盲选', '黄霄雲', '精选集', 287],
+    ],
+    '每个版本带自己 cluster 的元数据（album 不能互串）',
+  );
+  assert.strictEqual(items[0].album, '首发单曲', 'item 级元数据 = versions[0]');
 });
 
 // ── 12. buildUnifiedItems：duration ≤ 0 全部并入一个 cluster ──

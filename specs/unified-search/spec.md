@@ -47,7 +47,21 @@ Response:
         {"platform": "qq",      "trackId": "yyy", "hasCopyright": true, "url": "..."},
         {"platform": "deezer",  "trackId": "zzz", "hasCopyright": false}
       ],
-      "bestSource": "netease"       // 推荐播放平台（已规避 vipLocked）
+      "bestSource": "netease",      // 推荐播放平台（已规避 vipLocked）
+      "versions": [                 // 同 (key, type) 内的录音版本，每个 cluster 一条
+        {
+          "id": "ver-...",
+          "duration": 269,
+          "sources": [...],
+          "bestSource": "netease",
+          // 版本级原始元数据（cluster 内 PLAY_PRIORITY 代表 track）：
+          // 展开多版本时逐行显示，用户靠它选版本（同名不代表同专辑/同时长）
+          "title": "晴天",
+          "artist": "周杰伦",
+          "album": "叶惠美",
+          "coverUrl": "..."
+        }
+      ]
     }
   ]
 }
@@ -74,7 +88,12 @@ Error:
 ### UI 展示规则（Phase 1）
 
 - 每条 UnifiedSearchItem 标题后显示 versionType 角标：`[LIVE]` / `[ACOUSTIC]` / `[REMIX]` / `[INSTRUMENTAL]`（`studio` 不显示）。
-- Phase 2 再加 toggle "显示所有版本" 开关（默认 OFF，只显示 studio + 折叠非 studio 到 "+N 其他"）。
+- 多版本 item 行尾显示「N 个版本 ▾」展开按钮（行尾**唯一**的箭头；播放三角在封面
+  hover 遮罩上，避免被当成展开箭头误点）。
+- 展开后的版本行显示该版本的**真实元数据**：歌名 / 歌手 · 专辑 · 时长 + 平台 chip。
+  不允许只显示 `v2 / 2:35` 这类序号 —— 用户无从判断选哪个。
+- 点击版本行播放时，队列里的 item 元数据（title/artist/album/coverUrl）也换成该版本，
+  播放器展示的必须是用户实际选中的版本。
 
 ### 播放优先级
 

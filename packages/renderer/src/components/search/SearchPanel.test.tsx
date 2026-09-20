@@ -11,6 +11,9 @@
  *  7. ESC 调 onClose
  *  8. 搜索无结果 → 显示「暂无结果」
  *  9. 搜索抛错 → 显示 .sp-error
+ * 10. 多版本 item：行尾唯一的箭头是「N 个版本 ▾」展开按钮，点它只展开、不播放
+ *     （Bug #7：行尾曾经是 ▶ 播放三角，被用户当成展开箭头点）
+ * 11. 展开后的 sub-row 点播放对应 version（sources/bestSource/duration 换成该版本）
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, screen, act, waitFor } from '@testing-library/react';
@@ -67,6 +70,61 @@ const SAMPLE: UnifiedSearchItem[] = [
     versionType: 'studio',
     versions: [{ id: 'ver-2', duration: 0, sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }], bestSource: null }],
     sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }],
+  },
+];
+
+/** 同名同 type、3 个不同 duration cluster → 1 item + 3 versions。
+ *  每个 version 带自己的原始元数据（server buildUnifiedItems 填充）：
+ *  用户展开后要看到"盲选 / 盲选 (Live) / 盲选 (伴奏)"这种真实歌名，而不是 v2/v3。 */
+const src = (
+  platform: 'qq' | 'netease',
+  trackId: string,
+  hasCopyright: boolean,
+) => ({ platform, trackId, hasCopyright, url: `/${platform}/${trackId}` });
+
+const MULTI: UnifiedSearchItem[] = [
+  {
+    id: 'merged-1',
+    title: '盲选',
+    artist: '某歌手',
+    album: '某专辑',
+    coverUrl: '',
+    duration: 200,
+    bestSource: 'qq',
+    versionType: 'studio',
+    sources: [src('qq', '1', true)],
+    versions: [
+      {
+        id: 'v1',
+        duration: 200,
+        sources: [src('qq', '1', true)],
+        bestSource: 'qq',
+        title: '盲选',
+        artist: '黄霄雲',
+        album: '盲选',
+        coverUrl: '',
+      },
+      {
+        id: 'v2',
+        duration: 360,
+        sources: [src('netease', '2', true)],
+        bestSource: 'netease',
+        title: '盲选 (Live)',
+        artist: '黄霄雲',
+        album: '现场版',
+        coverUrl: '',
+      },
+      {
+        id: 'v3',
+        duration: 420,
+        sources: [src('qq', '3', false)],
+        bestSource: null,
+        title: '盲选 (伴奏)',
+        artist: '黄霄雲',
+        album: '',
+        coverUrl: '',
+      },
+    ],
   },
 ];
 
@@ -213,5 +271,107 @@ describe('SearchPanel', () => {
     await waitFor(() => {
       expect(document.querySelector('.sp-error')?.textContent).toBe('网络炸了');
     });
+  });
+
+  it('多版本：行尾展开按钮「N 个版本」只展开版本，不触发播放', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: MULTI,
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '盲选');
+    await waitFor(() => {
+      expect(screen.getByText('盲选')).toBeInTheDocument();
+    });
+
+    const toggle = document.querySelector('.sp-ver-toggle') as HTMLElement;
+    expect(toggle).toBeTruthy();
+    // 行尾唯一箭头是展开按钮，文案 + 收起态是向下箭头
+    expect(toggle.textContent).toContain('3 个版本');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // 主行不再有行尾播放三角（Bug #7 根因）
+    expect(
+      document.querySelector('.sp-row:not(.sp-row--sub) .sp-play-icon'),
+    ).toBeNull();
+
+    await userEvent.click(toggle);
+
+    expect(onPlay).not.toHaveBeenCalled();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelectorAll('.sp-row--sub').length).toBe(2);
+  });
+
+  it('多版本：sub-row 显示该版本的真实歌名/歌手/专辑（不是 v2/v3）', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: MULTI,
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '盲选');
+    await waitFor(() => {
+      expect(screen.getByText('盲选')).toBeInTheDocument();
+    });
+
+    await userEvent.click(document.querySelector('.sp-ver-toggle') as HTMLElement);
+    const subRows = document.querySelectorAll('.sp-row--sub');
+    expect(subRows.length).toBe(2);
+    // 版本行标题 = 真实歌名（含 Live/伴奏 区分）
+    expect(screen.getByText('盲选 (Live)')).toBeInTheDocument();
+    expect(screen.getByText('盲选 (伴奏)')).toBeInTheDocument();
+    // 第二行 = 歌手 · 专辑 · 时长
+    expect(subRows[0].textContent).toContain('黄霄雲');
+    expect(subRows[0].textContent).toContain('现场版');
+    expect(subRows[0].textContent).toContain('6:00');
+    // 旧的 v2/v3 序号 chip 已移除
+    expect(document.querySelector('.sp-ver-num')).toBeNull();
+  });
+
+  it('多版本：点击 sub-row → 播放该 version（元数据/sources/duration 一起换成该版本）', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: MULTI,
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '盲选');
+    await waitFor(() => {
+      expect(screen.getByText('盲选')).toBeInTheDocument();
+    });
+
+    await userEvent.click(document.querySelector('.sp-ver-toggle') as HTMLElement);
+    const subRows = document.querySelectorAll('.sp-row--sub');
+    await userEvent.click(subRows[0]); // v2 → 360s / netease
+
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    const [viewItems, index] = onPlay.mock.calls[0];
+    expect(index).toBe(0);
+    expect(viewItems[0].duration).toBe(360);
+    expect(viewItems[0].bestSource).toBe('netease');
+    expect(viewItems[0].sources).toEqual([src('netease', '2', true)]);
+    // 播放器/队列看到的是所选版本的元数据，不是主行的
+    expect(viewItems[0].title).toBe('盲选 (Live)');
+    expect(viewItems[0].artist).toBe('黄霄雲');
+    expect(viewItems[0].album).toBe('现场版');
+  });
+
+  it('播放入口 = 封面遮罩（点击仍走 row → onPlay）', async () => {
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '晴天');
+    await waitFor(() => {
+      expect(screen.getByText('晴天')).toBeInTheDocument();
+    });
+    const overlay = document.querySelector('.sp-play-overlay') as HTMLElement;
+    expect(overlay).toBeTruthy();
+    await userEvent.click(overlay);
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(onPlay.mock.calls[0][1]).toBe(0);
   });
 });

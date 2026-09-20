@@ -281,36 +281,45 @@
   gap: 2px;
 }
 
-/* 多版本展开按钮（对齐 LikedLibraryModal 的 lib-toggle chevron 交互） */
+/* 多版本展开按钮 —— 行尾（最右侧）唯一的"箭头"，点击只展开版本列表。
+ * Bug #7：之前行尾是 ▶（播放），用户把最右侧的箭头当展开按钮点，结果直接播放。
+ * 现在：行尾 = 本按钮（▾/▴ 上下箭头 + "N 个版本"文案），播放在封面遮罩上。 */
 .sp-ver-toggle {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
   flex-shrink: 0;
-  height: 22px;
-  padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 11px;
-  background: transparent;
-  color: rgba(245, 240, 232, 0.5);
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(245, 240, 232, 0.65);
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
 .sp-ver-toggle:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
   color: #f5f0e8;
+}
+
+.sp-ver-toggle.is-open {
+  border-color: rgba(0, 229, 255, 0.45);
+  background: rgba(0, 229, 255, 0.1);
+  color: #00e5ff;
 }
 
 .sp-ver-count {
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .sp-ver-chevron {
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -322,8 +331,10 @@
  * 半透明 background，让用户一眼看出 v1 (主) vs v2/v3 (副)。
  */
 .sp-row--sub {
-  padding-left: 48px;
-  height: 56px;  /* 比 main-row 略矮一点，进一步视觉区分 */
+  /* 版本行现在显示真实歌名/歌手/专辑（两行文案），高度按 main-row 略矮给足，
+   * 缩进 + 圆点 + 半透明背景区分层级。 */
+  padding: 12px 16px 12px 48px;
+  height: 64px;
   background: rgba(255, 255, 255, 0.025);
   border-color: rgba(255, 255, 255, 0.05);
   opacity: 0.85;
@@ -336,7 +347,7 @@
 }
 
 .sp-row--sub .sp-row-title {
-  font-size: 14px;  /* main 是 16px，sub 略小 */
+  font-size: 13px;  /* main 是 14px，sub 略小 */
 }
 
 /* sub-row 左侧的版本指示点（对齐 lib-subrow-dot） */
@@ -348,15 +359,14 @@
   flex-shrink: 0;
 }
 
-/* v2/v3 序号 chip（轻量、紫色调） */
-.sp-ver-num {
-  margin-left: 8px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(91, 43, 255, 0.3);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 11px;
-  font-weight: 600;
+/* 封面 + hover 播放遮罩。
+ * Bug #7：播放三角不再放在行尾（会被当成展开箭头），改成盖在封面上的 ▶。 */
+.sp-cover-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: block;
 }
 
 .sp-cover {
@@ -369,6 +379,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.sp-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(2, 2, 10, 0.62);
+  color: #3dffa2;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.sp-row:hover:not(.sp-row--disabled) .sp-play-overlay {
+  opacity: 1;
 }
 
 .sp-cover-ph {
@@ -418,12 +446,14 @@
 
 .sp-play-icon {
   color: #3dffa2;
-  opacity: 0;
+  /* 只用于展开后的 sub-row（v2/v3…）：常显但压暗，hover 提亮——sub-row 没有
+   * 展开按钮，所以这里放 ▶ 不产生歧义。 */
+  opacity: 0.55;
   flex-shrink: 0;
   transition: opacity 0.15s ease;
 }
 
-.sp-row:hover:not(:disabled) .sp-play-icon { opacity: 1; }
+.sp-row:hover:not(.sp-row--disabled) .sp-play-icon { opacity: 1; }
 
 .sp-no-rights {
   color: rgba(245, 240, 232, 0.3);

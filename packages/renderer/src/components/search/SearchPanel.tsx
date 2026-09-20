@@ -64,8 +64,9 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
   const [searched, setSearched] = useState(false);
   const [lyricsAvail, setLyricsAvail] = useState<Record<string, boolean>>({});
   const [sourceMode, setSourceMode] = useState<SourceMode>('all');
-  // Phase 2 修订：每个 item 独立展开/折叠版本，交互对齐 LikedLibraryModal 的
-  // chevron（▸/▾）。点击 chevron 只展开版本，不触发播放；点击行体才播放。
+  // Phase 2 修订：每个 item 独立展开/折叠版本。行尾（最右侧）只放这个展开按钮，
+  // 点它只展开版本、不触发播放；播放三角挪到封面 hover 遮罩上（点击行体也播放）。
+  // Bug #7 根因：行尾曾经是 ▶（播放），用户把它当"展开箭头"点 → 直接播放。
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -239,7 +240,18 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
     if (!v || !v.bestSource) return;
     const view = items.map((it, idx) => {
       if (idx !== index) return it;
-      return { ...it, sources: v.sources, bestSource: v.bestSource, duration: v.duration };
+      return {
+        ...it,
+        // 版本级元数据（server 从 cluster 代表 track 取）优先，缺失时回退 item 级
+        // ——老缓存 payload / 单平台路径没有这些字段。播放器/队列看到的是所选版本。
+        title: v.title || it.title,
+        artist: v.artist || it.artist,
+        album: v.album || it.album,
+        coverUrl: v.coverUrl || it.coverUrl,
+        sources: v.sources,
+        bestSource: v.bestSource,
+        duration: v.duration,
+      };
     });
     onPlay(view, index);
   };
@@ -376,13 +388,25 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                   }}
                   title={rowTitle}
                 >
-                  {it.coverUrl ? (
-                    <img className="sp-cover" src={it.coverUrl} alt="" />
-                  ) : (
-                    <div className="sp-cover sp-cover-ph">
-                      <span className="sp-cover-note" aria-hidden="true">♪</span>
-                    </div>
-                  )}
+                  {/* Bug #7：播放三角从行尾移到封面（hover 才出现）。
+                   * 之前行尾的 ▶ 是整行最靠右的"箭头"，用户把它当成"展开版本"的
+                   * 下拉箭头去点 → 直接播放。现在行尾（最右侧）只留版本展开按钮。 */}
+                  <span className="sp-cover-wrap">
+                    {it.coverUrl ? (
+                      <img className="sp-cover" src={it.coverUrl} alt="" />
+                    ) : (
+                      <span className="sp-cover sp-cover-ph">
+                        <span className="sp-cover-note" aria-hidden="true">♪</span>
+                      </span>
+                    )}
+                    {mainPlayable && (
+                      <span className="sp-play-overlay" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </span>
+                    )}
+                  </span>
                   <div className="sp-row-meta">
                     <div className="sp-row-title">
                       {clampText(it.title, 40)}
@@ -413,34 +437,40 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                   {lyricsAvail[it.id] && (
                     <span className="sp-lyrics-badge" title="有歌词" aria-label="有歌词">词</span>
                   )}
+                  {!mainPlayable && <span className="sp-no-rights">无版权</span>}
                   {hasVersions && (
                     <button
                       type="button"
-                      className="sp-ver-toggle"
+                      className={`sp-ver-toggle${isExpanded ? ' is-open' : ''}`}
                       aria-label={isExpanded ? '收起版本' : '展开版本'}
                       aria-expanded={isExpanded}
-                      title={`${it.versions.length} 个录音版本`}
+                      title={
+                        isExpanded
+                          ? '收起录音版本'
+                          : `展开 ${it.versions.length} 个录音版本`
+                      }
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleExpanded(it.id);
                       }}
                     >
-                      <span className="sp-ver-count">{it.versions.length}</span>
-                      <span className="sp-ver-chevron">{isExpanded ? '▾' : '▸'}</span>
+                      <span className="sp-ver-count">{it.versions.length} 个版本</span>
+                      <span className="sp-ver-chevron" aria-hidden="true">
+                        {isExpanded ? '▴' : '▾'}
+                      </span>
                     </button>
-                  )}
-                  {mainPlayable ? (
-                    <svg className="sp-play-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  ) : (
-                    <span className="sp-no-rights">无版权</span>
                   )}
                 </div>
                 {isExpanded &&
                   it.versions.slice(1).map((v, vi) => {
                     const versionIdx = vi + 1;
                     const playable = v.bestSource !== null;
+                    // 版本行显示该版本的**真实元数据**（不是 "v2 / 2:35"）：
+                    // 同名同 type 不代表元数据相同（`盲选` vs `盲选 (Live)`、
+                    // 时长 1:20 vs 6:07），用户要靠歌名/歌手/专辑才选得出版本。
+                    const vTitle = v.title || it.title;
+                    const vArtist = v.artist || it.artist;
+                    const vAlbum = v.album || it.album;
                     return (
                       <div
                         key={`${it.id}-v${versionIdx}`}
@@ -454,14 +484,32 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
                             handleRowClick(i, versionIdx);
                           }
                         }}
-                        title={playable ? `播放：${it.title} - ${it.artist}` : '所有平台都无版权'}
+                        title={
+                          playable
+                            ? `播放：${vTitle} - ${vArtist}${
+                                v.duration > 0 ? ` · ${formatDuration(v.duration)}` : ''
+                              }`
+                            : '所有平台都无版权'
+                        }
                       >
                         <span className="sp-sub-row-dot" aria-hidden="true" />
                         <div className="sp-row-meta">
                           <div className="sp-row-title">
-                            <span className="sp-ver-num">v{versionIdx + 1}</span>
+                            {clampText(vTitle, 40)}
+                            {it.versionType && it.versionType !== 'studio' && (
+                              <span
+                                className={`sp-ver-badge sp-ver-badge--${it.versionType}`}
+                                title={`${it.versionType} 版本`}
+                              >
+                                {versionTypeBadge(it.versionType)}
+                              </span>
+                            )}
                           </div>
-                          <div className="sp-row-sub">{formatDuration(v.duration)}</div>
+                          <div className="sp-row-sub">
+                            {clampText(vArtist, 30)}
+                            {vAlbum ? ` · ${clampText(vAlbum, 20)}` : ''}
+                            {v.duration > 0 ? ` · ${formatDuration(v.duration)}` : ''}
+                          </div>
                         </div>
                         <div className="sp-row-sources">
                           {v.sources.map((s, si) => (
