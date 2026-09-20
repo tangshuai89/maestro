@@ -895,11 +895,6 @@
   letter-spacing: 2px;
   color: var(--acid);
 }
-.th-reco-running {
-  font-size: 10px;
-  color: var(--acid);
-  animation: th-dot-blink 1s ease-in-out infinite;
-}
 // 推荐生成中状态指示（对应 Figma RecoLoading 屏的 DEEP.SEEK // RUNNING…）
 .th-reco-status {
   display: inline-flex;
@@ -1174,16 +1169,6 @@
     opacity 0.5s ease,
     transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.th-lyric--prev {
-  animation: th-lyric-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.th-lyric--next {
-  animation: th-lyric-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
-}
-@keyframes th-lyric-up {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 // 当前行：从下方发光滑入
 .th-lyric--current {
   animation: th-lyric-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1241,6 +1226,6 @@
   .th-core-spinner { animation-duration: 0.8s !important; }
   .th-hud-dot { animation-duration: 2s !important; }
   .th-live-dot { animation-duration: 1.4s !important; }
-  .th-lyric--current, .th-lyric--prev, .th-lyric--next { animation-duration: 0.5s !important; }
+  .th-lyric--current { animation-duration: 0.5s !important; }
   .th-orbit-arc, .th-orbit-dot { transition-duration: 0.3s !important; }
 }
