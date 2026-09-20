@@ -17,6 +17,9 @@ const failingSpec = {
 delete failingSpec.driver;
 const fullSpec = [...spec.spec, failingSpec];
 
+// 与真实文件同构：FRAME **不带** description（那是 FRAME 上不存在的属性），
+// 机器可读内容挂在隐藏 TEXT 子节点 `MOTION_SPEC` 上。
+// mock 一旦比真实宽松，就会重演 D1/D2 那种"mock 全绿、真跑全炸"。
 const fixture = {
   document: {
     children: [
@@ -28,9 +31,18 @@ const fixture = {
             id: 'motion-spec-frame-id',
             type: 'FRAME',
             name: 'MOTION SPEC',
-            description: `---
+            children: [
+              {
+                id: 'motion-spec-text-id',
+                type: 'TEXT',
+                name: 'MOTION_SPEC',
+                visible: false,
+                fills: [],
+                characters: `---
 ${JSON.stringify({ MOTION_SPEC: spec.version, spec: fullSpec }, null, 0)}
 ---`,
+              },
+            ],
           },
         ],
       },

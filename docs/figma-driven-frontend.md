@@ -315,6 +315,24 @@ a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md �
   **实测结论（spec §8）**：手上两条 PAT 一条 401（失效）、一条 `/v1/me` 200 但
   `variables/local` 403（缺 `file_variables:read`，属 Enterprise 能力）——
   所以 CI 的实时腿要么换带 scope 的 token，要么改走 MCP 手动刷新。
+
+**D10 增量（2026-09-20）—— MOTION SPEC 机器可读化**：让 AI 读 Figma 时能直接 parse 动效规格，
+而不是只看一张人读的表格。
+
+- **载体纠偏**：原计划写进 `MOTION SPEC` frame 的 **description** —— FRAME 没有这个属性
+  （实测 `'description' in frame === false`，写会抛 `no such property 'description' on FRAME node`，
+  REST 也不返回）。改为 frame 内的**隐藏 TEXT 子节点** `MOTION_SPEC`（node `508:2`，
+  `visible=false` + `fills=[]`），与 D1 的 `AI_CONTRACT` 同一套做法。原文档"方案 A"还用
+  `require('fs')` 读仓库文件 —— use_figma 沙箱没有 fs，那段代码在真实 Figma 里跑不起来。
+- **写入方式**：`scripts/figma-aether-v4-motion-spec-write.js` 改成**生成器** —— 读
+  `specs/motion-spec.json`，用 `JSON.stringify()` 生成内联字面量，打印出可直接粘贴的
+  use_figma code。手动抄 6.3KB JSON 这条路就此封掉。
+- **验证**：写完回读 `charsLen=6295 / djb2=6c55cc64` 与本地预期完全一致（机械校验）；
+  再用 `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit-d10.mjs` 走 REST 复核 **20/20 全绿**
+  （含「Figma ↔ 仓库 spec id 集合一致」）。该审计只需 `file_content:read`，不需要
+  `file_variables`，普通 PAT 就能跑。
+- **顺带修正**：`figma-d10-fixture.js` 原来给 FRAME 塞 `description` —— mock 比真实宽松，
+  正是 D1/D2 那类"mock 全绿、真跑全炸"的翻版，已改成同构的 TEXT 子节点。
 - **顺带修掉一处真漂移**：快照 51 → 52，补上 D1/D2 期间新建的 `Color/semantic/status-error`
   （`#ff3b5c`）。
 - **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：
