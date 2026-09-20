@@ -31,6 +31,10 @@ export interface ArtistAffinity {
   key: string;
   /** 该艺人在库里的曲目数。 */
   songs: number;
+  /** 行为信号带来的加权（带符号，0 = 没有任何信号）。 */
+  signal: number;
+  /** 最终权重 = 曲目数 + 有界信号加权；排序与采样都用它。 */
+  weight: number;
 }
 
 export interface TasteProfile {
@@ -52,6 +56,8 @@ export type TasteProfileCore = Omit<TasteProfile, 'seeds'>;
 export interface TasteProfileOptions {
   /** 库的导入时间戳，参与签名（同一 session 重新导入 → 档案重算）。 */
   importedAt?: number;
+  /** 艺人维度的信号分（`signals.ts` 的 `artistSignalScores`）。 */
+  signalScores?: Map<string, number>;
   anchorCount?: number;
   seedCount?: number;
   exploreRatio?: number;
@@ -71,7 +77,10 @@ export function librarySignature(
  * 艺人亲和度：拆多艺人（`A / B`、`A & B`、`A feat. B`）后逐个计数。
  * 一首里重复出现的同一艺人只算一次；空艺人名丢弃。
  */
-export function artistAffinity(items: UnifiedSearchItem[]): ArtistAffinity[] {
+export function artistAffinity(
+  items: UnifiedSearchItem[],
+  signalScores?: Map<string, number>,
+): ArtistAffinity[] {
   const byKey = new Map<string, ArtistAffinity>();
   for (const it of items) {
     const seen = new Set<string>();
@@ -83,14 +92,24 @@ export function artistAffinity(items: UnifiedSearchItem[]): ArtistAffinity[] {
       seen.add(key);
       const hit = byKey.get(key);
       if (hit) hit.songs += 1;
-      else byKey.set(key, { name, key, songs: 1 });
+      else byKey.set(key, { name, key, songs: 1, signal: 0, weight: 1 });
     }
   }
-  // 曲目数降序；同分按 key 的码点排序保证**稳定**（同一份库 → 同一份主干）。
+  // 行为信号接入：把（带时间衰减的）信号分折进来。**有界**是关键——不让
+  // 单曲循环刷出的 +50 把口味档案彻底带偏：
+  //  - 正分最多 +10（约占一次重听的量级，足够把常听艺人顶到前面）
+  //  - 负分最多把该艺人的"曲目数权重"归零（不变成负数，否则会被当成噪音）
+  for (const a of byKey.values()) {
+    const raw = signalScores?.get(a.key) ?? 0;
+    const bounded = Math.max(-a.songs, Math.min(raw, 10));
+    a.signal = bounded;
+    a.weight = Math.max(0, a.songs + bounded);
+  }
+  // 权重降序；同分按 key 的码点排序保证**稳定**（同一份库 → 同一份主干）。
   // 刻意不用 localeCompare——它随 ICU/locale 变，会让 anchors 在不同机器上漂。
   return [...byKey.values()].sort(
     (a, b) =>
-      b.songs - a.songs || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+      b.weight - a.weight || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
   );
 }
 
@@ -119,7 +138,7 @@ export function pickTasteSeeds(
 
   const rng = opts.rng ?? Math.random;
   const weightByKey = new Map<string, number>();
-  for (const a of affinity) weightByKey.set(a.key, a.songs);
+  for (const a of affinity) weightByKey.set(a.key, Math.max(0.1, a.weight));
   const weightOf = (it: UnifiedSearchItem): number => {
     let w = 1;
     for (const raw of splitArtists(it.artist ?? '')) {
@@ -182,7 +201,7 @@ export function buildProfileCore(
   items: UnifiedSearchItem[],
   opts: TasteProfileOptions = {},
 ): TasteProfileCore {
-  const artists = artistAffinity(items);
+  const artists = artistAffinity(items, opts.signalScores);
   const anchorCount = opts.anchorCount ?? TASTE_ANCHOR_COUNT;
   return {
     size: items.length,

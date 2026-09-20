@@ -58,6 +58,8 @@ export interface CandidatePoolOptions {
   perArtistCandidates?: number;
   /** 单个艺人在池里的总上限（深挖 + 相邻两条路径合计）。 */
   perArtistCap?: number;
+  /** 被行为信号"拉黑"的艺人（normalizeKey 后的 key）——一首都不收。 */
+  bannedArtists?: string[];
   /** 池子上限（token 预算）。 */
   maxPoolSize?: number;
   /** 并发搜索的艺人数（压住对 QQ/网易云的读并发）。 */
@@ -65,13 +67,15 @@ export interface CandidatePoolOptions {
 }
 
 export const DEFAULT_CANDIDATE_LIMITS = {
-  anchorLimit: 4,
+  // 2026-09-20 延迟优化下调：用户实测"推荐要等好久"。候选池只要够 LLM 挑
+  // + 补位即可（count=10 时下游目标才 20 条），多搜一个艺人就多等一段。
+  anchorLimit: 3,
   neighborAnchorLimit: 3,
-  relatedPerAnchor: 3,
+  relatedPerAnchor: 2,
   perArtistCandidates: 3,
   perArtistCap: 2,
-  maxPoolSize: 120,
-  concurrency: 4,
+  maxPoolSize: 60,
+  concurrency: 5,
 } as const;
 
 /** 候选池构建结果（带上来源统计，run 响应里回给前端排查效果）。 */
@@ -86,6 +90,8 @@ export interface CandidatePoolResult {
     duration: number;
     duplicate: number;
     overCap: number;
+    /** 被信号拉黑的艺人的曲目（正常为 0/undefined）。 */
+    bannedArtist?: number;
   };
 }
 
@@ -110,9 +116,11 @@ export async function buildCandidatePool(
     duration: 0,
     duplicate: 0,
     overCap: 0,
+    bannedArtist: 0,
   };
   const seen = new Set<string>();
   const perArtist = new Map<string, number>();
+  const banned = new Set(opts.bannedArtists ?? []);
 
   /** 统一的"能不能进池"判定 + 记账。 */
   const accept = (
@@ -140,6 +148,10 @@ export async function buildCandidatePool(
       return null;
     }
     const artistKey = normalizeKey(c.artist, '');
+    if (banned.has(artistKey)) {
+      dropped.bannedArtist = (dropped.bannedArtist ?? 0) + 1;
+      return null;
+    }
     const used = perArtist.get(artistKey) ?? 0;
     if (used >= limits.perArtistCap) {
       dropped.overCap++;
@@ -150,110 +162,121 @@ export async function buildCandidatePool(
     return c;
   };
 
-  // ── 1. 主干 + 探索艺人：深挖库外曲目 ───────────────────
-  const anchorTargets = opts.anchors.slice(0, limits.anchorLimit);
-  const deepenTargets = [
-    ...anchorTargets.map((a) => ({ artist: a, origin: 'artist' as const })),
-    ...(opts.exploreArtists ?? []).map((a) => ({
-      artist: a,
-      origin: 'artist' as const,
-    })),
-  ];
+  // ── 1. 目标队列 + 单并发池（边查边搜，不再分阶段串等）────────
+  //
+  // 2026-09-20 延迟优化：原实现是「相邻艺人查询 → 主干深挖 → 相邻艺人搜索 →
+  // 电台」四段串行，每段各自等网络，用户实测一次推荐要等十几秒到几十秒。
+  // 现在：主干/探索艺人的搜索**立刻**入队开跑；相邻艺人查询与电台取批同时起飞；
+  // 相邻艺人一查到就往**同一个**并发池里追加任务。段与段之间的等待被抹平。
+  //
+  // 顺序仍然是确定的：`targets` 按"主干/探索 → 相邻艺人"的入队序记录，结果按
+  // 这个序展开，所以去重与单艺人配额谁先占坑不受网络快慢影响（可重放）。
+  const targets: Array<{
+    artist: string;
+    origin: CandidateOrigin;
+    seedArtist?: string;
+  }> = [];
+  const targetItems = new Map<string, UnifiedSearchItem[]>();
+  const inflight: Array<Promise<void>> = [];
+  const searchPool = new TaskPool(limits.concurrency);
 
-  // ── 2. 相邻艺人（只对前几个主干做，控住搜索量）─────────
-  const neighborAnchors = opts.anchors.slice(0, limits.neighborAnchorLimit);
-  const neighborLists = await Promise.all(
-    neighborAnchors.map((a) =>
+  const enqueue = (t: {
+    artist: string;
+    origin: CandidateOrigin;
+    seedArtist?: string;
+  }): void => {
+    targets.push(t);
+    const key = `${targets.length - 1}`;
+    targetItems.set(key, []);
+    inflight.push(
+      searchPool
+        .run(() => deps.searchArtist(t.artist).catch(() => [] as UnifiedSearchItem[]))
+        .then((items) => {
+          targetItems.set(key, items ?? []);
+        }),
+    );
+  };
+
+  // 主干 + 探索艺人：深挖库外曲目（最高价值来源，先入队拿最前面的并发位）
+  for (const a of opts.anchors.slice(0, limits.anchorLimit)) {
+    enqueue({ artist: a, origin: 'artist' });
+  }
+  for (const a of opts.exploreArtists ?? []) {
+    enqueue({ artist: a, origin: 'artist' });
+  }
+
+  // 相邻艺人查询 + 电台取批：与上面的搜索**并行**跑（原来这两步是串行等待）
+  const neighborPromise = Promise.all(
+    opts.anchors.slice(0, limits.neighborAnchorLimit).map((a) =>
       deps
         .findRelatedArtists(a)
         .then((names) => ({ anchor: a, names: names ?? [] }))
         .catch(() => ({ anchor: a, names: [] as string[] })),
     ),
   );
-  const neighborTargets: Array<{ artist: string; seedArtist: string }> = [];
+  const radioPromise = deps.fetchRadio
+    ? deps.fetchRadio().catch(() => [] as RadioCandidate[])
+    : Promise.resolve([] as RadioCandidate[]);
+
+  // 相邻艺人一查到就追加进同一个池（此时主干搜索还在飞）
+  const neighborLists = await neighborPromise;
   const seenNeighbor = new Set<string>();
   for (const { anchor, names } of neighborLists) {
     for (const name of names.slice(0, limits.relatedPerAnchor)) {
       const key = normalizeKey(name, '');
       if (!key || seenNeighbor.has(key)) continue;
       seenNeighbor.add(key);
-      neighborTargets.push({ artist: name, seedArtist: anchor });
+      enqueue({ artist: name, origin: 'related-artist', seedArtist: anchor });
     }
   }
 
-  /** 分波并发跑艺人搜索（保序：每波结果按传入顺序展开）。 */
-  const searchAll = async (
-    targets: Array<{ artist: string; origin: CandidateOrigin; seedArtist?: string }>,
-  ): Promise<RecoCandidate[]> => {
-    const out: RecoCandidate[] = [];
-    for (let i = 0; i < targets.length; i += limits.concurrency) {
-      const wave = targets.slice(i, i + limits.concurrency);
-      const results = await Promise.all(
-        wave.map((t) =>
-          deps
-            .searchArtist(t.artist)
-            .then((items) => ({ t, items }))
-            .catch(() => ({ t, items: [] as UnifiedSearchItem[] })),
-        ),
-      );
-      for (const { t, items } of results) {
-        let taken = 0;
-        for (const it of items) {
-          if (taken >= limits.perArtistCandidates) break;
-          // 只有"填源已确认可播"的候选才值得占坑位。
-          if (!it.bestSource) continue;
-          // 搜索是按艺人名发的，但结果里会混进翻唱/同名艺人的歌——候选必须
-          // 真的属于这位艺人（否则等于往池子里灌噪声）。
-          if (!artistMatches(it.artist, t.artist)) continue;
-          const accepted = accept({
-            title: it.title,
-            artist: it.artist,
-            album: it.album ?? '',
-            coverUrl: it.coverUrl ?? '',
-            duration: it.duration ?? 0,
-            origin: t.origin,
-            seedArtist: t.seedArtist ?? t.artist,
-          });
-          if (accepted) {
-            taken++;
-            out.push(accepted);
-          }
-        }
+  const [radioRaw] = await Promise.all([radioPromise, ...inflight]);
+
+  // ── 2. 按入队顺序收下候选（确定性与网络快慢无关）─────────
+  const deepen: RecoCandidate[] = [];
+  const neighbors: RecoCandidate[] = [];
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    const items = targetItems.get(`${i}`) ?? [];
+    const bucket = t.origin === 'related-artist' ? neighbors : deepen;
+    let taken = 0;
+    for (const it of items) {
+      if (taken >= limits.perArtistCandidates) break;
+      // 只有"填源已确认可播"的候选才值得占坑位。
+      if (!it.bestSource) continue;
+      // 搜索是按艺人名发的，但结果里会混进翻唱/同名艺人的歌——候选必须
+      // 真的属于这位艺人（否则等于往池子里灌噪声）。
+      if (!artistMatches(it.artist, t.artist)) continue;
+      const accepted = accept({
+        title: it.title,
+        artist: it.artist,
+        album: it.album ?? '',
+        coverUrl: it.coverUrl ?? '',
+        duration: it.duration ?? 0,
+        origin: t.origin,
+        seedArtist: t.seedArtist ?? t.artist,
+      });
+      if (accepted) {
+        taken++;
+        bucket.push(accepted);
       }
     }
-    return out;
-  };
-
-  const deepen = await searchAll(deepenTargets);
-  const neighbors = await searchAll(
-    neighborTargets.map((n) => ({
-      artist: n.artist,
-      origin: 'related-artist' as const,
-      seedArtist: n.seedArtist,
-    })),
-  );
+  }
 
   // ── 3. 平台 FM / 榜单 ──────────────────────────────────
-  let radio: RecoCandidate[] = [];
-  if (deps.fetchRadio) {
-    const raw = await deps
-      .fetchRadio()
-      .then((r) => r ?? [])
-      .catch(() => [] as RadioCandidate[]);
-    radio = raw
-      .map((r) =>
-        accept({
-          title: r.title,
-          artist: r.artist,
-          album: r.album ?? '',
-          coverUrl: r.coverUrl ?? '',
-          duration: r.duration ?? 0,
-          origin: 'radio' as const,
-          seedArtist: r.provider,
-        }),
-      )
-      .filter((c): c is RecoCandidate => Boolean(c));
-  }
+  const radio: RecoCandidate[] = (radioRaw ?? [])
+    .map((r) =>
+      accept({
+        title: r.title,
+        artist: r.artist,
+        album: r.album ?? '',
+        coverUrl: r.coverUrl ?? '',
+        duration: r.duration ?? 0,
+        origin: 'radio' as const,
+        seedArtist: r.provider,
+      }),
+    )
+    .filter((c): c is RecoCandidate => Boolean(c));
 
   // ── 4. 交错合并并截断 ──────────────────────────────────
   const candidates = interleave([deepen, neighbors, radio]).slice(
@@ -291,4 +314,39 @@ export function artistMatches(
   const b = normalizeKey(targetArtist ?? '', '');
   if (!a || !b) return false;
   return a.includes(b) || b.includes(a);
+}
+
+/**
+ * 并发受限的任务池，**边加边跑**：`run()` 立刻排队，池子有余量就开跑，否则等
+ * 前一个结束。用于"相邻艺人查询陆续返回、每返回一批就立刻追加搜索任务"的场景
+ * ——没有这个池子就只能先等全部查询完，再开下一轮搜索（两段串行）。
+ *
+ * 任务契约：**不应 reject**（调用方自己 catch 成 fail-soft 值）；真 reject 了
+ * 这里也兜成 undefined，绝不把异常漏给候选池装配流程。
+ */
+export class TaskPool {
+  private active = 0;
+  private readonly queue: Array<() => void> = [];
+
+  constructor(private readonly concurrency: number) {}
+
+  run<T>(task: () => Promise<T>): Promise<T | undefined> {
+    return new Promise<T | undefined>((resolve) => {
+      const start = () => {
+        this.active++;
+        task()
+          .then(
+            (value) => resolve(value),
+            () => resolve(undefined),
+          )
+          .finally(() => {
+            this.active--;
+            const next = this.queue.shift();
+            if (next) next();
+          });
+      };
+      if (this.active < Math.max(1, this.concurrency)) start();
+      else this.queue.push(start);
+    });
+  }
 }

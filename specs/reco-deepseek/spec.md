@@ -138,8 +138,52 @@ Response: { ok: true }
 - [x] `POST /api/reco/run` 响应新增 `mode: 'select' | 'generate'` + `candidateCount`
   （调试与效果对比用，向后兼容的可选字段）
 
-**不在本批**（下一批再来）：播放/跳过行为信号采集（P0-b，要动 `usePlayer` 与数据面）、
-负反馈闭环、离线评测基座（留一法 recall@10）、候选池缓存与预热。
+## 推荐质量调优（v2.1，2026-09-20）— 延迟包 + 行为信号
+
+**触发**：用户实测 v2「慢一些，要好久」。诊断出三段串行 + 无输出上限：
+候选池四段串行（相邻艺人查询 → 深挖 → 相邻搜索 → 电台），最坏 36s；LLM 没设
+`max_tokens` 且 prompt 里塞了最多 120 行候选；填源再叠 4 波搜索。
+
+### 延迟（L1–L6）
+
+- [x] **L1 候选池阶段并发化**：主干/探索搜索立刻入队 → 相邻艺人查询与电台取批
+      同时起飞 → 相邻艺人一查到就追加进**同一个** `TaskPool`（边查边搜），
+      删掉三段串行屏障；结果仍按入队序展开，**与网络快慢无关**（reco.test #37）
+- [x] **L2 LLM 输出封顶 + prompt 瘦身**：挑选路径带 `max_tokens=900`（生成路径
+      1500）；prompt 只列前 40 条候选（池子仍全量供补位），口味采样 60 → 40 行
+      （reco.test #39）
+- [x] **L3 配额下调**：`anchorLimit 4→3`、`relatedPerAnchor 3→2`、候选搜索
+      `pageSize 20→10`、电台超时 `8s→4s`、每平台电台 8→6 首
+- [x] **L4 候选池缓存**：按 `(session, 库规模, 主干)` 缓存 10 分钟；exclude 变化
+      就地过滤，够用就不重建 → 连点/续播第二次几乎瞬回（reco.test #38）。
+      key **不含信号指纹**——否则每播一首歌就失效，边听边点推荐时缓存永远打不中
+- [x] **L5 分阶段耗时可观测**：日志一行给出 `池/LLM/填源/合计` 毫秒与候选数；
+      `POST /reco/run` 响应新增 `timings.{poolMs,llmMs,fillMs,totalMs,cachedPool}`
+      （reco.test #38）
+- [x] **L6 加载页文案**：RecoLoading 按**真实耗时**推 STEPS（不再 2.4s 循环回第一句），
+      超过 4s 显示已等待秒数
+
+### 行为信号与负反馈（P0-b）
+
+- [x] **`reco/signals.ts`**：信号类型 `play|complete|skip|like|dislike|seed`，
+      权重（跳过 -2 / 踩 -4 / 完播 +2.5 / 红心 +3）、21 天半衰期、
+      30s 同曲同类型防抖、500 条上限（reco.test #41）
+- [x] **`POST /api/reco/signal`**：单条或 `{signals:[...]}` 批量；脏数据丢弃、
+      永远 2xx（上报失败不能影响播放）（reco.controller.e2e #9–11）
+- [x] **前端上报**：`usePlayer` 在开始播放 / `ended` / 早切（<30% 且时长≥60s）/
+      红心 / 踩 五处上报；同一首只报一次 play（WPS 重载 / 音质切换不重复）
+- [x] **信号进口味档案**：`artistSignalScores` 折进 `ArtistAffinity.weight`
+      （**有界**：正分最多 +10，负分最多把权重压到 0），主干按权重排序
+      （reco.test #42）
+- [x] **负样本闭环**：跳过/踩过的歌当"库内已有"排除（候选池 + prompt 避让，
+      reco.test #43）；信号分 ≤ -6 的艺人**整位拉黑**不再进池（reco.test #44）
+
+### 以歌为种子（"像这首一样"）
+
+- [x] `POST /reco/run` 支持 `seed: { title, artist }`：候选只围绕该艺人 + 它的
+      相邻艺人（不撒用户主干、不做探索轮换），prompt 追加"更多像这首"的要求，
+      并把这次点击记成 `seed` 强正信号（reco.test #45）
+- [x] 前端 TheaterView 推荐块下方新增「像《歌名》一样」胶囊按钮（播放中有歌时出现）
 
 ## 不做什么
 

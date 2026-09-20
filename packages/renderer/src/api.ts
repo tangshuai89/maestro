@@ -726,6 +726,8 @@ export interface RecoRequest {
    * already in the reco queue. Server merges these into its dedup set.
    */
   exclude?: Array<{ title: string; artist: string }>;
+  /** "放点像这首的"：以某首歌为种子开推荐。 */
+  seed?: { title: string; artist: string };
 }
 
 export interface RecoRunResult {
@@ -755,6 +757,38 @@ export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
       body: JSON.stringify(req),
     }),
   );
+}
+
+/** 行为信号类型（与服务端 `reco/signals.ts` 对齐）。 */
+export type RecoSignalType =
+  | 'play'
+  | 'complete'
+  | 'skip'
+  | 'like'
+  | 'dislike'
+  | 'seed';
+
+/**
+ * 上报一次播放行为信号（播放/完播/跳过/红心/踩）。
+ *
+ * **fire-and-forget**：推荐质量依赖这些信号，但播放体验绝不依赖上报是否成功
+ * ——失败静默吞掉，不 setError、不阻塞切歌。
+ */
+export function reportRecoSignal(signal: {
+  type: RecoSignalType;
+  title: string;
+  artist: string;
+  progress?: number;
+}): void {
+  if (!signal.title || !signal.artist) return;
+  void fetchWithToken(`${API_BASE}/reco/signal`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(signal),
+  }).catch(() => {
+    // 静默：上报失败不该让用户看到任何东西。
+  });
 }
 
 export async function saveRecoKey(apiKey: string): Promise<{ ok: true; tail: string }> {

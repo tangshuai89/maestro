@@ -203,6 +203,13 @@
   color: rgba(245, 240, 232, 0.6);
 }
 
+// 已等待秒数——超过 4s 才出现，让"到底卡在哪了"有个明确的读数。
+.rl-step-elapsed {
+  font-family: 'Inter', monospace;
+  font-size: 11px;
+  color: rgba(245, 240, 232, 0.38);
+}
+
 // ── 底部 Tag/Stat（y=640） ──────────────────────────────────────
 
 .rl-stats {

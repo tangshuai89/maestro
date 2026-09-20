@@ -28,3 +28,15 @@
       白名单）+ 候选池不足/解析失败回退自由生成 + 同艺人 ≤2（reco.test #31/#32/#33）
 - [x] 20. run 响应加 `mode` / `candidateCount`；typecheck + lint 全绿，全量测试
       除 `music.controller.e2e` #3（沙箱无 DNS，QQ 搜索走真网络）外全绿
+- [x] 21. 延迟包 L1：候选池阶段并发化（TaskPool 边查边搜）+ 顺序确定性测试
+- [x] 22. 延迟包 L2/L3：LLM `max_tokens` + prompt 候选/采样行数上限 + 配额下调
+- [x] 23. 延迟包 L4/L5：候选池缓存（10min + exclude 就地过滤）+ 分阶段 timings
+      （日志 + run 响应）
+- [x] 24. 延迟包 L6：RecoLoading 按真实耗时推阶段 + 已等待秒数
+- [x] 25. `reco/signals.ts`：信号权重/衰减/防抖/负样本/拉黑 + 单测
+- [x] 26. `POST /api/reco/signal`（单条 + 批量，脏数据 2xx）+ controller e2e #9–11
+- [x] 27. 前端上报：usePlayer 播放/完播/早切/红心/踩 五处 + api.reportRecoSignal
+      （fire-and-forget）
+- [x] 28. 信号折进口味档案（有界加权）与负反馈闭环（负样本排除 + 艺人拉黑）
+- [x] 29. 种子模式：run(seed) 围绕种子艺人 + prompt 点明 + seed 信号 +
+      TheaterView「像《歌名》一样」入口

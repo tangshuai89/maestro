@@ -46,9 +46,9 @@ const UNIFIED_SEARCH_TIMEOUT_MS = 5_000;
  *  候选池是"锦上添花"来源，慢一点就少一个来源，不值得拖住整次推荐。 */
 const RECO_NEIGHBOR_TIMEOUT_MS = 3_000;
 
-/** reco 候选池：平台 FM / 榜单取批的单平台预算——8s。私人 FM 偶发慢，
- *  给宽一点；超时即视为该来源缺席。 */
-const RECO_RADIO_TIMEOUT_MS = 8_000;
+/** reco 候选池：平台 FM / 榜单取批的单平台预算——4s（2026-09-20 从 8s 收紧：
+ *  用户实测推荐太慢，而电台只是"外扩"来源之一，缺席也不影响主体候选）。 */
+const RECO_RADIO_TIMEOUT_MS = 4_000;
 
 /** 「我的喜欢」导入的单平台预算——30s。覆盖 Spotify 分页拉 1000 首
  * （limit=50，20 页 × ~1s）和 NetEase 三步拉 1k+ 首；超时就视为该平台

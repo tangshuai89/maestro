@@ -15,6 +15,7 @@ import {
   dislikeMerged,
   findEquivalentSource,
   getApiOrigin,
+  reportRecoSignal,
 } from '../api';
 import type {
   Track,
@@ -154,6 +155,21 @@ export function usePlayer(
   // On source switch with a track playing, skip one provider-change auto-load
   // so the current song keeps playing until it ends / the user skips.
   const skipAutoLoadRef = useRef(false);
+  // 行为信号去重：同一首歌（provider:id）只在"开始播放"时上报一次 play，
+  // 避免 WPS 重载 / 音质切换 等重放路径把同一首重复上报。
+  const signaledTrackRef = useRef<string | null>(null);
+
+  // ── 行为信号：开始播放 ──────────────────────────────────
+  // 推荐质量真正吃的是"最近在听什么"，而红心库只能说明"曾经喜欢"。这里把
+  // 播放行为上报给服务端（只落本机 .storage，不上传），供口味档案加权 +
+  // 负反馈闭环使用。同一切歌多次重放（WPS 重载 / 音质切换）只记一次。
+  useEffect(() => {
+    if (!track?.id || !track.title || !track.artist) return;
+    const key = `${track.provider}:${track.id}`;
+    if (signaledTrackRef.current === key) return;
+    signaledTrackRef.current = key;
+    reportRecoSignal({ type: 'play', title: track.title, artist: track.artist });
+  }, [track?.id, track?.provider, track?.title, track?.artist]);
   // For quality switches: jump back to the original position after reload.
   const pendingSeekRef = useRef<number | null>(null);
   // WPS: 最近一次通过 WPS play() 送出的 spotify track id。用来区分
@@ -873,6 +889,11 @@ export function usePlayer(
     };
     const onEnded = () => {
       audio.dataset.wantPlay = '0';
+      // 自然播完 = 最强的正信号（比"切歌"可信得多）。
+      const t = trackRef.current;
+      if (t?.title && t.artist) {
+        reportRecoSignal({ type: 'complete', title: t.title, artist: t.artist });
+      }
       loadNextTrack();
     };
     const onError = () => {
@@ -1152,7 +1173,30 @@ export function usePlayer(
     setPlaying((p) => !p);
   };
 
-  const handleSkip = () => loadNextTrack();
+  /**
+   * 手动切歌。听得很浅就切 = 负信号（推荐里最有用的一条），但**听完大半再切
+   * 属于正常换歌**，不算负反馈——否则用户正常切歌也会被当成"讨厌这首歌"。
+   */
+  const handleSkip = () => {
+    const audio = audioRef.current;
+    const t = trackRef.current;
+    if (audio && t?.title && t.artist) {
+      const dur =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : t.duration;
+      const pct = dur > 0 ? Math.round((audio.currentTime / dur) * 100) : 0;
+      if (dur >= 60 && pct < 30) {
+        reportRecoSignal({
+          type: 'skip',
+          title: t.title,
+          artist: t.artist,
+          progress: pct,
+        });
+      }
+    }
+    loadNextTrack();
+  };
 
   /** Go back one track within the search queue (looping). Radio has no history,
    *  so prev is a no-op there. */
@@ -1210,6 +1254,13 @@ export function usePlayer(
         }
         setFanOutCount(next ? result.fannedOutTo.length : 0);
         setTrack((prev) => (prev ? { ...prev, liked: next } : prev));
+        if (next) {
+          reportRecoSignal({
+            type: 'like',
+            title: current.title,
+            artist: current.artist,
+          });
+        }
       } catch (e) {
         setError(`心动作业失败：${(e as Error).message}`);
       }
@@ -1236,6 +1287,13 @@ export function usePlayer(
       }
       setTrack((prev) => (prev ? { ...prev, liked: result.liked } : prev));
       setFanOutCount(0);
+      if (result.liked) {
+        reportRecoSignal({
+          type: 'like',
+          title: track.title,
+          artist: track.artist,
+        });
+      }
     }
   };
 
@@ -1269,6 +1327,11 @@ export function usePlayer(
         }
         setFanOutCount(0);
         setTrack((prev) => (prev ? { ...prev, liked: false } : prev));
+        reportRecoSignal({
+          type: 'dislike',
+          title: current.title,
+          artist: current.artist,
+        });
       } catch {
         // 踩失败不阻塞切歌，静默。
       }
@@ -1287,6 +1350,11 @@ export function usePlayer(
     ) {
       return;
     }
+    reportRecoSignal({
+      type: 'dislike',
+      title: track.title,
+      artist: track.artist,
+    });
     loadNextTrack();
   };
 

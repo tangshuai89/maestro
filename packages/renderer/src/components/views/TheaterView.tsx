@@ -57,6 +57,8 @@ export interface TheaterViewProps {
   onOpenLiked: () => void;
   onSwitchProvider: () => void;
   onConfigureReco?: () => void;
+  /** "放点像当前这首的"——以正在播放的歌为种子开推荐。 */
+  onRecoSeed?: () => void;
 }
 
 // ── helpers ──────────────────────────────────────────────────
@@ -167,7 +169,7 @@ export default function TheaterView(props: TheaterViewProps) {
     lyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
     onPlayPause, onSkip, onPrev, onSeek, onLike, onDislike,
-    onSwitchProvider, onConfigureReco,
+    onSwitchProvider, onConfigureReco, onRecoSeed,
   } = props;
 
   // ── 1440×900 设计稿等比缩放（Electron 窗口任意拖拽） ──
@@ -530,6 +532,18 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
           {recoConfigured && recoMatchRate > 0 && (
             <div className="th-reco-foot">AI 评估：{recoMatchRate}% MATCH</div>
+          )}
+          {/* 以当前歌为种子——主流播放器最常用的入口（"放点像这首的"）。 */}
+          {track && onRecoSeed && !recoRunning && (
+            <button
+              type="button"
+              className="th-reco-seed"
+              onClick={onRecoSeed}
+              title={`以《${track.title}》为种子推荐`}
+            >
+              <span aria-hidden="true">↺</span>
+              <span>像《{clampText(track.title, 12)}》一样</span>
+            </button>
           )}
         </div>
         )}

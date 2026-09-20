@@ -43,7 +43,11 @@ export function useReco(
       .catch(() => setRecoStatus({ configured: false, librarySize: 0 }));
   }, [recoStatusVersion]);
 
-  const handleReco = useCallback(async () => {
+  /**
+   * 跑一次推荐。`seed` 非空时以某首歌为种子（"放点像这首的"）——候选项会围绕
+   * 它的艺人展开，服务端还会把这次点击记成一条强正信号（seed）。
+   */
+  const runRecoFlow = useCallback(async (seed?: { title: string; artist: string }) => {
     setError(null);
     // Re-fetch status (guard against stale).
     let status = recoStatus;
@@ -80,7 +84,7 @@ export function useReco(
         status = { ...status, librarySize: lib.items.length };
         setRecoStatus(status);
       }
-      const result = await runReco({ count: 10 });
+      const result = await runReco({ count: 10, ...(seed ? { seed } : {}) });
       if (result.items.length === 0) {
         setError('推荐没拿到结果，换个心情/语言试试？');
         return;
@@ -96,6 +100,8 @@ export function useReco(
           // Cap the exclude list so the prompt/request stays bounded on long
           // listening sessions; the most recent picks matter most.
           exclude: recommended.slice(-100),
+          // 种子模式续播时继续带着种子，保持"更多这种"的方向。
+          ...(seed ? { seed } : {}),
         });
         for (const it of next.items) {
           recommended.push({ title: it.title, artist: it.artist });
@@ -127,6 +133,16 @@ export function useReco(
     }
   }, [recoStatus, playSearch, setError]);
 
+  const handleReco = useCallback(() => runRecoFlow(), [runRecoFlow]);
+
+  const handleRecoSeed = useCallback(
+    (title?: string, artist?: string) => {
+      if (!title || !artist) return;
+      void runRecoFlow({ title, artist });
+    },
+    [runRecoFlow],
+  );
+
   const handleSaveRecoKey = useCallback(
     async (key: string) => {
       if (!key || key.length < 8) {
@@ -154,6 +170,7 @@ export function useReco(
     recoKeyOpen,
     setRecoKeyOpen,
     handleReco,
+    handleRecoSeed,
     handleSaveRecoKey,
   };
 }

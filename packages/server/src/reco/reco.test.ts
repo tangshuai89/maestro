@@ -906,7 +906,392 @@ void (async () => {
     }
   }
 
-  console.log('\n🎉 全部 36 个测试通过');
+  // ── 37. 候选池：结果顺序与网络快慢无关（阶段并发化后仍确定）──
+  {
+    const pool = await buildCandidatePool(
+      {
+        searchArtist: async (artist: string) => {
+          if (artist === '慢') await new Promise((r) => setTimeout(r, 40));
+          return [uItem(`i-${artist}`, `${artist}的歌`, artist)];
+        },
+        findRelatedArtists: async (artist: string) =>
+          artist === '慢' ? ['邻'] : [],
+      },
+      {
+        anchors: ['慢', '快'],
+        library: [],
+        neighborAnchorLimit: 1,
+        relatedPerAnchor: 1,
+      },
+    );
+    const titles = pool.candidates.map((c: any) => c.title);
+    const artistOrder = pool.candidates
+      .filter((c: any) => c.origin === 'artist')
+      .map((c: any) => c.title);
+    assert.deepStrictEqual(
+      artistOrder,
+      ['慢的歌', '快的歌'],
+      '主干候选按 anchors 顺序展开（最慢的先入队也排最前），网络快慢不影响顺序',
+    );
+    assert.ok(titles.includes('邻的歌'), '相邻艺人的任务被并行追加进同一个池');
+    console.log('✅ 37. 候选池: 并发执行下结果顺序仍确定');
+  }
+
+  // ── 38/40. 候选池缓存复用 + timings ─────────────────────
+  {
+    const libItems = [uItem('l1', '库里的歌', '甲')];
+    let artistSearches = 0;
+    const music = {
+      getLibrary: () => ({ items: libItems, sources: [], importedAt: 42 }),
+      searchUnified: async (_s: any, q: string) => {
+        if (q === '甲') {
+          artistSearches++;
+          return {
+            items: [
+              uItem('c1', '甲的新歌', '甲'),
+              uItem('c2', '甲的另一首', '甲'),
+              uItem('c3', '甲的第三首', '甲'),
+            ],
+          };
+        }
+        const title = q.split(' ')[0];
+        return {
+          items: [uItem(`f-${title}`, title, q.split(' ').slice(1).join(' '))],
+        };
+      },
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    const realFetch = global.fetch;
+    const bodies: any[] = [];
+    global.fetch = (async (_url: string, init: any) => {
+      bodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ picks: [{ id: 0, reason: 'x' }] }),
+              },
+            },
+          ],
+        }),
+      };
+    }) as unknown as typeof fetch;
+    const realKey = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
+    try {
+      const svcRun = new RecoService(
+        fakeConfig,
+        fakeStorage,
+        fakeSessionService,
+        music as any,
+      );
+      const first = await svcRun.run({ id: 'sess-cache' } as any, { count: 2 });
+      const searchesAfterFirst = artistSearches;
+      assert.strictEqual(first.timings.cachedPool, false, '首次要现建池');
+      assert.ok(
+        searchesAfterFirst > 0,
+        '首次 run 应发生艺人搜索（候选池构建）',
+      );
+      assert.ok(
+        bodies[0].max_tokens === 900,
+        `挑选调用应带 max_tokens=900（实际 ${bodies[0].max_tokens}）`,
+      );
+
+      const second = await svcRun.run({ id: 'sess-cache' } as any, { count: 2 });
+      assert.strictEqual(second.timings.cachedPool, true, '第二次应命中池缓存');
+      assert.strictEqual(
+        artistSearches,
+        searchesAfterFirst,
+        '命中缓存不应再发艺人搜索',
+      );
+      assert.ok(
+        typeof second.timings.totalMs === 'number' &&
+          typeof second.timings.llmMs === 'number' &&
+          typeof second.timings.fillMs === 'number',
+        '响应应带分阶段耗时',
+      );
+
+      // 播放行为（信号）不该让池缓存失效——否则用户边听边点推荐时永远命中不了。
+      svcRun.recordSignals({ id: 'sess-cache' } as any, [
+        { type: 'play', title: '甲的新歌', artist: '甲' },
+      ]);
+      const third = await svcRun.run({ id: 'sess-cache' } as any, { count: 2 });
+      assert.strictEqual(
+        third.timings.cachedPool,
+        true,
+        '新增 play 信号后主干未变 → 池缓存仍应命中',
+      );
+      assert.strictEqual(
+        artistSearches,
+        searchesAfterFirst,
+        '信号变动不该触发重新搜艺人',
+      );
+      console.log(
+        '✅ 38. 候选池缓存: 复用池（含信号变动后仍命中）+ timings + max_tokens',
+      );
+    } finally {
+      global.fetch = realFetch;
+      if (realKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = realKey;
+    }
+  }
+
+  // ── 39. 挑选 prompt 的候选行数上限（输入 token 受控）──────
+  {
+    const many = Array.from({ length: 50 }, (_v, i) => ({
+      title: `候选${i}`,
+      artist: `歌手${i}`,
+      album: '',
+      coverUrl: '',
+      duration: 200,
+      origin: 'artist' as const,
+    }));
+    const profile = {
+      size: 1,
+      signature: 's',
+      artists: [],
+      anchors: [],
+      seeds: [],
+    };
+    const messages = svc['buildSelectPrompt'](profile, many, { count: 5 });
+    const listed = (messages[1].content.match(/^\[\d+\] /gm) ?? []).length;
+    assert.strictEqual(listed, 40, 'prompt 只列前 40 条候选（其余留给补位）');
+    console.log('✅ 39. buildSelectPrompt: 候选行数上限 40');
+  }
+
+  // ── 41. 行为信号：清洗 / 防抖 / 衰减打分 / 负样本 ─────────
+  {
+    const {
+      normalizeSignal,
+      appendSignals,
+      artistSignalScores,
+      negativeTracks,
+      bannedArtistKeys,
+    } = require('./signals');
+    assert.strictEqual(normalizeSignal({ type: 'nope', title: 'a', artist: 'b' }), null);
+    assert.strictEqual(normalizeSignal({ type: 'play', title: '', artist: 'b' }), null);
+    const ok = normalizeSignal({ type: 'skip', title: ' 歌 ', artist: ' 手 ', progress: 150 });
+    assert.strictEqual(ok.title, '歌');
+    assert.strictEqual(ok.progress, 100, 'progress 应被 clamp 到 0-100');
+
+    const now = Date.now();
+    const t0 = now;
+    let history = appendSignals(
+      [],
+      [{ title: 'A', artist: 'X', type: 'play', at: t0 }],
+    );
+    // 同一首歌同一类型 30s 内重复上报 → 只记一次
+    history = appendSignals(history, [
+      { title: 'A', artist: 'X', type: 'play', at: t0 + 1_000 },
+    ]);
+    assert.strictEqual(history.length, 1, '30s 内同曲同类型只记一次');
+    history = appendSignals(history, [
+      { title: 'A', artist: 'X', type: 'play', at: t0 + 60_000 },
+    ]);
+    assert.strictEqual(history.length, 2, '超过窗口视为新信号');
+
+    const scores = artistSignalScores(
+      [
+        { title: 'A', artist: 'X', type: 'skip', at: now },
+        { title: 'B', artist: 'X', type: 'skip', at: now },
+        { title: 'C', artist: 'X', type: 'skip', at: now },
+        { title: 'D', artist: 'Y', type: 'like', at: now },
+      ],
+      now,
+    );
+    // 注意：map 的 key 走 normalizeKey（会小写化），别用原始写法查。
+    const keyX = require('@maestro/common').normalizeKey('X', '');
+    const keyY = require('@maestro/common').normalizeKey('Y', '');
+    assert.ok(scores.get(keyX)! < 0, '连续跳过 → 该艺人负分');
+    assert.ok(scores.get(keyY)! > 0, '红心 → 正分');
+    assert.ok(
+      bannedArtistKeys(scores).has(keyX),
+      '被反复跳过的艺人应进拉黑名单',
+    );
+    assert.deepStrictEqual(
+      negativeTracks([
+        { title: 'A', artist: 'X', type: 'skip', at: now },
+        { title: 'B', artist: 'Y', type: 'play', at: now },
+      ]).map((n: any) => n.title),
+      ['A'],
+      '只有跳过/踩的歌进负样本',
+    );
+    console.log('✅ 41. signals: 清洗/防抖/衰减打分/拉黑/负样本');
+  }
+
+  // ── 42. 信号折进口味档案：跳过降权、红心提权 ──────────────
+  {
+    const lib = [
+      uItem('1', 'a', '甲'),
+      uItem('2', 'b', '甲'),
+      uItem('3', 'c', '甲'),
+      uItem('4', 'd', '乙'),
+      uItem('5', 'e', '乙'),
+    ];
+    const neutral = buildProfileCore(lib, { importedAt: 1 });
+    assert.deepStrictEqual(neutral.anchors[0], '甲', '无信号时按曲目数排');
+
+    const now = Date.now();
+    const scores = new Map([
+      ['甲', -3],
+      ['乙', 4],
+    ]);
+    const weighted = buildProfileCore(lib, { importedAt: 1, signalScores: scores });
+    assert.strictEqual(
+      weighted.anchors[0],
+      '乙',
+      '被跳过的艺人降权、被红心的艺人升权后，主干应换人',
+    );
+    const jia = weighted.artists.find((a: any) => a.name === '甲');
+    assert.strictEqual(jia.signal, -3, '信号分应记录在档案里（可解释）');
+    assert.strictEqual(jia.weight, 0, '负分最多把权重压到 0，不出现负数');
+    console.log('✅ 42. 口味档案: 行为信号加权（跳过降权 / 红心提权）');
+  }
+
+  // ── 43. 负样本进候选池过滤 ──────────────────────────────
+  {
+    const pool = await buildCandidatePool(
+      {
+        searchArtist: async () => [
+          uItem('bad', '被跳过的歌', '甲'),
+          uItem('good', '没听过的歌', '甲'),
+        ],
+        findRelatedArtists: async () => [],
+      },
+      {
+        anchors: ['甲'],
+        library: [],
+        neighborAnchorLimit: 0,
+        exclude: [{ title: '被跳过的歌', artist: '甲' }],
+      },
+    );
+    assert.deepStrictEqual(
+      pool.candidates.map((c: any) => c.title),
+      ['没听过的歌'],
+      '跳过过的歌和库内歌一样被挡在池外',
+    );
+    console.log('✅ 43. 负反馈: 跳过的歌不再进候选池');
+  }
+
+  // ── 44. 拉黑艺人（信号分过低）不进候选池 ─────────────────
+  {
+    const pool = await buildCandidatePool(
+      {
+        searchArtist: async (artist: string) => [
+          uItem(`i-${artist}`, `${artist}的歌`, artist),
+        ],
+        findRelatedArtists: async () => [],
+      },
+      {
+        anchors: ['好人', '坏人'],
+        library: [],
+        neighborAnchorLimit: 0,
+        bannedArtists: [require('@maestro/common').normalizeKey('坏人', '')],
+      },
+    );
+    assert.deepStrictEqual(
+      pool.candidates.map((c: any) => c.artist),
+      ['好人'],
+      '拉黑艺人的曲目一首都不收',
+    );
+    assert.strictEqual(pool.dropped.bannedArtist, 1);
+    console.log('✅ 44. 负反馈: 拉黑艺人不进候选池');
+  }
+
+  // ── 45. 种子模式：候选围绕种子艺人 + prompt 点明 + 记 seed 信号 ──
+  {
+    const libItems = [uItem('l1', '库里的歌', '甲')];
+    const seenArtists: string[] = [];
+    const music = {
+      getLibrary: () => ({ items: libItems, sources: [], importedAt: 3 }),
+      searchUnified: async (_s: any, q: string) => {
+        if (q === '种子歌手') {
+          seenArtists.push(q);
+          return {
+            items: [
+              uItem('s1', '种子的另一首', '种子歌手'),
+              uItem('s2', '种子的第三首', '种子歌手'),
+            ],
+          };
+        }
+        const title = q.split(' ')[0];
+        return {
+          items: [uItem(`f-${title}`, title, q.split(' ').slice(1).join(' '))],
+        };
+      },
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    const store = new Map<string, unknown>();
+    const storeStub = {
+      get: (k: string) => store.get(k),
+      set: (k: string, v: unknown) => {
+        store.set(k, v);
+      },
+    };
+    let prompt = '';
+    const realFetch = global.fetch;
+    global.fetch = (async (_url: string, init: any) => {
+      prompt = JSON.parse(init.body).messages[1].content;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ picks: [{ id: 0, reason: '同款' }] }),
+              },
+            },
+          ],
+        }),
+      };
+    }) as unknown as typeof fetch;
+    const realKey = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
+    try {
+      const svcRun = new RecoService(
+        fakeConfig,
+        storeStub as any,
+        fakeSessionService,
+        music as any,
+      );
+      const res = await svcRun.run(
+        { id: 'sess-seed' } as any,
+        { count: 1, seed: { title: '种子歌', artist: '种子歌手' } },
+      );
+      assert.deepStrictEqual(
+        seenArtists,
+        ['种子歌手'],
+        '种子模式只围绕种子的艺人搜（不撒用户主干）',
+      );
+      assert.strictEqual(res.mode, 'select');
+      assert.ok(
+        prompt.includes('本次特别要求') && prompt.includes('种子歌'),
+        'prompt 应点明"更多像这首"',
+      );
+      const storedSignals = store.get('reco:signals:sess-seed') as any[];
+      assert.ok(
+        storedSignals?.some((s) => s.type === 'seed' && s.title === '种子歌'),
+        '种子点击应被记成一条 seed 信号（强正反馈）',
+      );
+      console.log('✅ 45. 种子模式: 围绕种子艺人 + prompt 点明 + 记 seed 信号');
+    } finally {
+      global.fetch = realFetch;
+      if (realKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = realKey;
+    }
+  }
+
+  console.log('\n🎉 全部 45 个测试通过');
 })().catch((err) => {
   console.error('❌ reco.test 失败:', err);
   process.exit(1);

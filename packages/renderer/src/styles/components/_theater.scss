@@ -1060,6 +1060,29 @@
   color: rgba(245, 240, 232, 0.25);
 }
 
+// 以当前歌为种子（"像这首一样"）——比主 ✨ 更轻的次要动作，做成描边胶囊。
+.th-reco-seed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid rgba(181, 123, 255, 0.32);
+  border-radius: 999px;
+  color: rgba(245, 240, 232, 0.72);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+
+  &:hover {
+    border-color: rgba(181, 123, 255, 0.7);
+    color: #f5f0e8;
+    background: rgba(181, 123, 255, 0.12);
+  }
+}
+
 // ── 版本行（1440 稿右下） ───────────────────────────────────────
 
 .th-footer-version {
