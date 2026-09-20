@@ -17,6 +17,7 @@ import {
 import type { MusicProvider } from '../api';
 import { initialAuthState, reducer, type AuthState } from '../auth/reducer';
 import { ATTEMPT_TIMEOUT_MS, type AuthAttempt, type AuthErrorCode } from '../auth/types';
+import { authLog, authWarn, authError } from '../lib/debug';
 
 /** True when running inside the Electron shell (not just a browser tab). */
 const isElectron =
@@ -286,6 +287,12 @@ export function useAuth(
         attemptIdRef.current = null;
       }
     } catch (e) {
+      // Bug #1 (stability-bug1-spotify-120s-timeout)：原实现在 catch 里只
+      // dispatch fail + reportOutcome（silent）——如果 try 块里 await 抛错
+      // （如 startSpotify / openExternal / consumeOAuthCallback IPC 抛），
+      // DevTools console 没任何痕迹，下次复现抓不到。加 console.error 让
+      // silent 错误暴露。
+      authError('handleQqLogin threw:', e, 'attemptId=', attempt.id);
       const err = e as Error & { code?: AuthErrorCode };
       const code: AuthErrorCode = (err.code as AuthErrorCode) ?? 'AUTH_UNKNOWN';
       dispatch({
@@ -340,12 +347,39 @@ export function useAuth(
         await setSpotifyClientId(id.trim());
       }
       if (isElectron && window.electronAPI?.openExternal) {
+        // Bug #1 (stability-bug1-spotify-120s-timeout) telemetry：
+        // 上次真实复现里 120s 内 renderer 端完全静默 → cancel。这次每步打
+        // 日志，下次复现能秒定位卡在哪。
+        authLog('handleSpotifyLogin: entering Electron OAuth path');
         const { authorizeUrl } = await startSpotify('maestro://spotify-callback');
+        authLog('startSpotify returned', { urlLen: authorizeUrl.length });
         await window.electronAPI.openExternal(authorizeUrl);
+        authLog('openExternal resolved');
         // Wait for the OAuth callback (buffered or live). The buffer may
         // already have a value from before the window was ready.
-        const pending =
-          (await window.electronAPI?.consumeOAuthCallback?.()) ?? null;
+        authLog('about to call consumeOAuthCallback');
+        // Bug #1 兜底（stability-bug1-spotify-120s-timeout）：给 consumeOAuthCallback
+        // 加 2s 硬超时。Buffer 有 entry 时 IPC 立即返回（< 10ms）；buffer 空时
+        // IPC 挂在 waiters 队列等 push 来 resolve。实测有概率 IPC invoke 永远不
+        // resolve（handler 被 invoke 了但结果不传回 renderer，原因待定），加
+        // timeout 强制超时后进 else 分支，让 IPC listener + 短 poll 兜底
+        // （listener 收 main 主动 send，poll 改用同样 2s 超时避免再卡）。
+        const consumeResult = await Promise.race<Awaited<ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>> | null>([
+          window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
+          new Promise<null>((r) => setTimeout(() => {
+            authLog('consumeOAuthCallback 2s 超时 → 进 else 分支（依赖 IPC listener + poll 兜底）');
+            r(null);
+          }, 2_000)),
+        ]);
+        const pending = consumeResult ?? null;
+        authLog('consumeOAuthCallback resolved', {
+          hasPending: Boolean(pending),
+          kind: pending && 'error' in pending
+            ? 'error'
+            : pending && 'code' in pending
+              ? 'code'
+              : 'null',
+        });
         // OAuth error variant (user denied / provider rejection): bail
         // immediately rather than waiting the full 10 min.
         if (pending && 'error' in pending) {
@@ -362,18 +396,82 @@ export function useAuth(
           code = pending.code;
           stateVal = pending.state;
         } else {
-          // The wildcard electronAPI.on was removed in audit B2; only
-          // whitelisted channels (spotify:oauth-protocol is one) can be
-          // subscribed via onIpc. The returned unsubscribe fn removes the
-          // listener — no manual removeListener needed.
+          // Bug #1 fix：原实现在 pending=null 时 `await new Promise(... onIpc ...
+          // resolve ...)`——但 main 端 handleDeepLink 只 oauthBuffer.push，
+          // 从不 webContents.send('spotify:oauth-protocol', ...)。IPC 通道
+          // 永远不通 → 这个 Promise 永远 pending → 120s 后才被 deadline 砍。
+          //
+          // 兜底方案：注册 IPC listener 作为快速路径（main 未来若加主动推送，
+          // 这里立即收到）；同时启 3s 间隔的 poll，若 buffer 在 listener 注册
+          // 之前已被 push，poll 会捞到。10 min TTL 由 oauth-buffer 自身的
+          // waiters TTL 兜。poll 闭包变量，Promise resolve 后清理。
+          authLog('pending=null → 等 IPC listener + 3s poll 兜底');
+          // 用数组收集 cleanup fn，Promise settle 后统一调用——避开 TS
+          // 对 `let x: () => void = ...; x = ...; x()` 的 narrowing 推断坑。
+          const cleanups: Array<() => void> = [];
+          let spoiled = false;
           const result = await new Promise<{ code: string; state: string }>(
-            (resolve) => {
-              window.electronAPI!.onIpc<{ code: string; state: string }>(
-                'spotify:oauth-protocol',
-                (data) => resolve(data),
+            (resolve, reject) => {
+              const finish = (cb: { code: string; state: string }): void => {
+                if (spoiled) return;
+                spoiled = true;
+                resolve(cb);
+              };
+              const finishErr = (msg: string): void => {
+                if (spoiled) return;
+                spoiled = true;
+                reject(new Error(msg));
+              };
+              // Bug #1 修复后：main 端 handleDeepLink 现在主动 webContents.send
+              // 这条 channel（带 {code,state} 或 {error,state}），listener 立即
+              // 收到。同时 poll buffer 兜底（main 端没 send 的旧版本也兼容）。
+              const ipcUnsub = window.electronAPI!.onIpc<{
+                code?: string;
+                state?: string;
+                error?: string;
+              }>('spotify:oauth-protocol', (data) => {
+                if (data.error) {
+                  authLog('IPC 收到 error 分支:', data.error);
+                  finishErr(`Spotify 登录被拒绝：${data.error}`);
+                  return;
+                }
+                if (data.code && data.state) {
+                  authLog('IPC 收到 code+state');
+                  finish({ code: data.code, state: data.state });
+                }
+              });
+              cleanups.push(ipcUnsub);
+              const poll = async (): Promise<void> => {
+                try {
+                  // 同样 2s timeout——避免 poll 也卡死整个登录流程。
+                  const p = await Promise.race<Awaited<ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>> | null>([
+                    window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
+                    new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+                  ]);
+                  if (!p) return;
+                  if ('error' in p && p.error) {
+                    authLog('poll 拿到 buffer error:', p.error);
+                    finishErr(`Spotify 登录被拒绝：${p.error}`);
+                    return;
+                  }
+                  if ('code' in p && p.code && p.state) {
+                    authLog('poll 拿到 buffer entry');
+                    finish({ code: p.code, state: p.state });
+                  }
+                } catch (err) {
+                  authWarn('poll 出错:', (err as Error).message);
+                }
+              };
+              const timer: ReturnType<typeof setInterval> = setInterval(
+                () => void poll(),
+                3_000,
               );
+              cleanups.push(() => clearInterval(timer));
             },
           );
+          // Promise 已 settle——停 IPC listener + poll timer（无论谁先 resolve）。
+          for (const fn of cleanups) fn();
+          authLog('OAuth callback resolved, code len=', result.code.length);
           code = result.code;
           stateVal = result.state;
         }
@@ -421,6 +519,7 @@ export function useAuth(
       }
       throw makeAuthError('AUTH_TIMEOUT', 'Spotify 登录超时（90s），请重试', attempt, state.provider);
     } catch (e) {
+      authError('handleSpotifyLogin threw:', e, 'attemptId=', attempt.id);
       const err = e as Error & { code?: AuthErrorCode };
       const code: AuthErrorCode = (err.code as AuthErrorCode) ?? 'AUTH_UNKNOWN';
       dispatch({

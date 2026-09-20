@@ -29,6 +29,29 @@ async function main() {
   );
   console.log('✅ 1. QQ ws.stream.qqmusic.qq.com → allow');
 
+  // Bug #4（stability-bug4-qq-new-cdn-blocked）：QQ 2026 切到 aqqmusic.tc.qq.com
+  // 新 CDN 节点，原 allowlist 没同步 → proxyAudio 拒绝 → audio code=4 →
+  // trial upgrade chain → 30s 试听 + buffer = '00:42' 体验。
+  // 修法：加 exact (aqqmusic.tc.qq.com) + suffix (.tc.qq.com) 兜底 b/c/d 等新节点。
+  assert.strictEqual(
+    isAllowed('https://aqqmusic.tc.qq.com/M800002hvbU61qiK30.mp3?guid=xxx&vkey=xxx'),
+    true,
+    'QQ aqqmusic.tc.qq.com 应 allow (Bug #4)',
+  );
+  console.log('✅ 1b. QQ aqqmusic.tc.qq.com → allow (Bug #4)');
+  assert.strictEqual(
+    isAllowed('https://bqqmusic.tc.qq.com/song.mp3'),
+    true,
+    'QQ bqqmusic.tc.qq.com 应 allow（.tc.qq.com suffix 兜底）',
+  );
+  console.log('✅ 1c. QQ bqqmusic.tc.qq.com → allow (.tc.qq.com suffix)');
+  assert.strictEqual(
+    isAllowed('https://tc.qq.com/song.mp3'),
+    false,
+    'QQ tc.qq.com 应 deny（suffix 要求子域前缀）',
+  );
+  console.log('✅ 1d. QQ tc.qq.com → deny（suffix 要求子域）');
+
   // ── 2. NetEase suffix .music.126.net ──────────────────────────
   assert.strictEqual(
     isAllowed('https://m7.music.126.net/2024/abc/mp3'),
@@ -118,7 +141,36 @@ async function main() {
   );
   console.log('✅ 10. 大写 host → allow（case-insensitive）');
 
-  console.log('\n🎉 全部 10 个 allowlist 测试通过');
+  // ── Bug #4 Level 2 (stability-bug4-cdn-allowlist)：dev mode fail-open ──
+  // NODE_ENV=production → 严格（不允许 bypass）
+  const origNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  assert.strictEqual(
+    MusicController.shouldBypassHostCheckInDev(),
+    false,
+    'prod NODE_ENV 应 deny bypass（严格 403）',
+  );
+  console.log('✅ 11. NODE_ENV=production → deny bypass');
+  // NODE_ENV=development → 允许 bypass
+  process.env.NODE_ENV = 'development';
+  assert.strictEqual(
+    MusicController.shouldBypassHostCheckInDev(),
+    true,
+    'dev NODE_ENV 应 allow bypass（fail-open + WARN log）',
+  );
+  console.log('✅ 12. NODE_ENV=development → allow bypass');
+  // NODE_ENV undefined → 允许 bypass（保守：默认非 prod 视为 dev）
+  delete process.env.NODE_ENV;
+  assert.strictEqual(
+    MusicController.shouldBypassHostCheckInDev(),
+    true,
+    '未设 NODE_ENV 应 allow bypass（保守）',
+  );
+  console.log('✅ 13. NODE_ENV 未设 → allow bypass（保守）');
+  // 恢复原 NODE_ENV 不影响后续测试
+  if (origNodeEnv !== undefined) process.env.NODE_ENV = origNodeEnv;
+
+  console.log('\n🎉 全部 13 个 allowlist 测试通过');
 }
 
 main().catch((err) => {

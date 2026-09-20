@@ -1,8 +1,13 @@
 # D10 — MOTION SPEC JSON 化（让 AI parse 动效参数）
 
 > 范围：D3 完成后 12 条 prototype wirings + 3 条自动轮播已在 Figma 里，但 04 · Motion
-> 页的 MOTION SPEC frame 是**纯文本**——AI 拿到只能人读。把规格结构化成 JSON
-> 写到 frame description + 仓库 `specs/motion-spec.json`，配 audit-d10 校验。
+> 页的 MOTION SPEC 表是**纯文本**——AI 拿到只能人读。把规格结构化成 JSON
+> 写进 Figma + 仓库 `specs/motion-spec.json`，配 audit-d10 校验。
+>
+> ⚠️ **载体修正（2026-09-20）**：原写"写到 frame description"——FRAME 上不存在该属性
+> （实测 `'description' in frame === false`）。实际载体是 frame 内的隐藏 TEXT 子节点
+> `MOTION_SPEC`（node `508:2`），与 D1 的 `AI_CONTRACT` 同一套做法。详见
+> `specs/d10-motion-spec/fixture-description.md`。
 > 关联：`docs/figma-driven-frontend.md` §4.2 + `docs/prototype-wiring-checklist.md` + `scripts/figma-v4-command.md`。
 
 ## 0. 现状

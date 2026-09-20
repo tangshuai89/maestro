@@ -61,7 +61,7 @@
 
 > **基线结论**：`npm test` 在 escalated 权限下 42/42 文件全绿，~1000 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
-> 见 [docs/ISSUES.md](../../docs/ISSUES.md) §3.1。
+> 见 [docs/_archive/audit-snapshots/ISSUES-2026-08-18.md](../../docs/_archive/audit-snapshots/ISSUES-2026-08-18.md) §1.1（旧 ISSUES §3.1 已迁）。
 
 ### 1.2 覆盖率热力图（粗估）
 

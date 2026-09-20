@@ -14,7 +14,7 @@
   inset: 0;
   overflow: hidden;
   background: #02020a;
-  color: #f5f0e8;
+  color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
   z-index: 200;
@@ -42,22 +42,22 @@
   gap: 8px;
   padding: 4px 12px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--sev, rgba(255, 59, 92, 0.3));
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  border: 1px solid var(--sev, color-mix(in oklab, var(--status-error) 30%, transparent));
 }
 
 .aep-code-severity {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--sev, #ff3b5c);
+  color: var(--sev, var(--status-error));
   text-transform: uppercase;
 }
 
 .aep-code-text {
   font-size: 11px;
   font-weight: 500;
-  color: rgba(245, 240, 232, 0.5);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   font-family: 'Inter', monospace;
 }
 
@@ -70,7 +70,7 @@
   width: 800px;
   min-height: 200px;
   padding: 20px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-fill-strong);
   border-radius: 16px;
   background: rgba(20, 20, 30, 0.6);
   backdrop-filter: blur(16px);
@@ -88,16 +88,16 @@
   flex: 1;
   font-size: 14px;
   font-weight: 500;
-  color: rgba(245, 240, 232, 0.9);
+  color: color-mix(in srgb, var(--text-main) 90%, transparent);
 }
 
 .aep-expand {
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 6px;
   background: transparent;
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -105,9 +105,9 @@
 }
 
 .aep-expand:hover {
-  color: #f5f0e8;
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-main);
+  background: var(--glass-fill);
+  border-color: color-mix(in srgb, var(--white) 20%, transparent);
 }
 
 // stack trace
@@ -117,9 +117,9 @@
   font-family: 'Inter', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10.5px;
   line-height: 1.5;
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--white) 5%, transparent);
   border-radius: 8px;
   max-height: 120px;
   overflow-y: auto;
@@ -132,7 +132,7 @@
   margin-top: 14px;
   font-size: 12px;
   line-height: 1.5;
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   word-break: break-all;
 }
 
@@ -147,10 +147,10 @@
 .aep-btn {
   height: 31px;
   padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.7);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 70%, transparent);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -158,31 +158,31 @@
 }
 
 .aep-btn:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  color: #f5f0e8;
+  border-color: color-mix(in srgb, var(--white) 20%, transparent);
+  background: var(--glass-fill-strong);
+  color: var(--text-main);
 }
 
 .aep-btn--primary {
-  background: rgba(0, 229, 255, 0.12);
-  border-color: rgba(0, 229, 255, 0.4);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   color: #00e5ff;
   font-weight: 600;
 }
 
 .aep-btn--primary:hover:not(:disabled) {
-  background: rgba(0, 229, 255, 0.2);
-  border-color: rgba(0, 229, 255, 0.6);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   color: #00e5ff;
 }
 
 .aep-btn--ghost {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.06);
-  color: rgba(245, 240, 232, 0.4);
+  border-color: var(--glass-fill);
+  color: var(--text-dim);
 }
 
 .aep-btn--ghost:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.6);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 60%, transparent);
 }

@@ -15,6 +15,7 @@ import {
   dislikeMerged,
   findEquivalentSource,
   getApiOrigin,
+  reportRecoSignal,
 } from '../api';
 import type {
   Track,
@@ -39,6 +40,7 @@ import {
   FULL_SONG_PROVIDERS,
   getFullSongProviders,
   shouldApplyLikeResult,
+  shouldStopWpsBeforeTransition,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
   parsePlayableQueue,
@@ -65,6 +67,7 @@ export {
   FULL_SONG_PROVIDERS,
   getFullSongProviders,
   shouldApplyLikeResult,
+  shouldStopWpsBeforeTransition,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
   pickFallbackSource,
@@ -152,6 +155,21 @@ export function usePlayer(
   // On source switch with a track playing, skip one provider-change auto-load
   // so the current song keeps playing until it ends / the user skips.
   const skipAutoLoadRef = useRef(false);
+  // 行为信号去重：同一首歌（provider:id）只在"开始播放"时上报一次 play，
+  // 避免 WPS 重载 / 音质切换 等重放路径把同一首重复上报。
+  const signaledTrackRef = useRef<string | null>(null);
+
+  // ── 行为信号：开始播放 ──────────────────────────────────
+  // 推荐质量真正吃的是"最近在听什么"，而红心库只能说明"曾经喜欢"。这里把
+  // 播放行为上报给服务端（只落本机 .storage，不上传），供口味档案加权 +
+  // 负反馈闭环使用。同一切歌多次重放（WPS 重载 / 音质切换）只记一次。
+  useEffect(() => {
+    if (!track?.id || !track.title || !track.artist) return;
+    const key = `${track.provider}:${track.id}`;
+    if (signaledTrackRef.current === key) return;
+    signaledTrackRef.current = key;
+    reportRecoSignal({ type: 'play', title: track.title, artist: track.artist });
+  }, [track?.id, track?.provider, track?.title, track?.artist]);
   // For quality switches: jump back to the original position after reload.
   const pendingSeekRef = useRef<number | null>(null);
   // WPS: 最近一次通过 WPS play() 送出的 spotify track id。用来区分
@@ -264,6 +282,12 @@ export function usePlayer(
         serverEquivTriedRef.current = false;
         trialServerTriedRef.current = false;
         forcedStandardRef.current = false;
+        // Bug #2 (stability-bug2-wps-double-play)：换歌 / 切 provider 时
+        // 清掉上次 WPS.play 的 track id——否则切到 QQ 再切回 spotify 同一
+        // 首时 useEffect 的 `wpsPlayedIdRef.current !== track.id` 判 false
+        // 会走 wps.resume()（deck 上其实已经没有这首歌了）。useEffect 顶
+        // 部守卫会在切歌瞬间 pause 一次 WPS，这里只是把 ref 也同步清掉。
+        wpsPlayedIdRef.current = null;
       }
       triedPlatformsRef.current.add(next.provider);
       // 每次上源（含跨平台切换）都要对新源重做一次试听判定。
@@ -390,7 +414,8 @@ export function usePlayer(
     // 1) item 内其它平台 source。
     const inItem = FALLBACK_PRIORITY.filter((p) => !tried.has(p))
       .map((p) =>
-        unified.sources.find((s) => s.platform === p && s.hasCopyright),
+        // Bug #3 防御性：过滤 vipLocked——否则 code=4 后切到 vipLocked 源仍是 30s。
+        unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
       )
       .find((s): s is UnifiedSourceInfo => Boolean(s));
     if (inItem) {
@@ -824,19 +849,25 @@ export function usePlayer(
       // VIP 30s 试听检测（每个音源判一次）：只对完整曲流平台（qq/网易云），
       // 且实际音频远短于元数据全长 → 判定为被 VIP 锁成的试听片段，去别的完整
       // 平台搜全曲换过去。Deezer/Spotify 的 30s 是正常预览，provider 已排除。
+      // Bug #3 UI 提示：trial 检测触发时无条件 setTrialFellBack(true)，让
+      // TheaterView 显示 TRIAL 角标；升级成功（isTrial=false）时 reset false。
       if (!trialEvaluatedRef.current) {
         trialEvaluatedRef.current = true;
         const cur = trackRef.current;
         const audioDur = audio.duration;
-        if (
+        const isTrial =
           cur &&
           FULL_SONG_PROVIDERS.includes(cur.provider) &&
           Number.isFinite(audioDur) &&
           audioDur > 0 &&
           audioDur <= TRIAL_MAX_SEC &&
-          cur.duration > audioDur + TRIAL_GAP_SEC
-        ) {
+          cur.duration > audioDur + TRIAL_GAP_SEC;
+        if (isTrial) {
+          setTrialFellBack(true);
           void handleTrialDetected();
+        } else {
+          // 升级成功 / 切到非 trial 平台 / 跨平台换源后新源是全曲 → reset。
+          setTrialFellBack(false);
         }
       }
     };
@@ -858,6 +889,11 @@ export function usePlayer(
     };
     const onEnded = () => {
       audio.dataset.wantPlay = '0';
+      // 自然播完 = 最强的正信号（比"切歌"可信得多）。
+      const t = trackRef.current;
+      if (t?.title && t.artist) {
+        reportRecoSignal({ type: 'complete', title: t.title, artist: t.artist });
+      }
       loadNextTrack();
     };
     const onError = () => {
@@ -950,6 +986,20 @@ export function usePlayer(
     // 否则会被 30s 预览代理劫持成 mp3 字节流）。wpsRef 引用稳定，effect 只在
     // playing / track 变化时跑，此处懒读 .current 拿最新 WPS 实例。
     const wps = wpsRef?.current ?? null;
+    // Bug #2 (stability-bug2-wps-double-play)：切歌 / 换 provider / wpsReady
+    // 翻 false 时，先确保旧 WPS URI 停掉——不然下面的 useWps=false 分支会走
+    // <audio>.play()，旧 WPS 还在播 → 两路叠加。shouldStopWpsBeforeTransition
+    // 是 usePlayer.helpers 里的纯函数，单测覆盖。
+    if (
+      shouldStopWpsBeforeTransition(
+        wpsPlayedIdRef.current,
+        { provider: track.provider, id: track.id },
+        Boolean(wps?.wpsReady),
+      )
+    ) {
+      void wps?.pause().catch(() => {});
+      wpsPlayedIdRef.current = null;
+    }
     const useWps = Boolean(
       wps?.wpsReady && track.provider === 'spotify' && track.id,
     );
@@ -1123,7 +1173,30 @@ export function usePlayer(
     setPlaying((p) => !p);
   };
 
-  const handleSkip = () => loadNextTrack();
+  /**
+   * 手动切歌。听得很浅就切 = 负信号（推荐里最有用的一条），但**听完大半再切
+   * 属于正常换歌**，不算负反馈——否则用户正常切歌也会被当成"讨厌这首歌"。
+   */
+  const handleSkip = () => {
+    const audio = audioRef.current;
+    const t = trackRef.current;
+    if (audio && t?.title && t.artist) {
+      const dur =
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : t.duration;
+      const pct = dur > 0 ? Math.round((audio.currentTime / dur) * 100) : 0;
+      if (dur >= 60 && pct < 30) {
+        reportRecoSignal({
+          type: 'skip',
+          title: t.title,
+          artist: t.artist,
+          progress: pct,
+        });
+      }
+    }
+    loadNextTrack();
+  };
 
   /** Go back one track within the search queue (looping). Radio has no history,
    *  so prev is a no-op there. */
@@ -1181,6 +1254,13 @@ export function usePlayer(
         }
         setFanOutCount(next ? result.fannedOutTo.length : 0);
         setTrack((prev) => (prev ? { ...prev, liked: next } : prev));
+        if (next) {
+          reportRecoSignal({
+            type: 'like',
+            title: current.title,
+            artist: current.artist,
+          });
+        }
       } catch (e) {
         setError(`心动作业失败：${(e as Error).message}`);
       }
@@ -1207,6 +1287,13 @@ export function usePlayer(
       }
       setTrack((prev) => (prev ? { ...prev, liked: result.liked } : prev));
       setFanOutCount(0);
+      if (result.liked) {
+        reportRecoSignal({
+          type: 'like',
+          title: track.title,
+          artist: track.artist,
+        });
+      }
     }
   };
 
@@ -1240,6 +1327,11 @@ export function usePlayer(
         }
         setFanOutCount(0);
         setTrack((prev) => (prev ? { ...prev, liked: false } : prev));
+        reportRecoSignal({
+          type: 'dislike',
+          title: current.title,
+          artist: current.artist,
+        });
       } catch {
         // 踩失败不阻塞切歌，静默。
       }
@@ -1258,6 +1350,11 @@ export function usePlayer(
     ) {
       return;
     }
+    reportRecoSignal({
+      type: 'dislike',
+      title: track.title,
+      artist: track.artist,
+    });
     loadNextTrack();
   };
 

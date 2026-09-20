@@ -16,6 +16,8 @@ const {
   dedupTracks,
   selectBestSource,
   buildUnifiedItems,
+  classifyVersion,
+  versionTypeBadge,
   isCrossScript,
   mergeCrossScript,
   PLAY_PRIORITY,
@@ -157,17 +159,140 @@ check('10. buildUnifiedItems：同歌同版本跨平台合并为一条', () => {
   assert.strictEqual(items.length, 1, '同歌同版本应合并为 1 条');
   assert.strictEqual(items[0].sources.length, 2, 'sources 含两个平台');
   assert.strictEqual(items[0].bestSource, 'qq', 'bestSource = qq');
-  assert.strictEqual(items[0].id, 'merged-qq-qq-1', 'id 用 main 平台');
+    assert.strictEqual(items[0].id, 'merged-qq-qq-1-studio', 'Phase 2 id = merged-<provider>-<id>-<versionType>');
 });
 
-// ── 11. buildUnifiedItems：不同版本各自成条 ───────────────────
-check('11. buildUnifiedItems：同名同歌手不同时长 → 各自成条', () => {
+// ── Bug #5 (stability-bug5-search-dup-platform) ───────────────────
+check('11a. 同 platform 多 mid（同 duration）→ 合并为 1 个 source', () => {
+  // QQ 高品质 M800 + QQ 标准 C400（同一录音，不同 mid + 不同 audioUrl）。
+  // Bug #5 修复前 → sources 出现 2 个 qq source（"两个 QQ"）。
+  // 修复后 → 只保留第一个（dedupTracks "第一次出现" 原则）。
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 310 }) },
+    { track: mkTrack({ id: 'qq-hi', provider: 'qq', title: '落俗', artist: '李荣浩', duration: 267 }) },
+    { track: mkTrack({ id: 'qq-std', provider: 'qq', title: '落俗', artist: '李荣浩', duration: 267 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '落俗', artist: '李荣浩', duration: 267 }) },
   ];
   const items = buildUnifiedItems(new Map(), entries);
-  assert.strictEqual(items.length, 2, '差 > 3s 应分成 2 条');
+  assert.strictEqual(items.length, 1, '同版本应合并为 1 条');
+  const qqCount = items[0].sources.filter((s) => s.platform === 'qq').length;
+  assert.strictEqual(qqCount, 1, 'QQ source 应只剩 1 个（去重后）');
+  assert.strictEqual(items[0].sources.length, 2, 'total = 1 qq + 1 netease');
+});
+check('11b. 不同 platform 各 1 个 → 不去重（保持原行为）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 270 }) },
+    { track: mkTrack({ id: 'de-1', provider: 'deezer', title: '晴天', artist: '周杰伦', duration: 270 }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '晴天', artist: '周杰伦', duration: 270 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同版本应合并为 1 条');
+  assert.strictEqual(items[0].sources.length, 4, '4 平台各 1 个 source，不去重');
+});
+check('11c. cluster 内多 platform + 同 platform 多 mid 混合', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: 'X', artist: 'A', duration: 200 }) },
+    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: 'X', artist: 'A', duration: 200 }) },
+    { track: mkTrack({ id: 'qq-3', provider: 'qq', title: 'X', artist: 'A', duration: 200 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: 'X', artist: 'A', duration: 200 }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: 'X', artist: 'A', duration: 200 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].sources.length, 3, 'qq×3 → 1 个 qq + netease + spotify = 3 sources');
+});
+
+// ── 11. buildUnifiedItems Phase 2：同名同 type 不同 duration → 1 item + 2 versions ──
+check('11. buildUnifiedItems：同名同 type 不同 duration → 1 item + 2 versions', () => {
+  // Phase 2：同 (key, type) 不管 duration 差多少都合并成 1 item，duration 差
+  // 体现在 versions 数组里（每个 cluster = 1 version）。toggle 展开时给用户选。
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270, album: 'X' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 310, album: 'Y' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, 'Phase 2：同 (key, type) → 1 item（不论 duration）');
+  assert.strictEqual(items[0].versions.length, 2, 'duration 差 > 3s → 2 versions');
+  assert.strictEqual(items[0].versionType, 'studio');
+  // Phase 3：主版本不再取"最短"。两个 cluster 各 1 个源（并列）→ 取**更长**的那条
+  //（片段/剪辑版总是更短，不能让折叠行显示片段）。
+  assert.strictEqual(items[0].duration, 310, '主版本 = 源数最多 → 时长最长');
+  assert.strictEqual(items[0].versions[0].duration, 310, 'versions[0] 必定是主版本');
+  assert.strictEqual(items[0].versions[1].duration, 270);
+  // 每个 version 带自己的原始元数据（UI 展开时逐行显示真实歌名/专辑，而不是 v2/v3）。
+  // cluster 代表 track 按 PLAY_PRIORITY 选：qq > netease。
+  assert.strictEqual(items[0].versions[0].title, '晴天');
+  assert.strictEqual(items[0].versions[0].artist, '周杰伦');
+  assert.strictEqual(items[0].versions[0].album, 'Y');
+  assert.strictEqual(items[0].versions[1].album, 'X', '版本级 album 取该 cluster 代表 track，不能串到别的 cluster');
+});
+
+// ── 11b. versions 的元数据必须区分同名不同版本（用户看不到区别就没法选）──
+check('11b. buildUnifiedItems：同录音（时长偏差 ≤50%）合并，各自保留专辑/时长', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 240, album: '首发单曲' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287, album: '精选集' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同名同 type → 1 item');
+  const versions = items[0].versions;
+  assert.strictEqual(versions.length, 2, 'duration 差 > 3s → 2 versions');
+  assert.deepStrictEqual(
+    versions.map((v) => [v.title, v.artist, v.album, v.duration]),
+    [
+      ['盲选', '黄霄雲', '精选集', 287],
+      ['盲选', '黄霄雲', '首发单曲', 240],
+    ],
+    '主版本在前；每个版本带自己 cluster 的元数据（album 不能互串）',
+  );
+  assert.strictEqual(items[0].album, '精选集', 'item 级元数据 = versions[0]（主版本）');
+});
+
+// ── 11c. Phase 3：跨平台共识优先于时长（短片段若多平台都在，也算主版本）──
+check('11c. buildUnifiedItems：主版本按跨平台源数选，不够长的单平台条目让位', () => {
+  const entries = [
+    // 80s 那条三平台都有 → 跨平台共识
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    // 287s 只有 QQ 一条（时长虽长，但只有单平台）
+    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, '80s 与 287s 时长差 >50% → 拆成 2 条');
+  const main = items.find((it) => it.sources.length === 3);
+  assert.ok(main, '跨平台共识那条应作为主 item');
+  assert.strictEqual(main!.duration, 80, '主版本 = 源数最多（即使更短）');
+  assert.strictEqual(main!.versions.length, 1);
+  const outlier = items.find((it) => it.sources.length === 1);
+  assert.ok(outlier, '单平台的 287s 应单独成条');
+  assert.strictEqual(outlier!.duration, 287);
+  assert.notStrictEqual(outlier!.id, main!.id, 'item id 必须唯一（renderer 用 id 做 key/展开态）');
+});
+
+// ── 11d. Phase 3：偏离主版本时长 >50% 的孤立 cluster 不再混进 versions ──
+check('11d. buildUnifiedItems：片段/剪辑版（时长 -50% 以上）拆成独立 item', () => {
+  const entries = [
+    // 4:47 三平台共识 = 正式版本
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+    // 1:20 只在 QQ，且比主版本短 72% → 不是"版本"
+    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    // 2:50 偏 -41%，仍在阈值内 → 保留为版本
+    { track: mkTrack({ id: 'qq-3', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 170 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, '1:20 拆走 → 主 item + 1 条独立 item');
+  const main = items.find((it) => it.sources.length === 2)!;
+  assert.strictEqual(main.duration, 287, '主版本 = 跨平台共识的 4:47');
+  assert.deepStrictEqual(
+    main.versions.map((v) => v.duration),
+    [287, 170],
+    '主版本在前，阈值内的 2:50 仍是版本',
+  );
+  const clip = items.find((it) => it.sources.length === 1)!;
+  assert.strictEqual(clip.duration, 80, '1:20 片段单独成条');
+  assert.strictEqual(clip.versions.length, 1);
 });
 
 // ── 12. buildUnifiedItems：duration ≤ 0 全部并入一个 cluster ──
@@ -317,5 +442,118 @@ check('23. buildUnifiedItems：mediaMid 透传', () => {
   assert.strictEqual(items[0].sources[0].mediaMid, 'mid123');
 });
 
-console.log(`\n🎉 search.util.test: ${passed} passed, ${failed} failed`);
+// ── classifyVersion：版本类型识别（Phase 1 of dedup redesign）──
+check('24. classifyVersion: 晴天 → studio', () => {
+  assert.strictEqual(classifyVersion('晴天', '叶惠美'), 'studio');
+});
+check('24b. classifyVersion: 晴天 (Live) → live', () => {
+  assert.strictEqual(classifyVersion('晴天 (Live)', '叶惠美'), 'live');
+});
+check('24c. classifyVersion: 现场版 / 演唱会 / 实况 → live', () => {
+  assert.strictEqual(classifyVersion('盲选 (现场版)', '...'), 'live');
+  assert.strictEqual(classifyVersion('X', '演唱会实况'), 'live');
+  assert.strictEqual(classifyVersion('Y', 'Concert Live'), 'live');
+});
+check('24d. classifyVersion: 优先级 live > acoustic', () => {
+  assert.strictEqual(classifyVersion('X (Live Acoustic)', 'Y'), 'live');
+});
+check('24e. classifyVersion: acoustic > remix', () => {
+  assert.strictEqual(classifyVersion('X (Acoustic)', 'Y Remix'), 'acoustic');
+});
+check('24f. classifyVersion: remix / instrumental', () => {
+  assert.strictEqual(classifyVersion('X (Remix)', 'Y'), 'remix');
+  assert.strictEqual(classifyVersion('X', '伴奏'), 'instrumental');
+});
+
+// ── versionTypeBadge ─────────────────────────────────────────
+check('25. versionTypeBadge: studio → null', () => {
+  assert.strictEqual(versionTypeBadge('studio'), null);
+});
+check('25b. versionTypeBadge: live → [LIVE]', () => {
+  assert.strictEqual(versionTypeBadge('live'), '[LIVE]');
+});
+check('25c. versionTypeBadge: 其余 → 对应文字', () => {
+  assert.strictEqual(versionTypeBadge('acoustic'), '[ACOUSTIC]');
+  assert.strictEqual(versionTypeBadge('remix'), '[REMIX]');
+  assert.strictEqual(versionTypeBadge('instrumental'), '[INSTRUMENTAL]');
+});
+
+// ── Phase 1 buildUnifiedItems: 按 (normalizeKey, versionType) 二元组合并 ───
+check('26. 同歌 studio + live → 2 条（之前会因 cluster 差 > 3s 也 2 条；现在按 type 拆分）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'qq-l', provider: 'qq', title: '晴天 (Live)', artist: '周杰伦', duration: 280, album: '叶惠美 Live' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, 'studio + live → 2 条');
+  const types = items.map((it) => it.versionType).sort();
+  assert.deepStrictEqual(types, ['live', 'studio']);
+});
+check('27. 同歌同 type (studio) 多平台 → 1 条 studio', () => {
+  // 同 artist 跨平台 → 1 条 studio（normalizeKey 一致）。
+  const entries = [
+    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'ne-s', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'sp-s', provider: 'spotify', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同 studio + 同 duration → 1 条');
+  assert.strictEqual(items[0].versionType, 'studio');
+  assert.strictEqual(items[0].sources.length, 3, '3 平台各 1 source');
+});
+check('28. 不同 type 同 key → 各自成条，sources 不混合', () => {
+  // 同 artist 跨平台 + 同 title（仅 album 含 Live 关键字触发 versionType）→
+  // studio + live 各 1 条，sources 不混合。
+  // 注：title 里的 "(Live)" 因 normalizeKey 不调 stripParensContent 会让 key
+  // 不同（"盲选" vs "盲选live"），那是 spec 既定设计——下面用 album 触发 type。
+  const entries = [
+    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
+    { track: mkTrack({ id: 'ne-s', provider: 'netease', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
+    { track: mkTrack({ id: 'qq-l', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 250, album: 'X (Live)' }) },
+    { track: mkTrack({ id: 'sp-l', provider: 'spotify', title: '盲选', artist: '黄霄云', duration: 250, album: 'X Live' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, 'studio + live → 2 条');
+  const studio = items.find((it) => it.versionType === 'studio');
+  const live = items.find((it) => it.versionType === 'live');
+  assert.ok(studio && live);
+  assert.strictEqual(studio.sources.length, 2, 'studio: qq + netease');
+  assert.strictEqual(live.sources.length, 2, 'live: qq + spotify');
+});
+check('29. classifyVersion 与 buildUnifiedItems 集成（不破坏测试 10/11）', () => {
+  // 测试 10 同歌同版本跨平台合并 → versionType='studio'（默认）
+  const t10 = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270, album: '叶惠美' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 270, album: '叶惠美' }) },
+  ];
+  const i10 = buildUnifiedItems(new Map(), t10);
+  assert.strictEqual(i10[0].versionType, 'studio');
+});
+
+console.log(`\n// 跨脚本同名：spec 设计上 mergeCrossScript 不用于 search（仅 library import），
+// 所以 search 阶段同 (key, type) + 不同 normalizeKey 仍拆开。这是有意为之——
+// 把跨脚本合并留给 library import 路径（避免 search 误合并 coverUrl/album
+// 不同的同名项）。
+check('28b. 跨脚本同歌同 type → 各自成条（spec 设计：跨脚本合并留给 library）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '盲选', artist: 'Huang Xiaoyun', duration: 240, album: 'X' }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 2, '不同 artist → 不同 normalizeKey → 各自成条（spec 设计）');
+});
+
+// 中文关键字 "\b" 边界修复：原 pattern 用 \b 包围，中文字符两侧不形成 \b 边界，
+// 所以 "现场"/"演唱会"/"伴奏" 等中文关键字永远不匹配。修复：中文关键字去 \b。
+check('28c. classifyVersion 中文关键字：现场/演唱会/实况/不插电/原声/混音/伴奏', () => {
+  assert.strictEqual(classifyVersion('X', '现场版'), 'live');
+  assert.strictEqual(classifyVersion('X', '演唱会实况'), 'live');
+  assert.strictEqual(classifyVersion('X (Live)', 'Y'), 'live');
+  assert.strictEqual(classifyVersion('X', '不插电'), 'acoustic');
+  assert.strictEqual(classifyVersion('X', '原声版'), 'acoustic');
+  assert.strictEqual(classifyVersion('X', '混音版'), 'remix');
+  assert.strictEqual(classifyVersion('X', '伴奏'), 'instrumental');
+});
+
+🎉 search.util.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -496,15 +496,17 @@ function makeTrack(
   ];
   const deduped = dedupTracks(all);
   const items = buildUnifiedItems(deduped, all);
-  assert.strictEqual(items.length, 3, '3 个不同时长版本应分成 3 条');
-  const album = items.find((it) => Math.abs(it.duration - 228) <= 3);
+  // Phase 2 redesign：同 (key, type) → 1 item + versions[] 保留所有 duration cluster。
+  assert.strictEqual(items.length, 1, 'Phase 2：同歌同 type → 1 item');
+  assert.strictEqual(items[0].versions.length, 3, '3 个不同 duration cluster → 3 versions');
+  const album = items[0].versions.find((v) => Math.abs(v.duration - 228) <= 3);
   assert.ok(album, '应有 album(228s) 版本');
   assert.strictEqual(
     album.sources.length,
     2,
     'album 版本应含 qq(228)+netease(227) 两个同版本 source',
   );
-  console.log('✅ 9c. duration 门槛拆分版本 + 跨平台同版本合并');
+  console.log('✅ 9c. Phase 2：1 item + 3 versions（album/live/remix 合并到 1 item，versions 内 3 个录音）');
 }
 
 // ── 9d. duration=0（未知）仍合并为一条（老行为不破坏）────

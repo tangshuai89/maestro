@@ -505,7 +505,7 @@ export class MusicController {
         headers.Referer =
           provider === 'qq' ? 'https://y.qq.com/' : 'https://music.163.com/';
       }
-      await this.proxyAudio(upstream, headers, req, res);
+      await this.proxyAudio(upstream, headers, req, res, provider);
     } catch (err) {
       res.status(502).json({
         error: 'stream_unavailable',
@@ -525,15 +525,29 @@ export class MusicController {
     extraHeaders: Record<string, string>,
     req: Request,
     res: Response,
+    // provider 仅用于诊断日志（reject / dev-bypass 时打印），不影响 SSRF 保护。
+    provider?: string,
   ): Promise<void> {
     // ISSUES.md §4.3：先校验 host 在白名单内。失败返 403，避免把 controller
     // 当开放代理（即使 url 来自受信任的 provider，污染或 redirect 也能挡）。
+    // Level 2 dev fail-open（stability-bug4-cdn-allowlist）：dev 模式下未识别
+    // host → WARN log + 自动放行，让开发不被上游 CDN 域名变更阻断；prod 严格 403。
     if (!MusicController.isStreamHostAllowed(url)) {
-      this.logger.warn(`proxyAudio: rejecting non-allowlisted host for url=${url}`);
-      res.status(403).json({
-        error: 'stream_host_not_allowed',
-      });
-      return;
+      const isDev = MusicController.shouldBypassHostCheckInDev();
+      if (isDev) {
+        this.logger.warn(
+          `proxyAudio: dev-bypass non-allowlisted host (provider=${provider ?? '?'}) ` +
+          `url=${url}\n` +
+          `  → 上游又出新 CDN 节点。请同步 ALLOWED_STREAM_HOSTS_EXACT 或 ` +
+          `ALLOWED_STREAM_HOSTS_SUFFIX (packages/server/src/music/music.controller.ts)`,
+        );
+      } else {
+        this.logger.warn(`proxyAudio: rejecting non-allowlisted host for url=${url}`);
+        res.status(403).json({
+          error: 'stream_host_not_allowed',
+        });
+        return;
+      }
     }
     const headers: Record<string, string> = { ...extraHeaders };
     // Forward the browser's Range request so the CDN answers with a
@@ -634,8 +648,9 @@ export class MusicController {
    * 防御，能挡掉「重定向到内网 / metadata.io / localhost:9200」类小坑。
    */
   private static readonly ALLOWED_STREAM_HOSTS_EXACT = new Set([
-    'ws.stream.qqmusic.qq.com',         // QQ 音频主 CDN
+    'ws.stream.qqmusic.qq.com',         // QQ 音频主 CDN（老节点）
     'dl.stream.qqmusic.qq.com',         // QQ 音频备用 CDN（少数歌曲）
+    'aqqmusic.tc.qq.com',               // QQ 音频新 CDN（2026+ 主节点；GetVkey sip[0] 现在返回这个）
     'p.scdn.co',                        // Spotify 30s preview CDN
     'preview.dzcdn.net',                // Deezer preview 直链
     'm7.music.126.net',                 // 网易云音频 CDN（部分 song）
@@ -644,10 +659,21 @@ export class MusicController {
   /** Audio stream CDN 允许列表——suffix 通配（Deezer 轮询的 preview CDN）。 */
   private static readonly ALLOWED_STREAM_HOSTS_SUFFIX: readonly string[] = [
     '.stream.qqmusic.qq.com',           // 未来 QQ 新增 stream 子域
+    '.tc.qq.com',                       // QQ 所有 *.tc.qq.com 新 CDN（a/b/c.../xqqmusic.tc.qq.com 等）
     '.music.126.net',                   // 网易云所有 m*.music.126.net
     '.scdn.co',                         // Spotify 所有 *.*.scdn.co 子域
     '.dzcdn.net',                       // Deezer 所有 *.{cdn,preview}.dzcdn.net
   ];
+
+  /**
+   * Bug #4 Level 2 (stability-bug4-cdn-allowlist)：dev 模式下未识别 host
+   * → 自动放行 + WARN log，让开发不被上游 CDN 域名变更阻断；prod 严格 403
+   * 保护 SSRF。`NODE_ENV !== 'production'` 涵盖 development / test 等所有非
+   * prod 环境（NestJS CLI nest start --watch 默认设 NODE_ENV=development）。
+   */
+  static shouldBypassHostCheckInDev(): boolean {
+    return process.env.NODE_ENV !== 'production';
+  }
 
   /**
    * URL host 是否在 stream 白名单（exact + suffix）。

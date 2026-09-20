@@ -14,6 +14,7 @@ import type { Track } from './types';
 import type {
   SourceInfo,
   UnifiedSearchItem,
+  VersionEntry,
 } from './types';
 import type { MusicProvider } from '../common/provider';
 
@@ -76,6 +77,57 @@ const FULL_SONG_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
   'qq',
   'netease',
 ]);
+
+/**
+ * 录音版本分类（Phase 1 of unified-search dedup redesign）：
+ * 同一首歌在搜索结果里会出现多个版本（专辑原版 / Live / Acoustic / Remix / 纯伴奏），
+ * 全列出来对用户太杂。`classifyVersion` 按 title + album 关键字判定属于哪一类，
+ * buildUnifiedItems 再按 (normalizeKey, versionType) 二元组合并——专辑版合并成 1
+ * 条、Live 合并成 1 条、互不混淆。
+ *
+ * 优先级：live > acoustic > remix > instrumental > studio。
+ * 如果 title 和 album 同时带多个关键字（如"晴天 (Live Acoustic)"），高优先级胜出。
+ */
+export type VersionType =
+  | 'studio'
+  | 'live'
+  | 'acoustic'
+  | 'remix'
+  | 'instrumental';
+
+// 英文 keyword 用 \b 包围（避免 "live" 误匹配 "deliver"）；中文 keyword 不用
+// \b（JS regex \b 基于 \w，中文字符两侧不是 \b 边界）。中文 keyword 直接 substring 匹配。
+const VERSION_PATTERNS: ReadonlyArray<{
+  type: VersionType;
+  pattern: RegExp;
+}> = [
+  { type: 'live',          pattern: /(\b(live|live版|concert)\b|现场|演唱会|实况)/i },
+  { type: 'acoustic',      pattern: /(\b(acoustic|unplugged)\b|不插电|原声)/i },
+  { type: 'remix',         pattern: /(\b(remix|extended|remaster)\b|混音)/i },
+  { type: 'instrumental',  pattern: /(\b(instrumental|karaoke)\b|纯音乐|伴奏|卡拉ok)/i },
+];
+
+/** Classify a search result entry into a version bucket. Title and album are
+ *  concatenated (lowercased) before matching. Default `studio` for tracks
+ *  without any keyword signal. Pure (no side effects), unit-testable. */
+export function classifyVersion(title: string, album: string): VersionType {
+  const text = `${title} ${album}`;
+  for (const { type, pattern } of VERSION_PATTERNS) {
+    if (pattern.test(text)) return type;
+  }
+  return 'studio';
+}
+
+/** UI 角标文字。`studio` 返回 null（不显示角标——专辑原版是默认形态）。 */
+export function versionTypeBadge(type: VersionType): string | null {
+  switch (type) {
+    case 'live':         return '[LIVE]';
+    case 'acoustic':     return '[ACOUSTIC]';
+    case 'remix':        return '[REMIX]';
+    case 'instrumental': return '[INSTRUMENTAL]';
+    case 'studio':       return null;
+  }
+}
 
 /**
  * 选 bestSource：三档优先——「能出全曲」 → 「非 VIP 锁」 → 「best-effort 试听」。
@@ -157,6 +209,11 @@ function clusterByDuration(entries: RawSearchEntry[]): RawSearchEntry[][] {
 /**
  * 将所有平台的原始搜索结果聚合为 UnifiedSearchItem。
  *
+ * Phase 3（2026-09-20）在此之上收敛了"版本"口径：
+ *  - 折叠行显示的主版本 = **跨平台共识最多**的那个录音（并列取最长），不再是"最短"
+ *    （最短经常是片段/剪辑版，用户点开就播到 1:20 的怪东西）；
+ *  - 偏离主版本时长 >50% 的孤立 cluster 不再当"同一首歌的另一个版本"，单独成条。
+ *
  * 先按 normalizeKey（歌名+歌手）分组，再在组内按 duration 聚类成「版本」——
  * 同名不同时长的版本（album / live / remix ...）各自成条，跨平台**同版本**
  * （时长接近）才合并。这样搜索里能看到多个版本，点 ❤ 时 sources 里就是
@@ -164,56 +221,172 @@ function clusterByDuration(entries: RawSearchEntry[]): RawSearchEntry[][] {
  *
  * `deduped` 参数保留是为了兼容旧签名/测试；分组逻辑不再依赖它。
  */
+/** 一个 (normalizeKey, versionType) 分组的稳定标识。 */
+interface RawGroup {
+  key: string;
+  versionType: VersionType;
+}
+
+/**
+ * 主版本时长相对偏差上限：偏离主版本超过这个比例，就不再当作"同一录音的另一个
+ * master"，单独成条。
+ *
+ * 依据（2026-09-20，用户实际搜"盲选"）：同名同艺人的 6 条结果里，只有 4:47 那条
+ * 同时出现在 QQ/网易/Spotify（跨平台共识），其余 1:20 / 2:35 / 2:50 / 5:42 / 6:07
+ * 都只在单平台。1:20 相对 4:47 偏 -72% —— 那是片段/剪辑，不是"版本"；而常见的
+ * radio edit(3:30) vs 专辑版(5:00) 只偏 -30%，必须继续当同一条的两个版本。取中间值。
+ */
+const VERSION_DURATION_SPREAD_RATIO = 0.5;
+
+/** cluster 里最高优先级平台的序号（越小越优先）；没有已知平台时排最后。 */
+function platformRank(v: VersionEntry): number {
+  const idx = PLAY_PRIORITY.findIndex((p) => v.sources.some((s) => s.platform === p));
+  return idx === -1 ? PLAY_PRIORITY.length : idx;
+}
+
+/**
+ * 折叠态那一行该显示/播放哪个录音版本（= `versions[0]`）。
+ *
+ * 顺序：① 跨平台源数最多 —— 多平台都有的那条就是曲库里的正式版本；
+ *       ② 时长最长 —— 片段/剪辑版总是更短，绝不能让它当主版本（旧实现取"最短"，
+ *          于是"盲选"的折叠行显示 1:20 的片段）；
+ *       ③ 平台优先级兜底，保证确定性。
+ */
+function pickCanonicalVersion(versions: VersionEntry[]): VersionEntry {
+  return [...versions].sort((a, b) => {
+    if (b.sources.length !== a.sources.length) return b.sources.length - a.sources.length;
+    if (b.duration !== a.duration) return b.duration - a.duration;
+    return platformRank(a) - platformRank(b);
+  })[0];
+}
+
+/** 是否与主版本属于"同一录音"（时长偏差在阈值内）。时长未知时不拆，保持旧行为。 */
+function isSameRecording(v: VersionEntry, canonical: VersionEntry): boolean {
+  if (!(canonical.duration > 0) || !(v.duration > 0)) return true;
+  return (
+    Math.abs(v.duration - canonical.duration) / canonical.duration <=
+    VERSION_DURATION_SPREAD_RATIO
+  );
+}
+
+/** 一个 duration cluster → 1 个 VersionEntry（含 cluster 内同 platform 去重）。 */
+function toVersionEntry(
+  cluster: RawSearchEntry[],
+  group: RawGroup,
+  idx: number,
+): VersionEntry {
+  // Bug #5 (stability-bug5-search-dup-platform)：cluster 内同 platform 多 mid 去重。
+  const seenPlatform = new Set<MusicProvider>();
+  const dedupedCluster = cluster.filter((e) => {
+    if (seenPlatform.has(e.track.provider)) return false;
+    seenPlatform.add(e.track.provider);
+    return true;
+  });
+  const sources: SourceInfo[] = dedupedCluster.map(({ track }) => ({
+    platform: track.provider,
+    trackId: track.id,
+    hasCopyright: true,
+    url: track.audioUrl,
+    mediaMid: track.mediaMid,
+    vipLocked: track.vipLocked,
+  }));
+  const main =
+    PLAY_PRIORITY.map((p) =>
+      cluster.find((e) => e.track.provider === p),
+    ).find(Boolean)?.track ?? cluster[0].track;
+  return {
+    id: `ver-${group.key}-${group.versionType}-${idx}`,
+    duration: main.duration,
+    sources,
+    bestSource: selectBestSource(sources),
+    label: undefined,  // Phase 3 可加：从 main.album/title 提取"短版"/"长版"
+    // 该版本的原始元数据（main = cluster 内 PLAY_PRIORITY 代表 track）。
+    // UI 展开后每行显示真实歌名/歌手/专辑，而不是 "v2 / 2:35"。
+    title: main.title,
+    artist: main.artist,
+    album: main.album,
+    // 封面：cluster 内跨 platform 取第一个非空。
+    coverUrl: cluster.find((e) => e.track.coverUrl)?.track.coverUrl || '',
+  };
+}
+
+/**
+ * 一组同录音的 versions → 1 个 UnifiedSearchItem。
+ * item 级字段全部取主版本，且 `versions[0]` 必定是主版本 —— renderer 的折叠行
+ * 就是拿 `versions[0]` 播放的（`handleRowClick(i, 0)`），这个不变量不能破。
+ */
+function toUnifiedItem(
+  group: RawGroup,
+  versions: VersionEntry[],
+  canonical: VersionEntry,
+): UnifiedSearchItem {
+  const ordered = [
+    canonical,
+    ...versions
+      .filter((v) => v !== canonical)
+      .sort((a, b) => a.duration - b.duration),
+  ];
+  const rep =
+    PLAY_PRIORITY.map((p) => canonical.sources.find((s) => s.platform === p)).find(Boolean) ??
+    canonical.sources[0];
+  return {
+    id: `merged-${rep.platform}-${rep.trackId}-${group.versionType}`,
+    title: canonical.title,
+    artist: canonical.artist,
+    album: canonical.album,
+    coverUrl: canonical.coverUrl,
+    duration: canonical.duration,
+    sources: canonical.sources,
+    bestSource: canonical.bestSource,
+    versionType: group.versionType,
+    versions: ordered,
+  };
+}
+
 export function buildUnifiedItems(
   _deduped: Map<string, Track>,
   all: RawSearchEntry[],
 ): UnifiedSearchItem[] {
-  // 1) 按 normalizeKey 分组
-  const byKey = new Map<string, RawSearchEntry[]>();
+  // 1) 按 (normalizeKey, versionType) 分组（Phase 1 redesign）：
+  // 同一首歌（normalizeKey 相同）的不同 version（studio / live / acoustic /
+  // remix / instrumental）→ 不同 item；同 version 内部继续按 duration 聚类。
+  // 旧版只按 normalizeKey 分组，结果是 Live / Remix 都跟 studio 各自成 cluster
+  // ——搜索"盲选"一下十几条，根本看不过来。
+  type Group = RawGroup & { entries: RawSearchEntry[] };
+  const byGroup = new Map<string, Group>();
   for (const e of all) {
     const key = normalizeKey(e.track.title, e.track.artist);
-    const arr = byKey.get(key) ?? [];
-    arr.push(e);
-    byKey.set(key, arr);
+    const versionType = classifyVersion(e.track.title, e.track.album);
+    const groupKey = `${key}\u0001${versionType}`; // \u0001 = 不会出现在 normalizeKey 里
+    const g =
+      byGroup.get(groupKey) ?? { key, versionType, entries: [] };
+    g.entries.push(e);
+    byGroup.set(groupKey, g);
   }
 
   const items: UnifiedSearchItem[] = [];
-  for (const entries of byKey.values()) {
-    // 2) 组内按 duration 聚类成版本
-    for (const cluster of clusterByDuration(entries)) {
-      const sources: SourceInfo[] = cluster.map(({ track }) => ({
-        platform: track.provider,
-        trackId: track.id,
-        // QQ/网易云的搜索结果默认有版权（搜索阶段无法完全判断，
-        // 播放时 getStreamUrl 才最终裁决）。
-        hasCopyright: true,
-        url: track.audioUrl,
-        // 透传 QQ 的 media_mid，让统一搜索结果走「标准→320→无损」时仍可升级。
-        mediaMid: track.mediaMid,
-        // 透传 VIP 锁标记，selectBestSource 据此避开只能出试听的源。
-        vipLocked: track.vipLocked,
-      }));
-      // main：取 cluster 内优先级最高平台的 track（决定 id / 展示信息），
-      // 保证同一版本的 id 稳定、标题优先用 QQ/网易云的中文名。
-      const main =
-        PLAY_PRIORITY.map((p) =>
-          cluster.find((e) => e.track.provider === p),
-        ).find(Boolean)?.track ?? cluster[0].track;
-      const bestSource = selectBestSource(sources);
-      // 封面抽取（跨源）：主平台可能没封面（如 QQ 搜索偶发空 albummid / 网易云 picUrl
-      // 缺失），同簇其他平台有封面就用它的——避免「AI 推荐 / 搜索结果无封面」。
-      const clusterCover = main.coverUrl || cluster.map((e) => e.track.coverUrl).find(Boolean) || '';
-      items.push({
-        id: `merged-${main.provider}-${main.id}`,
-        title: main.title,
-        artist: main.artist,
-        album: main.album,
-        coverUrl: clusterCover,
-        duration: main.duration,
-        sources,
-        bestSource,
-      });
-    }
+  for (const group of byGroup.values()) {
+    // Phase 2 redesign：search "盲选" 之前会出现十几条 album/live/remix 不同
+    // 录音版本。Phase 1 按 versionType 分组但同 type 内还按 3s duration 拆 cluster，
+    // 结果是专辑短版/长版/Live 短版/Live 长版...各自成 item，仍然太多。
+    //
+    // Phase 2：同 (normalizeKey, versionType) → 1 个 UnifiedSearchItem，item 内
+    // 保留 `versions: VersionEntry[]`（每个 cluster = 1 个录音版本）。默认折叠
+    // 视图只显示 1 行（播放 versions[0]）；toggle ON 后展开所有 versions 给用户选。
+    const clusters = clusterByDuration(group.entries);
+    const versions = clusters.map((cluster, idx) => toVersionEntry(cluster, group, idx));
+
+    // Phase 3（2026-09-20）：主版本 = 跨平台共识最多（并列取最长）的那条，不再是
+    // "最短"。用户搜"盲选"时折叠行原本显示 1:20 的片段（最短 cluster），点开就播它。
+    const canonical = pickCanonicalVersion(versions);
+
+    // 与主版本时长偏差 >50% 的孤立 cluster：不是"这首歌的另一个版本"，单独成条
+    // （不然展开列表里会混进明显是另一条录音/片段的东西）。
+    const sameRecording = versions.filter((v) => isSameRecording(v, canonical));
+    const others = versions.filter((v) => !isSameRecording(v, canonical));
+
+    items.push(toUnifiedItem(group, sameRecording, canonical));
+    for (const v of others) items.push(toUnifiedItem(group, [v], v));
   }
   return items;
 }

@@ -569,8 +569,13 @@ export class QqMusicProvider {
         `QQ vkey missing purl for ${songmid}: errtype=${info?.errtype}（可能无版权/需会员/登录态失效）`,
       );
     }
-    const upstreamHost =
-      vkey?.data?.sip?.[0] ?? 'https://ws.stream.qqmusic.qq.com/';
+    const sips = vkey?.data?.sip ?? [];
+    if (sips.length > 1) {
+      // 诊断：QQ GetVkey 返回多个 sip host（CDN 轮询池）。如果哪天又出现新
+      // CDN 节点没在 allowlist 看这里——add to ALLOWED_STREAM_HOSTS_EXACT/SUFFIX。
+      this.logger.log(`QQ ${songmid} sip[${sips.length}]: ${sips.join(', ')}`);
+    }
+    const upstreamHost = sips[0] ?? 'https://ws.stream.qqmusic.qq.com/';
     return upstreamHost.replace(/\/$/, '/') + info.purl;
   }
 

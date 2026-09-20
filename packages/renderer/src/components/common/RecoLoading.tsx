@@ -19,23 +19,32 @@ interface Props {
   onClose?: () => void;
 }
 
+/**
+ * 阶段文案按服务端 v2 链路的真实阶段排（口味档案 → 找相似歌手与候选 →
+ * 挑选 → 填源），由**已耗时**推进、走到最后一步就停住——原来是无脑循环播放，
+ * 用户等 20s 会看到文案绕回第一句，反而像是卡住了。
+ */
 const STEPS = [
-  '正在导入红心库…',
-  '正在分析你的音乐偏好…',
-  '正在生成推荐列表…',
-  '正在匹配跨平台音源…',
+  { until: 2_500, label: '正在读取你的口味档案…' },
+  { until: 7_000, label: '正在找相似歌手与候选…' },
+  { until: 14_000, label: '正在挑选并核对音源…' },
+  { until: Number.POSITIVE_INFINITY, label: '正在填实可播音源…' },
 ];
 
 export default function RecoLoading({ librarySize, onClose }: Props) {
-  const [step, setStep] = useState(0);
+  // 累计等待时长 → 推阶段。用真实耗时而不是固定间隔循环。
+  const [elapsedMs, setElapsedMs] = useState(0);
 
-  // 步骤自动推进（每 2.4s 推进一步，循环）
   useEffect(() => {
+    const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      setStep((s) => (s + 1) % STEPS.length);
-    }, 2400);
+      setElapsedMs(Date.now() - startedAt);
+    }, 500);
     return () => window.clearInterval(timer);
   }, []);
+
+  const step = STEPS.findIndex((s) => elapsedMs < s.until);
+  const stepIndex = step === -1 ? STEPS.length - 1 : step;
 
   // 1440×900 画布等比缩放
   const [canvasScale, setCanvasScale] = useState(1);
@@ -100,8 +109,13 @@ export default function RecoLoading({ librarySize, onClose }: Props) {
         <div className="rl-progress" role="status" aria-live="polite">
           <div className="rl-progress-bar" aria-hidden="true" />
           <div className="rl-progress-text">
-            <span className="rl-step-label">STEP {step + 1}/{STEPS.length}</span>
-            <span className="rl-step-desc">{STEPS[step]}</span>
+            <span className="rl-step-label">STEP {stepIndex + 1}/{STEPS.length}</span>
+            <span className="rl-step-desc">
+              {STEPS[stepIndex].label}
+              {elapsedMs >= 4_000 && (
+                <span className="rl-step-elapsed"> ({Math.round(elapsedMs / 1000)}s)</span>
+              )}
+            </span>
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
 import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality } from '../../api';
 import { clampText } from '../../lib/format';
+import { theaterDensity, canvasScale, lyricWindow, type TheaterDensity } from '../../lib/theaterLayout';
 
 /**
  * AETHER THEATER — 宇宙剧场主视图（v4 设计稿落地）。
@@ -57,6 +58,8 @@ export interface TheaterViewProps {
   onOpenLiked: () => void;
   onSwitchProvider: () => void;
   onConfigureReco?: () => void;
+  /** "放点像当前这首的"——以正在播放的歌为种子开推荐。 */
+  onRecoSeed?: () => void;
 }
 
 // ── helpers ──────────────────────────────────────────────────
@@ -167,20 +170,26 @@ export default function TheaterView(props: TheaterViewProps) {
     lyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
     onPlayPause, onSkip, onPrev, onSeek, onLike, onDislike,
-    onSwitchProvider, onConfigureReco,
+    onSwitchProvider, onConfigureReco, onRecoSeed,
   } = props;
 
-  // ── 1440×900 设计稿等比缩放（Electron 窗口任意拖拽） ──
-  // 固定尺寸设计画布 + transform: scale()。scale = min(winW/1440, winH/900)，
-  // 整个画布（含动效）随窗口等比缩放；背景星云固定铺满窗口不缩放。
-  const [canvasScale, setCanvasScale] = useState(1);
+  // ── 尺寸适配：三档 density + 画布等比缩放（规则见 lib/theaterLayout.ts）──
+  // regular ≥1280：1440×900 画布 / 歌词 5 行 / 声波环 + 推荐卡都在
+  // compact 1100–1279：同一画布继续缩放，歌词减到 3 行
+  // narrow <1100：换 960×800 紧凑画布（砍声波环与推荐卡，歌词只留当前行）
+  // 不做流式重排的理由：1440 稿最小可用宽度是 1330px（封面簇 670 + 歌词 560 + 边距），
+  // 而窗口默认 1200、最小 960 —— 重排必压住；缩放永不碰撞，真正的问题是缩放后小字太小。
+  const [layout, setLayout] = useState<{ density: TheaterDensity; scale: number }>({
+    density: 'regular',
+    scale: 1,
+  });
   useEffect(() => {
     const compute = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
       // 顶部 40px 是 Titlebar（macOS 拖拽区），画布可用高度 = h - 40
-      const scale = Math.min(w / 1440, Math.max(0.3, (h - 40) / 900));
-      setCanvasScale(scale);
+      const density = theaterDensity(w);
+      setLayout({ density, scale: canvasScale(w, h, density) });
     };
     compute();
     window.addEventListener('resize', compute);
@@ -201,13 +210,14 @@ export default function TheaterView(props: TheaterViewProps) {
   const currentLine = hasTrack
     ? (activeLine >= 0 ? lyrics?.[activeLine]?.text : null)
     : IDLE_LYRIC_HINT;
-  // 当前行之后的 3 行（对应设计稿 lyric-stream 的 3 条渐隐后行）
+  // 当前行之后的行数按档位收敛（regular 3 / compact 1 / narrow 0）
+  const lyricWin = lyricWindow(layout.density);
   const followingLines: string[] = hasTrack
     ? (lyrics ?? [])
-        .slice(Math.max(activeLine + 1, 0), Math.max(activeLine + 1, 0) + 3)
+        .slice(Math.max(activeLine + 1, 0), Math.max(activeLine + 1, 0) + lyricWin.following)
         .map((l) => l.text)
     : [];
-  const prevLine = hasTrack
+  const prevLine = hasTrack && lyricWin.prev > 0
     ? (activeLine - 1 >= 0 ? lyrics?.[activeLine - 1]?.text : null)
     : null;
   // 进度/时间：无曲目时归零（进度环静止、时间显示 0:00 / 0:00）
@@ -257,7 +267,8 @@ export default function TheaterView(props: TheaterViewProps) {
 
       {/* ── 1440×900 设计画布（整体等比缩放，含动效） ── */}
       <div className="th-canvas"
-        style={{ ['--canvas-scale' as string]: String(canvasScale) }}>
+        data-density={layout.density}
+        style={{ ['--canvas-scale' as string]: String(layout.scale) }}>
 
         {/* 顶部 HUD（1440 稿 y 24：brand 64 / telemetry 1072 / badges 1228） */}
         <header className="th-hud">
@@ -371,7 +382,7 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
         </div>
 
-        {/* 歌名信息（1440 稿 430,590） */}
+        {/* 歌名信息（1440 稿 430,590 → 实装 430,602：与上方时间行/下方控制带定死间距） */}
         <div className="th-track-info">
           <div className="th-track-header">
             <h1 className="th-track-title">{clampText(track?.title ?? '等待播放', 18)}</h1>
@@ -428,7 +439,7 @@ export default function TheaterView(props: TheaterViewProps) {
           )}
         </section>
 
-        {/* TrialFallback 降级标签（1440 稿 560,640） */}
+        {/* TrialFallback 降级标签（1440 稿 560,640 → 实装 560,755：长歌名会压住它） */}
         {trialFellBack && (
           <div className="th-trial-tag" aria-label="试听降级">
             <span className="th-trial-tag-dot" aria-hidden="true" />
@@ -436,7 +447,7 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
         )}
 
-        {/* 左下：能量核心（1440 稿 266,700；顺序 prev|like|play|next） */}
+        {/* 左下：能量核心（1440 稿 266,700 → 实装 266,726：给上方歌名块留净空，见 Bug #8） */}
         <div className="th-core-cluster">
           <button type="button" className="th-ctrl th-ctrl--prev" onClick={onPrev} disabled={!track} title="上一首">
             <ThIcon icon="skipBack" size={18} />
@@ -467,7 +478,7 @@ export default function TheaterView(props: TheaterViewProps) {
           </button>
         </div>
 
-        {/* 右下：DeepSeek 推荐（1440 稿 1000,700） */}
+        {/* 右下：DeepSeek 推荐（1440 稿 1000,700 → 实装 1000,726：与能量核心同一条底带） */}
         {!recoConfigured && !recoRunning ? (
           <div className="th-reco-unconfigured">
             <div className="th-reco-unconfigured-title">AI 推荐未配置</div>
@@ -530,6 +541,18 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
           {recoConfigured && recoMatchRate > 0 && (
             <div className="th-reco-foot">AI 评估：{recoMatchRate}% MATCH</div>
+          )}
+          {/* 以当前歌为种子——主流播放器最常用的入口（"放点像这首的"）。 */}
+          {track && onRecoSeed && !recoRunning && (
+            <button
+              type="button"
+              className="th-reco-seed"
+              onClick={onRecoSeed}
+              title={`以《${track.title}》为种子推荐`}
+            >
+              <span aria-hidden="true">↺</span>
+              <span>像《{clampText(track.title, 12)}》一样</span>
+            </button>
           )}
         </div>
         )}

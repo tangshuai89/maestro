@@ -39,6 +39,12 @@ interface DeezerChartResponse {
   total: number;
 }
 
+/** `/search/artist` 与 `/artist/{id}/related` 的条目（只用得上 id/name）。 */
+interface DeezerArtist {
+  id: number;
+  name: string;
+}
+
 /**
  * Known Deezer editorials (curated genre charts).
  *  - 0   = All
@@ -151,6 +157,56 @@ export class DeezerMusicProvider {
   ): Promise<Track[]> {
     const editorialId = DEEZER_EDITORIALS_PRESET[preset] ?? 132;
     return this.fetchEditorialCharts(editorialId, count);
+  }
+
+  /**
+   * 相邻艺人（reco 候选池用）：`/search/artist` 定位艺人 id →
+   * `/artist/{id}/related` 取 Deezer 的相关艺人列表。
+   *
+   * 为什么这是有价值的信号：Deezer 的 related 是平台侧基于真实收听行为算出来
+   * 的相似度（协同过滤结果），比让 LLM 凭空想"哪些歌手风格相近"可靠得多。
+   * Deezer 公开 API 匿名可用，不需要登录态。
+   *
+   * 失败即抛（由 MusicService 那层 fail-soft 兜成空数组）。
+   */
+  async fetchRelatedArtists(
+    _session: ProviderSession,
+    artistName: string,
+    count = 6,
+  ): Promise<string[]> {
+    const name = artistName.trim();
+    if (!name) return [];
+    const headers = { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' };
+
+    const searchUrl = new URL(`${DeezerMusicProvider.API}/search/artist`);
+    searchUrl.searchParams.set('q', name);
+    searchUrl.searchParams.set('limit', '1');
+    const searchRes = await fetch(searchUrl.toString(), { headers });
+    if (!searchRes.ok) {
+      throw new Error(`deezer artist search failed: ${searchRes.status}`);
+    }
+    const searched = (await searchRes.json()) as { data?: DeezerArtist[] };
+    const artistId = searched.data?.[0]?.id;
+    if (!artistId) return [];
+
+    const relatedUrl = new URL(
+      `${DeezerMusicProvider.API}/artist/${artistId}/related`,
+    );
+    relatedUrl.searchParams.set(
+      'limit',
+      String(Math.max(1, Math.min(count * 2, 50))),
+    );
+    const relRes = await fetch(relatedUrl.toString(), { headers });
+    if (!relRes.ok) {
+      throw new Error(`deezer related artists failed: ${relRes.status}`);
+    }
+    const related = (await relRes.json()) as { data?: DeezerArtist[] };
+    // 去掉"相关艺人"里混进来的自己（Deezer 偶尔把同一艺人的另一种写法给回来）。
+    const selfKey = name.toLowerCase();
+    return (related.data ?? [])
+      .map((a) => a.name?.trim())
+      .filter((n): n is string => Boolean(n) && n.toLowerCase() !== selfKey)
+      .slice(0, Math.max(1, count));
   }
 
   /**

@@ -7,10 +7,11 @@ import { contextBridge, ipcRenderer } from 'electron';
  */
 
 /** Allowlist of IPC channels the renderer can subscribe to.
- *  Anything not in this list is rejected — see B2 in docs/audit-2026-07-30.md
- *  for why a wildcard was a security hole (any renderer XSS could listen
- *  to future oauth/deeplink/secrets channels). Add new channels here
- *  explicitly when adding new IPC subscriptions. */
+ *  Anything not in this list is rejected — see §1.2 [P1] in
+ *  docs/_archive/audit-snapshots/audit-2026-07-30.md for why a wildcard
+ *  was a security hole (any renderer XSS could listen to future
+ *  oauth/deeplink/secrets channels). Add new channels here explicitly
+ *  when adding new IPC subscriptions. */
 const SUBSCRIBABLE_CHANNELS = new Set([
   'sidecar-ready',
   'qq-login-result',

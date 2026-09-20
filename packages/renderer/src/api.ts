@@ -526,6 +526,23 @@ export interface UnifiedSourceInfo {
 }
 
 /** 统一搜索结果（去重合并后）单条。 */
+/** 单一录音版本（同 (key, type) 内一个 duration cluster = 一个版本）。镜像 server。 */
+export interface VersionEntry {
+  id: string;
+  duration: number;
+  sources: UnifiedSourceInfo[];
+  bestSource: MusicProvider | null;
+  /** UI 标签（Phase 3 可加）。Phase 2 留空。 */
+  label?: string;
+  /** 该版本的原始元数据（server: cluster 内 PLAY_PRIORITY 代表 track）。
+   *  UI 展开多版本时逐行显示，让用户能区分 `盲选 1:20` / `盲选 (Live) 4:47`。
+   *  可选：老缓存 / 单平台搜索路径没有这些字段，UI 回退到 item 级元数据。 */
+  title?: string;
+  artist?: string;
+  album?: string;
+  coverUrl?: string;
+}
+
 export interface UnifiedSearchItem {
   id: string;
   title: string;
@@ -535,6 +552,13 @@ export interface UnifiedSearchItem {
   duration: number;
   sources: UnifiedSourceInfo[];
   bestSource: MusicProvider | null;
+  /** 录音版本类型（[LIVE] / [ACOUSTIC] / [REMIX] / [INSTRUMENTAL]）。
+   *  studio 不显示角标。 */
+  versionType: 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
+  /** Phase 2：同 (key, type) 内的多个录音版本（不同 duration / 不同录音 master）。
+   *  默认折叠时 item.sources/bestSource/duration = versions[0]（最短版本）；UI
+   *  toggle "显示所有版本" 打开后展开每个 version 为可独立播放的一行。 */
+  versions: VersionEntry[];
   /** UI 角标显示用：用户在哪些平台 ❤ 了这首歌（import + 运行时 fanOut 合并）。
    *  缺失时回退到 sources.map(s => s.platform)。 */
   likedPlatforms?: MusicProvider[];
@@ -601,6 +625,10 @@ export async function searchOne(
     coverUrl: t.coverUrl,
     duration: t.duration,
     bestSource: t.provider,
+    // 单平台搜索结果没有 versionType 分类（接口返回原始 Track），默认 studio。
+    // 跨平台 searchUnified 由服务端 classifyVersion 标注。
+    versionType: 'studio',
+    versions: [],  // 单平台搜索没 versionType 分类，默认空数组（自己）。
     sources: [
       {
         platform: t.provider,
@@ -698,6 +726,8 @@ export interface RecoRequest {
    * already in the reco queue. Server merges these into its dedup set.
    */
   exclude?: Array<{ title: string; artist: string }>;
+  /** "放点像这首的"：以某首歌为种子开推荐。 */
+  seed?: { title: string; artist: string };
 }
 
 export interface RecoRunResult {
@@ -705,6 +735,11 @@ export interface RecoRunResult {
   model: string;
   runAt: number;
   raw?: string; // 调试用，模型原始响应（截断）
+  /** 'select' = 走目录锚定候选池挑选（v2 主路径）；
+   *  'generate' = 候选池不足时回退的自由生成。调试/效果对比用。 */
+  mode?: 'select' | 'generate';
+  /** 候选池规模（0 = 没建成池，走了自由生成）。 */
+  candidateCount?: number;
 }
 
 export async function fetchRecoStatus(): Promise<RecoStatus> {
@@ -722,6 +757,38 @@ export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
       body: JSON.stringify(req),
     }),
   );
+}
+
+/** 行为信号类型（与服务端 `reco/signals.ts` 对齐）。 */
+export type RecoSignalType =
+  | 'play'
+  | 'complete'
+  | 'skip'
+  | 'like'
+  | 'dislike'
+  | 'seed';
+
+/**
+ * 上报一次播放行为信号（播放/完播/跳过/红心/踩）。
+ *
+ * **fire-and-forget**：推荐质量依赖这些信号，但播放体验绝不依赖上报是否成功
+ * ——失败静默吞掉，不 setError、不阻塞切歌。
+ */
+export function reportRecoSignal(signal: {
+  type: RecoSignalType;
+  title: string;
+  artist: string;
+  progress?: number;
+}): void {
+  if (!signal.title || !signal.artist) return;
+  void fetchWithToken(`${API_BASE}/reco/signal`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(signal),
+  }).catch(() => {
+    // 静默：上报失败不该让用户看到任何东西。
+  });
 }
 
 export async function saveRecoKey(apiKey: string): Promise<{ ok: true; tail: string }> {

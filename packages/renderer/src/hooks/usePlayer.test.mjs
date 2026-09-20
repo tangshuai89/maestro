@@ -58,6 +58,7 @@ const {
   pickFallbackSource,
   pickUpgradeSource,
   shouldApplyLikeResult,
+  shouldStopWpsBeforeTransition,
   parsePlayableQueue,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
@@ -89,11 +90,28 @@ async function main() {
   check('3. TRIAL_MAX_SEC = 120', TRIAL_MAX_SEC, 120);
   check('4. TRIAL_GAP_SEC = 45', TRIAL_GAP_SEC, 45);
 
-  // ── getFullSongProviders ────────────────────────────────────────────
-  check('5. getFullSongProviders(premium) 含 spotify', getFullSongProviders('premium'), ['qq', 'netease', 'spotify']);
-  check('6. getFullSongProviders(free) 不含 spotify', getFullSongProviders('free'), ['qq', 'netease']);
+  // ── getFullSongProviders (Bug #3: 必须 tier premium AND wpsReady 才含 spotify) ──
+  // 5. premium tier + WPS 就绪 → 含 spotify（全曲流，WPS 接管）
+  check('5. getFullSongProviders(premium, true) 含 spotify',
+    getFullSongProviders('premium', true), ['qq', 'netease', 'spotify']);
+  // 5b. premium-duo + WPS 就绪 → 含 spotify
+  check('5b. getFullSongProviders(premium-duo, true) 含 spotify',
+    getFullSongProviders('premium-duo', true), ['qq', 'netease', 'spotify']);
+  // 5c. premium-family + WPS 就绪 → 含 spotify
+  check('5c. getFullSongProviders(premium-family, true) 含 spotify',
+    getFullSongProviders('premium-family', true), ['qq', 'netease', 'spotify']);
+  // 6. premium tier 但 WPS 没就绪 → **不含** spotify（Bug #3 根因修复）
+  //    否则 trial upgrade 会换到 30s preview URL，UI 显 00:30 而不是 04:34。
+  check('6. getFullSongProviders(premium, false) 不含 spotify',
+    getFullSongProviders('premium', false), ['qq', 'netease']);
+  // 6b. 默认参数 wpsReady=false → 同 6
+  check('6b. getFullSongProviders(premium) 默认 wpsReady=false → 不含 spotify',
+    getFullSongProviders('premium'), ['qq', 'netease']);
   check('7. getFullSongProviders(null) 不含 spotify', getFullSongProviders(null), ['qq', 'netease']);
   check('8. getFullSongProviders(undefined) 不含 spotify', getFullSongProviders(undefined), ['qq', 'netease']);
+  // 8b. free + WPS 就绪 → 仍不含（tier 不是 premium 系列）
+  check('8b. getFullSongProviders(free, true) 不含 spotify',
+    getFullSongProviders('free', true), ['qq', 'netease']);
 
   // ── pickFallbackSource ──────────────────────────────────────────────
   // 9. 空 sources → undefined
@@ -411,10 +429,12 @@ async function main() {
 
   // 38. getFullSongProviders: premium-duo 也含 spotify
   {
-    check('38. getFullSongProviders(premium-duo) 含 spotify',
-      getFullSongProviders('premium-duo'), ['qq', 'netease', 'spotify']);
-    check('38b. getFullSongProviders(premium-family) 含 spotify',
-      getFullSongProviders('premium-family'), ['qq', 'netease', 'spotify']);
+    // Bug #3: 必须 tier premium-* AND wpsReady=true 才含 spotify。
+    // 老测试 38/38b 不传 wpsReady（默认 false）→ 期望不变（不含 spotify）。
+    check('38. getFullSongProviders(premium-duo, false) 默认不含 spotify',
+      getFullSongProviders('premium-duo'), ['qq', 'netease']);
+    check('38b. getFullSongProviders(premium-family, false) 默认不含 spotify',
+      getFullSongProviders('premium-family'), ['qq', 'netease']);
   }
 
   // 39. pickUpgradeSource: vipLocked 跳过
@@ -450,6 +470,46 @@ async function main() {
     const picked = pickUpgradeSource(sources, new Set(), ['spotify', 'deezer']);
     check('42. pickUpgradeSource 自定义 fullProviders → spotify 优先', picked?.platform, 'spotify');
   }
+
+  // ── shouldStopWpsBeforeTransition (Bug #2 stability-bug2-wps-double-play) ──
+  // 43. WPS 没播过 → false（不必 stop）
+  check('43. wpsLastPlayedId=null → false',
+    shouldStopWpsBeforeTransition(null, { provider: 'qq', id: 'q-1' }, true), false);
+
+  // 44. nextTrack=null → false（没新歌谈不上 stop）
+  check('44. nextTrack=null → false',
+    shouldStopWpsBeforeTransition('sp-A', null, true), false);
+
+  // 45. 同 spotify track、wpsReady=true → false（不应该打断 pause/resume）
+  check('45. spotify→同 spotify id, wpsReady=true → false（保留 resume）',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-A' }, true), false);
+
+  // 46. (A) spotify→QQ → true（必须停 WPS，否则旧 URI 续播 → 两路叠加）
+  check('46. spotify→QQ, wpsReady=true → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'qq', id: 'q-1' }, true), true);
+
+  // 47. (B) 同 spotify provider 但 id 变 → true（wpsReady=true 也要 stop 旧的）
+  check('47. spotify A→spotify B, wpsReady=true → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-B' }, true), true);
+
+  // 48. (B) spotify→spotify, wpsReady 翻 false（token/EME race）→ true
+  check('48. spotify A→spotify B, wpsReady=false → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-B' }, false), true);
+
+  // 49. (C) spotify→QQ→spotify A（id 相同但中间离开过）→ true
+  //     这里模拟的是：上一首 WPS 播 A → 切到 QQ → 又切回 spotify A。
+  //     此时虽然 id 相同，但 wpsPlayedIdRef 已被 presentTrack 清成 null，
+  //     所以新一次 useEffect 进来时 wpsLastPlayedId=null → 走 false 分支。
+  //     本测试验证「ref 没被清」的另一条路径：直接喂 wpsLastPlayedId='sp-A' +
+  //     跳到 spotify A → 仍要 stop（虽然 id 相同，但中间有过换 provider，
+  //     WPS 状态不可信）。这个场景的实际防御在 presentTrack 里清 ref；这里
+  //     测纯函数在「同 id 但 wpsReady=false」下的判定。
+  check('49. spotify→spotify 同 id, wpsReady=false → true（不可信）',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: 'sp-A' }, false), true);
+
+  // 50. nextTrack.id 是空字符串 → 不视作 spotify id，仍要 stop
+  check('50. spotify→spotify 空 id → true',
+    shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: '' }, true), true);
 
   console.log(`\n🎉 usePlayer.test 通过 ${passed} 项，失败 ${failed} 项`);
   if (failed > 0) process.exit(1);

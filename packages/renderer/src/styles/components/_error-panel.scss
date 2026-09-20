@@ -8,8 +8,8 @@
 .err-panel {
   width: 100%;
   max-width: 360px;
-  background: rgba(255, 59, 92, 0.08);
-  border: 1px solid rgba(255, 59, 92, 0.2);
+  background: color-mix(in oklab, var(--status-error) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--status-error) 20%, transparent);
   border-radius: 10px;
   overflow: hidden;
   text-align: left;
@@ -32,12 +32,12 @@
   transition: background 0.15s ease;
 }
 
-.err-summary:hover { background: rgba(255, 59, 92, 0.08); }
+.err-summary:hover { background: color-mix(in oklab, var(--status-error) 8%, transparent); }
 
 .err-icon {
   flex-shrink: 0;
   font-size: 12px;
-  color: #ff3b5c;
+  color: var(--status-error);
 }
 
 .err-summary-text {
@@ -54,7 +54,7 @@
 }
 
 .err-panel--expanded .err-summary {
-  border-bottom: 1px solid rgba(255, 59, 92, 0.15);
+  border-bottom: 1px solid color-mix(in oklab, var(--status-error) 15%, transparent);
 }
 
 .err-detail {
@@ -85,14 +85,14 @@
   font-size: 11px;
   padding: 5px 12px;
   border-radius: 6px;
-  background: rgba(255, 59, 92, 0.1);
-  border: 1px solid rgba(255, 59, 92, 0.2);
+  background: color-mix(in oklab, var(--status-error) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--status-error) 20%, transparent);
   color: rgba(255, 107, 129, 0.8);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .err-action:hover {
-  background: rgba(255, 59, 92, 0.2);
+  background: color-mix(in oklab, var(--status-error) 20%, transparent);
   color: #ff6b81;
 }

@@ -96,14 +96,14 @@
   background: color-mix(
     in oklab,
     var(--cover-accent) 6%,
-    rgba(255, 255, 255, 0.045)
+    color-mix(in srgb, var(--white) 4.5%, transparent)
   );
   border: 1px solid color-mix(in oklab, var(--cover-accent) 14%, var(--border));
   border-radius: var(--radius-xl);
   @include backdrop-blur(30px, 160%);
   box-shadow:
     var(--shadow-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 var(--glass-fill-strong),
     inset 0 -1px 0 rgba(0, 0, 0, 0.12);
   overflow: hidden;
   transition:
@@ -117,7 +117,7 @@
   transform: translateY(-2px);
   box-shadow:
     var(--shadow-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 var(--glass-stroke),
     inset 0 -1px 0 rgba(0, 0, 0, 0.14);
 }
 

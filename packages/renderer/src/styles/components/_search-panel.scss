@@ -17,7 +17,7 @@
   inset: 0;
   overflow: hidden;
   background: #02020a;
-  color: #f5f0e8;
+  color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
   z-index: 100;
@@ -61,7 +61,7 @@
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: rgba(245, 240, 232, 0.9);
+  color: color-mix(in srgb, var(--text-main) 90%, transparent);
   line-height: 1.2;
 }
 
@@ -69,7 +69,7 @@
   font-size: 9px;
   font-weight: 500;
   letter-spacing: 0.3em;
-  color: rgba(0, 229, 255, 0.5);
+  color: color-mix(in srgb, var(--accent) 50%, transparent);
   text-transform: uppercase;
   line-height: 1.2;
 }
@@ -84,10 +84,10 @@
 .sp-chip-all {
   height: 28px;
   padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--glass-stroke);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.6);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 60%, transparent);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -95,10 +95,10 @@
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.sp-chip-all:hover { background: rgba(255, 255, 255, 0.1); color: #f5f0e8; }
+.sp-chip-all:hover { background: color-mix(in srgb, var(--white) 10%, transparent); color: var(--text-main); }
 .sp-chip-all.is-active {
-  background: rgba(0, 229, 255, 0.15);
-  border-color: rgba(0, 229, 255, 0.5);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
   color: #00e5ff;
 }
 
@@ -106,9 +106,9 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.5);
+  border: 1px solid var(--glass-stroke);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -118,7 +118,7 @@
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.sp-badge:hover { background: rgba(255, 255, 255, 0.1); color: #f5f0e8; }
+.sp-badge:hover { background: color-mix(in srgb, var(--white) 10%, transparent); color: var(--text-main); }
 .sp-badge.is-active {
   background: var(--badge);
   border-color: var(--badge);
@@ -138,20 +138,20 @@
   align-items: center;
   gap: 16px;
   padding: 0 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition: border-color 0.2s ease;
 }
 
 .sp-search-bar:focus-within {
-  border-color: rgba(0, 229, 255, 0.4);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .sp-search-icon {
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 
@@ -160,17 +160,17 @@
   height: 100%;
   border: none;
   background: transparent;
-  color: #f5f0e8;
+  color: var(--text-main);
   font-size: 16px;
   font-weight: 400;
   outline: none;
-  &::placeholder { color: rgba(245, 240, 232, 0.3); }
+  &::placeholder { color: color-mix(in srgb, var(--text-main) 30%, transparent); }
 }
 
 .sp-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: 2px solid color-mix(in srgb, var(--white) 15%, transparent);
   border-top-color: #00e5ff;
   border-radius: 50%;
   animation: sp-spin 0.8s linear infinite;
@@ -184,7 +184,7 @@
   height: 32px;
   border: none;
   background: transparent;
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
@@ -192,7 +192,7 @@
   transition: color 0.15s ease, background 0.15s ease;
 }
 
-.sp-close:hover { color: #f5f0e8; background: rgba(255, 255, 255, 0.08); }
+.sp-close:hover { color: var(--text-main); background: var(--glass-fill-strong); }
 
 // ── result-count（y=196，Tag/Stat 风格） ─────────────────────────
 
@@ -203,7 +203,7 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.15em;
-  color: rgba(245, 240, 232, 0.35);
+  color: color-mix(in srgb, var(--text-main) 35%, transparent);
   text-transform: uppercase;
 }
 
@@ -222,26 +222,26 @@
   // 自定义滚动条
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
+  &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--white) 10%, transparent); border-radius: 2px; }
 }
 
 .sp-empty {
   padding: 40px 16px;
   text-align: center;
-  color: rgba(245, 240, 232, 0.25);
+  color: color-mix(in srgb, var(--text-main) 25%, transparent);
   font-size: 14px;
 }
 
 .sp-error {
   padding: 12px 16px;
-  color: #ff3b5c;
+  color: var(--status-error);
   font-size: 13px;
 }
 
 .sp-loading-more {
   padding: 12px 16px;
   text-align: center;
-  color: rgba(245, 240, 232, 0.3);
+  color: color-mix(in srgb, var(--text-main) 30%, transparent);
   font-size: 12px;
 }
 
@@ -263,14 +263,110 @@
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.sp-row:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+.sp-row:hover:not(.sp-row--disabled) {
+  background: color-mix(in srgb, var(--white) 5%, transparent);
+  border-color: color-mix(in srgb, var(--white) 10%, transparent);
 }
 
 .sp-row--disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Phase 2 修订：每个 item 是一个 flex 列容器（main-row + 展开后的 sub-rows）。
+ * gap 让 sub-row 与 main-row 之间保留间距；.sp-results 的 gap 现在只作用于 item 之间。 */
+.sp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 多版本展开按钮 —— 行尾（最右侧）唯一的"箭头"，点击只展开版本列表。
+ * Bug #7：之前行尾是 ▶（播放），用户把最右侧的箭头当展开按钮点，结果直接播放。
+ * 现在：行尾 = 本按钮（▾/▴ 上下箭头 + "N 个版本"文案），播放在封面遮罩上。 */
+.sp-ver-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--white) 14%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--white) 3%, transparent);
+  color: color-mix(in srgb, var(--text-main) 65%, transparent);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.sp-ver-toggle:hover {
+  border-color: color-mix(in srgb, var(--white) 28%, transparent);
+  background: var(--glass-fill-strong);
+  color: var(--text-main);
+}
+
+.sp-ver-toggle.is-open {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: #00e5ff;
+}
+
+.sp-ver-count {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sp-ver-chevron {
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Bug #6 (stability-bug6-toggle-bubble) + Phase 2 视觉区分：
+ * main-row 是主版本（折叠态显示），sp-row 是展开后的 sub-version（v2/v3/...）。
+ * 必须视觉上区分，否则用户点错位置以为是"选不中下面的版本"。
+ *
+ * 设计：左边 padding 加 24px 缩进（让 sub 看起来"嵌套"在 main 下），字号略小，
+ * 半透明 background，让用户一眼看出 v1 (主) vs v2/v3 (副)。
+ */
+.sp-row--sub {
+  /* 版本行现在显示真实歌名/歌手/专辑（两行文案），高度按 main-row 略矮给足，
+   * 缩进 + 圆点 + 半透明背景区分层级。 */
+  padding: 12px 16px 12px 48px;
+  height: 64px;
+  background: color-mix(in srgb, var(--white) 2.5%, transparent);
+  border-color: color-mix(in srgb, var(--white) 5%, transparent);
+  opacity: 0.85;
+}
+
+.sp-row--sub:hover:not(.sp-row--disabled) {
+  background: color-mix(in srgb, var(--white) 7%, transparent);
+  border-color: color-mix(in srgb, var(--white) 15%, transparent);
+  opacity: 1;
+}
+
+.sp-row--sub .sp-row-title {
+  font-size: 13px;  /* main 是 14px，sub 略小 */
+}
+
+/* sub-row 左侧的版本指示点（对齐 lib-subrow-dot） */
+.sp-sub-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-purple) 55%, transparent);
+  flex-shrink: 0;
+}
+
+/* 封面 + hover 播放遮罩。
+ * Bug #7：播放三角不再放在行尾（会被当成展开箭头），改成盖在封面上的 ▶。 */
+.sp-cover-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: block;
 }
 
 .sp-cover {
@@ -279,19 +375,37 @@
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--white) 5%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.sp-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(2, 2, 10, 0.62);
+  color: #3dffa2;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.sp-row:hover:not(.sp-row--disabled) .sp-play-overlay {
+  opacity: 1;
+}
+
 .sp-cover-ph {
-  background: linear-gradient(135deg, rgba(91, 43, 255, 0.2), rgba(0, 229, 255, 0.15));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-purple) 20%, transparent), color-mix(in srgb, var(--accent) 15%, transparent));
 }
 
 .sp-cover-note {
   font-size: 18px;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, var(--white) 25%, transparent);
 }
 
 .sp-row-meta {
@@ -300,14 +414,14 @@
 }
 
 .sp-row-title {
-  color: rgba(245, 240, 232, 0.9);
+  color: color-mix(in srgb, var(--text-main) 90%, transparent);
   font-size: 14px;
   font-weight: 500;
   @include truncate;
 }
 
 .sp-row-sub {
-  color: rgba(245, 240, 232, 0.45);
+  color: color-mix(in srgb, var(--text-main) 45%, transparent);
   font-size: 12px;
   @include truncate;
   margin-top: 2px;
@@ -325,27 +439,29 @@
   font-size: 10px;
   font-weight: 600;
   color: #00e5ff;
-  background: rgba(0, 229, 255, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   border-radius: 4px;
   padding: 2px 6px;
 }
 
 .sp-play-icon {
   color: #3dffa2;
-  opacity: 0;
+  /* 只用于展开后的 sub-row（v2/v3…）：常显但压暗，hover 提亮——sub-row 没有
+   * 展开按钮，所以这里放 ▶ 不产生歧义。 */
+  opacity: 0.55;
   flex-shrink: 0;
   transition: opacity 0.15s ease;
 }
 
-.sp-row:hover:not(:disabled) .sp-play-icon { opacity: 1; }
+.sp-row:hover:not(.sp-row--disabled) .sp-play-icon { opacity: 1; }
 
 .sp-no-rights {
-  color: rgba(245, 240, 232, 0.3);
+  color: color-mix(in srgb, var(--text-main) 30%, transparent);
   font-size: 11px;
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--white) 5%, transparent);
 }
 
 // ── SourceChip 组件样式（保留旧类名，组件仍引用） ───────────────
@@ -361,8 +477,8 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(245, 240, 232, 0.5);
+  background: var(--glass-fill);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   line-height: 1;
   white-space: nowrap;
 }

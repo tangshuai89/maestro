@@ -68,7 +68,7 @@
 
 .login-btn {
   background: var(--accent-ui);
-  color: #fff;
+  color: var(--white);
   border-color: var(--accent-ui);
   // Push login to the right edge of the titlebar; everything before it
   // clusters on the left.
@@ -77,7 +77,7 @@
 
 .login-btn:hover {
   background: var(--accent-hover);
-  color: #fff;
+  color: var(--white);
   border-color: var(--accent-hover);
 }
 

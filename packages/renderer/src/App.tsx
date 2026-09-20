@@ -292,6 +292,7 @@ export default function App() {
         onOpenLiked={() => { void reloadLikedCount(); setLikedOpen(true); }}
         onSwitchProvider={handleSwitchSource}
         onConfigureReco={() => reco.setRecoKeyOpen(true)}
+        onRecoSeed={() => reco.handleRecoSeed(player.track?.title, player.track?.artist)}
       />
 
       {/* Always mounted (never conditionally unmounted) so the Web Audio graph

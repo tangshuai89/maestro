@@ -17,6 +17,7 @@ import type {
   UnifiedSearchResult,
   UnifiedSearchItem,
   ProviderSearchRaw,
+  RadioCandidate,
   SourceInfo,
 } from './types';
 import {
@@ -40,6 +41,14 @@ import { LyricsService } from './lyrics.service';
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
 const UNIFIED_SEARCH_TIMEOUT_MS = 5_000;
+
+/** reco 候选池：相邻艺人查询（Deezer /artist/{id}/related）的单次预算——3s。
+ *  候选池是"锦上添花"来源，慢一点就少一个来源，不值得拖住整次推荐。 */
+const RECO_NEIGHBOR_TIMEOUT_MS = 3_000;
+
+/** reco 候选池：平台 FM / 榜单取批的单平台预算——4s（2026-09-20 从 8s 收紧：
+ *  用户实测推荐太慢，而电台只是"外扩"来源之一，缺席也不影响主体候选）。 */
+const RECO_RADIO_TIMEOUT_MS = 4_000;
 
 /** 「我的喜欢」导入的单平台预算——30s。覆盖 Spotify 分页拉 1000 首
  * （limit=50，20 页 × ~1s）和 NetEase 三步拉 1k+ 首；超时就视为该平台
@@ -654,6 +663,121 @@ export class MusicService {
       }
     }
     return '';
+  }
+
+  /**
+   * 相邻艺人（reco 候选池的"跨艺人发现"来源）。
+   *
+   * 走 Deezer 匿名 API 的真实相似度（平台侧协同过滤结果），比让 LLM 凭空想
+   * "哪些歌手风格相近"可靠。**fail-soft**：未登录/网络失败/超时一律返回空数组
+   * ——候选池少一个来源，不能把整次推荐打挂。
+   */
+  async findRelatedArtists(
+    session: Session,
+    artist: string,
+    count = 6,
+  ): Promise<string[]> {
+    const name = (artist ?? '').trim();
+    if (!name) return [];
+    return withTimeout(
+      () =>
+        this.deezer.fetchRelatedArtists(
+          session.providers.deezer ?? {},
+          name,
+          count,
+        ),
+      RECO_NEIGHBOR_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `related artists "${name}" timed out (>${RECO_NEIGHBOR_TIMEOUT_MS}ms)`,
+        ),
+    ).then(
+      (res) => res ?? [],
+      (err: unknown) => {
+        this.logger.warn(
+          `related artists "${name}" failed: ${(err as Error)?.message ?? 'error'}`,
+        );
+        return [];
+      },
+    );
+  }
+
+  /**
+   * 平台 FM / 榜单候选（reco 候选池的"品味外扩"来源）。
+   *
+   * 网易云私人 FM 背后是**网易自己的推荐算法**（基于该账号的真实收听史），QQ
+   * 电台是搜索种子 + 打散，Deezer 是编辑榜——三者都是真实目录里的歌，比 LLM
+   * 凭空生成靠谱。未登录的平台直接跳过，单平台失败/超时不影响其他平台。
+   *
+   * 注意：这里**不写** music session state（不像 refillQueue），只在内存里返回
+   * 候选，避免污染播放队列。
+   */
+  async fetchRecoRadioCandidates(
+    session: Session,
+    perProvider = 8,
+  ): Promise<RadioCandidate[]> {
+    const tasks: Array<Promise<RadioCandidate[]>> = [];
+
+    const qqPs = session.providers.qq;
+    if (qqPs && this.qq.isConfigured(qqPs)) {
+      tasks.push(
+        this.radioCandidates('qq', () =>
+          this.qq.fetchRadioBatch(qqPs, undefined, perProvider),
+        ),
+      );
+    }
+    const nePs = session.providers.netease;
+    if (nePs && this.netease.isConfigured(nePs)) {
+      tasks.push(
+        this.radioCandidates('netease', () =>
+          this.netease.fetchRadioBatch(nePs, perProvider),
+        ),
+      );
+    }
+    // Deezer 匿名可用，永远算一个来源。
+    tasks.push(
+      this.radioCandidates('deezer', () =>
+        this.deezer.fetchRadioBatch(
+          session.providers.deezer ?? {},
+          session.prefs?.deezerPreset ?? 'all',
+          perProvider,
+        ),
+      ),
+    );
+
+    const batches = await Promise.all(tasks);
+    return batches.flat();
+  }
+
+  /** 单平台电台取批 + fail-soft（超时/报错 → 空）。 */
+  private async radioCandidates(
+    provider: MusicProvider,
+    fn: () => Promise<Track[]>,
+  ): Promise<RadioCandidate[]> {
+    const tracks = await withTimeout(
+      fn,
+      RECO_RADIO_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `reco radio "${provider}" timed out (>${RECO_RADIO_TIMEOUT_MS}ms)`,
+        ),
+    ).then(
+      (res) => res ?? [],
+      (err: unknown) => {
+        this.logger.warn(
+          `reco radio "${provider}" failed: ${(err as Error)?.message ?? 'error'}`,
+        );
+        return [] as Track[];
+      },
+    );
+    return tracks.map((t) => ({
+      title: t.title,
+      artist: t.artist,
+      album: t.album ?? '',
+      coverUrl: t.coverUrl ?? '',
+      duration: t.duration ?? 0,
+      provider,
+    }));
   }
 
   /** 查单个平台，带 5 秒超时。失败返回空 track + error。 */

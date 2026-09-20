@@ -1,5 +1,11 @@
 # QQ 音乐红心歌曲 · 歌手列表
 
+> ⚠️ **一次性快照（导出时间 2026-08-07 → 已 ~1.5 月）**。
+> 当前真值（SoT）是 `packages/common/src/artistAlias.ts` 的
+> `STAGE_NAME_ALIASES` + `packages/common/src/titleAlias.ts`。
+> QQ 账号 `81295659` 当前是否仍登着未核——本文件不更新即作废。
+> 重新生成：跑 `scripts/export-qq-artists.js`（从本地 `state.json` 拉一次红心列表）。
+
 > 导出时间：2026-08-07 09:44:55
 > 数据来源：Maestro 本地曲库（已导入的 QQ 红心）
 > 红心歌曲总数：1096 首

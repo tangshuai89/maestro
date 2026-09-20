@@ -47,7 +47,21 @@ Response:
         {"platform": "qq",      "trackId": "yyy", "hasCopyright": true, "url": "..."},
         {"platform": "deezer",  "trackId": "zzz", "hasCopyright": false}
       ],
-      "bestSource": "netease"       // 推荐播放平台（已规避 vipLocked）
+      "bestSource": "netease",      // 推荐播放平台（已规避 vipLocked）
+      "versions": [                 // 同 (key, type) 内的录音版本，每个 cluster 一条
+        {
+          "id": "ver-...",
+          "duration": 269,
+          "sources": [...],
+          "bestSource": "netease",
+          // 版本级原始元数据（cluster 内 PLAY_PRIORITY 代表 track）：
+          // 展开多版本时逐行显示，用户靠它选版本（同名不代表同专辑/同时长）
+          "title": "晴天",
+          "artist": "周杰伦",
+          "album": "叶惠美",
+          "coverUrl": "..."
+        }
+      ]
     }
   ]
 }
@@ -57,11 +71,39 @@ Error:
   注：单平台失败 → 200 + sources[].error；不会 502（partial results 设计）。
 ```
 
-### 去重规则
+### 去重规则（Phase 1：versionType 分类 + 同 type 合并）
 
 1. 主键：normalizeKey(title, artist)（全角→半角、去空格、去标点、全小写；CJK 跨写法归一）
-2. duration gate：同 normalizeKey 但 duration 差 >3s → 不合并（remix/live）
-3. ISRC：未接入（接口没暴露），保留 hook 待将来扩展
+2. **versionType 分类**（按 title + album 关键字匹配，优先级 live > acoustic > remix > instrumental > studio）：
+   - `live`：含 `live` / `现场` / `演唱会` / `实况` / `concert` / `live版`
+   - `acoustic`：含 `acoustic` / `不插电` / `原声` / `unplugged`
+   - `remix`：含 `remix` / `混音` / `extended` / `remaster`
+   - `instrumental`：含 `instrumental` / `纯音乐` / `伴奏` / `karaoke`
+   - `studio`：默认（专辑原版）
+3. **同 normalizeKey + 同 versionType** 才合并为一个 UnifiedSearchItem；不同 type 分开成多条。
+4. 同 type 内 clusterByDuration 容差 3s（同 type 不同录音 master 容差，album vs remix 各自成 cluster）。
+5. cluster 内同 platform 多 mid 去重（保留第一个；QQ 高品质 + QQ 标准合并为一个 source）。
+6. ISRC：未接入（接口没暴露），保留 hook 待将来扩展。
+7. **主版本（折叠行显示/播放的那条）**：跨平台源数最多 → 时长最长 → 平台优先级。
+   ①依据：多平台都有的那条就是曲库里的正式版本；②片段/剪辑版总是更短，旧口径
+   （取"最短"）会让折叠行显示 1:20 的片段（2026-09-20 用户搜"盲选"实测）。
+   不变量：`versions[0]` 必定是主版本，item 级 `title/artist/album/coverUrl/duration/
+   sources/bestSource` 全部来自它 —— renderer 折叠行就是拿 `versions[0]` 播放的。
+8. **偏离主版本时长 >50% 的 cluster 不并入 `versions`**，单独成 item。
+   判据：片段/剪辑版偏 -50% 以上（1:20 vs 4:47 = -72%）；而 radio edit 3:30 vs
+   专辑版 5:00 只偏 -30%，必须继续留在同一个 item 里当版本。时长未知（0）时不拆。
+   依据：同名同艺人但时长差 1.5 倍以上，基本是另一条录音，不是同一录音的 master 差异。
+
+### UI 展示规则（Phase 1）
+
+- 每条 UnifiedSearchItem 标题后显示 versionType 角标：`[LIVE]` / `[ACOUSTIC]` / `[REMIX]` / `[INSTRUMENTAL]`（`studio` 不显示）。
+- 多版本 item 行尾显示「N 个版本 ▾」展开按钮（行尾**唯一**的箭头；播放三角在封面
+  hover 遮罩上，避免被当成展开箭头误点）。
+- 折叠行 = 主版本（跨平台共识最多那条），不是"最短版本"。
+- 展开后的版本行显示该版本的**真实元数据**：歌名 / 歌手 · 专辑 · 时长 + 平台 chip。
+  不允许只显示 `v2 / 2:35` 这类序号 —— 用户无从判断选哪个。
+- 点击版本行播放时，队列里的 item 元数据（title/artist/album/coverUrl）也换成该版本，
+  播放器展示的必须是用户实际选中的版本。
 
 ### 播放优先级
 

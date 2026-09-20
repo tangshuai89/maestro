@@ -48,6 +48,81 @@
 
 ## 自动轮播动效（Archive 同款，03 页屏幕循环流转）
 
+> ⚠️ **2026-09-20 状态更正（务必先读）**
+>
+> 1. **D7 已把三屏改成变体**：`Screen/NowPlaying/Playing|Paused|Buffering` 三个独立 frame
+>    已转成组件集 **`Screen/NowPlaying`**（`516:1884`）的三个变体 `state=Playing|Paused|Buffering`。
+>    下面第 10-12 条与 A/B/C 里的旧写法（`03/Screen/NowPlaying/Playing` 这类 frame 路径）
+>    **一律读作变体**：起点/终点都是**同一组件集内的变体**。这正是让 Smart Animate 跨状态
+>    真正生效的前提 —— 变体间图层名已跨变体一致（backdrop / sound-rings / top-hud / star-orbit /
+>    hologram / lyric-stream / controls / neural-suggestions，Buffering 多一个 Tag/Stat 子层）。
+> 2. **第 10-12 条与 A/B/C 目前在文件里并不存在**。2026-09-20 用 REST 扫全文件
+>    （`?depth=7`）得到 57 个带连线节点，其中 **03 页没有任何 frame/变体级连线** ——
+>    03 页上的连线全部挂在屏幕**内部实例**上（`Lyrics/Line` / `btn` / `core` / `Card/Neural`），
+>    且多是组件集继承来的。`AFTER_TIMEOUT` 自动轮播只存在于 **99 · Archive** 的三个
+>    AETHER THEATER 帧（`37:2` / `62:2` / `62:176`）。
+>    所以本节 2026-08-21 那条"12 条目标全部命中"对第 10-12 条**已不成立**（三屏在那之后被重建过）。
+> 3. 变体间的连线**仍然只能手工连**（插件 API 写不了 interactions，沙箱规则 6）。
+
+---
+
+## 变体间连线操作单（D7 之后 · 只能用 Figma UI 手连）
+
+节点名（D7 建、D8 补了密度轴）：组件集 **`Screen/NowPlaying`**（`516:1884`），
+变体名是 **`state=Playing, density=regular`** / `state=Paused, density=regular` /
+`state=Buffering, density=regular`（D8 还加了 `state=Playing, density=narrow` 紧凑档，
+与下面的连线无关 —— 连线连的是 `density=regular` 那三个）。
+
+### 一、3 条点击连线（在变体内部实例上起手）
+
+| # | 起点（在哪个变体里） | 起点图层名 | 终点 | 触发 | 动效 | 时长 | 缓动 |
+|---|---|---|---|---|---|---|---|
+| 1 | `state=Playing` | `controls`（transport 实例） | `Screen/NowPlaying` 的 `state=Paused` | On click | Smart Animate | 200ms | Ease out |
+| 2 | `state=Playing` | `star-orbit`（进度环实例） | `Screen/NowPlaying` 的 `state=Buffering` | On click | Smart Animate | 200ms | Ease out |
+| 3 | `03 · Screens` → `Screen/SourceSelect` | `neural-suggestions` 里的任一张 `Card/Neural` | `Screen/NowPlaying` 的 `state=Playing` | On click | Smart Animate | 240ms | Ease out |
+
+操作（每条约 30 秒）：
+
+1. 在图层面板里选中**起点节点**（例：先点开 `state=Playing` 变体 → 展开 `controls`）；
+2. 右侧切到 **Prototype** 标签（闪电图标）；
+3. 起点节点左侧出现一个**圆形连接点**，从它拖一条线到**目标变体**（直接拖到画布上的
+   `state=Paused` 那个变体框上）；
+4. 连线面板里设：Trigger = **On click**；Action = **Navigate to**；
+   Animation = **Smart animate**；Duration / Easing 按上表填；
+5. 勾上 **Smart animate matching layers**（变体间图层名已一致，务必勾）。
+
+### 二、3 条自动轮播（起点必须是**变体本身**，不能是变体内部的实例）
+
+| # | 起点 | 终点 | 触发 | 间隔 | 动效 |
+|---|---|---|---|---|---|
+| A | `state=Playing`（选中变体本体） | `state=Paused` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
+| B | `state=Paused`（选中变体本体） | `state=Buffering` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
+| C | `state=Buffering`（选中变体本体） | `state=Playing` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
+
+操作：鼠标点**变体名那一行**（选中整个变体，不是里面的实例）→ Prototype 面板 →
+**+ Add interaction**（不是拖圆点）→ Trigger 选 **After delay**，填 `3000` →
+Action = Navigate to → 选目标变体 → Animation = Smart animate / 1200ms / Ease in and out。
+三条连完形成闭环。
+
+> 只看两屏往返（Playing↔Paused）的话，只连 A 就够；B/C 可以后续补。
+> 间隔和时长随时能在面板里改，AI 读 REST 拿到的就是最终值。
+
+### 三、怎么预览
+
+选中 `state=Playing` 变体 → Prototype 面板 → **Flow starting point** 打勾（若面板不给设，
+就在画布上放一个该变体的实例，把 Flow starting point 设在实例上），然后点右上角
+▶ 播放。
+
+### 四、连完怎么验（我可以代跑）
+
+```bash
+FIGMA_TOKEN=<token> node scripts/figma-aether-v4-audit.mjs   # 「原型连线 ≥ 12」那条
+```
+
+2026-09-20 的基线是**全文件 57 个带连线节点 / 64 条连线**（`?depth=7` 才读全；
+变体内的实例比原来深一层，用 `?depth=5` 会少读 9 条，看着像丢了）。
+连完这 6 条后总数应变成 **60 个节点 / 70 条**左右 —— 告诉我，我用 REST 复查一遍给你确认。
+
 恢复 Archive「宇宙剧场 A→B→C→A」的自动轮播：给 03 页三个播放状态屏连
 AFTER_TIMEOUT 链式循环，进入原型播放后自动流转、周而复始（与手动 12 条
 ON_CLICK 连线共存——不同触发类型互不冲突，同一节点只占一条 AFTER_TIMEOUT）。

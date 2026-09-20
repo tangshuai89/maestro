@@ -32,10 +32,25 @@ export const FALLBACK_PRIORITY: MusicProvider[] = [
  *  getFullSongProviders()。 */
 export const FULL_SONG_PROVIDERS: MusicProvider[] = ['qq', 'netease'];
 
-/** 根据 Spotify 订阅档位决定是否把 Spotify 纳入「全曲流」候选。Free 档
- *  只能听 30s 预览，仍走 30s 试听完切别家；Premium 才走 WPS 全曲。 */
-export function getFullSongProviders(spotifyTier?: string | null): MusicProvider[] {
-  if (spotifyTier === 'premium' || spotifyTier === 'premium-duo' || spotifyTier === 'premium-family') {
+/** 根据 Spotify 订阅档位 + WPS 实际就绪状态决定是否把 Spotify 纳入「全曲流」候选。
+ *
+ * **必须双重条件** `tier ∈ premium-* AND wpsReady === true`——光看 tier 不够：
+ *   - Premium 用户但 WPS 没初始化成功（Widevine CDM 不可用 / 设备未注册）
+ *   - 此时 spotify source 实际只能走 30s preview URL，被纳入 fullProviders 会让
+ *     VIP 试听升级（tryUpgradeFromTrial）跨平台换源时切到 spotify，结果
+ *     audioUrl 是 30s preview URL，UI 显示 30s 而不是 04:34 等完整时长。
+ *   - 这正是 Bug #3 (stability-bug3-trial-source-not-flagged) 根因。
+ *
+ * Free / Open / 未登录 / WPS 未就绪 → 都不纳入 spotify（保持原行为）。 */
+export function getFullSongProviders(
+  spotifyTier?: string | null,
+  wpsReady: boolean = false,
+): MusicProvider[] {
+  const isPremiumTier =
+    spotifyTier === 'premium' ||
+    spotifyTier === 'premium-duo' ||
+    spotifyTier === 'premium-family';
+  if (isPremiumTier && wpsReady) {
     return [...FULL_SONG_PROVIDERS, 'spotify'];
   }
   return [...FULL_SONG_PROVIDERS];
@@ -136,4 +151,56 @@ export function parsePlayableQueue(
     }
   }
   return { tracks, unifiedItems };
+}
+
+
+/**
+ * Decide whether the WPS wrapper should be paused+forgotten before
+ * transitioning to `nextTrack`. Bug #2 — 切下一曲后两首歌同时播放。
+ *
+ * Three paths that previously caused WPS + <audio> to both play audio:
+ *
+ *  A) WPS is playing spotify:track:A → user switches to a QQ track.
+ *     useEffect re-runs, `useWps` flips false, <audio>.play() starts the
+ *     new track. WPS still has A on its deck → two streams overlap.
+ *
+ *  B) WPS is playing spotify:track:A → user switches to spotify:track:B
+ *     but `wpsReady` flips false mid-transition (token refresh / EME
+ *     error / `not_ready` SDK event). Same race.
+ *
+ *  C) WPS played A → user switches to QQ → back to spotify:track:A.
+ *     `wpsPlayedIdRef` still points at A, so useEffect's
+ *     `wpsPlayedIdRef.current !== track.id` check is false and we call
+ *     `wps.resume()` on a deck that already moved on. Net effect: new
+ *     track never starts playing through WPS while <audio> tries the
+ *     30s preview, overlap.
+ *
+ * Returns true when we should call `wps.pause()` AND null out the
+ * `wpsPlayedIdRef` so the next transition starts clean. The check is
+ * intentionally pure (no React, no refs) so it's unit-testable.
+ *
+ * @param wpsLastPlayedId  the id we last sent through `wps.play(uri)`;
+ *                         null if WPS hasn't been used yet (or was reset).
+ * @param nextTrack        the track about to be presented; null = no track.
+ * @param wpsReady         current `wpsRef.current?.wpsReady` snapshot.
+ */
+export function shouldStopWpsBeforeTransition(
+  wpsLastPlayedId: string | null,
+  nextTrack: { provider: string; id: string } | null,
+  wpsReady: boolean,
+): boolean {
+  // Nothing to stop. WPS never played anything yet (or has been reset).
+  if (!wpsLastPlayedId) return false;
+  // No track → renderer's useEffect early-returns on `!track` anyway;
+  // nothing more to decide here.
+  if (!nextTrack) return false;
+  // Same track still eligible for WPS → don't disturb a possibly-paused
+  // deck; the useEffect's `playing` branch handles play/resume correctly.
+  const stillWpsEligible =
+    wpsReady && nextTrack.provider === 'spotify' && Boolean(nextTrack.id);
+  if (stillWpsEligible && wpsLastPlayedId === nextTrack.id) return false;
+  // Everything else → we must stop WPS so it doesn't keep the old URI
+  // alive while <audio> (or a fresh WPS.play) takes over. Covers (A),
+  // (B), and (C): provider changed, wpsReady flipped, or the id changed.
+  return true;
 }

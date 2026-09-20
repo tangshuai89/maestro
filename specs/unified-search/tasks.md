@@ -14,3 +14,11 @@
 - [x] 14. 阶段 G: tilde 变体归一 — `normalizeKey` step 5 noise-strip 加入 `~` (U+007E) / `〜` (U+301C) / `～` (U+FF5E) 三种 tilde。修「Departures~歌名~ (Departures~中译~)」(QQ/网易云用 ASCII tilde) vs 「Departures 〜歌名〜」(Spotify 用 wave dash) 不同字符导致 6 tier 全挂的回归。同改动同步到 renderer `groupLibrary.ts` 的展示级 noise-strip 保持一致。test #3g-bis + cross-platform-match.e2e #16 覆盖。
 - [x] 15. 封面跨源抽取：buildUnifiedItems 同簇（同歌多平台）取首个有封面的 coverUrl，
       主平台无封面时不再产出空封面条目（search.test #9/#10）
+- [x] 16. 多版本 UI：行尾「N 个版本 ▾」展开按钮（行尾唯一的箭头）+ 播放三角移到封面
+      hover 遮罩（Bug #7：行尾 ▶ 被当成展开箭头误点 → 直接播放）；版本行显示该版本
+      真实歌名/歌手/专辑/时长（`VersionEntry.title/artist/album/coverUrl`，服务端从
+      cluster 代表 track 填充），点击版本行时队列/播放器元数据同步换成该版本
+- [x] 17. Phase 3 版本口径收敛（`buildUnifiedItems`）：主版本改为「跨平台源数最多 →
+      时长最长」——旧口径取最短，导致"盲选"折叠行显示 1:20 的片段；并把偏离主版本
+      时长 >50% 的孤立 cluster 拆成独立 item（片段/剪辑不再混进 versions）。
+      `versions[0]` = 主版本的不变量写进注释与 spec；新增 11b/11c/11d 三个白盒用例

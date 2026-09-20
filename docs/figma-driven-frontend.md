@@ -4,9 +4,10 @@
 > 组件化 + 变体 + 令牌绑定 + 动效规格化，使 coding agent 能通过 Figma REST API / Dev Mode MCP
 > 读取设计稿，直接生成/同步 React + SCSS 代码。
 >
-> 本文档基于仓库现有材料编写：`scripts/figma-aether-spec.md`、`scripts/figma-aether-v2-plan.md`、
-> `scripts/figma-v3-command.md`（当前文件是 v3 脚本稿）、`.superdesign/init/`（代码端组件盘点）、
-> `.mcp.json`（已配置官方 `figma-remote` MCP）。
+> 本文档基于仓库历史材料编写（已归档到 `docs/_archive/figma-history/`）：
+> `figma-aether-spec.md`（v1 规格）、`figma-aether-v2-plan.md`（v2 设计语言）、
+> `figma-v3-command.md`（v3 脚本稿，已废）。当前构建权威：
+> `.superdesign/init/`（代码端组件盘点）+ `.mcp.json`（已配置官方 `figma-remote` MCP）。
 
 ---
 
@@ -294,3 +295,105 @@ a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md �
 - 改 5 个文件：`.superdesign/init/{theme,components,extractable-components}.md` + `App.tsx` 注释 + 本文件
 - Figma 99 · Archive 顶部加 `Archive README` frame（脚本 `figma-aether-v4-archive-readme.js`）——红色 outline + 警告文字 + 指向 03 · Screens AETHER 剧场稿的链接
 - 视觉回归保护（Playwright 截图 baseline）属 P3，不在 D2 范围
+
+**D4 增量（2026-09-20）—— 变量 ↔ SCSS 双向漂移闭环**：把 §2.4 的映射表从"文档约定"变成
+**CI 可执行的门禁**。之前只有单向手跑导出，且比对脚本自带第二套命名映射（`toCssName()` vs 导出
+脚本的 `kebab()`），对同一变量给出不同名字 —— 实测 51 处**全假 FAIL**，等于门禁根本不存在。
+
+- **单一映射实现**：新增 `scripts/lib/aether-tokens.mjs`（render / parse / 遮蔽分析），
+  `figma-export-tokens.mjs` 与 `check-token-drift.mjs` 共用同一份，消灭"两套映射"这个根因
+  （与 `packages/common/src/normalizer.ts` 同一条教训）。
+- **两条腿**：① Figma → SCSS（dump 渲染物与提交的 `_tokens.generated.scss` 逐字节比）；
+  ② SCSS → Figma（扫 `_tokens.scss` 手写声明，报"遮蔽"与"代码独有"）。
+- **三级判定**：FAIL（真漂移）/ WARN（遮蔽、代码独有，不阻断）/ OK。豁免要写进
+  `scripts/token-drift-allowlist.json` 且**必须带 reason**。
+- **CI**：离线腿接进 `npm run test:ci`（每次 push/PR，无 secret）；实时腿在
+  `.github/workflows/token-drift.yml`（每日 09:00 SGT + 手动），无 `FIGMA_TOKEN` 时跳过而非失败。
+- **实时拉取不用等 PAT**：本次通过 Figma MCP `use_figma` 只读段（OAuth）直接取到 52 个变量 +
+  渲染后的 SCSS；该段已固化为 `scripts/figma-tokens-dump-seg.js`，并配 mock 冒烟
+  `figma-v4-smoke-tokens-seg.mjs`（断言渲染结果与仓库生成物逐字节一致）。
+  REST 路径 `scripts/figma-tokens-pull.mjs` 也在，缺 scope 时退出码 3 降级。
+  **实测结论（spec §8）**：手上两条 PAT 一条 401（失效）、一条 `/v1/me` 200 但
+  `variables/local` 403（缺 `file_variables:read`，属 Enterprise 能力）——
+  所以 CI 的实时腿要么换带 scope 的 token，要么改走 MCP 手动刷新。
+
+**D10 增量（2026-09-20）—— MOTION SPEC 机器可读化**：让 AI 读 Figma 时能直接 parse 动效规格，
+而不是只看一张人读的表格。
+
+- **载体纠偏**：原计划写进 `MOTION SPEC` frame 的 **description** —— FRAME 没有这个属性
+  （实测 `'description' in frame === false`，写会抛 `no such property 'description' on FRAME node`，
+  REST 也不返回）。改为 frame 内的**隐藏 TEXT 子节点** `MOTION_SPEC`（node `508:2`，
+  `visible=false` + `fills=[]`），与 D1 的 `AI_CONTRACT` 同一套做法。原文档"方案 A"还用
+  `require('fs')` 读仓库文件 —— use_figma 沙箱没有 fs，那段代码在真实 Figma 里跑不起来。
+- **写入方式**：`scripts/figma-aether-v4-motion-spec-write.js` 改成**生成器** —— 读
+  `specs/motion-spec.json`，用 `JSON.stringify()` 生成内联字面量，打印出可直接粘贴的
+  use_figma code。手动抄 6.3KB JSON 这条路就此封掉。
+- **验证**：写完回读 `charsLen=6295 / djb2=6c55cc64` 与本地预期完全一致（机械校验）；
+  再用 `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit-d10.mjs` 走 REST 复核 **20/20 全绿**
+  （含「Figma ↔ 仓库 spec id 集合一致」）。该审计只需 `file_content:read`，不需要
+  `file_variables`，普通 PAT 就能跑。
+- **顺带修正**：`figma-d10-fixture.js` 原来给 FRAME 塞 `description` —— mock 比真实宽松，
+  正是 D1/D2 那类"mock 全绿、真跑全炸"的翻版，已改成同构的 TEXT 子节点。
+
+**D5_NEW 增量（2026-09-20）—— 10 个新 component set 落地 + Code Connect 110/110**：
+`02 · Components` 从 14 个组件集增到 **24 个**（新 10 个 / 28 变体：
+Modal/Shell · Modal/ErrorPanel · Modal/RecoLoading · SourceChip · Layout/QualityMenu ·
+Layout/SourceMenu · Layout/DeezerPresetSelect · Screen/SourceSelect · Titlebar ·
+Modal/NeteaseCookie），`figma-code-connect.json` 的 10 个 `TBD-FIGMA` 占位全部换成真实 nodeId。
+
+- **执行方式变了**：这 10 个组件集原本的计划是"用户在 Claude Code 里喂 use_figma"，
+  实际由 Codex 通过 Figma MCP 直接执行（OAuth 已通，**不需要 PAT scope**）。
+- **动笔前的只读探测抓到 3 个会让整段回滚的 bug**（mock 全绿也测不出来）：
+  ① 引用了不存在的变量 `Color/semantic/accent-soft`（会退成品红哨兵，D2 踩过同一个坑）→
+  改成 `accent` 变量 + 55% 透明度；② 在 COMPONENT 上调 `setProperties`（那是 INSTANCE 的方法）
+  → 改用 `addComponentProperty` 的默认值；③ `componentPropertyReferences` 设早于 `appendChild`
+  → 按沙箱规则 3 调正顺序。
+- **mock 三处同构化**：变量清单改读真实 dump（不再手写）、`setProperties` 加类型守卫、
+  `componentPropertyReferences` 加"必须先挂进组件树"守卫，并新增「无品红哨兵」断言。
+- **注入器修副作用**：`figma-code-connect-inject.mjs` 原用 `JSON.stringify` 整文件重写，
+  10 个字段的替换膨胀成 477 行 diff（混入格式化）；改成定点替换后只有 21 行。
+- **验收**：`--strict` **110/110 PASS**；v4 全量审计 34/36（与基线逐项一致，未破）；
+  回读 28 变体 / description 齐全 / 品红哨兵 0 处。
+
+**D7 增量（2026-09-20）—— NowPlaying 三屏改变体**：`03 · Screens` 上
+`Screen/NowPlaying/Playing|Paused|Buffering` 原本是**三个独立 frame**，帧间只能 dissolve；
+改为组件集 **`Screen/NowPlaying`**（`516:1884`）的三个变体后，才具备 Smart Animate 逐层补间的前提
+（Smart Animate 靠**跨状态图层名一致**匹配 —— 三屏的 8 个顶层子层名本来就完全一致）。
+
+- **转换**：`createComponentFromNode` ×3 → `combineAsVariants`，变体名 `state=Playing|Paused|Buffering`，
+  定位回原 Playing 的 (0,0)，并写 AI_CONTRACT description（含图层名清单）。
+- **风险先查后动**：改类型会换 node id（`314:x` → `516:x`），仓库内**无硬引用**；
+  审计 `MIN_SCREENS = 4`（18→15 不破）；03 页**没有 frame 级连线**，连线都在屏幕内部实例上，
+  所以手连的线不会被毁。
+- **连线一条没丢**：REST `?depth=7` 扫描，转换前后都是 **57** 个带连线节点（逐页相同）。
+  ⚠️ 顺带踩到一次测量陷阱：转换后变体内实例深一层，用 `?depth=5` 会少读到 9 条，看着像丢了 ——
+  实际是 depth 截断，`?depth=7` 复验一致。
+- **验收**：v4 审计 34/36（屏幕数 18→15、"原型连线 64 条"与 03 页绑定率 58% 均未变）。
+- **只交付前提**：变体间连线本身**仍要手工连**（插件 API 写不了 interactions），
+  且旧文档里"第 10-12 条与 3 条自动轮播"经实测**目前在文件里并不存在**
+  （AFTER_TIMEOUT 只在 `99 · Archive` 的 AETHER THEATER 三帧上），已在
+  `docs/prototype-wiring-checklist.md` 顶部加状态更正。
+
+**D8 增量（2026-09-20）—— 桌面尺寸适配改写：不是"尺寸帧"，是"紧凑档 + 内容减法"**：
+计划里 D8 是"做 1280/1920 两个尺寸帧"。实量后发现这个前提不成立：
+
+- 代码是**固定 1440×900 画布 + `transform: scale()`**（`TheaterView.tsx:175`），不是流式重排；
+  而 1440 稿的**最小可用宽度是 1330px**（封面簇右边缘 670 + 歌词宽 560 + 右边距 60），
+  窗口默认却只有 **1200**、最小 **960** —— 改成重排必然压住（1200 压 70px、960 压 310px），
+  这就是"动不动这个压住那个"的真实根因。
+- 1920 档**不需要设计帧**：缩放在大窗口是 1.29×，9px 小字实际渲染 11.6px，比设计稿还清楚。
+  真正不可读的是 960×800 时的 0.67×（9px → 6px）。
+- **所以改的是"减法"不是"重排"**：三档 `regular ≥1280` / `compact 1100–1279`（歌词 5→3 行）/
+  `narrow <1100`（换 960×800 紧凑画布，砍声波环与推荐卡、歌词只留当前行）。
+- **Figma 侧**：`Screen/NowPlaying` 加 `density=narrow` 变体（`518:1881`，960×800），
+  原有三变体补 `density=regular`；紧凑档各块**保持原生尺寸纵向堆叠** ——
+  实测发现**实例内部不随实例 resize 缩放**，强行压小会把进度环的圆弧与时间码顶到歌词上。
+- **代码侧**：新增 `lib/theaterLayout.ts`（纯函数，20 条单测）+ `data-density` 接入 +
+  `_theater.scss` 的紧凑档规则；顺带清掉 `Ring/Progress` 的 `progress-arc` 噪声方框描边
+  （1440 稿也有，非本档引入）。
+- 未做：**真机视觉验收**（本环境无 GUI）；跨档切换是整张画布跳变，未做形变过渡。
+- **顺带修掉一处真漂移**：快照 51 → 52，补上 D1/D2 期间新建的 `Color/semantic/status-error`
+  （`#ff3b5c`）。
+- **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：
+  `--text-dim` 手写层的 WCAG 覆盖（0.55）**被生成层 0.4 静默盖掉**，实际生效是 0.4；
+  `--ease-spring` / `--ease-out` 手写行是等值死代码。

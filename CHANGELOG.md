@@ -39,6 +39,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `packages/server/src/music/like-sync.queue.ts`。
 
 ### Added
+- **推荐离线评测基座**（`specs/reco-deepseek/spec.md` v2.2 段）——留一法把库里
+  一部分红心歌藏起来，看推荐能不能把它们找回来，让"变好了吗"有数字可依。
+  - `packages/server/src/reco/eval.ts`（新，纯函数）：留出切分（rng 可注入 → 同 seed
+    可复现）、`recall` / `MRR`、**同艺人 vs 新艺人分档**（同艺人天然虚高，新艺人才是
+    泛化能力）、多样性、多轮平均、人读报告、与基线对比。
+  - **指标分两层**：`poolRecall`（藏起来的歌有没有进候选池 = 检索层）与
+    `recallAtK`（有没有真推给用户 = 选择层）——直接指出损失在哪一段。
+  - `RecoService.evaluate`：跑**真实**流水线（统一搜索 + 相邻艺人 + 电台），
+    `noCache` 保证评测不污染产品的候选池缓存、也不写推荐历史；
+    `pool` 模式（默认，零 token）与 `llm` 模式（完整流水线）可选。
+  - `POST /api/reco/eval` + CLI `npm run reco:eval`（`--holdout/--count/--runs/--seed/
+    --mode/--json/--save/--compare/--session/--storage`）；CLI 只读 `state.json`
+    （直接从 blob 取会话，不经 SessionService，不写业务数据）。
+- **推荐延迟包 + 行为信号闭环**（`specs/reco-deepseek/spec.md` v2.1 段）——
+  实测「推荐要等好久」后按耗时账逐段砍，并把"只有红心"补成真实行为信号。
+  - **候选池阶段并发化**（`reco/candidate-pool.ts`）：原「相邻艺人查询 → 主干深挖
+    → 相邻艺人搜索 → 电台」四段串行改为单一 `TaskPool` 边查边搜，相邻艺人一查到
+    就追加任务；结果仍按入队序展开（网络快慢不影响候选顺序）。
+  - **LLM 输出封顶 + prompt 瘦身**：挑选路径 `max_tokens=900`（生成 1500）；
+    prompt 只列前 40 条候选（池子全量供补位），口味采样 60 → 40 行。
+  - **候选池缓存**（`reco.service.ts`）：按 `(session, 库规模, 主干)` 缓存 10 分钟，
+    exclude 变化就地过滤——连点/续播第二次几乎瞬回；key 刻意不含信号指纹，
+    否则每播一首就失效、边听边点推荐时缓存永远打不中。
+  - **分阶段耗时可观测**：日志一行给出 `池/LLM/填源/合计` 毫秒；响应新增
+    `timings` 字段（含 `cachedPool`）。
+  - **`reco/signals.ts`（新）+ `POST /api/reco/signal`**：播放 / 完播 / 早切 /
+    红心 / 踩 / 种子六类信号（权重 + 21 天半衰期 + 30s 防抖 + 500 条上限），
+    只落本机 `.storage`；`usePlayer` 五处自动上报（fire-and-forget，失败静默）。
+  - **负反馈闭环**：跳过/踩过的歌当库内歌排除，信号分 ≤ -6 的艺人整位拉黑；
+    信号（有界：正分 ≤ +10，负分最多把权重压到 0）折进口味档案主干排序。
+  - **以歌为种子**：`POST /reco/run` 支持 `seed`，候选围绕该艺人 + 其相邻艺人展开，
+    TheaterView 新增「像《歌名》一样」入口；该点击记成强正信号。
+  - **RecoLoading 文案**按真实耗时推阶段（不再 2.4s 循环回第一句）+ 已等待秒数。
+- **DeepSeek 推荐 v2：检索 + 重排**（`specs/reco-deepseek/spec.md` v2 段）——
+  把"模型凭空生成歌名"换成"从真实目录里挑"，并让口味主干不再每轮漂移。
+  - `packages/server/src/reco/taste-profile.ts`（新）：艺人亲和度（多艺人拆分 +
+    `normalizeKey` 归一）+ **稳定 anchors**（同会话内不随 run 变化）+ 亲和度加权
+    种子采样（70% 贴口味 / 30% 长尾探索，替代 v1.1 的全库均匀随机）。
+  - `packages/server/src/reco/candidate-pool.ts`（新）：目录锚定候选池——主干深挖
+    （库外曲目）、相邻艺人（Deezer `/artist/{id}/related`，平台侧协同过滤）、
+    平台 FM/榜单（网易云私人 FM / QQ 电台 / Deezer 榜单）三源合并，带剔库/坏版本/
+    时长/非目标艺人/单艺人上限与来源统计。
+  - `packages/server/src/reco/version-filter.ts`（新）：把 `VERSION_BAD` /
+    `VERSION_SOFT` / 时长判据从 RecoService 抽成共享纯函数，候选池与填源同口径。
+  - RecoService 主路径改为「挑选 + 排序」：`buildSelectPrompt` + `parseSelection`
+    做**下标白名单**校验（模型给下标、系统取真实条目，幻觉无从进入队列）；
+    候选池不足或挑选失败自动回退 v1.1 自由生成，推荐不因此报错。
+  - 多样性：同一归一艺人 ≤ 2 首（候选池与最终装配两道）。
+  - `POST /api/reco/run` 响应新增 `mode` / `candidateCount` / `candidateOrigins`
+    便于对比新旧路径效果（向后兼容可选字段）。
+  - `MusicService.findRelatedArtists` / `fetchRecoRadioCandidates`：reco 专用取数，
+    单平台失败/超时一律 fail-soft 成空数组，不阻塞推荐。
 - **Figma D2 收敛** —— `99 · Archive` 页顶部加 `Archive README` frame（红色 4px 虚线框 +
   ⚠ BASELINE — DO NOT EXTEND + 指向 `03 · Screens` 的链接），防止 contributor 误以为
   这页是待开发页面而在上面扩新屏。脚本 `scripts/figma-aether-v4-archive-readme.js`
@@ -85,6 +137,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ISSUES.md` §6.2 CHANGELOG.md`**（本文件）。
 
 ### Tests
+- `packages/server/src/reco/eval.test.ts`（新）：5 组口径测试（切分不重叠/可复现/
+  至少留 1 首训练、召回与 MRR 含 Top-K 截断与空输入、同艺人分档、多样性、
+  多轮平均 + 报告格式 + 基线对比升降标注）。
+- `packages/server/src/reco/reco.test.ts`：新增 46/47（`evaluate()` 能真的把藏起来的
+  歌找回来且同 seed 可复现；检索全空时各项指标必须为 0，防假阳性），45 → 47。
+- `packages/server/src/reco/reco.test.ts`：新增 37–45（候选池并发下顺序确定 /
+  候选池缓存命中 + timings + `max_tokens` / prompt 候选行数上限 / 信号
+  清洗防抖衰减 / 信号进口味档案 / 负样本排除 / 艺人拉黑 / 种子模式端到端），
+  36 → 45。
+- `packages/server/src/reco/reco.controller.e2e.test.ts`：新增 9–11
+  （`POST /reco/signal` 脏数据 → 2xx + stored=0 / 合法单条 / 批量含脏数据），
+  10 → 13；再补 12（`POST /reco/eval` 空库 → 400 library_empty），13 → 14。
+- `packages/server/src/reco/reco.test.ts`：新增 26–36（艺人亲和度归一 / 加权种子 /
+  anchors 稳定 / 候选池过滤 / 候选池 fail-soft / `parseSelection` 下标白名单 /
+  `fillFromPool` 补位 / 艺人上限 / 挑选 prompt 契约 / run() 挑选主路径端到端 /
+  run() 候选池为空回退自由生成），25 → 36。
 - `storage.test.ts`：新增 7 / 8（写入后 mode = 0o600、历史 0o644 被收紧），6 → 8。
 - `music.controller.allowlist.test.ts`：新增 10 项（QQ / NetEase / Spotify /
   Deezer exact + suffix / SSRF / 非 http(s) / 非法 URL / suffix 误匹配 /

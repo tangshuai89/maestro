@@ -180,6 +180,69 @@ async function main() {
         `实际 ${r.status}`,
       );
     }
+
+    // ── 9. POST /reco/signal 脏数据 → 200 且 stored=0 ─────────────
+    //  上报是 fire-and-forget 路径：脏数据丢弃、永远 2xx，绝不因为
+    //  "上报格式不对"把播放体验拖挂。
+    {
+      const r = await call('POST', '/reco/signal', {
+        type: 'nonsense',
+        title: '',
+        artist: 42,
+      });
+      expect(
+        '9. POST /reco/signal 脏数据 → 2xx + stored=0',
+        r.status === 201 && /"stored":0/.test(r.text),
+        `实际 ${r.status}: ${r.text.slice(0, 100)}`,
+      );
+    }
+
+    // ── 10. POST /reco/signal 合法单条 → 累计 1 条 ────────────────
+    {
+      const r = await call('POST', '/reco/signal', {
+        type: 'skip',
+        title: '某首歌',
+        artist: '某歌手',
+        progress: 5,
+      });
+      expect(
+        '10. POST /reco/signal 合法 → 2xx + stored=1',
+        r.status === 201 && /"stored":1/.test(r.text),
+        `实际 ${r.status}: ${r.text.slice(0, 100)}`,
+      );
+    }
+
+    // ── 11. POST /reco/signal 批量 → 累计 2 条 ────────────────────
+    {
+      const r = await call('POST', '/reco/signal', {
+        signals: [
+          { type: 'complete', title: '另一首', artist: '另一人' },
+          { type: 'play', title: '', artist: '脏' }, // 脏数据丢弃
+        ],
+      });
+      expect(
+        '11. POST /reco/signal 批量（含脏数据）→ 2xx + stored=2',
+        r.status === 201 && /"stored":2/.test(r.text),
+        `实际 ${r.status}: ${r.text.slice(0, 100)}`,
+      );
+    }
+
+    // ── 12. POST /reco/eval 空库 → 400（评测要先有库）──────────────
+    //  评测是本地诊断入口，没库时明确报 library_empty，而不是返回一堆 0
+    //  让人以为"推荐质量为零"。
+    {
+      const r = await call('POST', '/reco/eval', {
+        holdoutSize: 5,
+        count: 5,
+        mode: 'pool',
+      });
+      expect(
+        '12. POST /reco/eval 空库 → 400 library_empty',
+        r.status === 400 && /library_empty/.test(r.text),
+        `实际 ${r.status}: ${r.text.slice(0, 100)}`,
+      );
+    }
+
   } finally {
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });

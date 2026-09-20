@@ -1,0 +1,69 @@
+# AETHER token 双向漂移 — 实时腿
+#
+# 为什么单独一个 workflow：
+#   离线腿（dump 快照 ↔ _tokens.generated.scss）已经挂在 test.yml 的 `npm run test:ci` 里，
+#   每次 push/PR 都跑、不需要 secret。
+#   本 workflow 补的是另一个方向 —— "Figma 侧改了、快照还停在旧值" —— 必须联网拉实时变量，
+#   所以放进 schedule + 手动触发，避免每次 PR 都打 Figma API。
+#
+# 没配 FIGMA_TOKEN secret 时本 workflow **跳过而不是失败**（fork / 新 clone 不会红）。
+# REST 变量接口要 Enterprise `file_variables:read` scope；PAT 没勾时脚本退出码 3，这里降级成 warning。
+# 2026-09-20 实测：本机两条 PAT 分别是 401（失效）与 403（缺 scope）——
+# 也就是"配了 secret 也还跑不起来"，要先有带 scope 的 token。详见 specs/d4-token-drift/spec.md §8。
+# 没有 PAT 的等价路径：Figma MCP 的 use_figma 只读段（OAuth，不需要 PAT scope），
+# 见 specs/d4-token-drift/tasks.md 的 Phase B 执行记录。
+
+name: Token Drift (Figma ↔ SCSS)
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # 每天 01:00 UTC = 09:00 Asia/Singapore
+  workflow_dispatch:
+
+jobs:
+  live-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 是否有 FIGMA_TOKEN
+        id: gate
+        run: |
+          if [ -n "${{ secrets.FIGMA_TOKEN }}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Token drift 已跳过::未配置 FIGMA_TOKEN secret；离线腿仍由 test.yml 守护"
+          fi
+
+      - name: 离线腿（快照 ↔ 生成物，无需 secret）
+        run: node scripts/check-token-drift.mjs
+
+      - name: 拉 Figma 实时变量并与快照对比
+        id: pull
+        if: steps.gate.outputs.has_token == 'true'
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+        run: |
+          set +e
+          node scripts/figma-tokens-pull.mjs --out /tmp/live-tokens.json
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            echo "::warning title=Token drift 跳过实时腿::REST 拿不到变量（PAT 缺 file_variables scope 或文件不可访问）"
+            exit 0
+          fi
+          exit "$code"
+
+      - name: 用实时数据验证仓库生成物
+        if: steps.gate.outputs.has_token == 'true'
+        run: |
+          test -f /tmp/live-tokens.json || { echo "::notice title=已跳过::实时变量未取到"; exit 0; }
+          if ! node scripts/check-token-drift.mjs --dump /tmp/live-tokens.json; then
+            echo "::error title=Token 漂移::Figma 与仓库 SCSS 不一致。设计侧改动 → node scripts/figma-tokens-pull.mjs --write && npm run tokens:export"
+            exit 1
+          fi

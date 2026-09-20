@@ -19,17 +19,21 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02020a;
-  color: #f5f0e8;
+  // 剧场稿的调色板**不再各自复制一份**：这里全部改为引用 Figma 导出的令牌
+  // （值本来就一模一样 —— 见 specs/token-adoption/）。改 token 就能一处改全局。
+  background: var(--primitive-bg-bottom);
+  color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
-  --neon: #00e5ff;
-  --violet: #5b2bff;
-  --acid: #b57bff;
-  --heart: #ff3b5c;
-  --green: #3dffa2;
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-stroke: rgba(255, 255, 255, 0.12);
+  // 局部别名保留（大量 `var(--neon)` 用法不动），但值来自令牌
+  --neon: var(--accent);
+  --violet: var(--accent-purple);
+  --acid: var(--ai);
+  --heart: var(--status-liked);
+  --green: var(--status-sync);
+  --glass-bg: var(--glass-fill);
+  // --glass-stroke 与全局令牌**同名**：这里不能再声明（`var(--glass-stroke)` 会自引用），
+  // 直接删掉 —— 3 处用法会自然落到生成层的同值令牌上。
 }
 
 // ── 背景层（铺满窗口，不随画布缩放） ────────────────────────────
@@ -98,7 +102,7 @@
 .th-star {
   position: absolute;
   border-radius: 50%;
-  background: #fff;
+  background: var(--white);
   animation: th-star-drift 9s ease-in-out infinite alternate;
   will-change: transform;
 }
@@ -111,7 +115,7 @@
   position: absolute;
   left: 0; right: 0; top: 91.1vh; // 设计稿 y=820/900
   height: 1px;
-  background: linear-gradient(90deg, rgba(0, 229, 255, 0), rgba(0, 229, 255, 0.2) 50%, rgba(0, 229, 255, 0));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 0%, transparent), color-mix(in srgb, var(--accent) 20%, transparent) 50%, color-mix(in srgb, var(--accent) 0%, transparent));
 }
 
 // ── 1440×900 设计画布（等比缩放） ───────────────────────────────
@@ -150,12 +154,12 @@
   font-size: 9px;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(245, 240, 232, 0.25);
+  color: color-mix(in srgb, var(--text-main) 25%, transparent);
 }
 .th-hud-title {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(245, 240, 232, 0.85);
+  color: color-mix(in srgb, var(--text-main) 85%, transparent);
   letter-spacing: -0.2px;
 }
 
@@ -166,7 +170,7 @@
 .th-badge {
   width: 28px; height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--glass-fill-strong);
   border: 1.5px solid var(--badge);
   color: var(--badge);
   font-family: 'JetBrains Mono', 'Menlo', monospace;
@@ -206,7 +210,7 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--white) 60%, transparent);
 }
 .th-hud-heart { color: var(--heart); }
 .th-hud-dot {
@@ -261,7 +265,7 @@
   left: 50%; top: 50%;
   width: 390px; height: 390px;
   border-radius: 50%;
-  border: 1.5px solid rgba(0, 229, 255, 0.25);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 25%, transparent);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -271,7 +275,7 @@
   left: 50%; top: 50%;
   width: 13px; height: 3px;
   transform-origin: 0 0; // rotate 后再 translate(-6.5, -196.5)，即切向贴在轨道上
-  background: rgba(0, 229, 255, 0.85);
+  background: color-mix(in srgb, var(--accent) 85%, transparent);
   border-radius: 1.5px;
 }
 .th-orbit-tick.is-gold { background: rgba(255, 210, 74, 0.85); }
@@ -308,7 +312,7 @@
   z-index: 1;
 }
 .th-streaks-path {
-  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.6));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent));
 }
 @keyframes th-streaks-sweep {
   from { translate: 0 0; rotate: 90deg; scale: 1 1; }
@@ -327,7 +331,7 @@
   z-index: 1;
 }
 .th-scan-arc {
-  filter: drop-shadow(0 0 8px rgba(0, 229, 255, 0.8));
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 80%, transparent));
 }
 @keyframes th-scan-spin {
   from { transform: translate(-50%, -50%) rotate(0deg); }
@@ -350,12 +354,12 @@
   );
   background-size: cover;
   background-position: center;
-  border: 2px solid rgba(0, 229, 255, 0.6);
+  border: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   box-shadow:
-    0 0 60px 8px rgba(0, 229, 255, 0.35),
-    0 0 96px rgba(91, 43, 255, 0.32),
-    0 0 50px rgba(0, 229, 255, 0.25),
-    inset 0 0 30px rgba(0, 229, 255, 0.3);
+    0 0 60px 8px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 0 96px color-mix(in srgb, var(--accent-purple) 32%, transparent),
+    0 0 50px color-mix(in srgb, var(--accent) 25%, transparent),
+    inset 0 0 30px color-mix(in srgb, var(--accent) 30%, transparent);
   transition: box-shadow 0.4s ease;
 }
 .th-cover-symbol {
@@ -365,8 +369,8 @@
   align-items: center;
   justify-content: center;
   font-size: 90px;
-  color: rgba(255, 255, 255, 0.8);
-  text-shadow: 0 0 15px rgba(0, 229, 255, 0.3);
+  color: color-mix(in srgb, var(--white) 80%, transparent);
+  text-shadow: 0 0 15px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 // LIVE 标签（1440 稿 513,292 → 相对中心 +83,-128）
@@ -378,7 +382,7 @@
   gap: 4px;
   padding: 3px 8px 3px 6px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--glass-fill-strong);
   backdrop-filter: blur(4px);
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 8px;
@@ -395,7 +399,7 @@
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--white) 60%, transparent);
   z-index: 2;
   pointer-events: none;
 }
@@ -426,18 +430,18 @@
   pointer-events: auto;
 }
 .th-orbit-track {
-  stroke: rgba(255, 255, 255, 0.12);
+  stroke: var(--glass-stroke);
   stroke-width: 2;
 }
 .th-orbit-arc {
   stroke: var(--neon);
   stroke-width: 2;
-  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.7));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 70%, transparent));
   transition: stroke-dashoffset 0.3s linear;
 }
 // Figma orbit-dot 辉光：dilate2+blur6 青(1) + dilate1+blur2 青(.8)
 .th-orbit-dot {
-  filter: drop-shadow(0 0 2px rgba(0, 229, 255, 0.8)) drop-shadow(0 0 6px rgba(0, 229, 255, 1));
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 80%, transparent)) drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 100%, transparent));
   transition: transform 0.3s linear;
 }
 .th-orbit-times {
@@ -451,17 +455,27 @@
   pointer-events: auto;
 }
 .th-time--cur { color: var(--neon); }
-.th-time--total { color: rgba(255, 255, 255, 0.5); }
+.th-time--total { color: color-mix(in srgb, var(--white) 50%, transparent); }
 .th-time-divider {
   width: 1px; height: 20px;
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--white) 15%, transparent);
 }
 
-// ── 歌名信息（1440 稿 430,590） ─────────────────────────────────
+// ── 歌名信息（Figma 1440 稿 430,590 → 实装 430,604，见下方纵向链） ──
 
 .th-track-info {
   position: absolute;
-  left: 430px; top: 590px;
+  // Bug #8：下半屏是一条垂直链，每一段间距都是**定值**（不让"谁离谁近"决定排版）：
+  //   ring 底 570 ┊ 时间 577..596 ┊ ≈16px ┊ 歌名 602..650 ┊ 8px ┊ 歌手/专辑 658..679
+  //   ┊ 18px ┊ 音质 697..709 ┊ 17px ┊ 控制带 726..798 ┊ 底边距 102px
+  //
+  // 为什么锚点从设计稿的 590 下移到 602：时间行的盒子底边是 596，比 590 还低 ——
+  // Figma 里靠 Inter 的墨迹位置勉强分开，浏览器里字体/行高稍变就粘成一片
+  // （用户反馈"挤在一起"）。
+  // 上下两个数字是**联立解出来的**，不能单独动：歌名块上移 → 时间/歌名粘连；
+  // 控制带上移 → 音质行回到播放键光晕里。控制带上限还受右下推荐块 + 页脚水印
+  // （cards 底 868 / footer 顶 868）约束，所以停在 726。
+  left: 430px; top: 602px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -475,9 +489,10 @@
 .th-track-title {
   margin: 0;
   font-size: 40px;
+  line-height: 1.2;  // 固定行高：CJK 回退字体 normal ≈1.4，40px 下多顶 8px
   font-weight: 600;
   letter-spacing: -0.5px;
-  color: rgba(255, 255, 255, 0.95);
+  color: color-mix(in srgb, var(--white) 95%, transparent);
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
@@ -486,18 +501,22 @@
 .th-track-sub {
   margin: 0;
   font-size: 16px;
-  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--white) 45%, transparent);
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .th-track-hires {
-  margin: 10px 0 0; // title-group 与 HI-RES 行间距 18（8+10）
+  // 与 flex gap 叠加 = 18px：title-group 与音质行的呼吸感（修 Bug #8 时曾压到 8px，
+  // 视觉上太挤，现在靠控制带下移换回这 10px）。
+  margin: 10px 0 0;
+  line-height: 1.2;
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 10px;
   letter-spacing: 1.5px;
-  color: rgba(0, 229, 255, 0.6);
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 // ── 更多菜单（dislike 入口，不放在主控制栏） ──────────────────
@@ -516,7 +535,7 @@
   border-radius: 50%;
   border: 1px solid var(--glass-stroke);
   background: var(--glass-fill);
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -524,7 +543,7 @@
   transition: color 0.2s ease, transform 0.2s ease;
   flex-shrink: 0;
 }
-.th-more-btn:hover { color: #fff; transform: scale(1.08); }
+.th-more-btn:hover { color: var(--white); transform: scale(1.08); }
 .th-more-backdrop {
   position: fixed;
   inset: 0;
@@ -585,7 +604,7 @@
   margin: 0;
   font-size: 20px;
   letter-spacing: 2px;
-  color: rgba(255, 255, 255, 0.18);
+  color: color-mix(in srgb, var(--white) 18%, transparent);
   white-space: nowrap;
   transition: color 0.5s ease, opacity 0.5s ease;
 }
@@ -602,17 +621,17 @@
   align-self: stretch;
   border-radius: 2px;
   background: var(--neon);
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.7);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent);
   flex-shrink: 0;
 }
 .th-lyric--current {
   font-size: 44px;
   font-weight: 600;
   letter-spacing: -1px;
-  color: rgba(255, 255, 255, 0.95);
+  color: color-mix(in srgb, var(--white) 95%, transparent);
   text-shadow:
-    0 0 12px rgba(0, 229, 255, 0.25),
-    0 0 28px rgba(0, 229, 255, 0.35);
+    0 0 12px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 0 28px color-mix(in srgb, var(--accent) 35%, transparent);
   animation: th-lyric-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: normal;
   word-break: break-word;
@@ -639,15 +658,18 @@
   font-size: 10px;
   font-weight: 400;
   letter-spacing: 1px;
-  color: rgba(245, 240, 232, 0.1);
+  color: color-mix(in srgb, var(--text-main) 10%, transparent);
   text-transform: uppercase;
 }
 
-// TrialFallback：在 (560, 640) 显示 30S TRIAL Tag/Stat（cyan + 红点）
+// TrialFallback：显示 30S TRIAL Tag/Stat（cyan + 红点）
+// 设计稿 (560,640) 会落在标题带的右侧 —— 歌名最长 460px（居中于 430 → 右边界 660），
+// 长歌名时标签会被压在歌名上。改到控制带右侧的空白区：(560, 755)，与 72px 的
+// 能量核心同一条水平中线；左邻控制带右边界 530，上邻音质行 709，右邻推荐块 1000。
 .th-trial-tag {
   position: absolute;
   left: 560px;
-  top: 640px;
+  top: 755px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -663,8 +685,8 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #ff3b5c;
-  box-shadow: 0 0 6px rgba(255, 59, 92, 0.5);
+  background: var(--status-error);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--status-error) 50%, transparent);
   flex-shrink: 0;
 }
 
@@ -677,13 +699,13 @@
 .th-reco-unconfigured {
   position: absolute;
   left: 1000px;
-  top: 700px;
+  top: 726px; // 与 .th-core-cluster 同一条底带（Bug #8 整体下移）
   width: 392px;
   height: 132px;
   padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--glass-stroke);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -693,13 +715,13 @@
 .th-reco-unconfigured-title {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: color-mix(in srgb, var(--white) 85%, transparent);
 }
 
 .th-reco-unconfigured-desc {
   font-size: 11px;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--white) 45%, transparent);
 }
 
 .th-reco-unconfigured-actions {
@@ -710,9 +732,9 @@
 .th-reco-unconfigured-btn {
   height: 23px;
   padding: 5px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--glass-stroke);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--glass-fill);
   color: #00e5ff;
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 10px;
@@ -723,15 +745,18 @@
 }
 
 .th-reco-unconfigured-btn:hover {
-  background: rgba(0, 229, 255, 0.1);
-  border-color: rgba(0, 229, 255, 0.3);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 // ── 左下：能量核心（1440 稿 300,700） ───────────────────────────
 
 .th-core-cluster {
   position: absolute;
-  left: 266px; top: 700px;
+  // 设计稿 700 → 实装 726：歌名块（底边 709）下移后同步让位，净空 17px。
+  // 700 时第三行音质标签会塞进播放键圆和它的光晕里（Bug #8）；再往下会撞上
+  // 右下推荐卡的底边与页脚水印。
+  left: 266px; top: 726px;
   width: 264px; height: 72px;
   display: flex;
   align-items: center;
@@ -744,14 +769,14 @@
   border-radius: 50%;
   background: var(--glass-bg);
   border: 1px solid var(--glass-stroke);
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.th-ctrl:hover:not(:disabled) { color: #fff; transform: scale(1.08); }
+.th-ctrl:hover:not(:disabled) { color: var(--white); transform: scale(1.08); }
 .th-ctrl:disabled { opacity: 0.3; cursor: default; }
 .th-ctrl:focus-visible {
   outline: 2px solid var(--accent);
@@ -818,7 +843,7 @@
   width: 72px; height: 72px;
   border-radius: 50%;
   border: none;
-  background: radial-gradient(circle, #ffffff 0%, #80f2ff 24%, var(--neon) 48%, #2d88ff 74%, var(--violet) 100%);
+  background: radial-gradient(circle, var(--white) 0%, #80f2ff 24%, var(--neon) 48%, #2d88ff 74%, var(--violet) 100%);
   color: #02020a;
   display: flex;
   align-items: center;
@@ -830,21 +855,21 @@
 .th-core:hover:not(:disabled) { transform: scale(1.06); }
 .th-core:disabled { opacity: 0.4; cursor: default; }
 @keyframes th-core-breathe {
-  0%, 100% { box-shadow: 0 0 30px rgba(0, 229, 255, 0.6), 0 0 60px rgba(0, 229, 255, 0.3); }
-  50% { box-shadow: 0 0 44px rgba(0, 229, 255, 0.8), 0 0 80px rgba(0, 229, 255, 0.4); }
+  0%, 100% { box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 60px color-mix(in srgb, var(--accent) 30%, transparent); }
+  50% { box-shadow: 0 0 44px color-mix(in srgb, var(--accent) 80%, transparent), 0 0 80px color-mix(in srgb, var(--accent) 40%, transparent); }
 }
 .th-core.is-playing {
   animation: th-core-breathe-playing 3.2s ease-in-out infinite;
 }
 @keyframes th-core-breathe-playing {
-  0%, 100% { box-shadow: 0 0 40px rgba(0, 229, 255, 0.75), 0 0 90px rgba(91, 43, 255, 0.4); }
-  50% { box-shadow: 0 0 56px rgba(0, 229, 255, 0.9), 0 0 110px rgba(91, 43, 255, 0.55); }
+  0%, 100% { box-shadow: 0 0 40px color-mix(in srgb, var(--accent) 75%, transparent), 0 0 90px color-mix(in srgb, var(--accent-purple) 40%, transparent); }
+  50% { box-shadow: 0 0 56px color-mix(in srgb, var(--accent) 90%, transparent), 0 0 110px color-mix(in srgb, var(--accent-purple) 55%, transparent); }
 }
 .th-core-inner {
   position: absolute;
   width: 52px; height: 52px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid color-mix(in srgb, var(--white) 40%, transparent);
   pointer-events: none;
 }
 .th-core-spinner {
@@ -856,11 +881,11 @@
 }
 @keyframes th-spin { to { transform: rotate(360deg); } }
 
-// ── 右下：DeepSeek 推荐（1440 稿 1000,700） ─────────────────────
+// ── 右下：DeepSeek 推荐（1440 稿 1000,700 → 实装 1000,726） ─────
 
 .th-reco {
   position: absolute;
-  left: 1000px; top: 700px;
+  left: 1000px; top: 726px; // 与 .th-core-cluster 保持同一条底带
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -877,11 +902,6 @@
   letter-spacing: 2px;
   color: var(--acid);
 }
-.th-reco-running {
-  font-size: 10px;
-  color: var(--acid);
-  animation: th-dot-blink 1s ease-in-out infinite;
-}
 // 推荐生成中状态指示（对应 Figma RecoLoading 屏的 DEEP.SEEK // RUNNING…）
 .th-reco-status {
   display: inline-flex;
@@ -897,7 +917,7 @@
   height: 5px;
   border-radius: 50%;
   background: var(--acid);
-  box-shadow: 0 0 6px rgba(181, 123, 255, 0.6);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ai) 60%, transparent);
   animation: th-dot-blink 1.2s ease-in-out infinite;
 }
 // 进度条 + 状态文案（对应 Figma RecoLoading 屏的进度条 + STEP 2/4）
@@ -909,7 +929,7 @@
   width: 100%;
   height: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--glass-fill-strong);
   overflow: hidden;
   position: relative;
 }
@@ -933,7 +953,7 @@
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 9px;
   letter-spacing: 0.5px;
-  color: rgba(245, 240, 232, 0.4);
+  color: var(--text-dim);
 }
 // 骨架卡（对应 Figma Card/Skeleton 组件）
 .th-reco-skeletons {
@@ -944,8 +964,8 @@
   width: 120px;
   height: 120px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  border: 1px solid var(--glass-fill);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -955,13 +975,13 @@
   width: 100%;
   height: 60px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--glass-fill);
   animation: th-skeleton-pulse 1.5s ease-in-out infinite;
 }
 .th-reco-skeleton-line {
   height: 8px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--glass-fill);
   animation: th-skeleton-pulse 1.5s ease-in-out infinite;
 }
 .th-reco-skeleton-line--title { width: 70%; }
@@ -982,8 +1002,8 @@
   gap: 0;
   padding: 0;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-stroke);
   overflow: hidden;
   cursor: pointer;
   text-align: left;
@@ -1002,7 +1022,7 @@
 .th-reco-name {
   font-size: 11px;
   line-height: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  color: color-mix(in srgb, var(--white) 80%, transparent);
   padding: 0 10px;
   margin-bottom: 2px;
   max-width: 100%;
@@ -1013,7 +1033,7 @@
 .th-reco-artist {
   font-size: 9px;
   line-height: 10px;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--white) 35%, transparent);
   padding: 0 10px;
   margin-bottom: 2px;
   max-width: 100%;
@@ -1032,16 +1052,39 @@
   width: 392px;
   padding: 20px;
   border-radius: 16px;
-  background: linear-gradient(160deg, rgba(181, 123, 255, 0.16), rgba(0, 229, 255, 0.08) 60%, rgba(2, 2, 10, 0.4));
-  border: 1px solid rgba(181, 123, 255, 0.18);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--ai) 16%, transparent), color-mix(in srgb, var(--accent) 8%, transparent) 60%, rgba(2, 2, 10, 0.4));
+  border: 1px solid color-mix(in srgb, var(--ai) 18%, transparent);
   font-size: 12px;
-  color: rgba(245, 240, 232, 0.5);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   text-align: center;
 }
 .th-reco-foot {
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 9px;
-  color: rgba(245, 240, 232, 0.25);
+  color: color-mix(in srgb, var(--text-main) 25%, transparent);
+}
+
+// 以当前歌为种子（"像这首一样"）——比主 ✨ 更轻的次要动作，做成描边胶囊。
+.th-reco-seed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ai) 32%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--text-main) 72%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--ai) 70%, transparent);
+    color: var(--text-main);
+    background: color-mix(in srgb, var(--ai) 12%, transparent);
+  }
 }
 
 // ── 版本行（1440 稿右下） ───────────────────────────────────────
@@ -1051,7 +1094,7 @@
   right: 64px; bottom: 20px;
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 9px;
-  color: rgba(245, 240, 232, 0.1);
+  color: color-mix(in srgb, var(--text-main) 10%, transparent);
   letter-spacing: 1px;
   z-index: 9;
 }
@@ -1074,7 +1117,7 @@
 }
 // 大星（3px+）额外有辉光
 .th-star {
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--white) 40%, transparent);
 }
 
 // ── 2. 星云：缓慢漂移 + 呼吸（宇宙感） ───────────────────────────
@@ -1097,8 +1140,8 @@
     th-ring-glow 3.6s ease-in-out infinite;
 }
 @keyframes th-ring-glow {
-  0%, 100% { box-shadow: 0 0 0 rgba(0, 229, 255, 0); }
-  50% { box-shadow: 0 0 24px rgba(0, 229, 255, 0.25); }
+  0%, 100% { box-shadow: 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 25%, transparent); }
 }
 
 // ── 4. 封面：缓慢自转 + 光效呼吸（播放时） ───────────────────────
@@ -1107,15 +1150,15 @@
 }
 @keyframes th-cover-breathe {
   0%, 100% { box-shadow:
-    0 0 60px 8px rgba(0, 229, 255, 0.35),
-    0 0 96px rgba(91, 43, 255, 0.32),
-    0 0 50px rgba(0, 229, 255, 0.25),
-    inset 0 0 30px rgba(0, 229, 255, 0.3); }
+    0 0 60px 8px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 0 96px color-mix(in srgb, var(--accent-purple) 32%, transparent),
+    0 0 50px color-mix(in srgb, var(--accent) 25%, transparent),
+    inset 0 0 30px color-mix(in srgb, var(--accent) 30%, transparent); }
   50% { box-shadow:
-    0 0 72px 10px rgba(0, 229, 255, 0.45),
-    0 0 120px rgba(91, 43, 255, 0.42),
-    0 0 60px rgba(0, 229, 255, 0.32),
-    inset 0 0 40px rgba(0, 229, 255, 0.4); }
+    0 0 72px 10px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 0 120px color-mix(in srgb, var(--accent-purple) 42%, transparent),
+    0 0 60px color-mix(in srgb, var(--accent) 32%, transparent),
+    inset 0 0 40px color-mix(in srgb, var(--accent) 40%, transparent); }
 }
 // 封面自转：整个圆旋转（唱片感），♪ 符号反向补偿保持水平
 .th-cover.is-playing,
@@ -1141,13 +1184,13 @@
   animation: th-dot-pulse 1.8s ease-in-out infinite;
 }
 @keyframes th-dot-pulse {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.8)); }
-  50% { filter: drop-shadow(0 0 12px rgba(0, 229, 255, 1)); }
+  0%, 100% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 80%, transparent)); }
+  50% { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 100%, transparent)); }
 }
 // hover 整环暗示可点
 .th-orbit-svg { transition: transform 0.18s ease-out; }
 .th-orbit-svg:hover { transform: scale(1.015); }
-.th-orbit-svg:hover .th-orbit-track { stroke: rgba(255, 255, 255, 0.22); }
+.th-orbit-svg:hover .th-orbit-track { stroke: color-mix(in srgb, var(--white) 22%, transparent); }
 
 // ── 6. 歌词：当前行滑入 + 旧行上滑淡出 ───────────────────────────
 .th-lyric {
@@ -1155,16 +1198,6 @@
     color 0.5s ease,
     opacity 0.5s ease,
     transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.th-lyric--prev {
-  animation: th-lyric-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.th-lyric--next {
-  animation: th-lyric-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
-}
-@keyframes th-lyric-up {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 // 当前行：从下方发光滑入
 .th-lyric--current {
@@ -1181,8 +1214,8 @@
 }
 .th-core:hover:not(:disabled) {
   box-shadow:
-    0 0 50px rgba(0, 229, 255, 0.9),
-    0 0 100px rgba(91, 43, 255, 0.5);
+    0 0 50px color-mix(in srgb, var(--accent) 90%, transparent),
+    0 0 100px color-mix(in srgb, var(--accent-purple) 50%, transparent);
 }
 
 // ── 8. 顶部绿点 + LIVE：闪烁节奏微调 ─────────────────────────────
@@ -1223,6 +1256,39 @@
   .th-core-spinner { animation-duration: 0.8s !important; }
   .th-hud-dot { animation-duration: 2s !important; }
   .th-live-dot { animation-duration: 1.4s !important; }
-  .th-lyric--current, .th-lyric--prev, .th-lyric--next { animation-duration: 0.5s !important; }
+  .th-lyric--current { animation-duration: 0.5s !important; }
   .th-orbit-arc, .th-orbit-dot { transition-duration: 0.3s !important; }
+}
+
+// ── 紧凑档（窗口宽 < 1100px）：换 960×800 画布 ──
+// 与 Figma `Screen/NowPlaying` 的 `density=narrow` 变体（516:1884 / 518:1881）一一对应。
+// 各块**保持原生尺寸、纵向堆叠** —— 不做"把实例压小"：实例内部不随 resize 缩放
+// （2026-09-20 实测，压小进度环会把圆弧与时间码顶到歌词上）。
+// 本档的减法：声波环整块移除、推荐卡隐藏、歌词只留当前行（由 TSX 按 density 收敛）。
+.th-canvas[data-density='narrow'] {
+  width: 960px;
+  height: 800px;
+
+  // HUD 收紧内边距与间距，让 brand + telemetry + badges 在 960 宽内排得下
+  .th-hud { top: 16px; padding: 0 32px; gap: 16px; }
+
+  // 封面中心：1440 稿中心 (430,450)、实装 (430,420)——代码比稿高 30px；
+  // 紧凑稿中心 (480,320) 同步减 30 → (480,290)
+  .th-cover-stage { left: 480px; top: 290px; }
+
+  // 歌词放进「封面底(445) → 歌名块(602)」之间的空带。
+  // 注意：**下半屏是一条联立解出的垂直链**（见 .th-track-info 上方注释 / Bug #8），
+  // 歌名 602..650 · 歌手 658..679 · 音质 697..709 · 控制带 726..798 —— 不能单独动其中任何一段。
+  // 所以紧凑档只是"把歌词塞进空带"，控制条沿用链上的 726，不改链。
+  // （第一版我把控制条挪到 690，会压住音质行 697..709；idle 态没曲目所以基线看不出来，
+  //   是读 CSS 时才发现 —— 已改回。）
+  .th-lyrics-panel { left: 200px; top: 490px; width: 560px; }
+  .th-lyric--current { font-size: 26px; }
+  // 试听降级标签从 (560,755) 提到 HUD 下方，避免与紧凑档控制条抢 14px 的空隙
+  .th-trial-tag { left: 200px; top: 64px; }
+
+  // 窄档减法：声波环 + 推荐卡（含"未配置"态）
+  .th-ring,
+  .th-reco,
+  .th-reco-unconfigured { display: none; }
 }

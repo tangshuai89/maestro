@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────
 // AETHER v4 — D10 增量审计（MOTION SPEC JSON 合规）
-// 验证：04 · Motion 页 MOTION SPEC frame description 含
-//       ---MOTION_SPEC:--- 段，可被 JSON.parse 解析
+//
+// 验证：04 · Motion 页 MOTION SPEC frame 上的 MOTION_SPEC 载体含
+//       ---...--- 段，可被 JSON.parse 解析
 //       + 每条 spec 必填字段完整 + id 全局唯一
+//
+// 载体说明（2026-09-20 修正）：**FRAME 没有 `description` 属性**
+// （实测 `'description' in frame === false`；写会抛
+// `in set_description: no such property 'description' on FRAME node`，REST 也不返回该字段）。
+// 真实载体是 frame 下的隐藏 TEXT 子节点，名为 `MOTION_SPEC` —— 与 D1 的 `AI_CONTRACT` 同一套做法。
+// 本脚本两种都读：将来若该节点升级成 COMPONENT，description 分支自动生效。
+// 背景：@/Users/tangshuai/knowledge/frontend/figma-plugin-api-write-gotchas.md §1
 // 用法:
 //   FIGMA_TOKEN=<token> node scripts/figma-aether-v4-audit-d10.mjs
 //   离线自测: node scripts/figma-aether-v4-audit-d10.mjs --fixture /tmp/d10
@@ -61,13 +69,17 @@ if (!specFrame) {
   process.exit(1);
 }
 
-// ── 2. 提取 MOTION_SPEC 段 ──
-const desc = specFrame.description || '';
-// 描述形如 `--- { "MOTION_SPEC": "1.0", "spec": [...] } ---`
+// ── 2. 提取 MOTION_SPEC 段（两种载体都认）──
+const carrierOf = (frame) =>
+  frame.description // 只有 COMPONENT / COMPONENT_SET 有；FRAME 上恒为 undefined
+  || (frame.children || []).find((c) => c.type === 'TEXT' && c.name === 'MOTION_SPEC')?.characters
+  || '';
+const carrier = carrierOf(specFrame);
+// 内容形如 `---\n{ "MOTION_SPEC": "1.0", "spec": [...] }\n---`
 // JSON 内有 {}，不能用 {.*?}；直接用 ---...--- 截整段作为 JSON
-const match = desc.match(/---([\s\S]+?)---/);
+const match = carrier.match(/---([\s\S]+?)---/);
 if (!match) {
-  check('MOTION SPEC frame description 含 ---...--- 段', false, 'description 缺段');
+  check('MOTION_SPEC 载体含 ---...--- 段', false, carrier ? '段格式不对' : '两种载体都空（缺隐藏 TEXT 子节点 MOTION_SPEC）');
   const lines = results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
   console.log(`\nAETHER v4-D10 动效审计\n` + lines.join('\n') + `\n\n0/1 通过，1 FAIL`);
   process.exit(1);
