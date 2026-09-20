@@ -102,3 +102,8 @@ expected / actual / diff 三张图）。
 
 仓库里**还没有** `@playwright/test` 依赖时，workflow 会**跳过而不是失败**（与
 `token-drift.yml` 同款优雅降级）——避免"门禁一上线就红"。
+
+> ⚠️ 跳过判据读的是 **`package.json` 清单**，不是 `require.resolve`。
+> 2026-09-20 实测踩过：`require.resolve` 跑在 `npm ci` 之前（此时 `node_modules` 还不存在），
+> 于是**永远跳过、job 假绿** —— PR #86 的 visual 15 秒就 "pass" 了，其实什么都没跑。
+> 教训同 D11 的容差：**门禁的自检不能只看它绿，要看它真的跑了什么。**

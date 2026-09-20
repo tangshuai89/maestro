@@ -30,10 +30,13 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: 是否已装 playwright
+      # ⚠️ 这一步**必须读 package.json 清单**，不能用 `require.resolve('@playwright/test')`：
+      # 那个检查跑在 `npm ci` 之前，此时 node_modules 还不存在 → 永远判"没装" → 永远跳过，
+      # job 会假绿（2026-09-20 实测：PR #86 的 visual 15 秒就 "pass" 了，实际什么都没跑）。
+      - name: 是否声明了 playwright 依赖（读清单，不读 node_modules）
         id: gate
         run: |
-          if node -e "require.resolve('@playwright/test')" 2>/dev/null; then
+          if node -e "const p=require('./package.json');process.exit(p.devDependencies && p.devDependencies['@playwright/test'] ? 0 : 1)"; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
