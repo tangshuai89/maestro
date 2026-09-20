@@ -36,6 +36,17 @@ import {
   type RecoSignal,
 } from './signals';
 import {
+  averageRuns,
+  diversityMetrics,
+  hitDetails,
+  holdoutBreakdown,
+  meanReciprocalRank,
+  recall,
+  splitLibrary,
+  type EvalReport,
+  type EvalRunResult,
+} from './eval';
+import {
   PEN_BAD,
   versionPenalty,
   durationPenalty,
@@ -448,6 +459,170 @@ export class RecoService {
 
   // ── P0-a 口味档案 ───────────────────────────────────────
 
+  // ── 离线评测（留一法）────────────────────────────────────
+
+  /**
+   * 留一法离线评测：把库里的部分红心歌藏起来，只用剩余的歌跑**同一条真实
+   * 流水线**（候选池 → 挑选 → 填源），看藏起来的歌能不能被推回来。
+   *
+   * 为什么要分两层指标：`poolRecall`（藏起来的歌有没有进候选池）与
+   * `recallAtK`（最终有没有推给用户）分开，就能直接定位损失在哪一段——
+   * 是候选生成捞不到，还是 LLM 挑选没挑中。
+   *
+   * 模式：
+   *  - `pool`（默认）：**不调 LLM、不花钱**，用候选池的确定性顺序取前 count 条
+   *    作为"如果没有 LLM 会推什么"——衡量检索层。
+   *  - `llm`：完整流水线（会消耗 token）。
+   *
+   * 注意：评测**不写**产品用的候选池缓存（否则评测的 train-only 池会污染真实
+   * 推荐），也不写推荐历史。
+   */
+  async evaluate(
+    session: Session,
+    opts: {
+      holdoutSize?: number;
+      count?: number;
+      mode?: 'pool' | 'llm';
+      runs?: number;
+      seed?: number;
+    } = {},
+  ): Promise<EvalReport> {
+    const lib = this.musicService.getLibrary(session);
+    if (!lib || lib.items.length < 2) {
+      throw new BadRequestException(
+        'library_empty：先导入库（至少 2 首）再跑评测',
+      );
+    }
+    const mode = opts.mode ?? 'pool';
+    const count = Math.min(Math.max(opts.count ?? 10, 1), 30);
+    const holdoutSize = Math.min(
+      Math.max(opts.holdoutSize ?? 20, 1),
+      lib.items.length - 1,
+    );
+    const runs = Math.min(Math.max(opts.runs ?? 1, 1), 10);
+    if (mode === 'llm' && !this.isConfigured()) {
+      throw new HttpException(
+        'deepseek_key_not_configured',
+        HttpStatus.PRECONDITION_REQUIRED,
+      );
+    }
+
+    const apiKey = mode === 'llm' ? this.getApiKey() : null;
+    const signals = this.loadSignals(session);
+    const signalScores = artistSignalScores(signals);
+    const bannedArtists = bannedArtistKeys(signalScores);
+    const negatives = negativeTracks(signals);
+    const exclude = this.mergeExclude(undefined, [
+      ...this.loadRecoHistory(session),
+      ...negatives,
+    ]);
+
+    // 可复现：seed 决定留出集与探索艺人的随机序列。
+    let rngState = opts.seed ?? 1;
+    const rng = () => {
+      // mulberry32：小巧、确定、够用。
+      rngState |= 0;
+      rngState = (rngState + 0x6d2b79f5) | 0;
+      let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const results: EvalRunResult[] = [];
+    for (let run = 0; run < runs; run++) {
+      const started = Date.now();
+      const { train, holdout } = splitLibrary(lib.items, {
+        holdoutSize,
+        rng,
+      });
+      // 档案只用 train 建——否则等于把考卷答案喂进去了。
+      const profileCore = buildProfileCore(train, {
+        importedAt: lib.importedAt,
+        anchorCount: TOP_ARTISTS_HINT,
+        signalScores,
+      });
+      const profile: TasteProfile = {
+        ...profileCore,
+        seeds: pickTasteSeeds(train, profileCore.artists, {
+          count: TASTE_SEED_COUNT,
+          exploreRatio: TASTE_EXPLORE_RATIO,
+          rng,
+        }),
+      };
+
+      const poolStart = Date.now();
+      const built = await this.buildPool(
+        session,
+        profile,
+        train,
+        exclude,
+        count,
+        undefined,
+        bannedArtists,
+        { noCache: true },
+      );
+      const poolMs = Date.now() - poolStart;
+
+      // 检索层指标
+      const poolRecall = recall(holdout, built.pool.candidates);
+      const poolRecallTop20 = recall(holdout, built.pool.candidates, 20);
+
+      // 选择层：pool 模式用候选池既定顺序的确定性"假排序"；llm 模式走真挑选。
+      let recommended: Array<{ title: string; artist: string }>;
+      let llmMs = 0;
+      if (mode === 'llm' && apiKey) {
+        const listed = built.pool.candidates.slice(0, SELECT_PROMPT_CANDIDATES);
+        const llmStart = Date.now();
+        const raw = await this.callDeepSeek(
+          apiKey,
+          this.buildSelectPrompt(profile, listed, { count }),
+          { maxTokens: SELECT_MAX_TOKENS },
+        );
+        llmMs = Date.now() - llmStart;
+        const picks = this.parseSelection(raw, listed.length);
+        recommended = this.fillFromPool(picks, built.pool.candidates, count);
+      } else {
+        recommended = this.fillFromPool([], built.pool.candidates, count);
+      }
+
+      const breakdown = holdoutBreakdown(holdout, train);
+      results.push({
+        poolSize: built.pool.candidates.length,
+        poolRecall,
+        poolRecallTop20,
+        recallAtK: recall(holdout, recommended, count),
+        mrr: meanReciprocalRank(holdout, recommended),
+        holdoutSameArtist: {
+          size: breakdown.sameArtist.length,
+          recall: recall(breakdown.sameArtist, recommended, count),
+        },
+        holdoutNewArtist: {
+          size: breakdown.newArtist.length,
+          recall: recall(breakdown.newArtist, recommended, count),
+        },
+        diversity: diversityMetrics(recommended),
+        candidatesByOrigin: built.pool.byOrigin as unknown as Record<string, number>,
+        timings: { poolMs, llmMs, totalMs: Date.now() - started },
+        hits: hitDetails(holdout, recommended),
+        holdout: holdout.map((h) => ({ title: h.title, artist: h.artist })),
+      });
+    }
+
+    const report = averageRuns(results, {
+      mode,
+      count,
+      librarySize: lib.items.length,
+      holdoutSize,
+      model: mode === 'llm' ? DEEPSEEK_MODEL : undefined,
+    });
+    this.logger.log(
+      `reco eval(${mode}): 池内召回 ${(report.average.poolRecall * 100).toFixed(1)}% / ` +
+        `Top-${count} ${(report.average.recallAtK * 100).toFixed(1)}% / ` +
+        `新艺人 ${(report.average.newArtistRecall * 100).toFixed(1)}%`,
+    );
+    return report;
+  }
+
   /** 口味主干缓存（per session）。主干是**确定性**的：同一份库 → 同一组 anchors，
    *  只有库签名（规模 + 导入时间）变了才重算。种子每轮重采，不进缓存。 */
   private readonly tasteProfileCache = new Map<string, TasteProfileCore>();
@@ -562,6 +737,7 @@ export class RecoService {
     count: number,
     seed?: { title: string; artist: string },
     bannedArtists?: Set<string>,
+    opts: { noCache?: boolean } = {},
   ): Promise<{ pool: CandidatePoolResult; cached: boolean }> {
     // 种子模式（"像这首一样"）下候选围绕种子的艺人展开：主干换成这一位、
     // 相邻艺人也围绕它扩，探索艺人不参与——用户要的是"更多这种"，不是"换口味"。
@@ -574,7 +750,9 @@ export class RecoService {
     // "库多大"，所以 key 用 (session, 库规模, 主干艺人)。
     const cacheKey = `${session.id}|${profile.size}|${anchors.join('|')}`;
     const hit = this.poolCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < POOL_CACHE_TTL_MS) {
+    // 离线评测走 noCache：评测用的是 train-only 的池，一旦写进产品缓存就会
+    // 污染真实推荐（且评测不想被产品缓存命中）。
+    if (!opts.noCache && hit && Date.now() - hit.at < POOL_CACHE_TTL_MS) {
       const filtered = this.filterPoolByExclude(hit.pool, exclude);
       if (filtered.candidates.length >= count) {
         this.logger.log(
@@ -627,11 +805,13 @@ export class RecoService {
         `reco: 候选池 ${pool.candidates.length} 首` +
           `（深挖 ${pool.byOrigin.artist} / 相邻 ${pool.byOrigin['related-artist']} / 电台 ${pool.byOrigin.radio}）`,
       );
-      // 顺手清掉过期条目，避免 map 无限增长（会话少但会长跑）。
-      for (const [k, v] of this.poolCache) {
-        if (Date.now() - v.at >= POOL_CACHE_TTL_MS) this.poolCache.delete(k);
+      if (!opts.noCache) {
+        // 顺手清掉过期条目，避免 map 无限增长（会话少但会长跑）。
+        for (const [k, v] of this.poolCache) {
+          if (Date.now() - v.at >= POOL_CACHE_TTL_MS) this.poolCache.delete(k);
+        }
+        this.poolCache.set(cacheKey, { at: Date.now(), pool });
       }
-      this.poolCache.set(cacheKey, { at: Date.now(), pool });
       return { pool, cached: false };
     } catch (err) {
       // 理论上 buildCandidatePool 自己已经兜住了大部分失败；这里再兜一层，

@@ -86,6 +86,35 @@ export class RecoController {
     return this.reco.recordSignals(session, list);
   }
 
+  /**
+   * 离线评测（留一法）——本地诊断用，`pool` 模式不消耗 DeepSeek token。
+   * 详见 `reco/eval.ts` 与 CLI `npm run reco:eval`。
+   */
+  @Post('eval')
+  async evaluate(
+    @Body()
+    body: {
+      holdoutSize?: number;
+      count?: number;
+      mode?: string;
+      runs?: number;
+      seed?: number;
+    } = {},
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const numeric = (v: unknown): number | undefined =>
+      typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+    return this.reco.evaluate(session, {
+      holdoutSize: numeric(body?.holdoutSize),
+      count: numeric(body?.count),
+      runs: numeric(body?.runs),
+      seed: numeric(body?.seed),
+      mode: body?.mode === 'llm' ? 'llm' : 'pool',
+    });
+  }
+
   /** 写 key 到 .storage/secrets.json。 */
   @Post('key')
   async saveKey(

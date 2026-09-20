@@ -185,6 +185,46 @@ Response: { ok: true }
       并把这次点击记成 `seed` 强正信号（reco.test #45）
 - [x] 前端 TheaterView 推荐块下方新增「像《歌名》一样」胶囊按钮（播放中有歌时出现）
 
+## 离线评测基座（v2.2，2026-09-20）
+
+**为什么**：前面几轮的优化（v2 / v2.1）都只能靠"实测感觉"判断效果——没有可重复
+的数字，"变好了"就是玄学。
+
+**方法**：留一法（leave-one-out）。从库里随机藏起 N 首红心歌，**只用剩下的歌**
+跑同一条真实流水线（候选池 → 挑选 → 填源），看藏起来的歌能不能被推回来。
+
+指标刻意分两层，直接告诉我们损失发生在哪一段：
+
+| 层 | 指标 | 含义 |
+| --- | --- | --- |
+| 检索 | `poolRecall` / `poolRecallTop20` | 藏起来的歌有没有进候选池（候选生成 Problem？） |
+| 选择 | `recallAtK` / `MRR` | 候选里的歌有没有真被推给用户（LLM 挑选 Problem？） |
+
+再加一档拆分：**同艺人 / 新艺人**。同艺人的歌我们本来就会搜这位艺人，天然容易
+捞到——**新艺人那一档才反映泛化能力**，看结果时别被同艺人的高分骗了。
+
+- [x] `reco/eval.ts`（纯函数）：`splitLibrary`（rng 可注入 → 同 seed 复现同一份考卷）/
+      `recall` / `meanReciprocalRank` / `holdoutBreakdown` / `diversityMetrics` /
+      `averageRuns` / `formatEvalReport` / `compareEvalReports`（基线回归追踪）
+- [x] `RecoService.evaluate`：用**真实** deps（统一搜索 + 相邻艺人 + 电台）跑评测；
+      `noCache: true` 让评测**不写**产品候选池缓存（否则 train-only 的池会污染真实推荐），
+      也不写推荐历史
+- [x] 两种模式：`pool`（默认，不调 LLM、零 token 成本，测检索层）/ `llm`（完整流水线）
+- [x] `POST /api/reco/eval`（本地诊断，body: holdoutSize/count/mode/runs/seed）
+- [x] CLI：`npm run reco:eval -- --holdout=20 --count=10 --runs=3 --seed=1 --mode=pool`
+      支持 `--json` / `--save=<file>` / `--compare=<file>` / `--session=` / `--storage=`
+- [x] CLI 只读：直接从 `state.json` 取会话（不经 SessionService，不触发任何业务写入）；
+      跑之前应先关掉 app，避免两进程共用同一份 storage
+- [x] 测试：`eval.test.ts`（切分/召回/MRR/分档/多样性/报告对比 5 组）+
+      `reco.test #46/#47`（能真的召回藏起来的歌；检索全空时指标必须为 0，防假阳性）
+
+**已知局限**：留一法假设"你会再喜欢一次你收藏过的歌"，测不到"新歌发现"那部分；
+同艺人档天然偏高（见上）。后续可加"按时间切分"（若库里带上加入时间）与在线指标
+（跳过率）互相印证。
+
+**仍未做**（下一批）：按时间切分的评测、同人歌单/跨会话长期档案、候选池预热到播放
+间隙、推荐结果级联（边出边播）。
+
 ## 不做什么
 
 - ~~不持久化推荐历史~~ → v1.1 起持久化「最近推荐过」用于去重（不是"历史推荐结果"，

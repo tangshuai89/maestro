@@ -40,3 +40,9 @@
 - [x] 28. 信号折进口味档案（有界加权）与负反馈闭环（负样本排除 + 艺人拉黑）
 - [x] 29. 种子模式：run(seed) 围绕种子艺人 + prompt 点明 + seed 信号 +
       TheaterView「像《歌名》一样」入口
+- [x] 30. `reco/eval.ts`：留一法纯函数（切分/召回/MRR/分档/多样性/报告/基线对比）
+- [x] 31. `RecoService.evaluate`：真实流水线 + noCache（不污染产品池缓存）+
+      pool/llm 双模式
+- [x] 32. `POST /reco/eval` + CLI `npm run reco:eval`（只读 state.json；--save/--compare
+      做基线回归追踪）
+- [x] 33. 测试：eval.test 5 组 + reco.test #46/#47（真召回 / 检索全空必须 0）

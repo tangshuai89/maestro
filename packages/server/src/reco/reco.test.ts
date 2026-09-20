@@ -1291,7 +1291,96 @@ void (async () => {
     }
   }
 
-  console.log('\n🎉 全部 45 个测试通过');
+  // ── 46. evaluate()：留一法能真的把藏起来的歌找回来 ─────────
+  {
+    // 三首同艺人的歌；stub 的 searchArtist 返回全部三首 → 无论哪两首被留出，
+    // 它们都会出现在候选池里（留在 train 的那首会被"库内"过滤掉）。
+    const libItems = [
+      uItem('a', '藏起来的一', '甲'),
+      uItem('b', '藏起来的二', '甲'),
+      uItem('c', '藏起来的三', '甲'),
+    ];
+    const music = {
+      getLibrary: () => ({ items: libItems, sources: [], importedAt: 5 }),
+      searchUnified: async () => ({
+        items: [
+          uItem('a', '藏起来的一', '甲'),
+          uItem('b', '藏起来的二', '甲'),
+          uItem('c', '藏起来的三', '甲'),
+        ],
+      }),
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    const svcEval = new RecoService(
+      fakeConfig,
+      fakeStorage,
+      fakeSessionService,
+      music as any,
+    );
+    const report = await svcEval.evaluate({ id: 'sess-eval' } as any, {
+      holdoutSize: 2,
+      count: 10,
+      mode: 'pool',
+      seed: 3,
+    });
+    assert.strictEqual(report.mode, 'pool');
+    assert.strictEqual(report.runs, 1);
+    assert.strictEqual(report.holdoutSize, 2);
+    assert.strictEqual(
+      report.average.poolRecall,
+      1,
+      '藏起来的歌都应进候选池（工具链没问题才谈得上调优）',
+    );
+    assert.strictEqual(report.average.recallAtK, 1, 'Top-10 应该把它们推回来');
+    assert.ok(
+      report.details[0].hits.length === 2,
+      '明细里应记录找回的歌与名次',
+    );
+    // 可复现：同 seed → 同留出集
+    const again = await svcEval.evaluate({ id: 'sess-eval' } as any, {
+      holdoutSize: 2,
+      count: 10,
+      mode: 'pool',
+      seed: 3,
+    });
+    assert.deepStrictEqual(
+      again.details[0].holdout.map((h: any) => h.title),
+      report.details[0].holdout.map((h: any) => h.title),
+      '同 seed 应切出同一份考卷',
+    );
+    console.log('✅ 46. evaluate(): 留一法召回 + 可复现考卷');
+  }
+
+  // ── 47. evaluate()：检索不到时指标必须为 0（不能假阳性）──
+  {
+    const libItems = [uItem('a', '藏起来的一', '甲'), uItem('b', '藏起来的二', '甲')];
+    const music = {
+      getLibrary: () => ({ items: libItems, sources: [], importedAt: 5 }),
+      searchUnified: async () => ({ items: [] }), // 检索全空
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    const svcEval = new RecoService(
+      fakeConfig,
+      fakeStorage,
+      fakeSessionService,
+      music as any,
+    );
+    const report = await svcEval.evaluate({ id: 'sess-eval-empty' } as any, {
+      holdoutSize: 1,
+      count: 10,
+      mode: 'pool',
+    });
+    assert.strictEqual(report.average.poolRecall, 0);
+    assert.strictEqual(report.average.recallAtK, 0);
+    assert.strictEqual(report.average.mrr, 0);
+    console.log('✅ 47. evaluate(): 检索全空 → 指标 0（无假阳性）');
+  }
+
+  console.log('\n🎉 全部 47 个测试通过');
 })().catch((err) => {
   console.error('❌ reco.test 失败:', err);
   process.exit(1);

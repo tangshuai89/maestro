@@ -29,7 +29,8 @@
     "test:code-connect": "node scripts/figma-code-connect-validate.mjs",
     "test:code-connect:strict": "node scripts/figma-code-connect-validate.mjs --strict",
     "test:description": "node scripts/figma-aether-v4-audit-d6.mjs",
-    "test:motion": "node scripts/figma-aether-v4-audit-d10.mjs"
+    "test:motion": "node scripts/figma-aether-v4-audit-d10.mjs",
+    "reco:eval": "cd packages/server && npx ts-node src/reco/eval-cli.ts"
   },
   "author": "tangshuai89",
   "license": "MIT",

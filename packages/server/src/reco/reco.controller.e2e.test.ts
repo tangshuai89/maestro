@@ -227,6 +227,22 @@ async function main() {
       );
     }
 
+    // ── 12. POST /reco/eval 空库 → 400（评测要先有库）──────────────
+    //  评测是本地诊断入口，没库时明确报 library_empty，而不是返回一堆 0
+    //  让人以为"推荐质量为零"。
+    {
+      const r = await call('POST', '/reco/eval', {
+        holdoutSize: 5,
+        count: 5,
+        mode: 'pool',
+      });
+      expect(
+        '12. POST /reco/eval 空库 → 400 library_empty',
+        r.status === 400 && /library_empty/.test(r.text),
+        `实际 ${r.status}: ${r.text.slice(0, 100)}`,
+      );
+    }
+
   } finally {
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });

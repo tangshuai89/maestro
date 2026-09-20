@@ -39,6 +39,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `packages/server/src/music/like-sync.queue.ts`。
 
 ### Added
+- **推荐离线评测基座**（`specs/reco-deepseek/spec.md` v2.2 段）——留一法把库里
+  一部分红心歌藏起来，看推荐能不能把它们找回来，让"变好了吗"有数字可依。
+  - `packages/server/src/reco/eval.ts`（新，纯函数）：留出切分（rng 可注入 → 同 seed
+    可复现）、`recall` / `MRR`、**同艺人 vs 新艺人分档**（同艺人天然虚高，新艺人才是
+    泛化能力）、多样性、多轮平均、人读报告、与基线对比。
+  - **指标分两层**：`poolRecall`（藏起来的歌有没有进候选池 = 检索层）与
+    `recallAtK`（有没有真推给用户 = 选择层）——直接指出损失在哪一段。
+  - `RecoService.evaluate`：跑**真实**流水线（统一搜索 + 相邻艺人 + 电台），
+    `noCache` 保证评测不污染产品的候选池缓存、也不写推荐历史；
+    `pool` 模式（默认，零 token）与 `llm` 模式（完整流水线）可选。
+  - `POST /api/reco/eval` + CLI `npm run reco:eval`（`--holdout/--count/--runs/--seed/
+    --mode/--json/--save/--compare/--session/--storage`）；CLI 只读 `state.json`
+    （直接从 blob 取会话，不经 SessionService，不写业务数据）。
 - **推荐延迟包 + 行为信号闭环**（`specs/reco-deepseek/spec.md` v2.1 段）——
   实测「推荐要等好久」后按耗时账逐段砍，并把"只有红心"补成真实行为信号。
   - **候选池阶段并发化**（`reco/candidate-pool.ts`）：原「相邻艺人查询 → 主干深挖
@@ -124,13 +137,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ISSUES.md` §6.2 CHANGELOG.md`**（本文件）。
 
 ### Tests
+- `packages/server/src/reco/eval.test.ts`（新）：5 组口径测试（切分不重叠/可复现/
+  至少留 1 首训练、召回与 MRR 含 Top-K 截断与空输入、同艺人分档、多样性、
+  多轮平均 + 报告格式 + 基线对比升降标注）。
+- `packages/server/src/reco/reco.test.ts`：新增 46/47（`evaluate()` 能真的把藏起来的
+  歌找回来且同 seed 可复现；检索全空时各项指标必须为 0，防假阳性），45 → 47。
 - `packages/server/src/reco/reco.test.ts`：新增 37–45（候选池并发下顺序确定 /
   候选池缓存命中 + timings + `max_tokens` / prompt 候选行数上限 / 信号
   清洗防抖衰减 / 信号进口味档案 / 负样本排除 / 艺人拉黑 / 种子模式端到端），
   36 → 45。
 - `packages/server/src/reco/reco.controller.e2e.test.ts`：新增 9–11
   （`POST /reco/signal` 脏数据 → 2xx + stored=0 / 合法单条 / 批量含脏数据），
-  10 → 13。
+  10 → 13；再补 12（`POST /reco/eval` 空库 → 400 library_empty），13 → 14。
 - `packages/server/src/reco/reco.test.ts`：新增 26–36（艺人亲和度归一 / 加权种子 /
   anchors 稳定 / 候选池过滤 / 候选池 fail-soft / `parseSelection` 下标白名单 /
   `fillFromPool` 补位 / 艺人上限 / 挑选 prompt 契约 / run() 挑选主路径端到端 /
