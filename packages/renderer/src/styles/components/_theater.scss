@@ -19,17 +19,21 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02020a;
-  color: #f5f0e8;
+  // 剧场稿的调色板**不再各自复制一份**：这里全部改为引用 Figma 导出的令牌
+  // （值本来就一模一样 —— 见 specs/token-adoption/）。改 token 就能一处改全局。
+  background: var(--primitive-bg-bottom);
+  color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
-  --neon: #00e5ff;
-  --violet: #5b2bff;
-  --acid: #b57bff;
+  // 局部别名保留（大量 `var(--neon)` 用法不动），但值来自令牌
+  --neon: var(--accent);
+  --violet: var(--accent-purple);
+  --acid: var(--ai);
   --heart: var(--status-liked);
-  --green: #3dffa2;
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-stroke: rgba(255, 255, 255, 0.12);
+  --green: var(--status-sync);
+  --glass-bg: var(--glass-fill);
+  // --glass-stroke 与全局令牌**同名**：这里不能再声明（`var(--glass-stroke)` 会自引用），
+  // 直接删掉 —— 3 处用法会自然落到生成层的同值令牌上。
 }
 
 // ── 背景层（铺满窗口，不随画布缩放） ────────────────────────────
