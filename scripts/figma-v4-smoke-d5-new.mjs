@@ -25,7 +25,19 @@ class MockNode {
     this._pa = 'FIXED'; this._ca = 'FIXED';
     this._paai = 'MIN'; this._caai = 'MIN';
     this.visible = true; this.clipsContent = false;
-    this.componentPropertyReferences = {};
+    // 与真实 API 同构：componentPropertyReferences 必须在节点**已挂入组件树**之后设置
+    // （v4-command.md §沙箱实测规则 3）。原来这里是个普通字段，谁都能随便赋值，
+    // 于是段里"先设引用再 appendChild"的顺序错误一路绿灯，真跑整段回滚。
+    let propRefs = {};
+    Object.defineProperty(this, 'componentPropertyReferences', {
+      get() { return propRefs; },
+      set(v) {
+        if (!this.parent) throw new Error('componentPropertyReferences: node must be added to a component first');
+        propRefs = v;
+      },
+      configurable: true,
+      enumerable: false,
+    });
     this.componentProperties = {};
     // description 只在 COMPONENT / COMPONENT_SET 上
     if (type === 'COMPONENT' || type === 'COMPONENT_SET') {
@@ -84,7 +96,13 @@ class MockNode {
     this.componentProperties[key] = { type, defaultValue };
     return key;
   }
-  setProperties(obj) { Object.assign(this._props, obj); }
+  // 与真实 API 同构：setProperties 只属于 INSTANCE。
+  // 原来这里无脑 Object.assign，于是段里打在 COMPONENT 上的 setProperties 一路绿灯，
+  // 真跑却抛 `no such property 'setProperties' on COMPONENT node` 并让整段回滚。
+  setProperties(obj) {
+    if (this.type !== 'INSTANCE') throw new Error(`node.setProperties: no such property 'setProperties' on ${this.type} node`);
+    Object.assign(this._props, obj);
+  }
   get _props() {
     if (!this.__props) this.__props = {};
     return this.__props;
@@ -137,18 +155,12 @@ for (const n of ['01 · Foundations', '02 · Components', '03 · Screens', '04 �
   }
 }
 const aether = figma.variables.createVariableCollection('AETHER');
-const varNames = [
-  'Color/semantic/text-main', 'Color/semantic/text-dim', 'Color/semantic/text-muted',
-  'Color/semantic/accent', 'Color/semantic/accent-soft',
-  'Color/semantic/glass-fill', 'Color/semantic/glass-stroke',
-  'Color/semantic/white',
-  'Color/semantic/status-error', 'Color/semantic/status-liked', 'Color/semantic/status-sync',
-  'Color/semantic/platform-qq', 'Color/semantic/platform-netease',
-  'Color/semantic/platform-deezer', 'Color/semantic/platform-spotify',
-];
-for (const name of varNames) {
-  const v = figma.variables.createVariable(name, aether, 'COLOR');
-  v.setValueForMode(aether.modes[0].modeId, { r: 0.5, g: 0.5, b: 0.5, a: 1 });
+// 变量清单直接取自真实文件的 dump（scripts/figma-tokens-dump.json），不手写。
+// 手写清单会悄悄漂移：这里原本列了 `Color/semantic/accent-soft`，而真实文件**没有**这个变量，
+// 于是 mock 里 varFill 拿得到值、真跑只能拿到品红哨兵 —— D2 踩过的同一个坑。
+for (const rv of JSON.parse(readFileSync(`${repo}/scripts/figma-tokens-dump.json`, 'utf8')).variables) {
+  const v = figma.variables.createVariable(rv.name, aether, rv.resolvedType);
+  v.setValueForMode(aether.modes[0].modeId, rv.value);
 }
 
 // ---------- 执行器 ----------
@@ -187,6 +199,18 @@ const EXPECTED = [
   { name: 'Titlebar', variants: ['state=logged-out', 'state=logged-in', 'state=logging-in'] },
   { name: 'Modal/NeteaseCookie', variants: ['state=empty', 'state=qr-shown', 'state=cookie-paste', 'state=submitting'] },
 ];
+
+// 品红哨兵扫描：varColor 找不到变量时回退 {r:1,g:0,b:1}，颜色扎眼但脚本不报错。
+// 这条断言把「段里引用了不存在的变量」变成一次可见的失败。
+const isSentinel = (p) => p && p.color && p.color.r === 1 && p.color.g === 0 && p.color.b === 1;
+const sentinelHits = [];
+const walkPaints = (n) => {
+  for (const p of [...(n.fills || []), ...(n.strokes || [])]) if (isSentinel(p)) sentinelHits.push(n.name);
+  (n.children || []).forEach(walkPaints);
+};
+compPage.children.forEach(walkPaints);
+assert('无品红哨兵（段引用的变量都真实存在）', sentinelHits.length === 0,
+  sentinelHits.length ? `${sentinelHits.length} 处: ${[...new Set(sentinelHits)].slice(0, 6).join(', ')}` : '0 处');
 
 const allSets = compPage.children.filter(n => n.type === 'COMPONENT_SET');
 assert('02 · Components 含 10 个新 COMPONENT_SET', allSets.length === 10, `实际 ${allSets.length}: ${allSets.map(s => s.name).join(', ')}`);

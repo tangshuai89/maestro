@@ -162,11 +162,13 @@ for (const st of ['collapsed', 'expanded']) {
   c.appendChild(sum);
   sum.layoutSizingHorizontal = 'FILL';
   sum.appendChild(tnode('icon', '⚠', 20, STATUS_ERROR, false, true));
-  const msgKey = c.addComponentProperty('message', 'TEXT', '播放失败，请检查网络连接');
+  // 顺序要求（v4-command.md §沙箱实测规则 3）：先 appendChild 挂进组件树 →
+  // 再 addComponentProperty → 最后设 componentPropertyReferences。反过来会被拒。
   const firstLine = tnode('firstLine', '播放失败，请检查网络连接', 13, TEXT_MAIN, false, false);
-  firstLine.componentPropertyReferences = { characters: msgKey };
   sum.appendChild(firstLine);
   firstLine.layoutSizingHorizontal = 'FILL';
+  const msgKey = c.addComponentProperty('message', 'TEXT', '播放失败，请检查网络连接');
+  firstLine.componentPropertyReferences = { characters: msgKey };
   sum.appendChild(tnode('toggle', st === 'expanded' ? '▾' : '▸', 14, TEXT_DIM, false, false));
   if (st === 'expanded') {
     const detail = figma.createFrame();
@@ -179,9 +181,9 @@ for (const st of ['collapsed', 'expanded']) {
     c.appendChild(detail);
     detail.layoutSizingHorizontal = 'FILL';
     const pre = tnode('pre', '播放失败，请检查网络连接\\nerrno=ECONNRESET', 11, TEXT_DIM, true, false);
-    pre.componentPropertyReferences = { characters: msgKey };
     detail.appendChild(pre);
     pre.layoutSizingHorizontal = 'FILL';
+    pre.componentPropertyReferences = { characters: msgKey };
     const actions = figma.createFrame();
     actions.name = 'actions';
     actions.layoutMode = 'HORIZONTAL';
@@ -320,16 +322,21 @@ for (const q of ['standard', 'high', 'lossless']) {
   c.paddingTop = 6; c.paddingBottom = 6;
   c.paddingLeft = 12; c.paddingRight = 12;
   c.fills = [GLASS_FILL];
-  c.strokes = [q === 'lossless' ? ACCENT : (q === 'high' ? varFill('Color/semantic/accent-soft') : GLASS_STROKE)];
+  // high 态用「accent 变量 + 55% 透明度」表达 soft accent。
+  // 原来写的是 Color/semantic/accent-soft —— 那个变量在文件里**不存在**，
+  // varColor 会回退品红哨兵；而新建它又会让生成层覆盖手写的 --accent-soft（见 D4）。
+  c.strokes = [q === 'lossless' ? ACCENT : (q === 'high' ? { ...ACCENT, opacity: 0.55 } : GLASS_STROKE)];
   c.strokeWeight = 1;
   c.cornerRadius = 8;
   c.appendChild(tnode('label', QUALITY_LABELS[q], 12, TEXT_MAIN, false, false));
   c.appendChild(tnode('chevron', '▾', 10, TEXT_DIM, false, false));
   // disabled: BOOLEAN instance override
-  const dKey = c.addComponentProperty('disabled', 'BOOLEAN', false);
-  c.opacity = 1;
-  // 用 setProperties 后改 opacity（apply to children）；simplest: bound prop 留给 Figma
-  c.setProperties({ [dKey]: false });
+  // 默认值已由 addComponentProperty 第三参给定 —— 这里**不能**再调 setProperties：
+  // 那个方法只属于 INSTANCE，打在 COMPONENT 上会抛
+  // "no such property 'setProperties' on COMPONENT node"（2026-09-20 实测），
+  // 而 Figma 会让整段事务回滚，等于 SEG1 全灭。
+  // 注意：本段是模板字符串，注释里不能出现反引号（会提前结束字符串）。
+  c.addComponentProperty('disabled', 'BOOLEAN', false);
   qmComps.push(c);
   created.push(c.id);
 }
@@ -343,7 +350,7 @@ AI_CONTRACT:
   props: { quality: enum[standard|high|lossless], onSelect: function }
   a11y: { role: menu, keyboard: [Enter, Escape, ArrowUp, ArrowDown] }
   states: [standard, high, lossless]
-  tokens: [Color/semantic/glass-fill, Color/semantic/accent, Color/semantic/accent-soft, text-main]
+  tokens: [Color/semantic/glass-fill, Color/semantic/accent, Color/semantic/accent@55%, text-main]
   bindings: [SourceMenu]
 ---\`;
 created.push(qmSet.id);
@@ -432,8 +439,8 @@ for (const p of ['qq', 'netease', 'deezer', 'spotify']) {
   c.appendChild(tnode('glyph', SM_GLYPH[p], 14, SM_COLOR[p].fill, false, true));
   c.appendChild(tnode('label', SM_LABEL[p], 12, TEXT_MAIN, false, false));
   c.appendChild(tnode('switch', '⇄', 10, TEXT_DIM, false, false));
-  const dKey = c.addComponentProperty('disabled', 'BOOLEAN', false);
-  c.setProperties({ [dKey]: false });
+  // 同 QualityMenu：默认值走 addComponentProperty，不调 setProperties（INSTANCE-only）
+  c.addComponentProperty('disabled', 'BOOLEAN', false);
   smComps.push(c);
   created.push(c.id);
 }

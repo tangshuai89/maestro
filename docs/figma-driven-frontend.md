@@ -333,6 +333,26 @@ a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md �
   `file_variables`，普通 PAT 就能跑。
 - **顺带修正**：`figma-d10-fixture.js` 原来给 FRAME 塞 `description` —— mock 比真实宽松，
   正是 D1/D2 那类"mock 全绿、真跑全炸"的翻版，已改成同构的 TEXT 子节点。
+
+**D5_NEW 增量（2026-09-20）—— 10 个新 component set 落地 + Code Connect 110/110**：
+`02 · Components` 从 14 个组件集增到 **24 个**（新 10 个 / 28 变体：
+Modal/Shell · Modal/ErrorPanel · Modal/RecoLoading · SourceChip · Layout/QualityMenu ·
+Layout/SourceMenu · Layout/DeezerPresetSelect · Screen/SourceSelect · Titlebar ·
+Modal/NeteaseCookie），`figma-code-connect.json` 的 10 个 `TBD-FIGMA` 占位全部换成真实 nodeId。
+
+- **执行方式变了**：这 10 个组件集原本的计划是"用户在 Claude Code 里喂 use_figma"，
+  实际由 Codex 通过 Figma MCP 直接执行（OAuth 已通，**不需要 PAT scope**）。
+- **动笔前的只读探测抓到 3 个会让整段回滚的 bug**（mock 全绿也测不出来）：
+  ① 引用了不存在的变量 `Color/semantic/accent-soft`（会退成品红哨兵，D2 踩过同一个坑）→
+  改成 `accent` 变量 + 55% 透明度；② 在 COMPONENT 上调 `setProperties`（那是 INSTANCE 的方法）
+  → 改用 `addComponentProperty` 的默认值；③ `componentPropertyReferences` 设早于 `appendChild`
+  → 按沙箱规则 3 调正顺序。
+- **mock 三处同构化**：变量清单改读真实 dump（不再手写）、`setProperties` 加类型守卫、
+  `componentPropertyReferences` 加"必须先挂进组件树"守卫，并新增「无品红哨兵」断言。
+- **注入器修副作用**：`figma-code-connect-inject.mjs` 原用 `JSON.stringify` 整文件重写，
+  10 个字段的替换膨胀成 477 行 diff（混入格式化）；改成定点替换后只有 21 行。
+- **验收**：`--strict` **110/110 PASS**；v4 全量审计 34/36（与基线逐项一致，未破）；
+  回读 28 变体 / description 齐全 / 品红哨兵 0 处。
 - **顺带修掉一处真漂移**：快照 51 → 52，补上 D1/D2 期间新建的 `Color/semantic/status-error`
   （`#ff3b5c`）。
 - **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：

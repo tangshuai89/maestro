@@ -2,6 +2,7 @@
   "$comment": "Figma Code Connect 映射 — 组件 → React 实现。导入 Figma Dev Mode 后 AI agent 看到 Figma 节点就能定位源码。",
   "$figmaFileKey": "FtbRZXvzlCp4Sq9e322cQQ",
   "$history": {
+    "D5_NEW 阶段（2026-09-20）": "在 02 · Components 增 10 个 component set（28 变体），10 个 TBD-FIGMA 占位已由 scripts/figma-code-connect-inject.mjs 替换为真实 node_id，_status 统一为 D1_DONE；figma-code-connect-validate --strict 110/110。",
     "v4-ABC 阶段（2026-08-20）": "建 15 个 v4-ABC 映射，引用 components/player/cover/lyrics 子组件；后 D2 收敛（2026-09-10）将这些子组件内联到 TheaterView.tsx，文件目录删除，映射变 PENDING_REFACTOR（保留历史对照）",
     "D1 阶段（2026-09-10）": "在 03 · Screens 增 6 屏，6 个 D1-PLACEHOLDER 占位由用户跑完 D1 后替换为真实 node_id",
     "D5 阶段（2026-09-10）": "校正 reactPath（4 个改为 TheaterView.tsx + _inlineIn 标记）；加 9 个新真实独立组件映射（Modal/ErrorPanel/RecoLoading/SourceChip/SourceSelect/Titlebar/QualityMenu/SourceMenu/NeteaseCookieModal）；LikedLibraryModal props 补全 4 个"
@@ -253,11 +254,10 @@
     },
     {
       "figmaComponent": "Modal/Shell",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "514:72",
       "reactComponent": "Modal",
       "reactPath": "packages/renderer/src/components/common/Modal.tsx",
-      "_status": "D5_NEW",
-      "_note": "Figma 端目前无独立 Modal 组件集（在 6 屏内联 raw panel 节点）；未来可在 02 · Components 加 Shell/Modal 组件集后填真实 nodeId",
+      "_status": "D1_DONE",
       "props": {
         "onClose": { "figmaProp": "(回调)", "type": "function" },
         "panelClassName": { "figmaProp": "(额外 class)", "type": "string?", "default": "undefined" },
@@ -266,10 +266,10 @@
     },
     {
       "figmaComponent": "Modal/ErrorPanel",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "514:88",
       "reactComponent": "ErrorPanel",
       "reactPath": "packages/renderer/src/components/common/ErrorPanel.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "message": { "figmaProp": "message", "type": "string" },
         "onClose": { "figmaProp": "(回调)", "type": "function" }
@@ -277,10 +277,10 @@
     },
     {
       "figmaComponent": "Modal/RecoLoading",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "514:97",
       "reactComponent": "RecoLoading",
       "reactPath": "packages/renderer/src/components/common/RecoLoading.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "librarySize": { "figmaProp": "librarySize", "type": "number" },
         "onClose": { "figmaProp": "(回调)", "type": "function" }
@@ -288,10 +288,10 @@
     },
     {
       "figmaComponent": "SourceChip",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "514:110",
       "reactComponent": "SourceChip",
       "reactPath": "packages/renderer/src/components/search/SourceChip.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "source": { "figmaProp": "source", "type": "UnifiedSourceInfo" },
         "isBest": { "figmaProp": "isBest", "type": "boolean" }
@@ -299,21 +299,20 @@
     },
     {
       "figmaComponent": "Screen/SourceSelect",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "515:133",
       "reactComponent": "SourceSelect",
       "reactPath": "packages/renderer/src/components/source-select/SourceSelect.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "onSelect": { "figmaProp": "(回调)", "type": "function", "args": "provider: MusicProvider" }
       }
     },
     {
       "figmaComponent": "Titlebar",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "515:161",
       "reactComponent": "Titlebar",
       "reactPath": "packages/renderer/src/components/layout/Titlebar.tsx",
-      "_status": "D5_NEW",
-      "_note": "Titlebar 是个复杂组件（多个回调）；v4 剧场稿屏幕（Playing/Paused/Buffering）顶部 HUD 用 raw frame 表达，未提独立组件。Figma 端无独立 Titlebar 组件集。",
+      "_status": "D1_DONE",
       "props": {
         "provider": { "figmaProp": "provider", "type": "MusicProvider" },
         "onSwitchProvider": { "figmaProp": "(回调)", "type": "function", "args": "p: MusicProvider" },
@@ -338,10 +337,10 @@
     },
     {
       "figmaComponent": "Layout/QualityMenu",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "514:120",
       "reactComponent": "QualityMenu",
       "reactPath": "packages/renderer/src/components/layout/QualityMenu.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "quality": { "figmaProp": "quality", "type": "enum[standard|high|lossless]" },
         "onSelect": { "figmaProp": "(回调)", "type": "function" }
@@ -349,10 +348,10 @@
     },
     {
       "figmaComponent": "Layout/SourceMenu",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "515:82",
       "reactComponent": "SourceMenu",
       "reactPath": "packages/renderer/src/components/layout/SourceMenu.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "provider": { "figmaProp": "provider", "type": "MusicProvider" },
         "onSelect": { "figmaProp": "(回调)", "type": "function" }
@@ -360,10 +359,10 @@
     },
     {
       "figmaComponent": "Layout/DeezerPresetSelect",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "515:92",
       "reactComponent": "DeezerPresetSelect",
       "reactPath": "packages/renderer/src/components/layout/DeezerPresetSelect.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "editorials": { "figmaProp": "editorials", "type": "Array" },
         "value": { "figmaProp": "value", "type": "string" },
@@ -372,10 +371,10 @@
     },
     {
       "figmaComponent": "Modal/NeteaseCookie",
-      "figmaNodeId": "TBD-FIGMA",
+      "figmaNodeId": "515:192",
       "reactComponent": "NeteaseCookieModal",
       "reactPath": "packages/renderer/src/components/modals/NeteaseCookieModal.tsx",
-      "_status": "D5_NEW",
+      "_status": "D1_DONE",
       "props": {
         "onSuccess": { "figmaProp": "(回调)", "type": "function" },
         "onClose": { "figmaProp": "(回调)", "type": "function" }

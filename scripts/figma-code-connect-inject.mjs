@@ -140,9 +140,12 @@ for (const p of pairs) {
 
 // ---------- 写 $history ----------
 if (!map.$history) map.$history = {};
-map.$history['D5_NEW 阶段（2026-09-10）'] =
-  '在 02 · Components 增 10 个新 component set（28 变体），10 个 TBD-FIGMA 占位由用户跑完 D5_NEW 后用 ' +
-  'scripts/figma-code-connect-inject.mjs 替换为真实 node_id。_status 从 D5_NEW 统一为 D1_DONE。';
+const HISTORY_KEY = 'D5_NEW 阶段（2026-09-20）';
+const HISTORY_VALUE =
+  '在 02 · Components 增 10 个 component set（28 变体），10 个 TBD-FIGMA 占位已由 ' +
+  'scripts/figma-code-connect-inject.mjs 替换为真实 node_id，_status 统一为 D1_DONE；' +
+  'figma-code-connect-validate --strict 110/110。';
+map.$history[HISTORY_KEY] = HISTORY_VALUE;
 
 // ---------- Diff 输出 ----------
 console.log(`\n── figma-code-connect.json 注入 diff (${replaced.length}/${pairs.length} 替换)${DRY_RUN ? ' [DRY-RUN]' : ''} ──\n`);
@@ -163,8 +166,39 @@ if (DRY_RUN) {
 // 备份到 /tmp 而非仓库根（避免污染 git status）
 const ts = new Date().toISOString().replace(/[:.]/g, '-');
 const backupPath = `/tmp/figma-code-connect-${ts}.bak`;
-writeFileSync(backupPath, readFileSync(JSON_PATH));
-writeFileSync(JSON_PATH, JSON.stringify(map, null, 2) + '\n');
+const originalText = readFileSync(JSON_PATH, 'utf8');
+writeFileSync(backupPath, originalText);
+writeFileSync(JSON_PATH, patchText(originalText, replaced, HISTORY_KEY, HISTORY_VALUE));
 console.log(`\n  备份: ${backupPath}`);
 console.log(`  写入: ${JSON_PATH}`);
 console.log(`\n下一步：node scripts/figma-code-connect-validate.mjs --strict  # 应 110/110 PASS`);
+
+// ---------- 定点文本替换（保持原格式）----------
+// 曾经这里直接 `JSON.stringify(map, null, 2)` 整文件重写：它把原本内联的对象
+// （如 `"liked": { "figmaProp": "state", "map": {...} }`）全部展开成多行，
+// 于是"10 个字段的替换"变成 477 行 diff，正踩中仓库 commit 规范点名的"混入格式化"
+// （2026-09-20 实测：376 insertions / 101 deletions）。改成只在目标块内定点替换。
+function patchText(text, items, historyKey, historyValue) {
+  let out = text;
+  for (const it of items) {
+    const anchor = `"figmaComponent": "${it.name}"`;
+    const start = out.indexOf(anchor);
+    if (start === -1) continue;
+    const nextStart = out.indexOf('"figmaComponent": "', start + anchor.length);
+    const end = nextStart === -1 ? out.length : nextStart;
+    let block = out.slice(start, end);
+    block = block.replace(/"figmaNodeId":\s*"[^"]*"/, `"figmaNodeId": "${it.to}"`);
+    block = block.replace(/"_status":\s*"D5_NEW"/, '"_status": "D1_DONE"');
+    block = block.replace(/^[ \t]*"_note":.*\r?\n/m, '');
+    out = out.slice(0, start) + block + out.slice(end);
+  }
+  // $history：插在开括号之后，不动已有条目
+  if (!out.includes(`"${historyKey}"`)) {
+    const brace = out.indexOf('"$history": {');
+    if (brace !== -1) {
+      const at = brace + '"$history": {'.length;
+      out = out.slice(0, at) + `\n    ${JSON.stringify(historyKey)}: ${JSON.stringify(historyValue)},` + out.slice(at);
+    }
+  }
+  return out;
+}
