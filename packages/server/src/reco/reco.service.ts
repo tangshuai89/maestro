@@ -11,14 +11,50 @@ import { Session, SessionService } from '../common/session';
 import { MusicService } from '../music/music.service';
 import { normalizeKey } from '../music/search.util';
 import type { UnifiedSearchItem } from '../music/types';
+import {
+  buildProfileCore,
+  librarySignature,
+  pickExploreArtists,
+  pickTasteSeeds,
+  TASTE_ANCHOR_COUNT,
+  TASTE_EXPLORE_RATIO,
+  TASTE_SEED_COUNT,
+  type TasteProfile,
+  type TasteProfileCore,
+} from './taste-profile';
+import {
+  buildCandidatePool,
+  type CandidatePoolResult,
+  type RecoCandidate,
+} from './candidate-pool';
+import {
+  PEN_BAD,
+  versionPenalty,
+  durationPenalty,
+  isBadVersionTitle,
+} from './version-filter';
 
 const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
 const DEEPSEEK_MODEL = 'deepseek-chat';
-/** 每次 run 喂给模型的「口味档案」采样规模。不再固定取前 N——从全库随机采样
- *  这么多首，既控 token 又让每次 run 换一批种子（避免推荐同质化）。 */
-const LIBRARY_SAMPLE_SIZE = 150;
-/** prompt 里额外点名的「高频歌手」条数——给模型更强的口味锚点。 */
-const TOP_ARTISTS_HINT = 8;
+/** prompt 里点名的主干艺人条数（口味档案 anchors 的口径，见 taste-profile）。 */
+const TOP_ARTISTS_HINT = TASTE_ANCHOR_COUNT;
+/** 挑选模式下口味采样的行数——候选清单已经承担了"具体歌"的职责，采样节选
+ *  只用来交代口味轮廓，没必要把 150 行全塞进去。 */
+const SELECT_PROMPT_SAMPLE = 60;
+/** 挑选模式向模型要的条数倍数：候选池已确认可播，损耗小，略超一点即可。 */
+const SELECT_OVERASK = 1.5;
+/** 每轮轮换的"探索艺人"个数（主干之外的中频艺人）。 */
+const EXPLORE_ARTIST_COUNT = 2;
+/** 同一归一艺人在最终推荐里的上限——防"一位歌手占满整批"。 */
+const ARTIST_CAP = 2;
+/** 候选池：按艺人搜索时取多少条（越大越可能捞到冷门曲，但每多一条就多一份
+ *  解析成本；20 条足够覆盖搜索首屏）。 */
+const CANDIDATE_SEARCH_PAGE_SIZE = 20;
+/** 每位主干艺人取几个相邻艺人（相邻艺人会各自再触发一次艺人搜索，
+ *  3 个是"够有新鲜感"与"别把 QQ/网易云搜爆"之间的折中）。 */
+const RELATED_PER_ANCHOR = 3;
+/** 候选池：每个可用平台的 FM / 榜单取几首。 */
+const RADIO_PER_PROVIDER = 8;
 /** 向模型「超额要」的倍数：dedup + 匹配校验会滤掉一部分，多要一些兜底，
  *  保证最终能凑够 count。上限 40 防 token 爆 / 响应过长。 */
 const OVERASK_FACTOR = 2;
@@ -50,6 +86,13 @@ export interface RecoResult {
   runAt: number;
   /** 调试用：模型原始响应，方便排查 prompt 调优。 */
   raw: string;
+  /** 本次走的是哪条路径：'select' = 目录锚定候选池里挑（v2 主路径），
+   *  'generate' = 回退到自由生成（候选池不足/挑选失败）。 */
+  mode: 'select' | 'generate';
+  /** 候选池规模（0 = 没建成池）。 */
+  candidateCount: number;
+  /** 候选池各来源贡献条数（调效果时看哪条路在供血）。 */
+  candidateOrigins: Record<string, number>;
 }
 
 interface DeepSeekChatResponse {
@@ -131,29 +174,61 @@ export class RecoService {
     }
 
     const count = Math.min(Math.max(opts.count ?? 10, 1), 30);
-    // #4 超额要：dedup + 匹配校验会滤掉一部分，多要一些，最后 fill 到 count 为止。
-    const askCount = Math.min(count * OVERASK_FACTOR, OVERASK_MAX);
 
     // #5 排除集合 = 前端传的（auto-continue 队列里的歌）∪ 本 session 最近推荐过
     // 的历史。后者让「手动连点推荐」也不复读（前端不带 exclude 也能去重）。
     const history = this.loadRecoHistory(session);
     const exclude = this.mergeExclude(opts.exclude, history);
 
-    // #3 从全库随机采样一批当种子（而非固定前 N）→ 每次 run 口味档案不同，
-    // 长库（1000+）里靠后的歌也有机会影响推荐，缓解同质化。
-    const librarySample = this.sampleLibrary(lib.items, LIBRARY_SAMPLE_SIZE);
-    // #6 高频歌手锚点：从**全库**统计（不只采样），给模型更稳的口味信号。
-    const topArtists = this.topArtists(lib.items, TOP_ARTISTS_HINT);
+    // 口味档案：主干（anchors）稳定、种子每轮换（P0-a）。见 taste-profile.ts。
+    const profile = this.getTasteProfile(session, lib.items, lib.importedAt);
 
-    const prompt = this.buildPrompt(librarySample, {
-      count: askCount,
-      language: opts.language,
-      mood: opts.mood,
-      exclude,
-      topArtists,
-    });
-    const raw = await this.callDeepSeek(apiKey, prompt);
-    const rawItems = this.parseRecommendations(raw);
+    // 目录锚定候选池（P0-c）：候选只来自真实目录，模型只负责挑选与排序。
+    // 这是 v2 的主路径；候选池不够（离线/未登录/搜索全失败）时回退自由生成，
+    // 保证"推荐永远能出结果"这条既有契约不被打破。
+    const pool = await this.buildPool(session, profile, lib.items, exclude);
+    const useSelect = pool.candidates.length >= count;
+    let rawItems: RecoRawItem[];
+    let raw: string;
+    let mode: 'select' | 'generate';
+
+    if (useSelect) {
+      raw = await this.callDeepSeek(
+        apiKey,
+        this.buildSelectPrompt(profile, pool.candidates, {
+          count: Math.min(
+            Math.ceil(count * SELECT_OVERASK),
+            pool.candidates.length,
+          ),
+          language: opts.language,
+          mood: opts.mood,
+          exclude,
+        }),
+      );
+      const picks = this.parseSelection(raw, pool.candidates.length);
+      if (picks.length > 0) {
+        rawItems = this.fillFromPool(picks, pool.candidates, count);
+        mode = 'select';
+      } else {
+        // 模型没给出可用挑选（解析失败/越界/拒答）→ 回退自由生成。
+        this.logger.warn('reco: 挑选模式未产出可用 picks，回退自由生成');
+        const fb = await this.callDeepSeek(apiKey, this.buildGeneratePrompt(profile, opts, exclude, count));
+        raw = fb;
+        rawItems = this.parseRecommendations(fb);
+        mode = 'generate';
+      }
+    } else {
+      this.logger.log(
+        `reco: 候选池不足（${pool.candidates.length} < ${count}），走自由生成`,
+      );
+      raw = await this.callDeepSeek(
+        apiKey,
+        this.buildGeneratePrompt(profile, opts, exclude, count),
+      );
+      rawItems = this.parseRecommendations(raw);
+      mode = 'generate';
+    }
+
     // 2026-08-14 防御性预筛：即便 prompt 写得很清楚，模型仍可能输出 DJ/伴奏/
     // 慢摇这种"二次加工"歌名（实测「推荐 DJ 版晴天」「推荐 XXX 伴奏」）。
     // 在去重 / fill 之前先按 VERSION_BAD 扫一遍，命中即丢——OVERASK_FACTOR=2
@@ -165,7 +240,15 @@ export class RecoService {
       );
     }
     const deduped = this.dedupAgainstLibrary(sanitized, lib.items, exclude);
-    const filled = await this.fillPlatforms(session, deduped, count);
+    // 多样性：同一位归一艺人最多 ARTIST_CAP 首（候选池本身已限量，这里是
+    // 自由生成路径的兜底——两轮都防"一位歌手占满整批"）。
+    const diversified = this.applyArtistCap(deduped, ARTIST_CAP);
+    if (diversified.length < deduped.length) {
+      this.logger.log(
+        `reco: 多样性限制丢弃 ${deduped.length - diversified.length} 条同艺人超额`,
+      );
+    }
+    const filled = await this.fillPlatforms(session, diversified, count);
 
     // #5 记录本次真正产出的歌进历史（用平台侧规范名；normalizeKey 足够模糊，
     // 下次能和模型的命名对上），供后续 run 去重。
@@ -181,6 +264,9 @@ export class RecoService {
       model: DEEPSEEK_MODEL,
       runAt: Date.now(),
       raw: raw.slice(0, 4000), // 截断防爆
+      mode,
+      candidateCount: pool.candidates.length,
+      candidateOrigins: pool.byOrigin,
     };
   }
 
@@ -270,33 +356,327 @@ export class RecoService {
     ];
   }
 
-  /** 从全库随机采样 n 首当口味种子（部分 Fisher-Yates，O(n)）。库 ≤ n 时原样
-   *  返回。每次 run 随机 → 口味档案不僵化、长库靠后的歌也能进 prompt（#3）。 */
-  private sampleLibrary(
+  // ── P0-a 口味档案 ───────────────────────────────────────
+
+  /** 口味主干缓存（per session）。主干是**确定性**的：同一份库 → 同一组 anchors，
+   *  只有库签名（规模 + 导入时间）变了才重算。种子每轮重采，不进缓存。 */
+  private readonly tasteProfileCache = new Map<string, TasteProfileCore>();
+
+  /**
+   * 取本次 run 的口味档案：缓存的主干 + 本轮新采的种子。
+   *
+   * 这是 v2 修"第三次推荐就不像我"的关键——v1.1 每轮把口味锚点重新随机，这里
+   * 让锚点稳定、只让种子轮换。
+   */
+  private getTasteProfile(
+    session: Session,
     items: UnifiedSearchItem[],
-    n: number,
-  ): UnifiedSearchItem[] {
-    if (items.length <= n) return items;
-    const copy = items.slice();
-    for (let i = 0; i < n; i++) {
-      const j = i + Math.floor(Math.random() * (copy.length - i));
-      [copy[i], copy[j]] = [copy[j], copy[i]];
+    importedAt?: number,
+  ): TasteProfile {
+    const signature = librarySignature(items, importedAt);
+    let core = this.tasteProfileCache.get(session.id);
+    if (!core || core.signature !== signature) {
+      core = buildProfileCore(items, {
+        importedAt,
+        anchorCount: TOP_ARTISTS_HINT,
+      });
+      this.tasteProfileCache.set(session.id, core);
+      this.logger.log(
+        `reco: 口味主干重建（库 ${core.size} 首 / ${core.artists.length} 位艺人），` +
+          `主干：${core.anchors.slice(0, 4).join('、')}`,
+      );
     }
-    return copy.slice(0, n);
+    const seeds = pickTasteSeeds(items, core.artists, {
+      count: TASTE_SEED_COUNT,
+      exploreRatio: TASTE_EXPLORE_RATIO,
+    });
+    return { ...core, seeds };
   }
 
-  /** 全库里出现次数最多的前 n 个歌手（去空白）。用作 prompt 的口味锚点（#6）。 */
-  private topArtists(items: UnifiedSearchItem[], n: number): string[] {
-    const count = new Map<string, number>();
-    for (const it of items) {
-      const a = it.artist?.trim();
-      if (!a) continue;
-      count.set(a, (count.get(a) ?? 0) + 1);
+  // ── P0-c 候选池 ─────────────────────────────────────────
+
+  /**
+   * 构建目录锚定候选池。三条来源（主干深挖 / 相邻艺人 / 平台 FM）都是
+   * **fail-soft**：单条来源挂掉只是少一批候选，池子太小则由 run() 回退自由生成。
+   */
+  private async buildPool(
+    session: Session,
+    profile: TasteProfile,
+    library: UnifiedSearchItem[],
+    exclude: Array<{ title: string; artist: string }>,
+  ): Promise<CandidatePoolResult> {
+    const exploreArtists = pickExploreArtists(
+      profile.artists,
+      profile.anchors,
+      EXPLORE_ARTIST_COUNT,
+    );
+    const deps = {
+      searchArtist: (artist: string) =>
+        this.musicService
+          .searchUnified(session, artist, 1, CANDIDATE_SEARCH_PAGE_SIZE)
+          .then((r) => r.items)
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `reco candidate search "${artist}" failed: ${(err as Error)?.message}`,
+            );
+            return [] as UnifiedSearchItem[];
+          }),
+      findRelatedArtists: (artist: string) =>
+        this.musicService.findRelatedArtists(session, artist, RELATED_PER_ANCHOR),
+      fetchRadio: () =>
+        this.musicService.fetchRecoRadioCandidates(session, RADIO_PER_PROVIDER),
+    };
+
+    try {
+      const pool = await buildCandidatePool(deps, {
+        anchors: profile.anchors,
+        exploreArtists,
+        library,
+        exclude,
+        relatedPerAnchor: RELATED_PER_ANCHOR,
+      });
+      this.logger.log(
+        `reco: 候选池 ${pool.candidates.length} 首` +
+          `（深挖 ${pool.byOrigin.artist} / 相邻 ${pool.byOrigin['related-artist']} / 电台 ${pool.byOrigin.radio}）`,
+      );
+      return pool;
+    } catch (err) {
+      // 理论上 buildCandidatePool 自己已经兜住了大部分失败；这里再兜一层，
+      // 保证候选池的任何意外都不会让"推荐"整体失败。
+      this.logger.warn(
+        `reco: 候选池构建失败，回退自由生成：${(err as Error)?.message}`,
+      );
+      return {
+        candidates: [],
+        byOrigin: { artist: 0, 'related-artist': 0, radio: 0 },
+        dropped: {
+          inLibrary: 0,
+          badVersion: 0,
+          duration: 0,
+          duplicate: 0,
+          overCap: 0,
+        },
+      };
     }
-    return [...count.entries()]
-      .sort((x, y) => y[1] - x[1])
-      .slice(0, n)
-      .map(([a]) => a);
+  }
+
+  /**
+   * 挑选模式 prompt：模型面对的是**真实候选清单**，只负责挑与排序。比自由生成
+   * 的 prompt 短很多——"别编造/别推 DJ 版/注意时长"那一整套已经由候选池与填源
+   * 阶段的确定性代码做掉了，模型注意力留给口味判断。
+   */
+  private buildSelectPrompt(
+    profile: TasteProfile,
+    candidates: RecoCandidate[],
+    opts: {
+      count: number;
+      language?: string;
+      mood?: string;
+      exclude?: Array<{ title: string; artist: string }>;
+    },
+  ): Array<{ role: 'system' | 'user'; content: string }> {
+    const system = [
+      '你是资深音乐策展人。下面给你一份候选清单——全部来自真实曲库、已确认可播。',
+      `请你从中挑选 ${opts.count} 首推荐给这位用户，并给每首一句简短中文理由。`,
+      '',
+      '# 输出格式（只输出这一个 JSON，不要任何解释或 markdown 围栏）',
+      '{ "picks": [ { "id": 3, "reason": "为什么他会喜欢这首" } ] }',
+      '',
+      '# 规则',
+      '1. id 必须是候选清单里方括号内的编号——只能从清单里挑，不要新增清单外的歌；',
+      '   也不要改写歌名/歌手（系统会按 id 取原始条目）。',
+      '2. 口味优先：挑"贴着档案里的偏好、但他还没听过"的；整批要跨歌手，同一歌手最多挑 1 首。',
+      '3. 兼顾惊喜：可以少量跨语种/跨年代，但核心氛围要在他的舒适圈内。',
+      '4. 跳过 live / 翻唱 / DJ / 伴奏 / 纯音乐等非录音室版本（清单里若混进这类，直接不挑）。',
+      '5. 宁愿少挑也不要凑数；同一位歌手、同一张专辑不要重复挑。',
+    ].join('\n');
+
+    const anchorLine = profile.anchors.length
+      ? `最常听的歌手：${profile.anchors.join('、')}`
+      : '';
+    const sample = profile.seeds
+      .slice(0, SELECT_PROMPT_SAMPLE)
+      .map((it) => `${it.title} - ${it.artist}`)
+      .join('\n');
+    const list = candidates
+      .map(
+        (c, i) =>
+          `[${i}] ${c.title} - ${c.artist}${c.album ? ` (${c.album})` : ''}`,
+      )
+      .join('\n');
+    const lang =
+      opts.language && opts.language !== 'auto'
+        ? `语言偏好：${
+            opts.language === 'zh'
+              ? '中文'
+              : opts.language === 'en'
+                ? '英文'
+                : opts.language === 'ja'
+                  ? '日文'
+                  : opts.language
+          }`
+        : '语言不限';
+    const mood = opts.mood ? `当前心情：${opts.mood}` : '';
+    const avoid =
+      opts.exclude && opts.exclude.length
+        ? `\n最近已经推荐过，请**不要再推荐**：\n${opts.exclude
+            .slice(-50)
+            .map((e) => `- ${e.title} - ${e.artist}`)
+            .join('\n')}`
+        : '';
+    const user = `# 口味档案
+库里共 ${profile.size} 首。${anchorLine}
+口味采样（节选，仅供判断风格）：
+${sample}
+
+${lang}
+${mood}${avoid}
+
+# 候选清单（只能从这里面挑）
+${list}
+
+请输出 JSON：{ "picks": [ { "id": 编号, "reason": "理由" } ] }`;
+
+    return [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ];
+  }
+
+  /** 自由生成 prompt 的统一入口（含 v1.1 的超额要逻辑）。 */
+  private buildGeneratePrompt(
+    profile: TasteProfile,
+    opts: { language?: string; mood?: string },
+    exclude: Array<{ title: string; artist: string }>,
+    count: number,
+  ): Array<{ role: 'system' | 'user'; content: string }> {
+    // #4 超额要：dedup + 匹配校验会滤掉一部分，多要一些，最后 fill 到 count 为止。
+    const askCount = Math.min(count * OVERASK_FACTOR, OVERASK_MAX);
+    return this.buildPrompt(profile.seeds, {
+      count: askCount,
+      language: opts.language,
+      mood: opts.mood,
+      exclude,
+      topArtists: profile.anchors,
+    });
+  }
+
+  /**
+   * 解析挑选结果：`{ "picks": [ { "id": 3, "reason": "…" } ] }`（也容忍裸数组与
+   * `items` / `recommendations` 等近义字段）。
+   *
+   * **白名单校验**：id 必须落在候选池下标内、整数、不重复——越界/幻觉 id 一律丢。
+   * 这是"消灭幻觉推荐"的最后一道闸门：模型给的是下标，取的是候选池里的真实条目。
+   */
+  private parseSelection(
+    raw: string,
+    poolSize: number,
+  ): Array<{ id: number; reason: string }> {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const fence = raw.match(/```(?:json)?\s*([\s\S]+?)```/i);
+      if (fence) {
+        try {
+          parsed = JSON.parse(fence[1]);
+        } catch {
+          parsed = null;
+        }
+      }
+    }
+    if (parsed == null) {
+      this.logger.warn(`reco: 挑选结果解析失败，raw: ${raw.slice(0, 200)}`);
+      return [];
+    }
+    let arr: unknown = parsed;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>;
+      arr =
+        obj.picks ??
+        obj.items ??
+        obj.recommendations ??
+        obj.songs ??
+        obj.tracks ??
+        obj.data;
+    }
+    if (!Array.isArray(arr)) {
+      this.logger.warn('reco: 挑选结果不是数组');
+      return [];
+    }
+
+    const seen = new Set<number>();
+    const out: Array<{ id: number; reason: string }> = [];
+    for (const entry of arr as unknown[]) {
+      let id: number | undefined;
+      let reason = '';
+      if (typeof entry === 'number') {
+        id = entry;
+      } else if (typeof entry === 'string' && /^\d+$/.test(entry.trim())) {
+        id = Number(entry.trim());
+      } else if (entry && typeof entry === 'object') {
+        const o = entry as Record<string, unknown>;
+        const rawId = o.id ?? o.index ?? o.idx ?? o.pick ?? o.number;
+        if (typeof rawId === 'number') id = rawId;
+        else if (typeof rawId === 'string' && /^\d+$/.test(rawId.trim())) {
+          id = Number(rawId.trim());
+        }
+        reason = typeof o.reason === 'string' ? o.reason : '';
+      }
+      if (id === undefined || !Number.isInteger(id) || id < 0 || id >= poolSize) {
+        continue;
+      }
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, reason });
+    }
+    return out;
+  }
+
+  /**
+   * 把 picks 翻成推荐条目：先按模型排序取，**不够就按候选池既定顺序补位**
+   * （主干深挖在前）——补位不再烧一次 LLM 调用，也不给模型"凑数"的机会。
+   * 目标条数是超额要口径，给下游填源留容错余量。
+   */
+  private fillFromPool(
+    picks: Array<{ id: number; reason: string }>,
+    candidates: RecoCandidate[],
+    count: number,
+  ): RecoRawItem[] {
+    const target = Math.min(
+      count * OVERASK_FACTOR,
+      OVERASK_MAX,
+      candidates.length,
+    );
+    const used = new Set<number>();
+    const out: RecoRawItem[] = [];
+    for (const p of picks) {
+      if (used.has(p.id) || out.length >= target) continue;
+      const c = candidates[p.id];
+      if (!c) continue;
+      used.add(p.id);
+      out.push({ title: c.title, artist: c.artist, reason: p.reason });
+    }
+    for (let i = 0; i < candidates.length && out.length < target; i++) {
+      if (used.has(i)) continue;
+      used.add(i);
+      out.push({ title: candidates[i].title, artist: candidates[i].artist });
+    }
+    return out;
+  }
+
+  /** 同一位归一艺人最多 cap 首（超出的按出现顺序丢弃）。 */
+  private applyArtistCap(items: RecoRawItem[], cap: number): RecoRawItem[] {
+    const used = new Map<string, number>();
+    const out: RecoRawItem[] = [];
+    for (const it of items) {
+      const key = normalizeKey(it.artist ?? '', '');
+      const n = used.get(key) ?? 0;
+      if (n >= cap) continue;
+      used.set(key, n + 1);
+      out.push(it);
+    }
+    return out;
   }
 
   // ── DeepSeek 调用 ───────────────────────────────────────
@@ -426,7 +806,7 @@ export class RecoService {
   private sanitizeBadVersions(items: RecoRawItem[]): RecoRawItem[] {
     return items.filter((r) => {
       if (!r.title || !r.artist) return false;
-      if (this.versionPenalty(r.title) >= RecoService.PEN_BAD) return false;
+      if (isBadVersionTitle(r.title)) return false;
       return true;
     });
   }
@@ -536,88 +916,16 @@ export class RecoService {
     return out;
   }
 
-  /**
-   * "坏版本"标记：DJ/remix/伴奏/加速/抖音/翻唱/纯音乐… 这类**没人想循环听**的
-   * 二次加工版本。命中 → 强惩罚（PEN_BAD），除非用户/模型本就点名要这个版本。
-   * ⚠️ 只扫 title，不扫 artist——避免误伤 "DJ Okawari" 这类合法艺人名。
-   *
-   * 2026-08-14 扩：补「串烧/夜店/夜场/车载/劲爆/慢嗨/连音/吐司/慢四/快三」
-   * 等中文二次加工标签——这些通常是 8-15 分钟的"非录音室"长版或拼盘，
-   * 用户不会想循环。补「铃声 / 来电铃声 / 闹钟」等"非歌"形态。
-   */
-  private static readonly VERSION_BAD: RegExp[] = [
-    /\bdj\b/i, /re-?mix/i, /mash-?up/i, /bootleg/i, /nightcore/i,
-    /sped ?-?up/i, /slowed/i, /8-?bit/i, /\b[38]d\b/i,
-    /伴奏/, /纯音乐|純音樂/, /off ?vocal/i, /instrumental/i, /karaoke/i, /\bktv\b/i,
-    /加速/, /减速|減速/, /慢摇|慢搖/, /抖音/, /tik ?tok/i, /钢琴(版|曲)|鋼琴(版|曲)/,
-    /八音盒/, /翻唱|翻自|\bcover\b/i, /清唱|a-?ca?pella/i, /\bdemo\b/i, /重混/,
-    // 中文二次加工标签（用户实测常见）
-    /串烧|串燒/, /夜店|夜場|club ?mix/i, /车载|車載/, /劲爆|勁爆|劲嗨|慢嗨/,
-    /连音|連音/, /慢四|快三|快四/, /铃声|鈴聲|来电铃声|鬧鐘|闹钟/,
-    // 网易云/QQ 特殊标签
-    /纯享版|純享版/, /无损|無損|flac/i,
-  ];
-  /** "可接受但非首选"：live/现场/acoustic。用户认可，但有录音室原版时让原版优先。 */
-  private static readonly VERSION_SOFT: RegExp[] = [
-    /\blive\b/i, /现场|現場/, /\bacoustic\b/i, /演唱会|演唱會/, /concert/i, /unplugged/i,
-  ];
-  private static readonly PEN_BAD = 100;
-  private static readonly PEN_SOFT = 10;
-  /** 时长硬约束（秒）——2026-08-14 加：实测同名不同版本常以"10 分钟 live 全场"
-   *  形态出现在 QQ 搜索结果第一页，且 normalizeKey/title 双向包含都过得了
-   *  `looseMatch`——只有靠时长把它拦下。用户库若是明显偏好长版/现场/歌剧，
-   *  会通过 LLM 风格锚点反映出来，但**单条判断**这里压死。
-   *
-   *  - 主流流行歌 90-360s 是「录音室单曲」的典型区间
-   *  - <60s = 抖音切片 / 铃声 / 副歌 hook → 必丢
-   *  - >600s = 现场录音 / long version / DJ medley → 必丢
-   *  之外（60-90s / 360-600s）只在「模型点名要长版/短版」时豁免。 */
-  private static readonly DURATION_MIN = 60;
-  private static readonly DURATION_MAX = 600;
-  private static readonly DURATION_NORMAL_MIN = 90;
-  private static readonly DURATION_NORMAL_MAX = 360;
-
-  /** 模型侧标题里明确点名要长/短版本的关键词（豁免上面的硬约束）。 */
-  private static readonly LONG_HINT = /\b(long ?ver(?:sion)?|extended|全长|加长|完整版?|演唱会|concert|live ?album|现场专辑|medley)/i;
-  private static readonly SHORT_HINT = /\b(edit|radio ?edit|single ?edit|剪辑|副歌|hook|抖音|60s|30s)/i;
-
-  /** 版本纯净度惩罚：录音室原版 0 < live/现场 10 << DJ/remix/伴奏… 100。 */
+  /** 版本纯净度惩罚——判据在 `version-filter.ts`，与候选池共用同一份口径。
+   *  只扫 title（不扫 artist），避免误伤 "DJ Okawari" 这类合法艺人名。 */
   private versionPenalty(title: string): number {
-    const t = (title ?? '').toLowerCase();
-    if (RecoService.VERSION_BAD.some((re) => re.test(t))) {
-      return RecoService.PEN_BAD;
-    }
-    if (RecoService.VERSION_SOFT.some((re) => re.test(t))) {
-      return RecoService.PEN_SOFT;
-    }
-    return 0;
+    return versionPenalty(title);
   }
 
-  /**
-   * 时长合理性判断。返回 0 = 正常区间（不加惩罚），>0 = 偏离越大惩罚越重。
-   * 模型自己点名要 long/short 版本时硬约束豁免；normal 区间（90-360）始终
-   * 加 0 惩罚，<60 或 >600 硬丢（> PEN_BAD 即被 searchAndMatch 当作坏版本
-   * 丢弃）。
-   */
-  private durationPenalty(
-    duration: number,
-    recTitle: string,
-  ): number {
-    if (!Number.isFinite(duration) || duration <= 0) return 0;
-    // 模型点名要长/短版本 → 硬约束豁免，但仍按 normal 区间打分
-    const allowLong = RecoService.LONG_HINT.test(recTitle);
-    const allowShort = RecoService.SHORT_HINT.test(recTitle);
-    if (duration < RecoService.DURATION_MIN && !allowShort) return RecoService.PEN_BAD;
-    if (duration > RecoService.DURATION_MAX && !allowLong) return RecoService.PEN_BAD;
-    if (duration < RecoService.DURATION_NORMAL_MIN) {
-      // 60-90s 区间：仅在「模型点名短版」时 0 惩罚，否则 50 强惩罚
-      return allowShort ? 0 : 50;
-    }
-    if (duration > RecoService.DURATION_NORMAL_MAX) {
-      // 360-600s 区间：仅在「模型点名长版」时 0 惩罚，否则 50
-      return allowLong ? 0 : 50;
-    }
-    return 0;
+  /** 时长合理性惩罚（<60s / >600s 硬丢；60-90s / 360-600s 强惩罚）——
+   *  同样来自 `version-filter.ts`。 */
+  private durationPenalty(duration: number, recTitle: string): number {
+    return durationPenalty(duration, recTitle);
   }
 
   /**
@@ -669,7 +977,7 @@ export class RecoService {
       const best = scored[0];
       // 最优仍是坏版本（DJ/remix/伴奏…）或时长离谱且没被豁免 → 丢弃，
       // 换一首正常歌。PEN_BAD 阈值同时覆盖 VERSION_BAD 和 DURATION_BAD。
-      if (best.pen >= RecoService.PEN_BAD) return null;
+      if (best.pen >= PEN_BAD) return null;
       // 封面兜底（AI 推荐易缺封面）：① 合并时已跨源抽取（search.util）；
       // ② 候选里其他版本有封面就用；③ 仍无 → 跨平台探测 + 缓存。
       let cover = best.it.coverUrl;

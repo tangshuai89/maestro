@@ -113,6 +113,22 @@ export interface ProviderSearchRaw {
   error?: string;
 }
 
+/**
+ * 电台/榜单候选（reco 候选池用）：只要展示元信息，**不带播放源**。
+ *
+ * 为什么不复用 `Track`：候选池里的歌来自"别人的口味"（平台 FM / 榜单 / 相邻
+ * 艺人），最终能不能在我们这边播，要由统一搜索去 QQ/网易云/Deezer 现查再回填
+ * `bestSource`（reco 的填源阶段）。这里少带字段能让候选池和 provider 解耦。
+ */
+export interface RadioCandidate {
+  title: string;
+  artist: string;
+  album: string;
+  coverUrl: string;
+  duration: number;
+  provider: MusicProvider;
+}
+
 /** Heart fan-out 请求体。sources 是搜索结果里这个 merged track 的所有平台源；
  *  liked=true 时把 sources 里全部 hasCopyright=true 的写入；false 时按持久化的
  *  fanOut[mergedId] 列表反写——这样可以幂等清除，避免对"已经没喜欢的平台"误调

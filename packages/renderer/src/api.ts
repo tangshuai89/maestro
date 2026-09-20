@@ -733,6 +733,11 @@ export interface RecoRunResult {
   model: string;
   runAt: number;
   raw?: string; // 调试用，模型原始响应（截断）
+  /** 'select' = 走目录锚定候选池挑选（v2 主路径）；
+   *  'generate' = 候选池不足时回退的自由生成。调试/效果对比用。 */
+  mode?: 'select' | 'generate';
+  /** 候选池规模（0 = 没建成池，走了自由生成）。 */
+  candidateCount?: number;
 }
 
 export async function fetchRecoStatus(): Promise<RecoStatus> {

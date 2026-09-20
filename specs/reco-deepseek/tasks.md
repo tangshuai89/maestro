@@ -16,3 +16,15 @@
 - [x] 14. 封面抽取兜底：候选无封面 → 跨平台探测（MusicService.fetchCoverFallback）+
       normalizeKey 缓存；合并层跨源抽取（search.util buildUnifiedItems 同簇取首个有封面）
       ——reco.test #24/#25 + search.test #9/#10 覆盖
+- [x] 15. `reco/taste-profile.ts`：艺人亲和度 + 稳定 anchors + 亲和度加权种子采样
+      （P0-a；reco.test #26/#27/#28）
+- [x] 16. `reco/version-filter.ts`：把 VERSION_BAD/VERSION_SOFT/时长规则从 RecoService
+      抽成共享纯函数（候选池与填源共用同一口径）
+- [x] 17. `reco/candidate-pool.ts`：相邻艺人 + 同艺人深挖 + 平台 FM 三源候选池，
+      去重/剔库/单艺人上限（P0-c；reco.test #29/#30）
+- [x] 18. Deezer `fetchRelatedArtists` + MusicService `findRelatedArtists` /
+      `fetchRecoRadioCandidates`（fail-soft，单平台失败不阻塞）
+- [x] 19. RecoService 改「挑选 + 排序」：`buildSelectPrompt` / `parseSelection`（下标
+      白名单）+ 候选池不足/解析失败回退自由生成 + 同艺人 ≤2（reco.test #31/#32/#33）
+- [x] 20. run 响应加 `mode` / `candidateCount`；typecheck + lint 全绿，全量测试
+      除 `music.controller.e2e` #3（沙箱无 DNS，QQ 搜索走真网络）外全绿

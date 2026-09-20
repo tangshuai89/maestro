@@ -39,6 +39,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `packages/server/src/music/like-sync.queue.ts`。
 
 ### Added
+- **DeepSeek 推荐 v2：检索 + 重排**（`specs/reco-deepseek/spec.md` v2 段）——
+  把"模型凭空生成歌名"换成"从真实目录里挑"，并让口味主干不再每轮漂移。
+  - `packages/server/src/reco/taste-profile.ts`（新）：艺人亲和度（多艺人拆分 +
+    `normalizeKey` 归一）+ **稳定 anchors**（同会话内不随 run 变化）+ 亲和度加权
+    种子采样（70% 贴口味 / 30% 长尾探索，替代 v1.1 的全库均匀随机）。
+  - `packages/server/src/reco/candidate-pool.ts`（新）：目录锚定候选池——主干深挖
+    （库外曲目）、相邻艺人（Deezer `/artist/{id}/related`，平台侧协同过滤）、
+    平台 FM/榜单（网易云私人 FM / QQ 电台 / Deezer 榜单）三源合并，带剔库/坏版本/
+    时长/非目标艺人/单艺人上限与来源统计。
+  - `packages/server/src/reco/version-filter.ts`（新）：把 `VERSION_BAD` /
+    `VERSION_SOFT` / 时长判据从 RecoService 抽成共享纯函数，候选池与填源同口径。
+  - RecoService 主路径改为「挑选 + 排序」：`buildSelectPrompt` + `parseSelection`
+    做**下标白名单**校验（模型给下标、系统取真实条目，幻觉无从进入队列）；
+    候选池不足或挑选失败自动回退 v1.1 自由生成，推荐不因此报错。
+  - 多样性：同一归一艺人 ≤ 2 首（候选池与最终装配两道）。
+  - `POST /api/reco/run` 响应新增 `mode` / `candidateCount` / `candidateOrigins`
+    便于对比新旧路径效果（向后兼容可选字段）。
+  - `MusicService.findRelatedArtists` / `fetchRecoRadioCandidates`：reco 专用取数，
+    单平台失败/超时一律 fail-soft 成空数组，不阻塞推荐。
 - **Figma D2 收敛** —— `99 · Archive` 页顶部加 `Archive README` frame（红色 4px 虚线框 +
   ⚠ BASELINE — DO NOT EXTEND + 指向 `03 · Screens` 的链接），防止 contributor 误以为
   这页是待开发页面而在上面扩新屏。脚本 `scripts/figma-aether-v4-archive-readme.js`
@@ -85,6 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ISSUES.md` §6.2 CHANGELOG.md`**（本文件）。
 
 ### Tests
+- `packages/server/src/reco/reco.test.ts`：新增 26–36（艺人亲和度归一 / 加权种子 /
+  anchors 稳定 / 候选池过滤 / 候选池 fail-soft / `parseSelection` 下标白名单 /
+  `fillFromPool` 补位 / 艺人上限 / 挑选 prompt 契约 / run() 挑选主路径端到端 /
+  run() 候选池为空回退自由生成），25 → 36。
 - `storage.test.ts`：新增 7 / 8（写入后 mode = 0o600、历史 0o644 被收紧），6 → 8。
 - `music.controller.allowlist.test.ts`：新增 10 项（QQ / NetEase / Spotify /
   Deezer exact + suffix / SSRF / 非 http(s) / 非法 URL / suffix 误匹配 /
