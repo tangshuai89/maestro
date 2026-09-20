@@ -353,6 +353,25 @@ Modal/NeteaseCookie），`figma-code-connect.json` 的 10 个 `TBD-FIGMA` 占位
   10 个字段的替换膨胀成 477 行 diff（混入格式化）；改成定点替换后只有 21 行。
 - **验收**：`--strict` **110/110 PASS**；v4 全量审计 34/36（与基线逐项一致，未破）；
   回读 28 变体 / description 齐全 / 品红哨兵 0 处。
+
+**D7 增量（2026-09-20）—— NowPlaying 三屏改变体**：`03 · Screens` 上
+`Screen/NowPlaying/Playing|Paused|Buffering` 原本是**三个独立 frame**，帧间只能 dissolve；
+改为组件集 **`Screen/NowPlaying`**（`516:1884`）的三个变体后，才具备 Smart Animate 逐层补间的前提
+（Smart Animate 靠**跨状态图层名一致**匹配 —— 三屏的 8 个顶层子层名本来就完全一致）。
+
+- **转换**：`createComponentFromNode` ×3 → `combineAsVariants`，变体名 `state=Playing|Paused|Buffering`，
+  定位回原 Playing 的 (0,0)，并写 AI_CONTRACT description（含图层名清单）。
+- **风险先查后动**：改类型会换 node id（`314:x` → `516:x`），仓库内**无硬引用**；
+  审计 `MIN_SCREENS = 4`（18→15 不破）；03 页**没有 frame 级连线**，连线都在屏幕内部实例上，
+  所以手连的线不会被毁。
+- **连线一条没丢**：REST `?depth=7` 扫描，转换前后都是 **57** 个带连线节点（逐页相同）。
+  ⚠️ 顺带踩到一次测量陷阱：转换后变体内实例深一层，用 `?depth=5` 会少读到 9 条，看着像丢了 ——
+  实际是 depth 截断，`?depth=7` 复验一致。
+- **验收**：v4 审计 34/36（屏幕数 18→15、"原型连线 64 条"与 03 页绑定率 58% 均未变）。
+- **只交付前提**：变体间连线本身**仍要手工连**（插件 API 写不了 interactions），
+  且旧文档里"第 10-12 条与 3 条自动轮播"经实测**目前在文件里并不存在**
+  （AFTER_TIMEOUT 只在 `99 · Archive` 的 AETHER THEATER 三帧上），已在
+  `docs/prototype-wiring-checklist.md` 顶部加状态更正。
 - **顺带修掉一处真漂移**：快照 51 → 52，补上 D1/D2 期间新建的 `Color/semantic/status-error`
   （`#ff3b5c`）。
 - **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：
