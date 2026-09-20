@@ -96,7 +96,7 @@
   background: color-mix(
     in oklab,
     var(--cover-accent) 6%,
-    rgba(255, 255, 255, 0.045)
+    color-mix(in srgb, var(--white) 4.5%, transparent)
   );
   border: 1px solid color-mix(in oklab, var(--cover-accent) 14%, var(--border));
   border-radius: var(--radius-xl);

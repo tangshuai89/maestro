@@ -49,17 +49,17 @@
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: rgba(181, 123, 255, 0.9);
-  text-shadow: 0 0 12px rgba(181, 123, 255, 0.3);
+  color: color-mix(in srgb, var(--ai) 90%, transparent);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--ai) 30%, transparent);
 }
 
 .rl-close {
   width: 40px;
   height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.5);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -68,9 +68,9 @@
 }
 
 .rl-close:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--white) 10%, transparent);
   color: var(--text-main);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: color-mix(in srgb, var(--white) 20%, transparent);
 }
 
 // ── Card/Neural × 3 skeleton（y=300） ───────────────────────────
@@ -89,9 +89,9 @@
   width: 200px;
   height: 260px;
   padding: 20px;
-  border: 1px solid rgba(181, 123, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--ai) 15%, transparent);
   border-radius: 16px;
-  background: rgba(181, 123, 255, 0.04);
+  background: color-mix(in srgb, var(--ai) 4%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -102,8 +102,8 @@
 }
 
 @keyframes rl-card-pulse {
-  0%, 100% { opacity: 0.4; border-color: rgba(181, 123, 255, 0.1); }
-  50% { opacity: 0.8; border-color: rgba(181, 123, 255, 0.3); }
+  0%, 100% { opacity: 0.4; border-color: color-mix(in srgb, var(--ai) 10%, transparent); }
+  50% { opacity: 0.8; border-color: color-mix(in srgb, var(--ai) 30%, transparent); }
 }
 
 .rl-card-art {
@@ -112,9 +112,9 @@
   border-radius: 12px;
   background: linear-gradient(
     135deg,
-    rgba(181, 123, 255, 0.15) 0%,
+    color-mix(in srgb, var(--ai) 15%, transparent) 0%,
     rgba(61, 155, 255, 0.1) 50%,
-    rgba(181, 123, 255, 0.15) 100%
+    color-mix(in srgb, var(--ai) 15%, transparent) 100%
   );
   background-size: 200% 200%;
   animation: rl-art-shimmer 2.4s ease-in-out infinite;
@@ -128,7 +128,7 @@
 .rl-card-line {
   height: 10px;
   border-radius: 4px;
-  background: rgba(181, 123, 255, 0.12);
+  background: color-mix(in srgb, var(--ai) 12%, transparent);
   animation: rl-line-pulse 1.6s ease-in-out infinite;
 }
 
@@ -145,7 +145,7 @@
   height: 16px;
   margin-top: 4px;
   border-radius: 4px;
-  background: rgba(181, 123, 255, 0.1);
+  background: color-mix(in srgb, var(--ai) 10%, transparent);
 }
 
 // ── 进度条 + STEP 文案（y=560） ─────────────────────────────────
@@ -200,14 +200,14 @@
 
 .rl-step-desc {
   font-size: 13px;
-  color: rgba(245, 240, 232, 0.6);
+  color: color-mix(in srgb, var(--text-main) 60%, transparent);
 }
 
 // 已等待秒数——超过 4s 才出现，让"到底卡在哪了"有个明确的读数。
 .rl-step-elapsed {
   font-family: 'Inter', monospace;
   font-size: 11px;
-  color: rgba(245, 240, 232, 0.38);
+  color: color-mix(in srgb, var(--text-main) 38%, transparent);
 }
 
 // ── 底部 Tag/Stat（y=640） ──────────────────────────────────────
@@ -227,7 +227,7 @@
   height: 28px;
   padding: 0 12px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
   border: 1px solid var(--glass-fill-strong);
   font-size: 10px;
   font-weight: 600;
@@ -236,19 +236,19 @@
 }
 
 .rl-stat-label {
-  color: rgba(245, 240, 232, 0.3);
+  color: color-mix(in srgb, var(--text-main) 30%, transparent);
   text-transform: uppercase;
 }
 
 .rl-stat-value {
-  color: rgba(245, 240, 232, 0.7);
+  color: color-mix(in srgb, var(--text-main) 70%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
 .rl-stat--accent {
-  background: rgba(181, 123, 255, 0.08);
-  border-color: rgba(181, 123, 255, 0.2);
+  background: color-mix(in srgb, var(--ai) 8%, transparent);
+  border-color: color-mix(in srgb, var(--ai) 20%, transparent);
 }
 
-.rl-stat--accent .rl-stat-label { color: rgba(181, 123, 255, 0.5); }
+.rl-stat--accent .rl-stat-label { color: color-mix(in srgb, var(--ai) 50%, transparent); }
 .rl-stat--accent .rl-stat-value { color: #b57bff; }

@@ -40,17 +40,32 @@
 - [x] **S3-6** 每批后：`tokens:check` + `visual:test` 双绿；**这批基线一处没动** ✅
 - [x] **S3-4** 新增 `--values` 视角（按色值聚合）：实测 **181 个不同值 / 499 处**，
       前 20 个值就占约一半 —— 债的形状是"同一个值在 7–9 个文件里各写一遍"
-- [ ] **S3-5** **alpha 派生值批**：`rgba(255,255,255,.04/.05/.1/.2)`、
-      `rgba(245,240,232,.3/.5/.7/.9)` 这些**没有对应 token** 的档位。
-      候选做法：`color-mix(in oklab, var(--token) N%, transparent)`（不新增 Figma token）。
-      ⚠️ 先拿**一处**验证 `color-mix` 与 `rgba()` 像素等价（基线不许动），再铺开
+- [x] **S3-5** **alpha 派生值批** —— 配方是 `color-mix(in **srgb**, var(--token) N%, transparent)`
+      （不新增 Figma token），**240 处 / 8 个文件**；总预算 411 → **171**
+- [x] **S3-5a** **配方是量出来的，不是猜的**：浏览器 canvas 读回像素比对
+      （`/tmp/check-color-mix.mjs`）——
+      · `in oklab`：8/9 等价，**饱和色会漂**（`rgba(0,229,255,.3)` = `[0,229,255,77]`，
+        oklab 版 `[0,232,255,76]`，G 差 3）；而青色 alpha 在仓库里有 33 处
+      · `in srgb`：**9/9 全等**（含青色）→ 采用
+      ⚠️ 注意这跟"混两个颜色取感知中点"是两回事 —— 那种场景 oklab 才对（`_base.scss` 的
+      封面渐变仍在用 oklab，不要动）。**派生 alpha 一律用 srgb。**
+- [x] **S3-5b** 验证：build 绿；`tokens:check` 绿；**`visual:test` 6/6 绿且一处基线未动** ——
+      240 处同值/等价替换的硬证据
+- [x] **S3-5c** 映射只收**色板级**颜色（白 / 米白 / 青 / 紫 / 酸紫）；
+      语义双关的 `255,59,92`（红心=错误）与平台色 `61,255,162 / 255,217,61 / 61,155,255`
+      **故意不收**，留给 S3-8 人工过（合计不到 10 处）
 - [ ] **S3-7** **遗留色板归属决策**（`abstracts/_variables.scss` 的 24 处 + 用它的一众组件）：
       `$overlay-*` 磨砂深灰与平台徽章 `#31c27c/#ff7b7b/#b39dff` **不是 AETHER 那一套**
       （AETHER 的 `--platform-qq` 是黄色）。两条路：并入 AETHER 令牌，或给遗留壳层
       自己的令牌命名空间。**这是设计决策，不由脚本替你做** —— 本轮已把该文件排除在机械替换外
 - [ ] **S3-8** **TSX/TS 里的语义色**（约 43 处：`#00E5FF` / `#3DFFA2` / `#FFD93D` /
-      `#3D9BFF` / `#FF3B5C`）—— 要逐处判断语义（装饰用 primitive，还是状态用 semantic），
-      不能机械替换
+      `#3D9BFF` / `#FF3B5C`，集中在 `AuthErrorPanel.tsx` / `LikedLibraryModal.tsx` /
+      `SearchPanel.tsx` / `SourceSelect.tsx` / `TheaterView.tsx`）—— 要逐处判断语义
+      （装饰用 primitive，还是状态用 semantic），不能机械替换
+- [ ] **S3-8b** **只剩 SCSS 的机械尾巴**：`#02020a`(14) / `#00E5FF`(大写，SCSS 里若干) /
+      `#b57bff`(4) —— 同值映射，仍按"基线不许动"验证
+- [ ] **S3-8c** **没有对应令牌的值**：`rgba(0,0,0,*)` 的 scrim / 阴影、`#94a3b8`（石板灰）。
+      要么在 Figma 加 token（`--scrim` 之类）走 D4 的导出链，要么显式豁免并写明原因
 - [ ] **S3-9** `_tokens.scss` 手写层与生成层的遮蔽收敛（含 D4 留的 `--text-dim` 决策）
 
 ## S4 — 后续（不在本专题）

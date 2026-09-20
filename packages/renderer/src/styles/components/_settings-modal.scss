@@ -50,16 +50,16 @@
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: rgba(245, 240, 232, 0.9);
+  color: color-mix(in srgb, var(--text-main) 90%, transparent);
 }
 
 .set-close {
   width: 40px;
   height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.5);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -68,9 +68,9 @@
 }
 
 .set-close:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--white) 10%, transparent);
   color: var(--text-main);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: color-mix(in srgb, var(--white) 20%, transparent);
 }
 
 // ── sections（960×180 @ x=240） ─────────────────────────────────
@@ -83,7 +83,7 @@
   padding: 24px;
   border: 1px solid var(--glass-fill);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--white) 2%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -96,7 +96,7 @@
   margin: 0 0 6px;
   font-size: 16px;
   font-weight: 600;
-  color: rgba(245, 240, 232, 0.9);
+  color: color-mix(in srgb, var(--text-main) 90%, transparent);
   letter-spacing: -0.01em;
 }
 
@@ -104,7 +104,7 @@
   margin: 0 0 16px;
   font-size: 12px;
   line-height: 1.5;
-  color: rgba(245, 240, 232, 0.35);
+  color: color-mix(in srgb, var(--text-main) 35%, transparent);
 }
 
 .set-section-actions {
@@ -119,11 +119,11 @@
 .set-path {
   padding: 10px 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--white) 3%, transparent);
   border: 1px solid var(--glass-fill);
   font-family: 'Inter', monospace;
   font-size: 12px;
-  color: rgba(245, 240, 232, 0.5);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
   word-break: break-all;
 }
 
@@ -136,8 +136,8 @@
   height: 24px;
   padding: 0 10px;
   border-radius: 6px;
-  background: rgba(0, 229, 255, 0.08);
-  border: 1px solid rgba(0, 229, 255, 0.2);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -145,7 +145,7 @@
 }
 
 .set-stat-label {
-  color: rgba(0, 229, 255, 0.6);
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
   text-transform: uppercase;
 }
 
@@ -159,10 +159,10 @@
 .set-btn {
   height: 36px;
   padding: 0 18px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(245, 240, 232, 0.8);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 80%, transparent);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -173,7 +173,7 @@
 }
 
 .set-btn:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: color-mix(in srgb, var(--white) 20%, transparent);
   background: var(--glass-fill-strong);
   color: var(--text-main);
 }
@@ -181,21 +181,21 @@
 .set-btn:disabled { opacity: 0.5; cursor: default; }
 
 .set-btn--accent {
-  background: rgba(0, 229, 255, 0.12);
-  border-color: rgba(0, 229, 255, 0.4);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   color: #00e5ff;
 }
 
 .set-btn--accent:hover:not(:disabled) {
-  background: rgba(0, 229, 255, 0.2);
-  border-color: rgba(0, 229, 255, 0.6);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   color: #00e5ff;
 }
 
 .set-btn-ghost {
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
   border-radius: 10px;
   background: transparent;
   color: var(--text-dim);
@@ -207,7 +207,7 @@
 
 .set-btn-ghost:hover {
   color: var(--text-main);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: color-mix(in srgb, var(--white) 20%, transparent);
 }
 
 // ── Input/Text（对应 Figma Input/Text 组件） ────────────────────
@@ -217,7 +217,7 @@
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.05em;
-  color: rgba(245, 240, 232, 0.3);
+  color: color-mix(in srgb, var(--text-main) 30%, transparent);
   text-transform: uppercase;
   margin: 14px 0 6px;
 }
@@ -228,14 +228,14 @@
   padding: 0 14px;
   border: 1px solid var(--glass-fill-strong);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--white) 3%, transparent);
   color: var(--text-main);
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s ease;
 
-  &::placeholder { color: rgba(245, 240, 232, 0.2); }
-  &:focus { border-color: rgba(0, 229, 255, 0.3); }
+  &::placeholder { color: color-mix(in srgb, var(--text-main) 20%, transparent); }
+  &:focus { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 }
 
 .set-input-row {
@@ -252,10 +252,10 @@
   &::-webkit-file-upload-button {
     height: 32px;
     padding: 0 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(245, 240, 232, 0.7);
+    background: color-mix(in srgb, var(--white) 4%, transparent);
+    color: color-mix(in srgb, var(--text-main) 70%, transparent);
     font-size: 12px;
     cursor: pointer;
     margin-right: 10px;
