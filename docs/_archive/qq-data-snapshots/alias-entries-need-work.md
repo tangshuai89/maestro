@@ -1,5 +1,11 @@
 # Artists still needing English name verification
 
+> ⚠️ **一次性快照（Generated 2026-08-07 → 已 ~1.5 月）**。
+> 任何 `packages/common/src/artistAlias.ts` 的后续改动都不会回写到这份 md。
+> 当前真值（SoT）是 `artistAlias.ts` 里的 `STAGE_NAME_ALIASES`，本文件**仅**
+> 作为「还需手工补英文名」的人工待办清单。
+> 重新生成请用本地曲库（`audit-liked.ts` / `audit-same-title.ts`）+ `build-alias-entries.js`。
+
 Generated 2026-08-07T10:02:16
 
 | # | Key | QQ Name | Count |

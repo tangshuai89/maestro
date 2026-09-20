@@ -6,7 +6,7 @@
 - `tasks.md` — 按 Phase A→G 排好的可执行任务清单（每条都对应一个 PR 级别）
 
 配套：
-- `docs/ISSUES.md` — 当前代码的问题汇总（含严重度、位置、修复建议）
+- `docs/_archive/audit-snapshots/ISSUES-2026-08-18.md` — 历史 issue 快照（已 ~1 月，大部分条目被后续 spec 消化）
 
 执行：
 ```

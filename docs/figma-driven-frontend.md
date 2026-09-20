@@ -4,9 +4,10 @@
 > 组件化 + 变体 + 令牌绑定 + 动效规格化，使 coding agent 能通过 Figma REST API / Dev Mode MCP
 > 读取设计稿，直接生成/同步 React + SCSS 代码。
 >
-> 本文档基于仓库现有材料编写：`scripts/figma-aether-spec.md`、`scripts/figma-aether-v2-plan.md`、
-> `scripts/figma-v3-command.md`（当前文件是 v3 脚本稿）、`.superdesign/init/`（代码端组件盘点）、
-> `.mcp.json`（已配置官方 `figma-remote` MCP）。
+> 本文档基于仓库历史材料编写（已归档到 `docs/_archive/figma-history/`）：
+> `figma-aether-spec.md`（v1 规格）、`figma-aether-v2-plan.md`（v2 设计语言）、
+> `figma-v3-command.md`（v3 脚本稿，已废）。当前构建权威：
+> `.superdesign/init/`（代码端组件盘点）+ `.mcp.json`（已配置官方 `figma-remote` MCP）。
 
 ---
 

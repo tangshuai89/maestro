@@ -1,5 +1,10 @@
 # Figma 落地指令（重置后喂给 Claude Code）
 
+> ⚠️ **本手册已废**（2026-09 标注）。v3 设计稿在 `docs/aether-theater-v4-spec.md` 顶部
+> 明示"被抛弃的设计（已删除）"，A/B/C 三版探索稿归档到 `99 · Archive` 页。
+> 当前构建命令请改用 **`figma-v4-command.md`**（v4-ABC 13 步主流程）。
+> 本文件保留作历史背景，**不要按本手册再跑 use_figma**。
+
 文件：https://www.figma.com/design/FtbRZXvzlCp4Sq9e322cQQ（Maestro AETHER Music Player）
 目标 frame：`AETHER — Canvas`（node-id 1-2，若不存在则创建 1440×900）
 

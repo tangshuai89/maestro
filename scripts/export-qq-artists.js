@@ -3,7 +3,7 @@
  * Export all unique artists from QQ Music liked songs as a Markdown table.
  *
  * Usage: node scripts/export-qq-artists.js [--out <path>]
- *   Default output: scripts/qq-liked-artists.md
+ *   Default output: docs/_archive/qq-data-snapshots/qq-liked-artists.md
  *
  * Data source: the already-imported library in
  * `packages/server/.storage/state.json`. The library is built from the QQ
