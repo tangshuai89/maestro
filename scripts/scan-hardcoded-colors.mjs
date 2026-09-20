@@ -31,6 +31,7 @@ const GATE = argv.includes('--gate');
 const AS_JSON = argv.includes('--json');
 const VERBOSE = argv.includes('--verbose');
 const WRITE_BUDGET = argv.includes('--write-budget');
+const BY_VALUE = argv.includes('--values');
 
 /** 令牌层：这些文件**就是**颜色的定义处，不算硬编码 */
 const TOKEN_LAYER = new Set([
@@ -142,6 +143,26 @@ if (WRITE_BUDGET) {
   };
   writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
   console.log(`已写入预算: ${BUDGET_PATH}（${Object.keys(scopedByFile).length} 个文件，合计 ${total} 处）`);
+  process.exit(0);
+}
+
+if (BY_VALUE) {
+  // 按**色值**聚合：同一个值在几个文件里各写了一遍 —— 这才是技术债的形状，
+  // 也是 S3 分批替换的选批依据（一个值 → 一个 token，改一处抵多处）。
+  const byValue = {};
+  for (const f of scoped) {
+    const key = f.literal.replace(/[\s()]/g, '').toLowerCase();
+    byValue[key] = byValue[key] || { literal: f.literal, count: 0, files: new Set() };
+    byValue[key].count++;
+    byValue[key].files.add(f.file.replace('packages/renderer/src/', ''));
+  }
+  const sorted = Object.values(byValue).sort((a, b) => b.count - a.count);
+  console.log(`按色值聚合 — ${sorted.length} 个不同值 / ${total} 处\n`);
+  for (const v of sorted) {
+    const files = [...v.files];
+    console.log(`  ${String(v.count).padStart(3)}×  ${v.literal.padEnd(28)} ${files.length} 个文件` +
+      (files.length <= 3 ? `  (${files.join(', ')})` : `  (${files.slice(0, 3).join(', ')} …)`));
+  }
   process.exit(0);
 }
 

@@ -14,7 +14,7 @@
   inset: 0;
   overflow: hidden;
   background: #02020a;
-  color: #f5f0e8;
+  color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
 }
@@ -64,7 +64,7 @@
   font-size: 34px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #f5f0e8;
+  color: var(--text-main);
   margin: 0;
   line-height: 1;
 }
@@ -99,7 +99,7 @@
   flex-direction: column;
   align-items: center;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-fill-strong);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(12px);
@@ -113,7 +113,7 @@
 .ss-card:hover {
   transform: translateY(-4px);
   border-color: var(--card-accent);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--glass-fill);
 }
 
 .ss-card:active {
@@ -125,7 +125,7 @@
   opacity: 0.4;
   cursor: not-allowed;
   transform: none;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--glass-fill-strong);
   background: rgba(255, 255, 255, 0.03);
 }
 

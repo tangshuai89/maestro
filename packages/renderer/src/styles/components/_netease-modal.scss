@@ -85,7 +85,7 @@
   height: 200px;
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--white);
 }
 
 .qr-image {
@@ -105,7 +105,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  color: var(--white);
   font-size: 13px;
   font-weight: 500;
 }
