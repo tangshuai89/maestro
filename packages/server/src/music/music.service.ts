@@ -1695,6 +1695,14 @@ export class MusicService {
         }
         variants.push({ kw: romajiTitle, limit: 10, tag: 'title-romaji-only' });
       }
+      // title-nopunct: 去掉日文句尾标点（。、！？）后重搜。
+      // normalizeKey 的比较阶段会去掉这些字符，但搜索阶段不认——Spotify
+      // 搜「やば。」0 结果，搜「やば」就能找到 YABA。此变体在不放宽
+      // 匹配规则的前提下尝试更干净的搜索词。
+      const titleNoPunct = cleanedTitle.replace(/[。、！？]+$/g, '').trimEnd();
+      if (titleNoPunct && titleNoPunct !== cleanedTitle && titleNoPunct !== cleanedKw) {
+        variants.push({ kw: titleNoPunct, limit: 10, tag: 'title-nopunct' });
+      }
 
       const tried: string[] = [];
       let timedOut = false; // 任一变体超时 → 无法断定"该平台没有这首歌" → clean=false
