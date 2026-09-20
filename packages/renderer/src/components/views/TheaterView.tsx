@@ -371,7 +371,7 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
         </div>
 
-        {/* 歌名信息（1440 稿 430,590） */}
+        {/* 歌名信息（1440 稿 430,590 → 实装 430,602：与上方时间行/下方控制带定死间距） */}
         <div className="th-track-info">
           <div className="th-track-header">
             <h1 className="th-track-title">{clampText(track?.title ?? '等待播放', 18)}</h1>
@@ -436,7 +436,7 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
         )}
 
-        {/* 左下：能量核心（1440 稿 266,700；顺序 prev|like|play|next） */}
+        {/* 左下：能量核心（1440 稿 266,700 → 实装 266,726：给上方歌名块留净空，见 Bug #8） */}
         <div className="th-core-cluster">
           <button type="button" className="th-ctrl th-ctrl--prev" onClick={onPrev} disabled={!track} title="上一首">
             <ThIcon icon="skipBack" size={18} />
@@ -467,7 +467,7 @@ export default function TheaterView(props: TheaterViewProps) {
           </button>
         </div>
 
-        {/* 右下：DeepSeek 推荐（1440 稿 1000,700） */}
+        {/* 右下：DeepSeek 推荐（1440 稿 1000,700 → 实装 1000,726：与能量核心同一条底带） */}
         {!recoConfigured && !recoRunning ? (
           <div className="th-reco-unconfigured">
             <div className="th-reco-unconfigured-title">AI 推荐未配置</div>

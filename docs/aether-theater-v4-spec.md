@@ -12,6 +12,28 @@
 | 02 / Stardust | 85 颗 1-3px 星尘椭圆，全屏随机 | 粒子层 |
 | 03 / Sound Rings | 3 同心描边圆（直径 720/600/480，居中） | 声音可视化 |
 | 04 / Hologram | orbit-ring 390×390 + 12 orbit-tick 刻度 + holographic-cover 280×280 椭圆（♪ 90px）+ cover-caption（song-title 40px 白95% / meta 16px 白45% / quality-tag 10px cyan60%）+ heart-stat（♥红 + 计数）+ live-tag | 全息封面区（左中） |
+
+> ⚠️ **下半屏纵向链不变量**（Bug #8，2026-09-20 修）：这一竖列上的每一段间距都是
+> **定值**，不允许出现"两个元素盒子互相压着"的排法——
+>
+> ```
+> ring 底 570
+>   时间  577 – 596          (.th-orbit-times: bottom -26，跟着进度环走)
+>   ≈16    歌名               602 – 650   (40px / line-height 1.2)
+>   8      歌手 // 专辑        658 – 679   (16px / 1.3)
+>   18     音质 (HI-RES/320K)  697 – 709   (10px / 1.2，flex gap 8 + margin 10)
+>   17     控制带              726 – 798   (.th-core-cluster + .th-reco 同一条底带)
+>          画布底              900         (剩 102px)
+> ```
+>
+> 两个坑都踩过：
+> ① 控制带在 700 时，第三行音质标签落在播放键圆和它的青色光晕里 → 被糊掉；
+> ② 把间距压到 8px 救它，视觉太挤 → 用户反弹。
+> 真正的原因是**设计稿里时间行(盒底 596)和歌名块(锚 590)本来就重叠 6px**，靠
+> Figma 的 Inter 墨迹位置勉强分开；浏览器里行高/回退字体一变就粘成一片。
+> 结论：歌名块 602 + 控制带 726（比稿低 26px），换到每段 ≥16px 的确定节奏。
+> 控制带**不能再往下**：右下推荐卡底边 868 已经贴着页脚水印 868。
+> **改这里任何数字前，先算一遍上面的链 + 这两条边界。**
 | lyric-stream | prev 20px 白18% / current 44px 白95% + active-bar 3×53 cyan / next×3 20px 白18%（右区 560 宽） | 歌词流（右） |
 | energy-core | inner-ring 52×52 白描边 + ▶ 30px 深色（72×72，左下） | 播放核心 |
 | core-labels | prev/next 40×40 白6% 圆角按钮（Vector 图标） | 切歌按钮 |
@@ -38,7 +60,7 @@
 
 ## 屏幕布局（03 页，1440×900，均为实例组装）
 
-- **Screen/NowPlaying/Playing**：Backdrop → Ring/Sound(playing) → top-hud → star-orbit 进度环(左上 280,270) → Hologram/Cover(playing, 左中) → lyric-stream(右 820,320：Tag + 5× Lyrics/Line) → Controls/Transport(左下 300,700) → neural-suggestions(右下 1000,700)
+- **Screen/NowPlaying/Playing**：Backdrop → Ring/Sound(playing) → top-hud → star-orbit 进度环(左上 280,270) → Hologram/Cover(playing, 左中) → lyric-stream(右 820,320：Tag + 5× Lyrics/Line) → Controls/Transport(左下 300,700 → 实装 726) → neural-suggestions(右下 1000,700 → 实装 726)
 - **Paused**：Cover(idle)、Core(idle→paused)、Rings(idle)
 - **Buffering**：Cover(loading)、Core(paused)、Tag「BUFFERING // STREAM」
 - **SourceSelect**：Backdrop + 4 平台卡（剧场风格：120×120 竖卡，Badge/Platform 实例）
