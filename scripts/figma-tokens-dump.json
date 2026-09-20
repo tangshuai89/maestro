@@ -389,6 +389,16 @@
    "name": "Motion/ease-in-out",
    "resolvedType": "STRING",
    "value": "ease-in-out"
+  },
+  {
+   "name": "Color/semantic/status-error",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1,
+    "g": 0.231,
+    "b": 0.361,
+    "a": 1
+   }
   }
  ]
 }

@@ -58,8 +58,8 @@
 
 .lib-hud-heart {
   font-size: 20px;
-  color: #ff3b5c;
-  text-shadow: 0 0 12px rgba(255, 59, 92, 0.5);
+  color: var(--status-liked);
+  text-shadow: 0 0 12px color-mix(in oklab, var(--status-liked) 50%, transparent);
 }
 
 .lib-hud-title {
@@ -489,7 +489,7 @@
   padding: 40px 16px;
   text-align: center;
   font-size: 13px;
-  color: #ff3b5c;
+  color: var(--status-error);
 }
 
 // ── Skeleton 占位 ───────────────────────────────────────────────
@@ -562,9 +562,9 @@
 .lib-refresh-heart {
   font-size: 36px;
   line-height: 1;
-  color: #ff3b5c;
+  color: var(--status-liked);
   animation: lib-heart-pulse 1.2s ease-in-out infinite;
-  text-shadow: 0 0 16px rgba(255, 59, 92, 0.5);
+  text-shadow: 0 0 16px color-mix(in oklab, var(--status-liked) 50%, transparent);
 }
 
 @keyframes lib-heart-pulse {

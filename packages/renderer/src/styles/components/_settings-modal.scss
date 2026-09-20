@@ -270,5 +270,5 @@
   line-height: 1.4;
 
   &--ok { color: #3dffa2; }
-  &--err { color: #ff3b5c; }
+  &--err { color: var(--status-error); }
 }

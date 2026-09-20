@@ -43,14 +43,14 @@
   padding: 4px 12px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--sev, rgba(255, 59, 92, 0.3));
+  border: 1px solid var(--sev, color-mix(in oklab, var(--status-error) 30%, transparent));
 }
 
 .aep-code-severity {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--sev, #ff3b5c);
+  color: var(--sev, var(--status-error));
   text-transform: uppercase;
 }
 

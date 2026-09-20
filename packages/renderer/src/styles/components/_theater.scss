@@ -26,7 +26,7 @@
   --neon: #00e5ff;
   --violet: #5b2bff;
   --acid: #b57bff;
-  --heart: #ff3b5c;
+  --heart: var(--status-liked);
   --green: #3dffa2;
   --glass-bg: rgba(255, 255, 255, 0.06);
   --glass-stroke: rgba(255, 255, 255, 0.12);
@@ -681,8 +681,8 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #ff3b5c;
-  box-shadow: 0 0 6px rgba(255, 59, 92, 0.5);
+  background: var(--status-error);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--status-error) 50%, transparent);
   flex-shrink: 0;
 }
 
