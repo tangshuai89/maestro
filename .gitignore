@@ -21,6 +21,11 @@ packages/server/.storage/
 .superdesign/tmp/
 coverage/
 
+# Playwright 视觉回归：报告与中间产物不入库（基线图入 tests/visual/__screenshots__/）
+test-results/
+visual-report/
+playwright-report/
+
 # figma-code-connect-inject.mjs 备份（避免污染 git status）
 figma-code-connect.json.bak
 figma-code-connect.json.bak2

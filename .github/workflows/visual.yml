@@ -1,0 +1,71 @@
+# D11 — 视觉回归（剧场视图）
+#
+# 只在可能影响渲染的路径变更时触发，避免每次 PR 都跑像素比对。
+# 未安装 @playwright/test 时**跳过而非失败**（与 token-drift.yml 同款降级），
+# 避免"门禁一上线就红"。
+
+name: Visual Regression (theater)
+
+on:
+  pull_request:
+    paths:
+      - 'packages/renderer/src/**'
+      - 'tests/visual/**'
+      - 'playwright.config.mjs'
+      - '.github/workflows/visual.yml'
+  workflow_dispatch:
+
+jobs:
+  visual:
+    # ⚠️ 必须是 macOS：Playwright 的基线文件名带平台后缀（`-darwin`），
+    # 在 ubuntu 上会找不到 baseline（两边浏览器构建也不同，像素对不上）。
+    # 代价：macOS runner 按 10 倍分钟计费；本 job 只在渲染器路径变更时触发，可接受。
+    # 若哪天要迁到 linux：在 linux 上重跑 visual:baseline，把新基线也提交进来（两套并存）。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 是否已装 playwright
+        id: gate
+        run: |
+          if node -e "require.resolve('@playwright/test')" 2>/dev/null; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=视觉回归已跳过::package.json 里还没有 @playwright/test；先跑 npm i -D @playwright/test 并提交基线"
+          fi
+
+      - if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
+      - name: 构建 common（server/renderer 依赖它的 dist）
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run build:common
+
+      - name: 构建 renderer
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run build:renderer
+
+      - name: 安装 Chromium
+        if: steps.gate.outputs.ready == 'true'
+        run: npx playwright install chromium
+
+      - name: 跑视觉回归
+        id: shot
+        if: steps.gate.outputs.ready == 'true'
+        run: npx playwright test --config playwright.config.mjs
+
+      - name: 失败时上传报告（expected / actual / diff）
+        if: failure() && steps.shot.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: |
+            visual-report/
+            test-results/
+          retention-days: 14

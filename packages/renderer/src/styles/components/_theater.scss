@@ -1272,8 +1272,14 @@
   // 紧凑稿中心 (480,320) 同步减 30 → (480,290)
   .th-cover-stage { left: 480px; top: 290px; }
 
-  .th-lyrics-panel { left: 200px; top: 596px; width: 560px; }
-  .th-core-cluster { left: 348px; top: 690px; }
+  // 歌词放进「封面底(445) → 歌名块(602)」之间的空带。
+  // 注意：**下半屏是一条联立解出的垂直链**（见 .th-track-info 上方注释 / Bug #8），
+  // 歌名 602..650 · 歌手 658..679 · 音质 697..709 · 控制带 726..798 —— 不能单独动其中任何一段。
+  // 所以紧凑档只是"把歌词塞进空带"，控制条沿用链上的 726，不改链。
+  // （第一版我把控制条挪到 690，会压住音质行 697..709；idle 态没曲目所以基线看不出来，
+  //   是读 CSS 时才发现 —— 已改回。）
+  .th-lyrics-panel { left: 200px; top: 490px; width: 560px; }
+  .th-lyric--current { font-size: 26px; }
   // 试听降级标签从 (560,755) 提到 HUD 下方，避免与紧凑档控制条抢 14px 的空隙
   .th-trial-tag { left: 200px; top: 64px; }
 

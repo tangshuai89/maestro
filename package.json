@@ -34,11 +34,15 @@
     "tokens:check:json": "node scripts/check-token-drift.mjs --json",
     "tokens:export": "node scripts/figma-export-tokens.mjs scripts/figma-tokens-dump.json",
     "tokens:pull": "node scripts/figma-tokens-pull.mjs",
+    "visual:serve": "cd packages/renderer && npx vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "visual:test": "npm run build:renderer && node scripts/run-playwright.mjs test --config playwright.config.mjs",
+    "visual:baseline": "npm run build:renderer && node scripts/run-playwright.mjs test --config playwright.config.mjs --update-snapshots",
     "reco:eval": "cd packages/server && npx ts-node src/reco/eval-cli.ts"
   },
   "author": "tangshuai89",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^6.10.0",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.7",
