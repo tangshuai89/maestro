@@ -495,12 +495,30 @@ export default function TheaterView(props: TheaterViewProps) {
         <div className="th-reco">
           <div className="th-reco-head">
             <span className="th-reco-label">DEEP.SEEK // NEURAL FEED</span>
-            {recoRunning && (
-              <span className="th-reco-status" aria-label="推荐生成中">
-                <span className="th-reco-status-dot" aria-hidden="true" />
-                RUNNING…
-              </span>
-            )}
+            <div className="th-reco-head-actions">
+              {recoRunning && (
+                <span className="th-reco-status" aria-label="推荐生成中">
+                  <span className="th-reco-status-dot" aria-hidden="true" />
+                  RUNNING…
+                </span>
+              )}
+              {/* 以当前歌为种子——主流播放器最常用的入口（"放点像这首的"）。
+                放在 head 行右对齐而不是卡片下方：1440×900 画布的 Bug #8
+                垂直链（cards 底 / footer 顶 = 868）已经没有富余，再往下推
+                会被 1200×800 默认窗口的 scale 0.833 切到底边
+                （spec 2026-09-21 bug #1）。 */}
+              {track && onRecoSeed && !recoRunning && (
+                <button
+                  type="button"
+                  className="th-reco-seed"
+                  onClick={onRecoSeed}
+                  title={`以《${track.title}》为种子推荐`}
+                >
+                  <span aria-hidden="true">↺</span>
+                  <span>像《{clampText(track.title, 12)}》一样</span>
+                </button>
+              )}
+            </div>
           </div>
           {recoRunning && (
             <div className="th-reco-progress" role="status" aria-live="polite">
@@ -541,18 +559,6 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
           {recoConfigured && recoMatchRate > 0 && (
             <div className="th-reco-foot">AI 评估：{recoMatchRate}% MATCH</div>
-          )}
-          {/* 以当前歌为种子——主流播放器最常用的入口（"放点像这首的"）。 */}
-          {track && onRecoSeed && !recoRunning && (
-            <button
-              type="button"
-              className="th-reco-seed"
-              onClick={onRecoSeed}
-              title={`以《${track.title}》为种子推荐`}
-            >
-              <span aria-hidden="true">↺</span>
-              <span>像《{clampText(track.title, 12)}》一样</span>
-            </button>
           )}
         </div>
         )}

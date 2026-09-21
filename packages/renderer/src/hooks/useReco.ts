@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   fetchRecoStatus,
   importLibrary,
@@ -26,14 +26,25 @@ export function useReco(
     loadMore?: () => Promise<UnifiedSearchItem[]>,
   ) => void,
   setError: Dispatch<SetStateAction<string | null>>,
+  /** Reactive 镜像 of queueRef.idx —— 由 usePlayer 同步写入。默认 -1
+   *  表示不在任何队列里（图鉴空态）。 */
+  queueIdx: number,
+  /** 当前队列里的 unified items（reactively mirrors queueRef.unifiedItems）。
+   *  undefined = 没有队列。 */
+  queueUnifiedItems: UnifiedSearchItem[] | undefined,
 ) {
   const [recoStatus, setRecoStatus] = useState<RecoStatus | null>(null);
   const [recoStatusVersion, setRecoStatusVersion] = useState(0);
   const [recoRunning, setRecoRunning] = useState(false);
-  // Monster Beats 图鉴（ENCOUNTER LOG）用的推荐卡数据。
-  const [suggestions, setSuggestions] = useState<
-    Array<{ title: string; artist: string; coverColor: string; type: string; match: number }>
-  >([]);
+  // Monster Beats 图鉴（ENCOUNTER LOG）用的推荐卡数据 ——
+  // 派生自队列位置（queueIdx + queueUnifiedItems，由 usePlayer 提供），
+  // 不再在 runRecoFlow 里手动同步「batch 1 的前 3 首」。idx 走到第 4 首时
+  // 图鉴跟着翻页；loadMore 把第 11/12... 首加进队列后 idx=10 自动切到 batch 2。
+  // 没有队列时（idx=-1）保持空数组 —— TheaterView 的空态文案接管显示。
+  const suggestions = useMemo(
+    () => deriveSuggestions(queueUnifiedItems, queueIdx),
+    [queueUnifiedItems, queueIdx],
+  );
   const [recoKeyOpen, setRecoKeyOpen] = useState(false);
 
   // Fetch reco status on mount + after every key save (version bump).
@@ -108,23 +119,10 @@ export function useReco(
         }
         return next.items;
       };
-      // Monster Beats 图鉴卡：前三首派生（稳定 seed，跨渲染不变）
-      setSuggestions(
-        result.items.slice(0, 3).map((it, i) => {
-          const h = (it.title.length * 31 + it.artist.length * 7 + i * 13) % 100;
-          const prov = it.bestSource ?? 'qq';
-          const typeMap: Record<string, string> = { qq: 'FIRE', netease: 'GRASS', deezer: 'WATER', spotify: 'ELEC' };
-          return {
-            title: it.title,
-            artist: it.artist,
-            coverColor: ['#FF3B3B', '#FFD60A', '#4CD964', '#2D7FFF', '#FF2D87'][i % 5],
-            type: typeMap[prov] ?? 'WILD',
-            match: Math.max(35, h),
-          };
-        }),
-      );
       // Reuse the same playback link as the search queue, plus the next-batch
       // loader so playback continues past the last recommendation.
+      // (suggestions 现在从 queueIdx + queueUnifiedItems useMemo 派生 —
+      // 见 runRecoFlow 外面的 suggestions —— 不再需要在跑 batch 时手动同步。)
       playSearch(result.items, 0, loadMore);
     } catch (e) {
       setError(`推荐失败：${(e as Error).message}`);
@@ -173,4 +171,39 @@ export function useReco(
     handleRecoSeed,
     handleSaveRecoKey,
   };
+}
+
+/** Map unified item → TheaterView suggestion card 的展示形状。idx 0/1/2 决定
+ *  coverColor（5 色循环）和 match %（hash from title/artist）。纯函数，
+ *  TheaterView 也直接复用——见 specs/reco-deepseek 2026-09-21「推荐卡跟随
+ * 队列位置」段落。 */
+function toSuggestion(
+  item: UnifiedSearchItem,
+  i: number,
+): { title: string; artist: string; coverColor: string; type: string; match: number } {
+  const h = (item.title.length * 31 + item.artist.length * 7 + i * 13) % 100;
+  const prov = item.bestSource ?? 'qq';
+  const typeMap: Record<string, string> = {
+    qq: 'FIRE',
+    netease: 'GRASS',
+    deezer: 'WATER',
+    spotify: 'ELEC',
+  };
+  return {
+    title: item.title,
+    artist: item.artist,
+    coverColor: ['#FF3B3B', '#FFD60A', '#4CD964', '#2D7FFF', '#FF2D87'][i % 5],
+    type: typeMap[prov] ?? 'WILD',
+    match: Math.max(35, h),
+  };
+}
+
+/** 从队列位置派生「正在播 + 接下来 2」三张图鉴卡。queueIdx < 0（无队列）或
+ *  unifiedItems 缺失 → 返回空数组（让 TheaterView 走空态文案）。 */
+function deriveSuggestions(
+  items: UnifiedSearchItem[] | undefined,
+  idx: number,
+): Array<{ title: string; artist: string; coverColor: string; type: string; match: number }> {
+  if (!items || idx < 0) return [];
+  return items.slice(idx, idx + 3).map(toSuggestion);
 }

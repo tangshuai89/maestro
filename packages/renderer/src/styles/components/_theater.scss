@@ -894,6 +894,17 @@
 .th-reco-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  // 2026-09-21 bug #1：种子胶囊挪到 head 行右对齐后，head 高度从 ~14 涨到
+  // ~30（按钮高度）；下方卡片下移 16px，导致 card 底 (≈y=886) 压住 footer
+  // (y=869..880)。把 footer 下边距从 20 收到 2（见 .th-footer-version 注释），
+  // 同步让出余量 —— 「cards 底 / footer 顶 ≈ 868」的垂直链约束保持近似。
+  min-height: 30px;
+}
+.th-reco-head-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 .th-reco-label {
@@ -1065,11 +1076,12 @@
 }
 
 // 以当前歌为种子（"像这首一样"）——比主 ✨ 更轻的次要动作，做成描边胶囊。
+// 2026-09-21 bug #1：从卡片下方挪到 head 行右对齐（margin-top 去掉）；
+// 不再往下推画布底部，配合 footer bottom:6 让 cards 底 / footer 顶保持 ~868 链。
 .th-reco-seed {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
   padding: 5px 12px;
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--ai) 32%, transparent);
@@ -1091,7 +1103,10 @@
 
 .th-footer-version {
   position: absolute;
-  right: 64px; bottom: 20px;
+  right: 64px; bottom: 2px;
+  // 2026-09-21 bug #1：种子胶囊挪进 .th-reco-head 后卡片底从 870 移到 886。
+  // 原来 bottom:20（footer 顶 ≈869）会和卡片底部撞上；收到 2 让 footer
+  // 顶 ≈ 887，跟 cards 底 ≈886 留 1px 缝（cards / footer 链 ≈868 都下移 ~20）。
   font-family: 'JetBrains Mono', 'Menlo', monospace;
   font-size: 9px;
   color: color-mix(in srgb, var(--text-main) 10%, transparent);

@@ -183,7 +183,30 @@ Response: { ok: true }
 - [x] `POST /reco/run` 支持 `seed: { title, artist }`：候选只围绕该艺人 + 它的
       相邻艺人（不撒用户主干、不做探索轮换），prompt 追加"更多像这首"的要求，
       并把这次点击记成 `seed` 强正信号（reco.test #45）
-- [x] 前端 TheaterView 推荐块下方新增「像《歌名》一样」胶囊按钮（播放中有歌时出现）
+- [x] 前端 TheaterView 推荐块**头部行右对齐**位置新增「像《歌名》一样」胶囊
+      按钮（播放中有歌时出现）。**不放卡片下方**：1440×900 画布的垂直链
+      （Bug #8 — cards 底 / footer 顶 = 868）已经没有富余空间，再往下推会被
+      1200×800 默认窗口的 scale 0.833 切到底边（见 2026-09-21 bug #1）。
+
+### 推荐卡跟随队列位置（2026-09-21）
+
+**为什么**：之前 `useReco` 的 `suggestions` state 只在 `runRecoFlow` 第一次返回
+时 `setSuggestions(result.items.slice(0, 3))`——batch 1 的前 3 首被冻成永久
+图鉴。播到第 4 首开始看的就是陈旧数据；`loadMore` 拉到 batch 2 后图鉴也
+不切到 batch 2 的前 3 首。
+
+**做法**：
+- `usePlayer` 暴露 reactive 的 `queueIdx` + `queueUnifiedItems`——presentTrack
+  / switchToProvider / resetForSwitch 都同步写一次（避免 ref 改完没 re-render）
+- `useReco` 删掉内部 `suggestions` state，改 `useMemo` 从队列位置派生：
+  `queueUnifiedItems.slice(queueIdx, queueIdx + 3)` → 始终是「**正在播 + 接下来 2**」
+
+**取舍**：
+- 视觉：第 4 首开始图鉴翻页（idx 1/2/3 → idx 3 → idx 10 batch 切换）；
+- 失败模式：如果队列突然被切空（resetForSwitch），`queueIdx = -1` → 图鉴空，
+  这是预期行为，比「卡在陈旧 batch 1」更直白；
+- 跨平台降级同一首重 presentTrack 不会回放新卡片：`setQueueSnapshot(prev =>
+  prev.idx === newIdx ? prev : ...)` 守门（reco.test #13 同款 closure-trap 风险）。
 
 ## 离线评测基座（v2.2，2026-09-20）
 
