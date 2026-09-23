@@ -1,5 +1,6 @@
 import { PROVIDER_LABELS } from '../../api';
 import type { MusicProvider, UnifiedSourceInfo } from '../../api';
+import { ProviderLogo } from './providerLogos';
 
 /** Short platform label for the compact chips. */
 function providerShort(p: MusicProvider): string {
@@ -16,15 +17,10 @@ function providerShort(p: MusicProvider): string {
 }
 
 /**
- * SourceChip 末尾的付费状态角标：[P] / [NP]。
- *  - paid-album + vipLocked=true → [NP]（未购，黄色 / 红色 背景）
- *  - paid-album + vipLocked=false → [P]（已购或 VIP 解锁）
- *  - 其他 vipCategory（paid-track/vip-only/vip-month）不显示 P/NP 标签
- *    —— 这些不是数字专辑，UI 上只通过 bestSource 跳过 / ⚠ 排序等机制区分，
- *    不在 chip 上标。后续如果用户对其他付费类型有显示诉求再扩展。
- *
- * 网易云 [P] 是粗略等价：vipLocked=false + fee=1 → 可能是黑胶 VIP 解锁，
- * 也可能是真的购买。tooltip 里写明「可能未购」让用户知情。
+ * 数字专辑 [P]/[NP] 角标：vipCategory === 'paid-album' 时附加在 chip 文字之后。
+ *  - vipLocked=true → [NP]（未购）
+ *  - vipLocked=false → [P]（已购或 VIP 解锁，tooltip 注明）
+ * 其他 vipCategory 不显示标签。
  */
 function AlbumTag({ source }: { source: UnifiedSourceInfo }) {
   if (source.vipCategory !== 'paid-album') return null;
@@ -44,8 +40,13 @@ function AlbumTag({ source }: { source: UnifiedSourceInfo }) {
 }
 
 /** Platform chip — marks which platforms a unified search result exists on.
- *  The bestSource platform gets its brand colour + ★; no-copyright ones are
- *  greyed with a strikethrough. 付费专辑（paid-album）额外加 [P]/[NP] tag。 */
+ *  视觉：左侧 platform 品牌 logo（SVG） + 平台短名（QQ / 网易 / DZ / SP） +
+ *       [P/NP] tag（数字专辑时） + bestSource ★。
+ *  所有 chip 都用平台 brand 强背景色（不是 bestSource 才上色）—— 用 logo
+ *  + 强背景让 chip 一眼可识别平台；bestSource 加 box-shadow 描边突出选中态。
+ *
+ *  降级（fallback）类 .source-chip--fallback：理论上的 logo 不可用 fallback
+ *  （如未来替换成 <img src>），保留扩展点；当前 inline SVG 不触发。 */
 export default function SourceChip({
   source,
   isBest,
@@ -53,8 +54,6 @@ export default function SourceChip({
   source: UnifiedSourceInfo;
   isBest: boolean;
 }) {
-  // paid-album 给 chip 加 .source-chip--paid-album 类 —— CSS 切到平台 brand
-  // 强背景（黄/红），跟普通 chip 的弱化背景区分。
   const isPaidAlbum = source.vipCategory === 'paid-album';
   return (
     <span
@@ -75,7 +74,10 @@ export default function SourceChip({
           : `${PROVIDER_LABELS[source.platform]} · 无版权`
       }
     >
-      {providerShort(source.platform)}
+      <span className="source-chip-logo">
+        <ProviderLogo platform={source.platform} size={12} />
+      </span>
+      <span className="source-chip-label">{providerShort(source.platform)}</span>
       <AlbumTag source={source} />
       {isBest && <span className="source-chip-best">★</span>}
     </span>

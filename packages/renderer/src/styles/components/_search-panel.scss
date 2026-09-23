@@ -470,17 +470,33 @@
 .source-chip {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   height: 20px;
-  padding: 0 6px;
+  padding: 0 6px 0 4px;
   border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: var(--glass-fill);
+  background: var(--glass-fill);  // 默认（fallback / 无 brand 时）玻璃底
   color: color-mix(in srgb, var(--text-main) 50%, transparent);
   line-height: 1;
   white-space: nowrap;
+  // 配合 brand 强背景：所有 chip 都有半透边框让边界清晰
+  border: 1px solid color-mix(in srgb, var(--white) 8%, transparent);
+}
+
+.source-chip-logo {
+  display: inline-flex;
+  align-items: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  // SVG 在 12×12 chip 内画风：加细 drop-shadow 让 logo 边缘清晰
+  filter: drop-shadow(0 0 0.5px color-mix(in srgb, var(--text-main) 30%, transparent));
+}
+
+.source-chip-label {
+  line-height: 1;
 }
 
 .source-chip--no-rights {
@@ -488,38 +504,32 @@
   opacity: 0.5;
 }
 
+// ── 默认态：所有 chip 都用平台 brand 强背景（不只是 bestSource）────
+// 9c4daaa 后引入 .source-chip--paid-album 用品牌色的逻辑自然继承
+// （vipCategory='paid-album' 给 chip 加 .source-chip--paid-album 类，
+// 但背景仍由 .source-chip--#{$name} 控制；下面 paid-album 块只覆盖
+// no-rights 的回退 + [P/NP] tag 样式）。
 @each $name, $c in $platform-colors {
-  .source-chip--best.source-chip--#{$name} {
+  .source-chip--#{$name} {
     background: map.get($c, bg);
     color: map.get($c, fg);
+    border-color: color-mix(in srgb, map.get($c, bg) 80%, var(--white));
   }
 }
 
-// ── 数字专辑 [P]/[NP] 角标 ────────────────────────────────────
-// paid-album chip 用平台 brand 强背景（黄/红）+ 白字 tag，与普通 chip 弱化背景
-// 区分。bestSource 在前叠加高亮样式（保持现有 ladder 行为）。背景色用 token
-// var(--platform-qq) / var(--platform-netease)，不走硬编码。
-.source-chip--paid-album.source-chip--qq {
-  background: var(--platform-qq);     // #ffd93d 黄
-  color: #000;
+// ── bestSource 进一步突出：box-shadow 描边 + 微抬 ─────────────────
+@each $name, $c in $platform-colors {
+  .source-chip--best.source-chip--#{$name} {
+    box-shadow:
+      0 0 0 1.5px color-mix(in srgb, var(--text-main) 50%, transparent),
+      0 0 8px color-mix(in srgb, map.get($c, bg) 45%, transparent);
+    border-color: transparent;
+    transform: translateY(-0.5px);
+  }
 }
-.source-chip--paid-album.source-chip--qq.source-chip--best {
-  // bestSource 加深色描边 + 略提亮度
-  background: var(--platform-qq);
-  color: #000;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--platform-qq) 70%, var(--text-main));
-}
-.source-chip--paid-album.source-chip--netease {
-  background: var(--platform-netease); // #ff3b5c 红
-  color: #fff;
-}
-.source-chip--paid-album.source-chip--netease.source-chip--best {
-  background: var(--platform-netease);
-  color: #fff;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--platform-netease) 70%, var(--text-main));
-}
+
+// ── 数字专辑 [P]/[NP] 角标（v9c4daaa 引入）────────────────────
 .source-chip--paid-album.source-chip--no-rights {
-  // 无版权时切到灰背景（优先级低）
   background: color-mix(in srgb, var(--white) 5%, transparent);
   color: color-mix(in srgb, var(--text-main) 50%, transparent);
 }
@@ -534,20 +544,21 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.2;
-  // 默认跟随父 chip 文字色（黄底配黑字，红底配白字）
-  background: color-mix(in srgb, currentColor 25%, transparent);
+  // 跟随父 chip 文字色派生：高对比透明块（rgba(white) 等价）
+  background: color-mix(in srgb, var(--white) 25%, transparent);
+  color: inherit;
 }
 .source-chip-album--np {
-  // 未购更显眼：半透白高亮 + 大字
-  background: rgba(255, 255, 255, 0.25);
-  color: inherit;
+  // 未购：半透白（比 [P] 略强）
+  background: color-mix(in srgb, var(--white) 28%, transparent);
 }
 .source-chip-album--p {
-  // 已购：稍弱化（chip 本身已是 brand 强背景，不需要重复高亮）
-  background: rgba(0, 0, 0, 0.15);
-  color: inherit;
+  // 已购：黑底弱化（chip 已是 brand 强背景，不重复高亮）
+  background: color-mix(in srgb, var(--text-main) 15%, transparent);
 }
 
 .source-chip-best {
   font-size: 9px;
+  display: inline-flex;
+  align-items: center;
 }

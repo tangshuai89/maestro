@@ -51,8 +51,13 @@ $accent-green:             #31c27c; // search spinner / play icon / links
 // Search "source chip" per-platform accent, used by an @each in
 // components/_search-panel.scss to generate the .source-chip--best.*
 // rules instead of hand-writing one block per platform.
+// SourceChip 默认态背景：平台 brand 强色 + 黑/白文字（不是 bestSource 才上色）。
+// bestSource 在 .source-chip--best 里用 box-shadow 描边 + ★ 区分，不动 background。
+// 颜色全部用 token（--platform-qq/netease/spotify + --accent 主色），不走硬编码。
+// SCSS map 值支持 var() —— 编译输出仍是 var(--xxx) 引用。
 $platform-colors: (
-  'qq':      (bg: rgba(49, 194, 124, 0.18), fg: #31c27c),
-  'netease': (bg: rgba(217, 68, 68, 0.18),  fg: #ff7b7b),
-  'deezer':  (bg: rgba(108, 75, 195, 0.22), fg: #b39dff),
+  'qq':      (bg: var(--platform-qq),     fg: #1a1a1a),
+  'netease': (bg: var(--platform-netease), fg: #ffffff),
+  'deezer':  (bg: var(--accent),           fg: #ffffff),
+  'spotify': (bg: var(--platform-spotify), fg: #1a1a1a),
 );
