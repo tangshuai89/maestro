@@ -77,12 +77,67 @@ interface SearchResponse {
           size_320mp3?: number;
           size_flac?: number;
         };
-        // 付费信息：pay_play=1 表示需绿钻才能完整播放（非会员只给试听）。
-        // 字段名两种写法都见过，都兜住；拿不到就当不锁（不回归）。
-        pay?: { pay_play?: number; payplay?: number };
+        // 付费信息（QQ 搜索响应里，pay 子对象可能含多个独立维度的付费标记）：
+        //  - pay_play  = 1 → 需绿钻才能完整播放（非会员只给试听）。
+        //  - pay_album = 1 → 属于数字专辑，需单独购买；绿钻 VIP 也不行。
+        //  - pay_track = 1 → 付费单曲，需单独购买；绿钻 VIP 也不行。
+        //  - fee       > 0 → 价格代码，> 0 即代表任何形式的付费内容
+        //                      （数字专辑 / 单曲 / 试听包）。用作兜底信号。
+        // 字段名两种写法（pay_play / payplay）都见过，都兜住；
+        // 拿不到就当不锁（不回归）。见 spec/paid-album-detection。
+        // 见下方 QqPay — 顶层共用。
+        pay?: QqPay;
       }>;
     };
   };
+}
+
+/** QQ 搜索/收藏夹响应里的 `pay` 子对象：所有可能的付费标记。
+ *  任何一项命中 = 需要购买/会员才能完整播放，详见 spec/paid-album-detection。
+ *  字段语义（任一为 1 / > 0 即触发 vipLocked）：
+ *   - pay_play  : 绿钻独占（绿钻能解）
+ *   - pay_album : 数字专辑（必须购买，绿钻也不行）
+ *   - pay_track : 付费单曲（必须购买）
+ *   - fee       : 价格代码，> 0 = 任何付费形式（兜底）
+ *  历史上有 `pay_play` / `payplay` 两种写法，统一兜住。 */
+export interface QqPay {
+  pay_play?: number;
+  payplay?: number;
+  pay_album?: number;
+  pay_track?: number;
+  pay_download?: number;
+  fee?: number;
+}
+
+/**
+ * 判断一首 QQ 歌曲当前 session 是否能听完整曲。
+ * 见 spec/paid-album-detection。
+ *
+ * 判定顺序（短路求值，最可能命中的放前面，方便排查日志）：
+ *   1. 数字专辑（pay_album=1） → 一律锁（绿钻也不能放）
+ *   2. 付费单曲（pay_track=1） → 一律锁
+ *   3. fee > 0（任何付费形式）→ 一律锁（兜底，cover 未来新增付费字段）
+ *   4. 仅绿钻独占（pay_play=1）→ qqVip=true 解锁；其余锁
+ *   5. 都不命中 → 不锁（免费 / 字段缺失）
+ *
+ * 返回 `boolean`（不带 undefined）。`undefined` 在 Track.vipLocked 上代表
+ * "未知，按可播处理"——`detectQqVipLocked` 是**确定**的判断，调用方有需要
+ * 再自己包 undefined。
+ *
+ * 抽成模块顶层函数是为了单测直接 import 验证，不必走 QqMusicProvider
+ * 实例化（避免触发 logger / 真实 QQ 网络）。
+ */
+export function detectQqVipLocked(
+  pay: QqPay | undefined,
+  qqVip: boolean | undefined,
+): boolean {
+  if (pay) {
+    if (pay.pay_album === 1) return true;
+    if (pay.pay_track === 1) return true;
+    if (typeof pay.fee === 'number' && pay.fee > 0) return true;
+    if ((pay.pay_play ?? pay.payplay) === 1) return qqVip !== true;
+  }
+  return false;
 }
 
 @Injectable()
@@ -155,7 +210,7 @@ export class QqMusicProvider {
       album?: { name: string; mid: string };
       interval?: number;
       file?: { media_mid?: string; strMediaMid?: string };
-      pay?: { pay_play?: number; payplay?: number };
+      pay?: QqPay;
     }
 
     const PAGE = 1000;
@@ -514,10 +569,9 @@ export class QqMusicProvider {
       duration: s.interval ?? 0,
       liked: false,
       mediaMid: s.file?.strMediaMid ?? s.file?.media_mid ?? '',
-      // pay_play=1 = 这首需绿钻才能完整播放。但能不能播全曲取决于**当前用户**是不是
-      // 绿钻：绿钻用户照样全曲 → 不标锁；非绿钻（或未知/未登录）→ 标 vipLocked，选源时避开。
-      vipLocked:
-        (s.pay?.pay_play ?? s.pay?.payplay) === 1 && session.qqVip !== true,
+      // 见 spec/paid-album-detection：QQ 付费字段有 4 个独立维度（pay_play /
+      // pay_album / pay_track / fee），detectQqVipLocked 综合判定。
+      vipLocked: detectQqVipLocked(s.pay, session.qqVip),
     }));
   }
 

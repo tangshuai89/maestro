@@ -46,3 +46,12 @@
 - [x] 32. `POST /reco/eval` + CLI `npm run reco:eval`（只读 state.json；--save/--compare
       做基线回归追踪）
 - [x] 33. 测试：eval.test 5 组 + reco.test #46/#47（真召回 / 检索全空必须 0）
+- [x] 34. **2026-09-21 bug 修复**：
+      - Bug #1「像《歌名》一样」胶囊在 1200×800 窗口底部被切：挪到 `.th-reco-head`
+        行内右对齐（`.th-reco-head-actions` flex 容器，head `min-height: 30px` 锁高
+        防止按钮出现/消失时整体跳动）；同步把 `.th-footer-version` 从 `bottom: 20px`
+        收到 `bottom: 2px`，让 cards 底 ≈ footer 顶 ≈ y=886（垂直链约束保持 ~868 不破）
+      - Bug #2 推荐卡不更新：`usePlayer` 新增 reactive `queueIdx` + `queueUnifiedItems`
+        （presentTrack / switchToProvider / resetForSwitch 都同步 setSnapshot）；
+        `useReco` 删掉 `suggestions` state，改 `useMemo` 从队列位置派生
+        `slice(queueIdx, queueIdx + 3)` —— 播到第 4/11/18 首时图鉴自动翻页

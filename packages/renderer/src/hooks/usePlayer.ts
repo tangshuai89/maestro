@@ -139,6 +139,14 @@ export function usePlayer(
      */
     loadMore?: () => Promise<UnifiedSearchItem[]>;
   } | null>(null);
+  // Reactive 镜像 of queueRef.idx / unifiedItems — ref 改了 consumer 收不到，
+  // TheaterView 的「推荐卡跟随队列位置」（spec 2026-09-21）需要 state。
+  // presentTrack / switchToProvider / resetForSwitch 都同步写一次（只有 idx
+  // 真变了才 setState，避免跨平台 fallback 同首重 presentTrack 时无意义 re-render）。
+  const [queueSnapshot, setQueueSnapshot] = useState<{
+    idx: number;
+    items: UnifiedSearchItem[] | undefined;
+  }>({ idx: -1, items: undefined });
   // Guards the async detect-liked result: only apply if the queue is still on
   // the same unified track we detected for (avoids a stale detect clobbering a
   // newer song's ❤ state after a fast skip).
@@ -351,11 +359,19 @@ export function usePlayer(
       const audio = audioRef.current;
       if (audio) audio.dataset.wantPlay = '1';
       setPlaying(true);
+      // 同步 queueSnapshot（idx / items）给 reactive consumer；只有 idx 真变了
+      // 才 setState，避免同首跨平台 fallback 重复 presentTrack 时无意义 re-render。
+      const qSnap = queueRef.current;
+      setQueueSnapshot((prev) => {
+        const newIdx = qSnap?.idx ?? -1;
+        if (prev.idx === newIdx) return prev;
+        return { idx: newIdx, items: qSnap?.unifiedItems };
+      });
       // NOTE: do NOT build the audio graph here — it requires a real user
       // gesture. The graph is built lazily on the first play (onPlay /
       // handlePlayPause). Until then audio plays through the default path.
     },
-    [presentCover, presentPlaceholder, audioRef, wpsRef],
+    [presentCover, presentPlaceholder, audioRef, wpsRef, setQueueSnapshot],
   );
 
   /** 用一个跨平台 source + 展示元数据构造 fallback Track 并重播。同一首歌
@@ -1130,6 +1146,7 @@ export function usePlayer(
   const switchToProvider = (next: MusicProvider) => {
     if (next === provider) return;
     queueRef.current = null; // the search queue is source-specific
+    setQueueSnapshot({ idx: -1, items: undefined }); // mirror to reactive state
     setSearchOpen(false);
     writeStoredProvider(next);
     if (track) skipAutoLoadRef.current = true;
@@ -1384,6 +1401,7 @@ export function usePlayer(
     setCurrentTime(0);
     setDuration(0);
     queueRef.current = null;
+    setQueueSnapshot({ idx: -1, items: undefined });
     currentUnifiedRef.current = undefined;
     triedPlatformsRef.current = new Set();
     setError(null);
@@ -1418,6 +1436,10 @@ export function usePlayer(
     trialFellBack,
     qqQuality,
     deezerPreset,
+    /** Reactive 镜像 of queueRef — TheaterView「推荐卡跟随队列位置」用。
+     *  默认 { idx: -1, items: undefined } 表示当前不在搜索/推荐队列里。 */
+    queueIdx: queueSnapshot.idx,
+    queueUnifiedItems: queueSnapshot.items,
     // cover refs (for the JSX)
     bgLayerRef,
     coverBackdropRef,

@@ -479,5 +479,30 @@ reset();
   expect('37b. searchOne URL 含 provider=netease', fetchCalls[0].url.includes('provider=netease'));
 }
 
+// ── 38. searchOne：item 映射含 versions[0]（点击播放的不变量）──
+// SearchPanel.handleRowClick 播的是 item.versions[0]；早期实现 versions=[]
+// → 单平台模式每行点击静默无效（回归：只有一首歌没 toggle 箭头的行点不播）。
+reset();
+{
+  mockResponse = new Response(
+    JSON.stringify({
+      items: [{
+        id: 'n1', provider: 'netease', title: '稻香', artist: '周杰伦',
+        album: '魔杰座', coverUrl: '/c.jpg', audioUrl: '/music/stream/netease/n1',
+        duration: 223, liked: false, vipLocked: true,
+      }],
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+  const items = await searchOne('netease', '稻香');
+  const it = items[0];
+  expect('38. searchOne 返回 1 条', items.length === 1);
+  expect('38b. versions 恰 1 条（指向自己）', it.versions.length === 1);
+  expect('38c. versions[0].bestSource = netease', it.versions[0].bestSource === 'netease');
+  expect('38d. versions[0].sources[0].trackId = n1', it.versions[0].sources[0].trackId === 'n1');
+  expect('38e. versions[0] 带版本元数据', it.versions[0].title === '稻香' && it.versions[0].duration === 223);
+  expect('38f. vipLocked 透传到 source', it.sources[0].vipLocked === true && it.versions[0].sources[0].vipLocked === true);
+}
+
 console.log(`\n🎉 api.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

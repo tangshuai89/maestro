@@ -22,8 +22,9 @@ const {
   mergeCrossScript,
   PLAY_PRIORITY,
   VERSION_DURATION_TOLERANCE_SEC,
+  sortByRelevance,
 } = require('./search.util');
-import type { Track, SourceInfo } from './types';
+import type { Track, SourceInfo, UnifiedSearchItem } from './types';
 import type { MusicProvider } from '../common/provider';
 
 let passed = 0;
@@ -530,7 +531,7 @@ check('29. classifyVersion 与 buildUnifiedItems 集成（不破坏测试 10/11�
   assert.strictEqual(i10[0].versionType, 'studio');
 });
 
-console.log(`\n// 跨脚本同名：spec 设计上 mergeCrossScript 不用于 search（仅 library import），
+// 跨脚本同名：spec 设计上 mergeCrossScript 不用于 search（仅 library import），
 // 所以 search 阶段同 (key, type) + 不同 normalizeKey 仍拆开。这是有意为之——
 // 把跨脚本合并留给 library import 路径（避免 search 误合并 coverUrl/album
 // 不同的同名项）。
@@ -555,5 +556,188 @@ check('28c. classifyVersion 中文关键字：现场/演唱会/实况/不插电/
   assert.strictEqual(classifyVersion('X', '伴奏'), 'instrumental');
 });
 
-🎉 search.util.test: ${passed} passed, ${failed} failed`);
+// ── selectBestSource 接收 priority（§6.2 渠道优先级） ──────────
+check('P1. selectBestSource 默认 = PLAY_PRIORITY（无参时不破坏旧行为）', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: true, url: '' },
+    { platform: 'netease', trackId: '2', hasCopyright: true, url: '' },
+  ];
+  assert.strictEqual(selectBestSource(sources), 'qq');
+});
+
+check('P2. selectBestSource 接受 priority：每档内按用户序迭代', () => {
+  // 两个全曲源：priority 决定 tier-1 内谁胜出
+  const full: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: true, url: '' },
+    { platform: 'netease', trackId: '2', hasCopyright: true, url: '' },
+  ];
+  assert.strictEqual(
+    selectBestSource(full, ['netease', 'qq', 'deezer', 'spotify']),
+    'netease',
+  );
+  // 两个非全曲源：tier-2 内同样按 priority
+  const preview: SourceInfo[] = [
+    { platform: 'spotify', trackId: '3', hasCopyright: true, url: '' },
+    { platform: 'deezer', trackId: '4', hasCopyright: true, url: '' },
+  ];
+  assert.strictEqual(
+    selectBestSource(preview, ['spotify', 'deezer', 'qq', 'netease']),
+    'spotify',
+  );
+  // 非全曲源不能靠 priority 跨档压过全曲源（ladder 不变，见 P4）
+  assert.strictEqual(
+    selectBestSource(
+      [full[0], preview[0]],
+      ['spotify', 'qq', 'netease', 'deezer'],
+    ),
+    'qq',
+  );
+});
+
+check('P3. selectBestSource priority = 缺某平台 → 该平台永远不返回', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: false, url: '' },  // 无版权
+    { platform: 'deezer', trackId: '2', hasCopyright: true, url: '' }, // 唯一有版权
+  ];
+  // user 从 priority 里删了 deezer → 即使 deezer 是唯一有版权源也不选
+  assert.strictEqual(
+    selectBestSource(sources, ['qq', 'netease', 'spotify']),
+    null,
+  );
+});
+
+check('P4. selectBestSource VIP ladder 不变：priority 仅影响每档内迭代', () => {
+  const sources: SourceInfo[] = [
+    { platform: 'qq', trackId: '1', hasCopyright: true, url: '', vipLocked: true },
+    { platform: 'netease', trackId: '2', hasCopyright: true, url: '', vipLocked: false },
+    { platform: 'deezer', trackId: '3', hasCopyright: true, url: '', vipLocked: false },
+  ];
+  // qq VIP 锁 → 跳过；剩下 netease / deezer 都是非锁，priority=[deezer,...]
+  // → 但 netease 在 FULL_SONG_PROVIDERS（qq/netease），deezer 不在 → 仍选 netease
+  assert.strictEqual(
+    selectBestSource(sources, ['deezer', 'netease', 'qq', 'spotify']),
+    'netease',
+  );
+});
+
+check('P5. buildUnifiedItems 透传 priority：bestSource 按用户序选', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: 'G', artist: 'A' }) },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: 'G', artist: 'A' }) },
+  ];
+  const items = buildUnifiedItems(
+    new Map(),
+    entries,
+    ['netease', 'qq', 'deezer', 'spotify'],
+  );
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].bestSource, 'netease');
+});
+
+check('P6. mergeCrossScript 透传 priority：合并后 bestSource 按用户序重选', () => {
+  const items: UnifiedSearchItem[] = [
+    {
+      id: 'qq-1', title: '横顔', artist: 'Yama', album: '', coverUrl: '',
+      duration: 200, sources: [mkSource('qq', { trackId: '1' })], bestSource: 'qq' as const,
+      versionType: 'studio' as const, versions: [],
+    },
+    {
+      id: 'ne-1', title: 'Yokogao', artist: 'Yama', album: '', coverUrl: '',
+      duration: 200, sources: [mkSource('netease', { trackId: '2' })], bestSource: 'netease' as const,
+      versionType: 'studio' as const, versions: [],
+    },
+  ];
+  const merged = mergeCrossScript(items, ['netease', 'qq', 'deezer', 'spotify']);
+  assert.strictEqual(merged.length, 1);
+  // sources 含 qq + netease（都是全曲源），tier-1 内按 user priority 选 netease
+  assert.strictEqual(merged[0].bestSource, 'netease');
+});
+
+// ── R. sortByRelevance：分页前按查询相关性重排 ─────────────────
+// 回归：buildUnifiedItems 输出序 = 平台段首次出现序（qq 段在前），平台独占曲目
+// 会被挤出第一页——网易云独有「浓缩蓝鲸 · 裘德」排在 25 条 QQ 弱相关结果之后。
+check('R1. sortByRelevance：netease 独占精确命中从末尾提到第一页', () => {
+  const entries: { track: Track; platform: MusicProvider }[] = [];
+  for (let i = 0; i < 25; i++) {
+    entries.push({
+      track: mkTrack({
+        id: `qq-${i}`, provider: 'qq',
+        title: `相关歌曲${i}`, artist: `歌手${i}`,
+      }),
+      platform: 'qq' as const,
+    });
+  }
+  entries.push({
+    track: mkTrack({
+      id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德',
+    }),
+    platform: 'netease' as const,
+  });
+  const items = buildUnifiedItems(new Map(), entries);
+  const before = items.findIndex((it) => it.artist === '裘德');
+  assert.strictEqual(before, 25, '重排前在 index 25（页外）');
+  const sorted = sortByRelevance(items, '浓缩蓝鲸');
+  const after = sorted.findIndex((it) => it.artist === '裘德');
+  assert.ok(after === 0, `重排后应在第 0 位（实际 ${after}）`);
+});
+
+check('R2. sortByRelevance：多 token「裘德 浓缩蓝鲸」标题+歌手双命中压过同歌名', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '浓缩蓝鲸', artist: '别人' }), platform: 'qq' as const },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德' }), platform: 'netease' as const },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  const sorted = sortByRelevance(items, '裘德 浓缩蓝鲸');
+  assert.strictEqual(sorted[0].artist, '裘德', '标题+歌手双 token 命中应排第一');
+});
+
+check('R3. sortByRelevance：全不匹配时保持插入序（不回归）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '甲', artist: 'A' }), platform: 'qq' as const },
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '乙', artist: 'B' }), platform: 'netease' as const },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  const sorted = sortByRelevance(items, '完全不相关');
+  assert.deepStrictEqual(sorted.map((it) => it.title), ['甲', '乙']);
+});
+
+check('R4. sortByRelevance：空 query / 全空白 → 原序返回', () => {
+  const entries = [
+    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '甲', artist: 'A' }), platform: 'qq' as const },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(sortByRelevance(items, '   '), items);
+});
+
+check('R5. sortByRelevance：同分同名按平台内 rank 交错（浓缩蓝鲸实测场景）', () => {
+  // 25 条 QQ 同名翻唱 + 网易云 #1 裘德原版：query 分全等（+120），
+  // rank tie-break 让 ne#0 裘德升到第 2 位（仅次于 qq#0），而不是沉在 25 名外。
+  const entries: { track: Track; platform: MusicProvider }[] = [];
+  for (let i = 0; i < 25; i++) {
+    entries.push({
+      track: mkTrack({ id: `qq-${i}`, provider: 'qq', title: '浓缩蓝鲸', artist: `翻唱${i}` }),
+      platform: 'qq' as const,
+    });
+  }
+  entries.push({
+    track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德' }),
+    platform: 'netease' as const,
+  });
+  const items = buildUnifiedItems(new Map(), entries);
+  // 模拟 music.service 的 rankMap：每平台内下标即名次（qq-i→i，ne-1→0）
+  const rankMap = new Map<string, number>();
+  for (let i = 0; i < 25; i++) rankMap.set(`qq:qq-${i}`, i);
+  rankMap.set('netease:ne-1', 0);
+  const rankOf = (it: UnifiedSearchItem) =>
+    Math.min(
+      ...it.sources.map((s) => rankMap.get(`${s.platform}:${s.trackId}`) ?? Number.MAX_SAFE_INTEGER),
+    );
+  const sorted = sortByRelevance(items, '浓缩蓝鲸', rankOf);
+  const qi = sorted.findIndex((it) => it.artist === '裘德');
+  assert.ok(qi === 1, `裘德（ne rank0）应仅次于 qq rank0（实际第 ${qi} 位）`);
+  assert.strictEqual(sorted[0].artist, '翻唱0', 'qq rank0 仍第一');
+  assert.strictEqual(sorted[2].artist, '翻唱1', 'qq rank1 第三（被 ne rank0 超过）');
+});
+
+console.log(`🎉 search.util.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

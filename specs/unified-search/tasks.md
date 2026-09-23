@@ -22,3 +22,27 @@
       时长最长」——旧口径取最短，导致"盲选"折叠行显示 1:20 的片段；并把偏离主版本
       时长 >50% 的孤立 cluster 拆成独立 item（片段/剪辑不再混进 versions）。
       `versions[0]` = 主版本的不变量写进注释与 spec；新增 11b/11c/11d 三个白盒用例
+- [x] 18. 分页前按查询相关性重排（`sortByRelevance`，search.util.ts）：旧行为直接
+      按 `buildUnifiedItems` 输出序（= 各平台段首次出现序，qq 段整体在前）分页，
+      平台独占曲目会被挤出第一页——实测网易云独有「浓缩蓝鲸 · 裘德」落在 25 条
+      QQ 弱相关结果之后（pageSize=20 时不可见）。打分：标题全等 +120 / 前缀 +70 /
+      包含 +50，歌手全等 +60 / 包含 +30，多 token 每命中 +20；稳定排序，0 分保持
+      插入序不回归。仅 searchUnified 分页前调用，库合并没有 query 不用。
+      新增 R1-R4 白盒用例（search.util.test.ts）。顺带修复该测试文件存量未闭合
+      模板串（ef874cb 引入，整文件 28b 起从未真正执行）及 P2/P6 过期断言
+      （priority 不能跨档把非全曲源抬过全曲源，与 P4/设计注释一致化）。
+- [x] 19. 网易云搜索端点迁移 `search/get/web` → `cloudsearch/pc`
+      （netease.provider.ts）：2026-09 实测旧端点对**登录态**请求返回
+      `code:405 "操作频繁"`（账号×端点维度风控，匿名反而放行）→ 静默空列表，
+      用户看到"暂无结果"。新端点是官方网页客户端现行搜索接口，匿名/登录态
+      均 200；schema 换移动端命名（ar/al/dt），且单曲内联 `privilege` 权限 +
+      `al.picUrl` 封面——原 v3 song/detail 补充请求整体删除（每次搜索少一发
+      请求，降低风控面）。`code!==200` 现在显式抛 BadRequestException（上层
+      标记平台 error，不再伪装成"没结果"）。测试 13-16 改单调用 cloudsearch
+      schema，新增 15e（VIP+privilege 缺失不锁）与 16（405→抛错）。
+- [x] 20. 同分 tie-break 按平台内 rank 交错（`sortByRelevance` 第三参 `rankOf`）：
+      同名翻唱 query 分全等时，"各平台自家排名"是最可靠信号——QQ 25 条同名
+      「浓缩蓝鲸」全 +120，无 tie-break 时 ne#1 裘德仍沉底。music.service 构建
+      `platform:trackId → 平台内名次` 映射传入，同分按 rank 升序 → 各平台 top
+      结果交错冒头。实测端到端：裘德《浓缩蓝鲸》升至综合搜索第 1-2 位。
+      新增 R5 用例。

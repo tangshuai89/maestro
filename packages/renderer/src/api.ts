@@ -72,6 +72,8 @@ export interface Track {
   duration: number;
   liked: boolean;
   mediaMid?: string; // QQ 取流用的 media_mid（高音质需要）
+  /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。server Track 同名字段。 */
+  vipLocked?: boolean;
 }
 
 /** QQ 音质档位。standard=m4a，high=320mp3，lossless=flac（需会员）。 */
@@ -617,28 +619,44 @@ export async function searchOne(
       signal,
     }),
   );
-  return res.items.map((t): UnifiedSearchItem => ({
-    id: `${t.provider}:${t.id}`,
-    title: t.title,
-    artist: t.artist,
-    album: t.album,
-    coverUrl: t.coverUrl,
-    duration: t.duration,
-    bestSource: t.provider,
-    // 单平台搜索结果没有 versionType 分类（接口返回原始 Track），默认 studio。
-    // 跨平台 searchUnified 由服务端 classifyVersion 标注。
-    versionType: 'studio',
-    versions: [],  // 单平台搜索没 versionType 分类，默认空数组（自己）。
-    sources: [
-      {
-        platform: t.provider,
-        trackId: t.id,
-        hasCopyright: true,
-        url: t.audioUrl,
-        ...(t.mediaMid ? { mediaMid: t.mediaMid } : {}),
-      },
-    ],
-  }));
+  return res.items.map((t): UnifiedSearchItem => {
+    const source: UnifiedSourceInfo = {
+      platform: t.provider,
+      trackId: t.id,
+      hasCopyright: true,
+      url: t.audioUrl,
+      ...(t.mediaMid ? { mediaMid: t.mediaMid } : {}),
+      ...(t.vipLocked !== undefined ? { vipLocked: t.vipLocked } : {}),
+    };
+    return {
+      id: `${t.provider}:${t.id}`,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      coverUrl: t.coverUrl,
+      duration: t.duration,
+      bestSource: t.provider,
+      // 单平台搜索结果没有 versionType 分类（接口返回原始 Track），默认 studio。
+      // 跨平台 searchUnified 由服务端 classifyVersion 标注。
+      versionType: 'studio',
+      // 单平台结果没有多版本概念，versions 填一条指向自己。注意不能留空：
+      // SearchPanel.handleRowClick 播的是 item.versions[0]（不变量 =
+      // versions[0] 即主版本），空数组会让行点击静默无效（单曲结果点不播）。
+      versions: [
+        {
+          id: `${t.provider}:${t.id}:v0`,
+          duration: t.duration,
+          sources: [source],
+          bestSource: t.provider,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          coverUrl: t.coverUrl,
+        },
+      ],
+      sources: [source],
+    };
+  });
 }
 
 /**
@@ -800,6 +818,117 @@ export async function saveRecoKey(apiKey: string): Promise<{ ok: true; tail: str
       body: JSON.stringify({ apiKey }),
     }),
   );
+}
+
+/** §5 Settings「DeepSeek key」：清掉用户存在服务端的 API key。返回 { ok: true }。 */
+export async function resetRecoKey(): Promise<{ ok: true }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/reco/key/reset`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
+  );
+}
+
+/** §6.2 渠道优先级：拿当前用户的优先级 + 缺省值（renderer 首帧兜底用）。 */
+export async function getChannelPriority(): Promise<{
+  priority: MusicProvider[];
+  default: MusicProvider[];
+}> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/channel-priority`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/** §6.2 渠道优先级：保存新的顺序。重复 / 未知 provider 会被服务端 400。 */
+export async function setChannelPriority(
+  priority: MusicProvider[],
+): Promise<{ ok: true; priority: MusicProvider[] }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/channel-priority`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    }),
+  );
+}
+
+/** §6.2 渠道优先级：重置到 PLAY_PRIORITY（删 pref key）。 */
+export async function resetChannelPriority(): Promise<{
+  ok: true;
+  priority: MusicProvider[];
+}> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/channel-priority`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
+  );
+}
+
+/** §5 源连接健康：每个平台近 24h 成功率 + 最近失败时间戳（进程内 Map）。 */
+export async function fetchSourceHealth(): Promise<{
+  items: Array<{
+    provider: MusicProvider;
+    total: number;
+    successRate: number;
+    lastFailureAt: number | null;
+  }>;
+}> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/source-health`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/** §5 Settings「库管理」：清空某平台在库里的所有 liked 贡献。deezer → 400。 */
+export async function clearProviderLibrary(
+  provider: MusicProvider,
+): Promise<{ ok: true; removed: number }> {
+  return json(
+    await fetchWithToken(
+      `${API_BASE}/music/library/${encodeURIComponent(provider)}/clear`,
+      { method: 'POST', credentials: 'include' },
+    ),
+  );
+}
+
+/** §5 Settings「库管理」：一键清空整库（含各平台的 likeSync 队列）。 */
+export async function clearAllLibraries(): Promise<{ ok: true }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/library`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
+  );
+}
+
+/** §5 Settings「平台账号」：批量拉 4 个平台的登录态 + lastValidatedAt。失败平台
+ *  默认 loggedIn=false + user=null + lastValidatedAt=null，不抛错。 */
+export async function fetchAuthStatusAll(): Promise<
+  Record<MusicProvider, AuthStatusExtended>
+> {
+  const providers: MusicProvider[] = ['qq', 'netease', 'deezer', 'spotify'];
+  const out = {} as Record<MusicProvider, AuthStatusExtended>;
+  await Promise.all(
+    providers.map(async (p) => {
+      try {
+        out[p] = await getAuthStatusExtended(p);
+      } catch {
+        out[p] = {
+          provider: p,
+          loggedIn: false,
+          user: null,
+          lastValidatedAt: null,
+        };
+      }
+    }),
+  );
+  return out;
 }
 
 /** 单个平台的"我的喜欢"导入状态。count=0 且有 error 表示该平台没拉到。 */

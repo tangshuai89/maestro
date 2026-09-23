@@ -79,25 +79,24 @@ interface SongUrlResponse {
 interface NeteaseSearchSong {
   id: number;
   name: string;
+  /** web schema（search/get）：artists/album/duration。 */
   artists?: { id: number; name: string }[];
   album?: { id: number; name: string; picUrl?: string };
   duration?: number;
+  /** cloudsearch/pc schema（移动端命名）：ar/al/dt + 内联 privilege。 */
+  ar?: { id: number; name: string }[];
+  al?: { id: number; name: string; picUrl?: string };
+  dt?: number;
+  /** 内联权限对象，与 v3 song/detail 的 privileges[] 同构（id/fee/pl/st）。 */
+  privilege?: NeteasePrivilege;
 }
 
 interface NeteaseSearchResponse {
   code: number;
+  /** 非 200（如 405 风控）时 result 缺失，msg/message 带原因。 */
+  msg?: string;
+  message?: string;
   result?: { songs?: NeteaseSearchSong[] };
-}
-
-interface SongDetailV3Response {
-  code: number;
-  songs?: {
-    id: number;
-    al?: { id: number; name: string; picUrl?: string };
-  }[];
-  /** 与 songs 平行的权限数组。`pl` = 当前用户可播的最大位率（bps），
-   *  `pl<=0` 表示这首歌当前账号放不了全曲（无版权 / VIP 独占 / 只给试听）。 */
-  privileges?: { id: number; pl?: number; fee?: number; st?: number }[];
 }
 
 /** QQ 音质档位 → 网易云 level。standard→standard，high→exhigh(≈320)，
@@ -107,6 +106,42 @@ const NETEASE_LEVEL: Record<QqQuality, string> = {
   high: 'exhigh',
   lossless: 'lossless',
 };
+
+/** 网易云 privilege 子对象的最小类型（仅取检测需要的字段）。 */
+export interface NeteasePrivilege {
+  /** 当前账号可播最高码率 (bps)；0/缺失 = 完全不能播。 */
+  pl?: number;
+  /** 价格/付费代码。0 = 免费，1 = 数字专辑，4/8 = VIP 付费单曲等。
+   *  > 0 一律锁——付费内容不是仅靠 pl > 0 就能给完整曲。 */
+  fee?: number;
+  /** 状态码（vip 项展开用，检测未用到，预留）。 */
+  st?: number;
+}
+
+/**
+ * 判断一首网易云歌曲当前 session 是否能听完整曲。
+ * 见 spec/paid-album-detection。
+ *
+ * 判定逻辑：
+ *   1. fee > 0 → 一律锁（数字专辑 / 付费单曲 / 任何付费形式）。
+ *      这是修「台北车站」类 bug 的关键——原代码只看 pl > 0，把数字专辑
+ *      的 128kbps 试听 pl 判成"已解锁"，实际只能给 30 秒预览。
+ *   2. 否则沿用旧逻辑：pl > 0 → 不锁；pl <= 0 → 锁。
+ *   3. p 整体缺失 → 不锁（调用方在 netease.provider.ts:329-331 还有
+ *      「未知 = 按 neteaseVip 兜底」的第二层兜底，这里只做基于 p 的
+ *      确定判断）。
+ *
+ * 与 QQ 同款抽成模块顶层函数，便于单测 import 直接验证。
+ */
+export function detectNeteaseVipLocked(
+  p: NeteasePrivilege | undefined,
+): boolean {
+  if (!p) return false;
+  // 付费内容（数字专辑/付费单曲）→ 绿胶/VIP 也得买，不能放完整曲
+  if (typeof p.fee === 'number' && p.fee > 0) return true;
+  // 老逻辑：pl > 0 视为可播
+  return !(typeof p.pl === 'number' && p.pl > 0);
+}
 
 @Injectable()
 export class NeteaseMusicProvider {
@@ -238,7 +273,15 @@ export class NeteaseMusicProvider {
   }
 
   /**
-   * 按关键词搜索（歌手 / 歌名）。走明文 /api/search/get/web，服务端直连可用。
+   * 按关键词搜索（歌手 / 歌名）。走 /api/cloudsearch/pc——官方网页客户端现行
+   * 端点，明文 POST 服务端直连可用。
+   *
+   * ⚠️ 为什么不是老的 /api/search/get/web：2026-09 实测该端点对**登录态**
+   * 请求返回 `code:405 "操作频繁"`（风控，按账号×端点维度；匿名请求反而放行）。
+   * cloudsearch/pc 对匿名和登录态都正常返回，且单曲内联 `privilege` 权限对象
+   * 和 `al.picUrl` 封面——原来用于补这两个字段的 v3 song/detail 补充请求
+   * 可以整个省掉，每次搜索少一发请求，也降低再触发风控的概率。
+   *
    * 返回的 audioUrl 交由 music.service 拼成后端代理相对路径。
    */
   async search(
@@ -248,7 +291,7 @@ export class NeteaseMusicProvider {
   ): Promise<Track[]> {
     const data = await this.apiCall<NeteaseSearchResponse>(
       session,
-      'https://music.163.com/api/search/get/web',
+      'https://music.163.com/api/cloudsearch/pc',
       {
         s: keyword,
         type: '1', // 1 = 单曲
@@ -257,83 +300,42 @@ export class NeteaseMusicProvider {
         total: 'true',
       },
     );
+    // 非 200（风控 405 / 登录态失效 301 等）不是"没有结果"——必须显式报错，
+    // 让上层把该平台标记为 error 而不是静默返回空列表（否则用户看到"暂无
+    // 结果"会误以为歌不存在）。
+    if (data.code !== 200) {
+      const msg = data.msg ?? data.message ?? '';
+      throw new BadRequestException(
+        `网易云搜索失败: code=${data.code}${msg ? ` ${msg}` : ''}`,
+      );
+    }
     const songs = data.result?.songs ?? [];
     this.logger.log(`netease search "${keyword}" → ${songs.length} 首`);
-    const tracks: Track[] = songs.map((s) => ({
-      id: String(s.id),
-      provider: 'netease' as const,
-      title: s.name,
-      artist: (s.artists ?? []).map((a) => a.name).join(' / ') || '未知艺人',
-      album: s.album?.name ?? '',
-      coverUrl: s.album?.picUrl ?? '',
-      audioUrl: '', // 由 getStreamPath 在播放时动态获取
-      duration: Math.round((s.duration ?? 0) / 1000),
-      liked: false,
-    }));
-    // /api/search/get/web 不返回封面，也不含权限；批量补一发 v3 song/detail 拿
-    // al.picUrl（封面）+ privilege（可播性，见 vipLocked）。
-    const enrich = await this.fetchEnrichment(
-      session,
-      tracks.map((t) => t.id),
-    );
-    return tracks.map((t) => ({
-      ...t,
-      coverUrl: enrich.get(t.id)?.cover ?? t.coverUrl,
-      vipLocked: enrich.get(t.id)?.vipLocked,
-    }));
-  }
-
-  /**
-   * 批量取封面 + 权限（search/get/web 两者都不含）。失败不影响搜索结果。
-   * `vipLocked` 来自 `privilege.pl`：`pl<=0` = 当前账号放不了全曲（无版权 / VIP
-   * 独占 / 只给试听）——这是**用户维度**的判断，比 QQ 的歌级 pay_play 更准。
-   *
-   * 兜底：网易云 song/detail 偶尔会漏 `privileges` 数组里的 id（API 行为变化
-   * / 网关层裁剪），songs 数组里有但 privileges 没有 → 没法判 pl 状态。按
-   * 「未知 = 不能播」处理：非 VIP 用户 → 一律标 vipLocked=true（保守，错过
-   * 几首免费歌的成本远低于播成 30s 试听）。VIP 用户 → 不锁（黑胶确实能放
-   * 绝大多数歌）。`session.neteaseVip` 登录时由 netease-auth.strategy
-   * 拉一次 `vip_info` 缓存。
-   */
-  private async fetchEnrichment(
-    session: ProviderSession,
-    ids: string[],
-  ): Promise<Map<string, { cover?: string; vipLocked?: boolean }>> {
-    const map = new Map<string, { cover?: string; vipLocked?: boolean }>();
-    if (!ids.length) return map;
-    try {
-      const c = JSON.stringify(ids.map((id) => ({ id: Number(id) })));
-      const data = await this.apiCall<SongDetailV3Response>(
-        session,
-        'https://music.163.com/api/v3/song/detail',
-        { c },
-      );
-      for (const s of data.songs ?? []) {
+    // privilege 内联缺失时的兜底沿用旧 enrichment 规则：未知 = 不能播，
+    // 非 VIP → 锁（保守，错过免费歌的成本远低于播成 30s 试听）；
+    // VIP → 不锁（黑胶确实能放绝大多数歌）。
+    const isVip = session.neteaseVip === true;
+    return songs.map((s): Track => {
+      // cloudsearch/pc 用移动端字段名（ar/al/dt）；兼容 web schema 兜底。
+      const artists = s.ar ?? s.artists;
+      const album = s.al ?? s.album;
+      const durationMs = s.dt ?? s.duration;
+      return {
+        id: String(s.id),
+        provider: 'netease' as const,
+        title: s.name,
+        artist: (artists ?? []).map((a) => a.name).join(' / ') || '未知艺人',
+        album: album?.name ?? '',
         // ?param=300y300 → CDN 缩放到合适尺寸，省带宽。
-        map.set(String(s.id), {
-          cover: s.al?.picUrl ? `${s.al.picUrl}?param=300y300` : undefined,
-        });
-      }
-      for (const p of data.privileges ?? []) {
-        const entry = map.get(String(p.id)) ?? {};
-        entry.vipLocked = !(typeof p.pl === 'number' && p.pl > 0);
-        map.set(String(p.id), entry);
-      }
-      // 兜底：privileges 数组漏了某些 id（songs 数组有但 privileges 没有）。
-      // 非 VIP 用户 → 标 vipLocked=true（保守：未知按不能播处理）。
-      // VIP 用户 → 不锁（黑胶基本能放绝大多数歌）。
-      // undefined 视为非 VIP（与 session.neteaseVip 文档口径一致）。
-      const isVip = session.neteaseVip === true;
-      for (const id of ids) {
-        const entry = map.get(id);
-        if (entry && entry.vipLocked === undefined && !isVip) {
-          entry.vipLocked = true;
-        }
-      }
-    } catch (err) {
-      this.logger.warn(`netease enrich fetch failed: ${(err as Error).message}`);
-    }
-    return map;
+        coverUrl: album?.picUrl ? `${album.picUrl}?param=300y300` : '',
+        audioUrl: '', // 由 getStreamPath 在播放时动态获取
+        duration: Math.round((durationMs ?? 0) / 1000),
+        liked: false,
+        vipLocked: s.privilege
+          ? detectNeteaseVipLocked(s.privilege)
+          : !isVip,
+      };
+    });
   }
 
   /** 取歌曲的真实播放 URL（有时效，即拉即用）。按音质档位选 level。 */

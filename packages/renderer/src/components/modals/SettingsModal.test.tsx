@@ -34,6 +34,11 @@ const mocks = vi.hoisted(() => ({
   ),
   collectLocalStorage: vi.fn(() => ({ theme: 'dark' })),
   restoreLocalStorage: vi.fn(),
+  // §5 新增的 api wrappers（被 SettingsModal 内嵌子组件调用）
+  fetchRecoStatus: vi.fn(() =>
+    Promise.resolve({ configured: false, librarySize: 0 }),
+  ),
+  resetRecoKey: vi.fn(() => Promise.resolve({ ok: true })),
 }));
 const {
   getBackupInfo: mockGetBackupInfo,
@@ -44,6 +49,8 @@ const {
   decryptBundle: mockDecryptBundle,
   collectLocalStorage: mockCollectLocalStorage,
   restoreLocalStorage: mockRestoreLocalStorage,
+  fetchRecoStatus: mockFetchRecoStatus,
+  resetRecoKey: mockResetRecoKey,
 } = mocks;
 
 vi.mock('../../api', () => ({
@@ -53,6 +60,22 @@ vi.mock('../../api', () => ({
   triggerBackup: mocks.triggerBackup,
   getStateSnapshot: mocks.getStateSnapshot,
   importState: mocks.importState,
+  fetchRecoStatus: mocks.fetchRecoStatus,
+  resetRecoKey: mocks.resetRecoKey,
+}));
+
+// §5 新增的 4 个子组件：mock 占位符，不发网络请求。SettingsModal 集成测试只关心备份/导出/导入流程。
+vi.mock('../settings/ChannelPriorityList', () => ({
+  default: () => <div data-testid="mock-channel-priority" />,
+}));
+vi.mock('../settings/AccountsList', () => ({
+  default: () => <div data-testid="mock-accounts-list" />,
+}));
+vi.mock('../settings/LibraryManager', () => ({
+  default: () => <div data-testid="mock-library-manager" />,
+}));
+vi.mock('../settings/SourceHealthSection', () => ({
+  default: () => <div data-testid="mock-source-health" />,
 }));
 
 // backup-crypto 替换 IO 路径（encrypt/decrypt 用 crypto.subtle 走真实流程，
@@ -88,6 +111,8 @@ beforeEach(() => {
   mockDecryptBundle.mockClear();
   mockCollectLocalStorage.mockClear();
   mockRestoreLocalStorage.mockClear();
+  mockFetchRecoStatus.mockClear();
+  mockResetRecoKey.mockClear();
   clickSpy.mockReset();
 
   // 默认 a.click 不炸

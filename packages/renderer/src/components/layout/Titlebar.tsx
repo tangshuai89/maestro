@@ -141,7 +141,7 @@ export default function Titlebar({
       <button
         className="titlebar-btn settings-btn-icon"
         onClick={onOpenSettings}
-        title="设置 · 备份 / 导出 / 导入会话快照"
+        title="设置 · 备份 / 导出 / 导入 / 渠道优先级 / 账号 / 库管理 / 源健康"
       >
         ⚙
       </button>

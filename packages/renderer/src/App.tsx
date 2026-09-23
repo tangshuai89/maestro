@@ -46,7 +46,15 @@ export default function App() {
   const lyrics = useLyrics(player.track, player.provider, player.currentSources);
   const auth = useAuth(player.provider, player.loadNextTrack, player.setError);
   spotifyTierRef.current = auth.auth.tier ?? undefined;
-  const reco = useReco(player.playSearch, player.setError);
+  // 把 usePlayer 的 reactive queue 状态（queueIdx / queueUnifiedItems）
+  // 透传给 useReco —— 推荐卡「正在播 + 接下来 2」从这里派生
+  // （spec 2026-09-21「推荐卡跟随队列位置」）。
+  const reco = useReco(
+    player.playSearch,
+    player.setError,
+    player.queueIdx,
+    player.queueUnifiedItems,
+  );
   const theme = useTheme();
   const deezerEditorials = useDeezerEditorials();
 
