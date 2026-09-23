@@ -123,12 +123,15 @@ export interface QqPay {
  * 判断一首 QQ 歌曲当前 session 是否能听完整曲。
  * 见 spec/paid-album-detection。
  *
- * 判定顺序（短路求值，最可能命中的放前面，方便排查日志）：
- *   1. 数字专辑（pay_album=1） → 一律锁（绿钻也不能放）
- *   2. 付费单曲（pay_track=1） → 一律锁
- *   3. fee > 0（任何付费形式）→ 一律锁（兜底，cover 未来新增付费字段）
- *   4. 仅绿钻独占（pay_play=1）→ qqVip=true 解锁；其余锁
- *   5. 都不命中 → 不锁（免费 / 字段缺失）
+ * ⚠️ 2026-09-23 语义修正：QQ 搜索的 `pay` 块标的是**歌曲的商业分类**，
+ * 不是"当前账号能不能播"——实测绿钻账号对 `pay_month=1 + price_track=200`
+ * 的整版权目录（周杰伦/Adele 全中）都能拿到完整流。真正的每用户可播信号在
+ * vkey 响应里（`purl` 有无/`isbuy`/`errtype`），搜索响应里没有。
+ *
+ * 因此所有付费标记统一收敛为「会员可解」：有任一标记且不能确认账号是会员
+ * （qqVip !== true）→ 锁；确认是会员 → 不锁。qqVip 由 probeVipAccess 惰性
+ * 探测填充（QQ 的 get_user_baseinfo_v2 不回 VIP 字段，登录时检测不到）。
+ * 误判由 renderer 的 30s-trial 运行时检测兜底（tryUpgradeFromTrial）。
  *
  * 返回 `boolean`（不带 undefined）。`undefined` 在 Track.vipLocked 上代表
  * "未知，按可播处理"——`detectQqVipLocked` 是**确定**的判断，调用方有需要
@@ -141,19 +144,16 @@ export function detectQqVipLocked(
   pay: QqPay | undefined,
   qqVip: boolean | undefined,
 ): boolean {
-  if (pay) {
-    if (pay.pay_album === 1) return true;
-    if (pay.pay_track === 1) return true;
-    if (typeof pay.fee === 'number' && pay.fee > 0) return true;
-    // 2026-09 实测漏识别：QQ 接口实际用 price_track（金额分）/ price_album
-    // （金额分）/ pay_month=1 标付费独享——spec/paid-album-detection 当时写的
-    // pay_album/pay_track/fee 三个旧字段 QQ 接口全 0/缺。补这三项。
-    if (typeof pay.price_track === 'number' && pay.price_track > 0) return true;
-    if (typeof pay.price_album === 'number' && pay.price_album > 0) return true;
-    if (pay.pay_month === 1) return true;
-    if ((pay.pay_play ?? pay.payplay) === 1) return qqVip !== true;
-  }
-  return false;
+  if (!pay) return false;
+  const flagged =
+    pay.pay_album === 1 ||
+    pay.pay_track === 1 ||
+    (typeof pay.fee === 'number' && pay.fee > 0) ||
+    (typeof pay.price_track === 'number' && pay.price_track > 0) ||
+    (typeof pay.price_album === 'number' && pay.price_album > 0) ||
+    pay.pay_month === 1 ||
+    (pay.pay_play ?? pay.payplay) === 1;
+  return flagged && qqVip !== true;
 }
 
 
@@ -679,6 +679,39 @@ export class QqMusicProvider {
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────
+
+  /**
+   * 惰性探测当前账号是否「能播会员曲库」（≈ 绿钻 VIP）。
+   *
+   * 背景：QQ 的 get_user_baseinfo_v2 对很多账号不回任何 VIP 字段
+   * （2026-09 实测 nick/uin 之外全缺），登录时 detectVip 恒 undefined；
+   * 而搜索响应的 pay 块只标"歌曲商业分类"（pay_play/pay_month/price_track
+   * 对整个版权目录都打），不能区分"绿钻可放"vs"必须单购"。
+   *
+   * 权威信号是 GetVkey：对一首稳定的会员曲库歌（周杰伦《晴天》
+   * 0039MnYb0qxYhV，长期 pay_play=1），会员账号返回非空 purl（全曲流），
+   * 无 cookie / 非会员返回空 purl。
+   *
+   * 返回值：true = 能放（purl 非空）；false = 不能放（purl 空 / errtype）；
+   * undefined = 探测本身失败（网络/结构异常）→ 调用方不写 session，下次再试。
+   */
+  async probeVipAccess(session: ProviderSession): Promise<boolean | undefined> {
+    // 稳定的会员曲库探测曲目：周杰伦《晴天》。选它因为 QQ 曲库里它几乎
+    // 永远带 pay 标记且长期不下架。若未来该 mid 失效，probe 会返回
+    // false（purl 空）——保守降级为"非会员"标记，不会误判成 VIP。
+    const PROBE_MID = '0039MnYb0qxYhV';
+    try {
+      const vkey = await this.fetchVkey(session, [PROBE_MID]);
+      const info = vkey?.data?.midurlinfo?.[0];
+      if (!info) return undefined;
+      return Boolean(info.purl);
+    } catch (err) {
+      this.logger.warn(
+        `qqVip probe failed: ${(err as Error).message}（按未知处理，下次搜索重试）`,
+      );
+      return undefined;
+    }
+  }
 
   private async fetchVkey(
     session: ProviderSession,

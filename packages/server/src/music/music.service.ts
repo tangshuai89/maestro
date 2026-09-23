@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { MusicProvider, MUSIC_PROVIDERS } from '../common/provider';
 import { StorageService } from '../common/storage';
-import { ProviderSession, Session } from '../common/session';
+import { ProviderSession, Session, SessionService } from '../common/session';
 import { QqMusicProvider, QqQuality } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { DeezerMusicProvider } from './deezer.provider';
@@ -254,6 +254,9 @@ export class MusicService {
     private readonly lyricsService: LyricsService,
     private readonly match: MatchService,
     private readonly likeSync: LikeSyncQueue,
+    // 可选（测试里直接 new MusicService() 可能不传）：qqVip 惰性探测的持久化
+    // 需要它；缺省时探测结果只落在内存 session 上，不落盘。
+    private readonly sessions?: SessionService,
     // 可选：直接 new MusicService() 的测试（不走 NestJS 容器）不传此参时
     // 自动用 no-op stub；生产路径（NestJS DI）永远注入真实 SourceHealthService。
     private readonly health: SourceHealthService = NOOP_SOURCE_HEALTH,
@@ -623,6 +626,7 @@ export class MusicService {
 
     let tracks: Track[];
     if (provider === 'qq') {
+      await this.ensureQqVip(session);
       const ps = session.providers.qq; // 可能未登录（QQ 搜索允许匿名）
       tracks = await this.qq.search(ps ?? {}, kw);
     } else if (provider === 'netease') {
@@ -917,6 +921,7 @@ export class MusicService {
     try {
       let tracks: Track[];
       if (provider === 'qq') {
+        await this.ensureQqVip(session);
         tracks = await this.qq.search(session.providers.qq ?? {}, keyword, 30);
       } else if (provider === 'netease') {
         // 网易云搜索需要登录态；未登录时 requireProviderSession 抛 404。
@@ -951,6 +956,33 @@ export class MusicService {
         error: (err as Error).message,
       };
     }
+  }
+
+  /**
+   * 惰性填充 session.providers.qq.qqVip（"该账号能否播会员曲库"）。
+   *
+   * 为什么需要：QQ 搜索响应的 pay 块（pay_play/pay_month/price_track…）标的
+   * 是歌曲的商业分类而非"当前账号可播性"——绿钻账号对整个版权目录都能拿到
+   * 完整流。登录时的 get_user_baseinfo_v2 又经常不回 VIP 字段 → qqVip 恒
+   * undefined → detectQqVipLocked 把绿钻误当非会员 → 全目录标锁 →
+   * selectBestSource 逃去 Deezer → 用户听到全是 30s 预览（2026-09-23 实测
+   * 「晴天/爱如潮水」复现）。权威信号是 GetVkey 的 purl 有无，见
+   * QqMusicProvider.probeVipAccess。
+   *
+   * 只在「已登录 + qqVip 未知」时探测一次；结果经 setProvider 持久化，
+   * 后续搜索零开销。探测失败（undefined）不写，下次搜索重试。
+   */
+  private async ensureQqVip(session: Session): Promise<void> {
+    const ps = session.providers.qq;
+    if (!ps?.qqCookie || ps.qqVip !== undefined) return;
+    const vip = await this.qq.probeVipAccess(ps);
+    if (vip === undefined) return;
+    if (this.sessions) {
+      this.sessions.setProvider(session, 'qq', { qqVip: vip });
+    } else {
+      ps.qqVip = vip; // 无 SessionService（测试）→ 只写内存对象
+    }
+    this.logger.log(`qq vip probe → qqVip=${vip}（后续搜索的 vipLocked 判定生效）`);
   }
 
   /** 歌名+歌手标准化: 全角→半角、去空格、去标点、全小写。

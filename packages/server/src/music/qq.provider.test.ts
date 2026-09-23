@@ -334,12 +334,14 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), '专辑', 20);
     restore();
+    // 2026-09-23 修正：pay_album 同样是"商业分类"标签，实测已购/绿钻账号
+    // 对数字专辑曲目也能拿到全曲流。VIP 解锁；误判由 30s-trial 兜底。
     assert.strictEqual(
       tracks[0].vipLocked,
-      true,
-      'pay_album=1 + VIP → 仍锁（必须购买，绿钻不解）',
+      false,
+      'pay_album=1 + VIP → 不锁（会员可解口径）',
     );
-    console.log('✅ 13b. search pay_album=1 + VIP → vipLocked=true（绿钻不解数字专辑）');
+    console.log('✅ 13b. search pay_album=1 + VIP → vipLocked=false（会员可解口径）');
   }
 
   // ── 13c. search: pay_track=1（付费单曲）→ 一律锁 ────────────────
@@ -366,8 +368,8 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), '付费单曲', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, true, 'pay_track=1 → 锁');
-    console.log('✅ 13c. search pay_track=1（付费单曲）→ vipLocked=true');
+    assert.strictEqual(tracks[0].vipLocked, false, 'pay_track=1 + VIP → 不锁');
+    console.log('✅ 13c. search pay_track=1 + VIP → vipLocked=false');
   }
 
   // ── 13d. search: fee>0（兜底信号）→ 一律锁 ────────────────────
@@ -394,8 +396,8 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), 'fee', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, true, 'fee=1 → 锁（兜底命中付费）');
-    console.log('✅ 13d. search fee>0 → vipLocked=true');
+    assert.strictEqual(tracks[0].vipLocked, false, 'fee=1 + VIP → 不锁');
+    console.log('✅ 13d. search fee>0 + VIP → vipLocked=false');
   }
 
   // ── 13e. search: pay 整体缺失 → 不锁（保守放行，保留旧行为） ─────
@@ -455,11 +457,19 @@ async function main() {
     console.log('✅ 13f. search fee=0 + pay_play=0 → vipLocked=false（防兜底误伤）');
   }
 
-  // ── 13g. search: price_track=200（付费单曲 2 元）→ 一律锁 ─────────
+  // ── 13g. search: price_track=200（付费单曲 2 元）→ 按 qqVip 判定 ────
   // 2026-09 实测「浓缩蓝鲸 (Live) - 彭忠豪」漏识别 case：QQ 接口实际用
   // price_track（金额分，200=2 元）标付费单曲，旧 pay_album/pay_track/fee
   // 三项全 0。复刻实测 pay 形状：pay_month=1 + price_track=200，其它旧字段缺。
-  {
+  //
+  // 2026-09-23 语义修正：price_track/pay_month 是"会员曲库"标签而非"必须
+  // 单购"——绿钻账号实测能放全曲（vkey purl 非空）。qqVip=true → 不锁；
+  // qqVip=false → 锁；qqVip=undefined（探测未知）→ 保守锁。
+  const paidTrackPay = {
+    pay_down: 0, pay_month: 1, pay_play: 0, pay_status: 0,
+    price_album: 0, price_track: 200, time_free: 0,
+  };
+  for (const [vip, want] of [[false, true], [undefined, true], [true, false]] as const) {
     const restore = mockFetch(() => ({
       json: async () => ({
         code: 0,
@@ -473,22 +483,21 @@ async function main() {
                 album: { name: '好声音', mid: 'a' },
                 interval: 283,
                 mediaMid: 'MMpt1',
-                pay: { pay_down: 0, pay_month: 1, pay_play: 0, pay_status: 0,
-                       price_album: 0, price_track: 200, time_free: 0 },
+                pay: paidTrackPay,
               },
             ],
           },
         },
       }),
     }));
-    const tracks = await prov.search(sess({ qqVip: true }), 'pt', 20);
+    const tracks = await prov.search(sess({ qqVip: vip }), 'pt', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, true,
-      'price_track=200 + pay_play=0 → 锁（付费单曲，绿钻也买不到这首单曲）');
-    console.log('✅ 13g. search price_track=200 → vipLocked=true（QQ 实测漏识别修复）');
+    assert.strictEqual(tracks[0].vipLocked, want,
+      `price_track=200 + qqVip=${String(vip)} → vipLocked=${want}`);
   }
+  console.log('✅ 13g. search price_track=200 → qqVip 分治锁定（会员可解）');
 
-  // ── 13h. search: price_album=1000（数字专辑 10 元）→ 一律锁 ───────
+  // ── 13h. search: price_album=1000（数字专辑 10 元）→ 按 qqVip 判定 ──
   {
     const restore = mockFetch(() => ({
       json: async () => ({
@@ -512,13 +521,14 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), 'pa', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, true,
-      'price_album=1000 → 锁（数字专辑必须购买）');
-    console.log('✅ 13h. search price_album=1000 → vipLocked=true');
+    // 数字专辑同样走会员可解口径：实测已购账号 price_album=3000 也能放全曲；
+    // 若真未购，播放时 renderer 30s-trial 检测兜底升级，比直接甩给 Deezer 强。
+    assert.strictEqual(tracks[0].vipLocked, false,
+      'price_album=1000 + qqVip=true → 不锁（会员/已购可放）');
+    console.log('✅ 13h. search price_album=1000 + qqVip=true → vipLocked=false');
   }
 
-  // ── 13i. search: pay_month=1（会员月费独占）→ 一律锁 ─────────────
-  // pay_month=1 但 price_*=0 时仍要锁（这是会员独享，免费+付费都不是）。
+  // ── 13i. search: pay_month=1（会员月费独占）→ 按 qqVip 判定 ────────
   {
     const restore = mockFetch(() => ({
       json: async () => ({
@@ -542,9 +552,9 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), 'pm', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, true,
-      'pay_month=1 + price_*=0 → 锁（会员月费独占，绿钻也不一定能放）');
-    console.log('✅ 13i. search pay_month=1 → vipLocked=true');
+    assert.strictEqual(tracks[0].vipLocked, false,
+      'pay_month=1 + qqVip=true → 不锁（会员曲库标签）');
+    console.log('✅ 13i. search pay_month=1 + qqVip=true → vipLocked=false');
   }
 
   // ── 13j. search: pay_play=0 + 所有价格字段都 0 → 不锁（回归保护） ──
