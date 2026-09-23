@@ -193,6 +193,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     加 `withTimeout(5s)` 与 search/fetch 统一超时档。文件：
     `packages/server/src/music/music.service.ts`。
 
+### Added (2026-09-03 → 2026-09-23)
+- **Mini Player P1**（commit `71205ae`，spec `specs/mini-player/spec.md`）：
+  Apple Music 式底部浮层 + 主窗口跟随缩放（theater → 620×170），`Cmd+Shift+M`
+  切换，`<audio>` 不重建（Web Audio graph 保持），mode 持久化到 localStorage。
+  新组件：`packages/renderer/src/components/mini/MiniPlayer.tsx` +
+  `packages/renderer/src/styles/components/_mini-player.scss`（~257 行）。
+- **Settings 完整化 + 渠道优先级 + 源连接健康**（PR #88，commit `a108b39`）：
+  独立 Settings modal，按 Figma `03/Screen/Settings` 还原 AETHER 全屏风格
+  （`c472b05`）。`packages/renderer/src/components/settings/` 4 组件：
+  `AccountsList` · `ChannelPriorityList`（拖拽排序）· `LibraryManager` ·
+  `SourceHealthSection`（每平台最近 24h 拉取成功率）。
+- **D 系列收尾**（D1 / D2 / D4 / D5_NEW / D7 / D8 / D10 / D11，
+  见 `docs/d-series-status.md`）：
+  - **D8** 桌面尺寸适配（`3d77586`）：三档 density（1440 / 1200 / 960）
+    + 内容减法，原 1920 档方案改写为 transform:scale 1.29×。
+  - **D10** MOTION SPEC 载体纠偏（`bcc09fe`）：FRAME 无 `description`
+    属性，改用隐藏 TEXT 子节点 `MOTION_SPEC`。
+  - **D11** Playwright 视觉回归 CI（`fa16e95`）：6 张基线 + 门禁双向
+    自检；容差从 0.1% 调到 0.5%（跨机器文字 AA 噪声 0.29–0.39%，
+    真漂移 0.69% 仍能命中，`f3f1f71`）；跳过判据改读 `package.json`
+    防假绿（`ee14874`）。
+  - **D5_NEW** 10 个新 component set 落地（`0738966`）：strict 110/110，
+    24 个 set / 28 变体。
+  - **D7** NowPlaying 三屏改变体结构完成（`6110e21`），连线手工收尾。
+  - **D4** token ↔ SCSS 双向漂移门禁（`2b36fcb` · `faad44b`）：单一映射 +
+    CI 离线腿 + MCP 只读段。
+- **token-adoption 专题**（`04a4c24` · `6319635` · `aa0fcd0` · `628ea84`）：
+  - 棘轮门禁：每替换一批降低新文件硬编码预算，`scan-hardcoded-colors
+    --gate` 进 `test:ci`。
+  - S3-3 / S3-5 两批替换：88 + 240 处 alpha 派生值换 token（配方 srgb）。
+  - Settings token-adoption 二次补强（`628ea84`）：6 处直换 token + budget
+    给品牌识别色扩 9 处。
+- **离线评测基座**（`specs/reco-deepseek/spec.md` v2.2）：
+  `packages/server/src/reco/eval.ts`（留一法）+ `POST /api/reco/eval` +
+  CLI `npm run reco:eval`。指标分 `poolRecall`（检索层）与 `recallAtK`
+  （选择层），同艺人 vs 新艺人分档 + 多样性 + 多轮平均 + 基线对比。
+- **推荐延迟包 + 行为信号闭环**（`specs/reco-deepseek/spec.md` v2.1）：
+  - 候选池并发化（`reco/candidate-pool.ts` TaskPool 边查边搜）。
+  - LLM 输出封顶 `max_tokens=900` + prompt 候选行数 60→40。
+  - 候选池缓存 10 分钟（key 不含信号指纹，否则连续点 ❤ 时永远打不中）。
+  - `reco/signals.ts` + `POST /api/reco/signal`：播放 / 完播 / 早切 /
+    红心 / 踩 / 种子六类信号（21 天半衰期）。
+- **SourceChip 重设计 + 数字专辑状态角标**（`faacf65` · `9c4daaa`）：
+  品牌 logo + 平台 brand 强背景色；chip 末尾 `[P]` / `[NP]` 标已购 / 未购。
+- **剧场推荐卡跟随队列位置 + 种子胶囊底部遮挡修复**（`e1d2535`）。
+
+### Fixed (2026-09-03 → 2026-09-23)
+- **跨脚本元数据合并**（PR #87，commit `3c09fd8`）：搜索侧严口径——
+  `buildUnifiedItems({crossScriptMerge:true})`，CJK ↔ 拉丁 script
+  （如「寂寞，好了」+ Deezer 罗马音）在搜索链路下合并；library import
+  走宽口径不变。详见 `docs/cross-script-matching.md`。
+- **付费内容 vipLocked 检测 + 跨平台 fallback 跳过 vipLocked 候选**
+  （`d30c3e5` · `10a5a77` · `fa91734` · `d926904`）：
+  - `QqMusicProvider.detectQqVipLocked` 补 `price_track/price_album/pay_month` 识别。
+  - `MusicService.findPlayableEquivalent` 跳过 vipLocked 候选防跨平台
+    fallback 死循环。
+  - 修：QQ 绿钻可播曲目不再误判为 vipLocked → 全锁时正确逃 Deezer 30s
+    预览（`d926904`）。
+  - 网易云搜索迁移 `cloudsearch/pc` 端点（`d30c3e5`）。
+- **单平台行点击静默无效 + 综合搜索相关性排序**（`40ef7a7`）。
+- **剧场下半屏纵向链联立定位 + 音质标签脱出播放键光晕**（`03957a3`）。
+- **`30S TRIAL` 标签移出标题带**（`c306295`）：长歌名下不再被压住。
+- **`usePlayer` D3 守护收紧**（`66e1a32`）：首次打开已 ❤ 的歌不再被守护误杀。
+- **日语查询尾标点 strip**（`48c1789`）：搜索查询去掉 `。`/`!`/`?` 等结尾句号。
+- **剧场死 CSS 清理**（`d00cfc3`）：`.th-lyric--prev/--next`、
+  `.th-reco-running` 移除。
+- **`ISSUES.md` 归档与跨引用修复**（`a8bb7d6`）：7 份过时文档归档。
 ## [2026-09-03] - Pre-CHANGELOG baseline
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）+

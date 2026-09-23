@@ -3,7 +3,7 @@
 > 下一期（Phase 7+）的计划。每一项都有：目标、范围、验收标准、参考 spec
 > （如有）。本文件随代码演进被修订；粒度按"一两个工作日一项"分块。
 
-**最后核对日期**：2026-09-20 · **核对人**：auto-audit
+**最后核对日期**：2026-09-23 · **核对人**：auto-audit
 
 > ⚠️ **0 节 13 项全部 `[ ]`**——这是事实，不是漏勾。所有项目都是
 > **个人付费 / 外部依赖**类卡点（Apple Developer $99/年、castLabs EVS 凭据、
@@ -221,18 +221,22 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 ---
 
-## 5. 设置 / 首次启动收尾 — **基本没动**
+## 5. 设置 / 首次启动收尾 — ✅ **应用层完成**（PR #88）
 
-- **当前**：没有独立 Settings 页；首次启动体验靠 SourceSelect + RecoKeyModal
-- **范围**：
-  - 独立 `Settings` modal：DeepSeek key 重置、登录信息、库管理、备份入口（#3.1 已实装）、
-    "源连接健康"（每个平台最近 24h 拉取成功率）
-  - 首次启动时引导流程：选源 → （如果要推荐）配 DeepSeek key → 完成
-  - 没有选源就退出 App 时，提示确认
-- **验收**：
-  - [ ] 全新 `rm -rf state.json` 启动 → 引导流 3 步走完 → 进 player
-  - [ ] Settings 能查看每个源的状态、强制重连、清空平台 liked 库
-- **估时**：2–3 天
+- **当前**：独立 Settings modal 已上线（`components/settings/AccountsList` ·
+  `ChannelPriorityList` · `LibraryManager` · `SourceHealthSection`），UI 按
+  `03/Screen/Settings` 全屏还原。`App.tsx` 顶栏 ✨ 入口接通 SettingsModal。
+- **已落地**：
+  - DeepSeek key 重置 / 库管理 / 源连接健康（每个平台最近 24h 拉取成功率）
+  - 渠道优先级可拖拽排序（QQ > NetEase > Spotify > Deezer），存本地，
+    `bestSource` 读取它作为权重之一
+  - SourceMenu 降级为"临时覆盖"，默认跟随优先级
+  - AETHER 全屏风格还原（`feat(settings)` commit `c472b05`）+
+    token-adoption 二次补强（`628ea84`，6 处直换 token + budget 给品牌识别色扩 9 处）
+- **未做（可后置）**：
+  - [ ] 首次启动引导流（仍是 SourceSelect + RecoKeyModal 旧路；新装流程还没合并）
+  - [ ] 没选源就退出 App 时的确认弹窗
+- **估时（剩余）**：1 天
 
 ---
 
@@ -449,7 +453,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 | --- | --- |
 | **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ `pip install castlabs-evs` + 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
 | **W1** | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播） |
-| **W2** | #5 Settings（独立 modal：DeepSeek key、库管理、源连接健康）+ **#6.2 渠道优先级**（并入 Settings） |
+| **W2** | ✅ #5 Settings + #6.2 渠道优先级（PR #88 已合）。下期不再排 |
 | **W3** | #6.3 Lite 模式（normal/lite 切换 + ✨ 入口接 reco-deepseek） + **7.4 NL 歌单先写 `specs/nl-playlist/spec.md`** |
 | **W4** | #4 歌词体验收尾（多源聚合 + share）+ 7.1 EQ / 7.2 桌面歌词（基本功打磨，优先级低于 W2/W3） |
 | **W5** | 7.4 NL 歌单落地 + 7.3 媒体键/全局热键收尾 + bug bash + 发版 |
@@ -465,6 +469,18 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 > - ✅ **PR #56 AETHER 剧场视图**：替换 visionOS Bento 主界面（详见下 #6.5 节）
 > - ✅ **歌词解析修复**（`d014cf4`）：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 覆盖
 > - ✅ `.codex/config.toml` + `.opencode/command` 模板 + `.superdesign/` 设计简报 + Figma 驱动管线落档
+> - ✅ **PR #88 Settings 完整化 + 渠道优先级 + 源连接健康**（`a108b39`）：独立 Settings modal，渠道优先级可拖拽，`feat(settings)` 按 Figma 03/Screen/Settings 还原 AETHER 全屏风格（`c472b05`），token-adoption 二次补强（`628ea84`，6 处直换 token + budget 扩 9 处品牌识别色）
+> - ✅ **PR #87 跨脚本元数据合并**（`3c09fd8`）：搜索侧严口径（`buildUnifiedItems({crossScriptMerge:true})`），CJK ↔ 拉丁 script 在搜索链路下合并（「寂寞，好了」+ Deezer 罗马音），library import 走宽口径不变——详见 `docs/cross-script-matching.md`
+> - ✅ **付费内容 vipLocked 检测 + 跨平台 fallback 跳过 vipLocked 候选**（`d30c3e5` · `10a5a77` · `fa91734` · `d926904`）：QQ `detectQqVipLocked` 补 `price_track/price_album/pay_month` 识别，`findPlayableEquivalent` 跳过 vipLocked 候选防跨平台 fallback 死循环；绿钻可播曲目不再误判，QQ 全锁时逃 Deezer 30s 预览而不是被静默降级
+> - ✅ **Mini Player P1**（commit `71205ae`，spec `specs/mini-player/spec.md`）：Apple Music 式底部浮层 + 主窗口跟随缩放（theater → 620×170），`Cmd+Shift+M` 切换，`<audio>` 不重建（Web Audio graph 保持），mode 持久化到 localStorage
+> - ✅ **SourceChip 重设计 + 数字专辑状态角标**（`faacf65` · `9c4daaa`）：品牌 logo + 平台 brand 强背景色；chip 末尾 `[P]` / `[NP]` 标已购 / 未购状态
+> - ✅ **单平台行点击静默无效修复 + 综合搜索相关性排序**（`40ef7a7`）：单平台行现在点得响，综合搜索按相关度而非入库序
+> - ✅ **剧场推荐卡跟随队列位置 + 种子胶囊底部遮挡修复**（`e1d2535`）：推荐卡位置与队列位置同步；底部 capsule 不再被推荐区遮挡
+> - ✅ **usePlayer D3 守护收紧**（`66e1a32`）：首次打开已 ❤ 的歌不再被守护误杀（liked-on-first-load 边界）
+> - ✅ **日语查询尾标点 strip**（`48c1789`）：搜索查询去掉 `。`/`!`/`?` 等结尾句号，避免日文句子标点污染
+> - ✅ **D 系列收尾**（`a8bb7d6` · `0b36d47` · `fa16e95` · `3d77586` · `6110e21` · `0738966` · `bcc09fe`）：D1–D11 全部 ✅（详见 `docs/d-series-status.md`），其中 D4 双向漂移门禁 + D11 视觉回归 CI 是本期加入；D5_NEW 10 个 component set 全部落地（strict 110/110）
+> - ✅ **token-adoption 专题**（`04a4c24` · `6319635` · `aa0fcd0` · `628ea84`）：硬编码扫描 + 棘轮门禁 + 剧场调色板接 token；S3-3 / S3-5 两批替换（88 + 240 处 alpha 派生值），新文件预算 = 0（`scan-hardcoded-colors --gate`）
+> - ✅ **CI 视觉回归门禁真绿化**（`ee14874` · `f3f1f71`）：visual 跳过判据改读 `package.json`（原判据跑在 npm ci 前永远假绿）；容差从 0.1% 调到 0.5%（实测跨机器文字 AA 噪声 0.29–0.39%，真漂移 0.69% 仍能命中）
 >
 > **不在本期范围**：
 > - 6.x 全部不再做独立 PR（6.2 并入 #5、6.3 单做、6.4 已合、6.1 已合）
