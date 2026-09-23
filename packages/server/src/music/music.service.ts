@@ -585,6 +585,14 @@ export class MusicService {
       const hit = found.find(([pp]) => pp === p);
       const t = hit?.[1];
       if (!t) continue;
+      // VIP 锁守卫：跨平台 fallback 拿到的「同名同长」等价曲，若目标平台
+      // 这个版本也是 VIP 锁（VIP 独占 / 付费 / 只给试听）→ 切过去同样会
+      // 30s 试听 / code=4，前端 tryFallbackSource / tryUpgradeFromTrial
+      // 反复调到这里，死循环。修法：服务端跳过 vipLocked 候选；priority
+      // 全锁完 → 落到方法末尾返 null，前端拿到 null 后 setError 干净退出。
+      // 复刻自用户实测「浓缩蓝鲸 (Live) - 彭忠豪」：网易云 + QQ 两平台都 VIP
+      // 锁，不带这个守卫会无限 code=4。
+      if (t.vipLocked === true) continue;
       const playable = this.toPlayableTrack(t);
       return {
         platform: p,
@@ -592,6 +600,9 @@ export class MusicService {
         hasCopyright: true,
         url: playable.audioUrl,
         mediaMid: t.mediaMid,
+        // 透传 vipLocked: false（已校验，前端可放心切；保留字段保 SourceInfo
+        // 接口一致，未来前端做更细粒度过滤时有数据可读）。
+        vipLocked: false,
       };
     }
     return null;

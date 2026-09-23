@@ -332,6 +332,31 @@ async function main() {
     console.log('✅ 7. findPlayableEquivalent 严格时长 gate → null');
   }
 
+  // ── 36. findPlayableEquivalent：候选 vipLocked → 跳过 → 返 null ─────
+  // 复刻用户实测「浓缩蓝鲸 (Live) - 彭忠豪」死循环：网易云 30s 试听触发跨平台
+  // 升级，服务端找到 QQ 同名同长等价曲，但 QQ 这首也是 VIP 锁（VIP 独占 Live）
+  // → 不该返。换源过去仍是 30s 试听，前端 tryUpgradeFromTrial 拿到后又
+  // code=4，进 tryFallbackSource 又调到这里，无限循环。
+  // 修法（music.service.ts findPlayableEquivalent）：搜到的等价曲若 vipLocked
+  // → 跳过这个平台候选；priority 全锁完 → 返 null，前端 setError 干净退出。
+  // 不修这条 → PR #88 Settings 完整化 + 渠道优先级上线后，「VIP 独占 Live 版」
+  // 这类歌曲必卡死。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    qqSearchResults = [
+      Object.assign(qqTrack('lock-live', '浓缩蓝鲸 (Live)', '彭忠豪', 283, 'LOCK'), {
+        vipLocked: true,
+      }),
+    ];
+    const src = await svc.findPlayableEquivalent(session, 'netease', {
+      title: '浓缩蓝鲸 (Live)',
+      artist: '彭忠豪',
+      duration: 283,
+    });
+    assert.strictEqual(src, null, '候选 vipLocked=true → 跳过 → 返 null（不再盲切）');
+    console.log('✅ 36. findPlayableEquivalent vipLocked 守卫');
+  }
+
   // ── 8. 跨平台匹配成功 → 增量补进「我的喜欢」库快照（bug3） ───────────
   // 库里这首只有 QQ 一个 source。播到它（detect / fanOut）触发后台匹配到
   // netease 后，库快照的 sources 应被补上 netease —— 弹窗重开即可看到新徽章。
@@ -1805,7 +1830,7 @@ async function main() {
     console.log('✅ 35. 松散规则收紧：我们≠我們萬歲、告别的时代≠-Live 版');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 35 项通过');
+  console.log('\n🎉 cross-platform-match.e2e 全部 36 项通过');
 }
 
 main().catch((err) => {
