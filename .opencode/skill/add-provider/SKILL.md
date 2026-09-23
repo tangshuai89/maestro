@@ -17,14 +17,14 @@ prefix.
 
 | Concern | Path |
 |---|---|
-| Provider interface | `packages/server/src/common/provider.ts` |
+| Provider interface | `packages/common/src/provider.ts` |
 | Cross-package types | `packages/common/src/<thing>.ts` |
 | Provider implementation | `packages/server/src/music/$ARGUMENTS.provider.ts` |
 | Provider module wiring | `packages/server/src/music/music.module.ts` |
 | Merge / dedupe | `packages/server/src/music/music.service.ts` |
 | Frontend UI | `packages/renderer/src/components/source-select/` + `src/lib/` |
 | Normalizers (fuzzyKey etc.) | `packages/common/src/normalizer.ts` (reuse, don't duplicate) |
-| `withTimeout` helper | `packages/server/src/common/timeout.ts` |
+| `withTimeout` helper | `packages/common/src/timeout.ts` |
 
 ## Required steps
 
@@ -33,7 +33,7 @@ prefix.
 2. **Implement `$ARGUMENTS.provider.ts`** implementing the `MusicProvider`
    interface. All external API calls go through built-in `fetch`. Wrap
    metadata/search calls in `withTimeout` from
-   `packages/server/src/common/timeout.ts` (5s; timeout means "absent", not
+   `packages/common/src/timeout.ts` (5s; timeout means "absent", not
    "block other platforms"). Audio/cover byte proxies must be **streaming**
    with **no global timeout**.
 3. **Register** the provider in `music.module.ts` and the controller that
@@ -70,7 +70,7 @@ prefix.
   (`login-window-runner.ts`), stop and propose an ADR — don't invent a
   parallel auth subsystem.
 - If the spec (or your read of existing providers) reveals an interface
-  gap in `packages/server/src/common/provider.ts`, surface it. Do not
+  gap in `packages/common/src/provider.ts`, surface it. Do not
   silently widen the interface inside one provider's implementation.
 - After implementation, if `spec-reviewer` is available, delegate a final
   boundary check before declaring done.
