@@ -251,6 +251,84 @@ function romanizeVariants(s: string): string[] {
   return result;
 }
 
+// ── 标题级音译佐证（2026-09-23，统一搜索跨脚本合并）───────────────────
+/**
+ * `romanize()` 的单读音局限：pinyin-pro 词级消歧给「寂寞，好了」→
+ * 'jimohaole'，但平台元数据常按另一读音罗马化（Deezer 的「Ji Mo, Hao
+ * Liao」→ jimohaoliao）。逐字 `multiple:true` 展开多音字读音做笛卡尔
+ * 积——覆盖词级消歧给不出的读音。
+ *
+ * 上限：每字最多 MAX_READINGS_PER_CHAR 个读音、总变体 ≤ MAX_TITLE_VARIANTS
+ * ——歌名 ~6-8 字，全多音字展开会爆炸；超出即截断（长尾变体本就罕见）。
+ */
+const MAX_READINGS_PER_CHAR = 4;
+const MAX_TITLE_VARIANTS = 24;
+
+const _romanizeTitleVariantsCache = new Map<string, string[]>();
+/** 标题的所有候选罗马化：逐字多音字拼音 + 单读音 romanize + kuromoji(cn2t)。
+ *  与 romanize 同口径：串内含假名 → 汉字不拼音化（日文名读音交给 kuromoji）。
+ *  进程级 memoization——跨脚本组间合并是 O(n²) 循环，标题串远少于对数。 */
+function romanizeTitleVariants(s: string): string[] {
+  const cached = _romanizeTitleVariantsCache.get(s);
+  if (cached !== undefined) return cached;
+  const set = new Set<string>();
+  const single = romanize(s);
+  if (single) set.add(single);
+  const hasKana = KANA.test(s);
+  const readings: string[][] = [];
+  for (const ch of s) {
+    if (HAN.test(ch)) {
+      if (hasKana) continue; // 日文名：汉字不拼音化
+      const py = pinyin(ch, { toneType: 'none', type: 'array', multiple: true });
+      readings.push(py && py.length ? py.slice(0, MAX_READINGS_PER_CHAR) : []);
+    } else if (KANA.test(ch)) {
+      readings.push([toRomaji(ch)]);
+    } else if (/[a-zA-Z0-9]/.test(ch)) {
+      readings.push([ch]);
+    }
+  }
+  let variants = [''];
+  for (const opts of readings) {
+    if (!opts.length) continue;
+    const next: string[] = [];
+    for (const v of variants) for (const o of opts) next.push(v + o);
+    variants = next.slice(0, MAX_TITLE_VARIANTS);
+  }
+  for (const v of variants) {
+    const norm = v.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (norm) set.add(norm);
+  }
+  const ja = romanizeJa(cn2t(s));
+  if (ja) set.add(ja);
+  const result = [...set];
+  _romanizeTitleVariantsCache.set(s, result);
+  return result;
+}
+
+/**
+ * 两个标题是否「音译对得上」——跨脚本合并的标题证据。
+ *
+ * 口径比 `artistTransliterationMatch` 更严：**只认整串相等，不做 includes**
+ * ——标题的 containment 会把「Song」并给「Song II」/「Super」并给
+ * 「Superstition」，同艺人 + 时长撞上就误并；艺人名加后缀是常态、标题
+ * 加词基本是另一首歌，两类不可同日而语。
+ *
+ * 覆盖：中文罗马化（寂寞，好了 ↔ Ji Mo, Hao Liao，多音字展开）、
+ * 日文罗马音（花火 ↔ Hanabi，kuromoji 读 IPADIC）。
+ * 不覆盖：译名翻译（海阔天空 ↔ Boundless Oceans——无算法可走，漏并安全侧）。
+ */
+export function titleTransliterationMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const va = romanizeTitleVariants(a);
+  const vb = romanizeTitleVariants(b);
+  for (const ra of va) {
+    for (const rb of vb) {
+      if (ra && rb && ra === rb) return true;
+    }
+  }
+  return false;
+}
+
 // ── 英文艺名别名表（2026-08-03 起）────────────────────────────────────
 // 策展表已抽到 @maestro/common（packages/common/src/artistAlias.ts）——
 // server 的跨平台匹配与 renderer 的弹窗分组共用同一张表，避免两端各写一份
