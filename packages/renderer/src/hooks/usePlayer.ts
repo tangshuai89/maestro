@@ -584,22 +584,24 @@ export function usePlayer(
   const detectAndApplyLiked = useCallback(
     async (
       unified: UnifiedSearchItem | undefined,
-      // T6 (consistency-fixes D3)：detect 期望 liked 状态。默认 true
-      // （向后兼容未传传者的代码路径——之前都是 liked=true 才调 detect）。
-      // refreshLikedStateUntilStable 传 expectedLiked = trackRef.current.liked，
-      // 避免用户 ❤ 后又手动取消（liked=false）时 detect 旧响应把它点亮回来。
-      expectedLiked: boolean = true,
+      // D3 守护期望值：null = 不守护（detect 服务端为准；用于 loadNextTrack
+      // 切歌时同步 liked）；boolean = 期望 trackRef.current.liked 与该值匹配
+      // 才应用（用于 refreshLikedStateUntilStable polling 场景，防止用户 ❤
+      // 翻转后 detect 旧响应覆盖手动状态）。
+      //
+      // 旧实现默认 = true，把「切歌后初次打开已 ❤ 歌」也短路（trackRef.cur.liked
+      // 初始 false，expectedLiked=true → D3 误杀）→ ❤ 永远不亮 / fanOutCount
+      // 永远 0。复刻自「盲选 - 黄霄雲」实测：用户三平台都红心，从我的喜欢打开
+      // ❤ 按钮空心。
+      expectedLiked: boolean | null = null,
     ): Promise<{ count: number; settled: boolean } | null> => {
       activeMergedIdRef.current = unified?.id;
       if (!unified) {
         setFanOutCount(0);
         return { count: 0, settled: true };
       }
-      // D3 守护：用户在 ❤ 之前手动 ❤→不 ❤ → 期望 liked=false → 不该调用
-      // detect（detect 在用户视角下「确认已 ❤」才有效）。短路返回。
-      if (!expectedLiked) {
-        return { count: 0, settled: true };
-      }
+      // 旧的「!expectedLiked 短路返」删掉：用户从未点过 ❤ 也应让 detect 跑、
+      // 以服务端真相为准点亮 ❤ 按钮（修上记 blind case）。
       const sources = unified.sources
         .filter((s) => s.hasCopyright)
         .map((s) => ({ platform: s.platform, trackId: s.trackId }));
@@ -616,9 +618,14 @@ export function usePlayer(
         // 只在还停留在这首歌时应用（防快速切歌竞态）。null = 结果被丢弃，
         // 调用方（poll）不当作稳定值、会继续重试。
         if (activeMergedIdRef.current !== unified.id) return null;
-        // D3 守护：apply 时再校验一次 expectedLiked（用户在 await 期间手动
-        // ❤→不 ❤ 也走这一道）。
-        if (trackRef.current?.liked === false && expectedLiked) {
+        // D3 守护：apply 时校验 expectedLiked（仅在调用方明确传了 boolean
+        // 时生效——refreshLikedStateUntilStable polling 场景）。用户主动翻转
+        // ❤ 后 detect 旧响应不应覆盖手动状态。loadNextTrack 切歌场景不传
+        // expectedLiked（= null）→ 跳过此守卫，让 detect 服务端结果点亮 ❤。
+        if (
+          expectedLiked !== null &&
+          trackRef.current?.liked !== expectedLiked
+        ) {
           return null;
         }
         const count = r.liked ? r.fannedOutTo.length : 0;
