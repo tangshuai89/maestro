@@ -455,6 +455,128 @@ async function main() {
     console.log('✅ 13f. search fee=0 + pay_play=0 → vipLocked=false（防兜底误伤）');
   }
 
+  // ── 13g. search: price_track=200（付费单曲 2 元）→ 一律锁 ─────────
+  // 2026-09 实测「浓缩蓝鲸 (Live) - 彭忠豪」漏识别 case：QQ 接口实际用
+  // price_track（金额分，200=2 元）标付费单曲，旧 pay_album/pay_track/fee
+  // 三项全 0。复刻实测 pay 形状：pay_month=1 + price_track=200，其它旧字段缺。
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'pt1',
+                name: '付费单曲',
+                singer: [{ name: '彭忠豪', mid: 's' }],
+                album: { name: '好声音', mid: 'a' },
+                interval: 283,
+                mediaMid: 'MMpt1',
+                pay: { pay_down: 0, pay_month: 1, pay_play: 0, pay_status: 0,
+                       price_album: 0, price_track: 200, time_free: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: true }), 'pt', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, true,
+      'price_track=200 + pay_play=0 → 锁（付费单曲，绿钻也买不到这首单曲）');
+    console.log('✅ 13g. search price_track=200 → vipLocked=true（QQ 实测漏识别修复）');
+  }
+
+  // ── 13h. search: price_album=1000（数字专辑 10 元）→ 一律锁 ───────
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'pa1',
+                name: '专辑独占',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 240,
+                mediaMid: 'MMpa1',
+                pay: { pay_play: 0, price_album: 1000 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: true }), 'pa', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, true,
+      'price_album=1000 → 锁（数字专辑必须购买）');
+    console.log('✅ 13h. search price_album=1000 → vipLocked=true');
+  }
+
+  // ── 13i. search: pay_month=1（会员月费独占）→ 一律锁 ─────────────
+  // pay_month=1 但 price_*=0 时仍要锁（这是会员独享，免费+付费都不是）。
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'pm1',
+                name: '会员独占',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 240,
+                mediaMid: 'MMpm1',
+                pay: { pay_play: 0, pay_month: 1, price_track: 0, price_album: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: true }), 'pm', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, true,
+      'pay_month=1 + price_*=0 → 锁（会员月费独占，绿钻也不一定能放）');
+    console.log('✅ 13i. search pay_month=1 → vipLocked=true');
+  }
+
+  // ── 13j. search: pay_play=0 + 所有价格字段都 0 → 不锁（回归保护） ──
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'free3',
+                name: '彻底免费',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 240,
+                mediaMid: 'MMf3',
+                pay: { pay_down: 0, pay_month: 0, pay_play: 0, price_album: 0,
+                       price_track: 0, time_free: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: false }), 'free3', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, false,
+      '全部付费字段 0 → 不锁（回归保护）');
+    console.log('✅ 13j. search 全部付费字段 0 → vipLocked=false（回归保护）');
+  }
+
   // ── 14. fetchRadioBatch: 种子轮转（mock 返回不同 batch） ────────
   {
     let callCount = 0;
@@ -1024,7 +1146,7 @@ async function main() {
     console.log(`✅ 37. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 qq.provider.test 全部 43 项通过');
+  console.log('\n🎉 qq.provider.test 全部 47 项通过');
 }
 
 main().catch((err) => {

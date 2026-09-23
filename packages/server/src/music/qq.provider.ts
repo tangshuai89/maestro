@@ -95,11 +95,17 @@ interface SearchResponse {
 /** QQ 搜索/收藏夹响应里的 `pay` 子对象：所有可能的付费标记。
  *  任何一项命中 = 需要购买/会员才能完整播放，详见 spec/paid-album-detection。
  *  字段语义（任一为 1 / > 0 即触发 vipLocked）：
- *   - pay_play  : 绿钻独占（绿钻能解）
- *   - pay_album : 数字专辑（必须购买，绿钻也不行）
- *   - pay_track : 付费单曲（必须购买）
- *   - fee       : 价格代码，> 0 = 任何付费形式（兜底）
- *  历史上有 `pay_play` / `payplay` 两种写法，统一兜住。 */
+ *   - pay_play    : 绿钻独占（绿钻能解）
+ *   - pay_album   : 数字专辑（必须购买，绿钻也不行）—— *实测 QQ 接口不返这个字段*
+ *   - pay_track   : 付费单曲（必须购买）—— *实测 QQ 接口不返这个字段*
+ *   - fee         : 价格代码，> 0 = 任何付费形式（兜底）—— *实测 QQ 接口不返这个字段*
+ *   - pay_month   : 会员月费独占（=1 必须开会员；2026-09 实测）
+ *   - price_track : 付费单曲价格（金额分，>0 即需购买）
+ *   - price_album : 数字专辑价格（金额分，>0 即需购买）
+ *  历史上有 `pay_play` / `payplay` 两种写法，统一兜住。
+ *  2026-09 实测「浓缩蓝鲸 (Live) - 彭忠豪」付费单曲漏识别：QQ 接口返
+ *  `pay_month: 1` + `price_track: 200`，旧 pay_album/pay_track/fee 三项全
+ *  0/缺。补这三项让 $price_* > 0 或 pay_month=1 也走 vipLocked=true。 */
 export interface QqPay {
   pay_play?: number;
   payplay?: number;
@@ -107,6 +113,9 @@ export interface QqPay {
   pay_track?: number;
   pay_download?: number;
   fee?: number;
+  pay_month?: number;
+  price_track?: number;
+  price_album?: number;
 }
 
 /**
@@ -135,6 +144,12 @@ export function detectQqVipLocked(
     if (pay.pay_album === 1) return true;
     if (pay.pay_track === 1) return true;
     if (typeof pay.fee === 'number' && pay.fee > 0) return true;
+    // 2026-09 实测漏识别：QQ 接口实际用 price_track（金额分）/ price_album
+    // （金额分）/ pay_month=1 标付费独享——spec/paid-album-detection 当时写的
+    // pay_album/pay_track/fee 三个旧字段 QQ 接口全 0/缺。补这三项。
+    if (typeof pay.price_track === 'number' && pay.price_track > 0) return true;
+    if (typeof pay.price_album === 'number' && pay.price_album > 0) return true;
+    if (pay.pay_month === 1) return true;
     if ((pay.pay_play ?? pay.payplay) === 1) return qqVip !== true;
   }
   return false;
