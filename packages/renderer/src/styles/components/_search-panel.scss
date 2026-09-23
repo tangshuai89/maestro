@@ -495,6 +495,59 @@
   }
 }
 
+// ── 数字专辑 [P]/[NP] 角标 ────────────────────────────────────
+// paid-album chip 用平台 brand 强背景（黄/红）+ 白字 tag，与普通 chip 弱化背景
+// 区分。bestSource 在前叠加高亮样式（保持现有 ladder 行为）。背景色用 token
+// var(--platform-qq) / var(--platform-netease)，不走硬编码。
+.source-chip--paid-album.source-chip--qq {
+  background: var(--platform-qq);     // #ffd93d 黄
+  color: #000;
+}
+.source-chip--paid-album.source-chip--qq.source-chip--best {
+  // bestSource 加深色描边 + 略提亮度
+  background: var(--platform-qq);
+  color: #000;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--platform-qq) 70%, var(--text-main));
+}
+.source-chip--paid-album.source-chip--netease {
+  background: var(--platform-netease); // #ff3b5c 红
+  color: #fff;
+}
+.source-chip--paid-album.source-chip--netease.source-chip--best {
+  background: var(--platform-netease);
+  color: #fff;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--platform-netease) 70%, var(--text-main));
+}
+.source-chip--paid-album.source-chip--no-rights {
+  // 无版权时切到灰背景（优先级低）
+  background: color-mix(in srgb, var(--white) 5%, transparent);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
+}
+
+.source-chip-album {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  // 默认跟随父 chip 文字色（黄底配黑字，红底配白字）
+  background: color-mix(in srgb, currentColor 25%, transparent);
+}
+.source-chip-album--np {
+  // 未购更显眼：半透白高亮 + 大字
+  background: rgba(255, 255, 255, 0.25);
+  color: inherit;
+}
+.source-chip-album--p {
+  // 已购：稍弱化（chip 本身已是 brand 强背景，不需要重复高亮）
+  background: rgba(0, 0, 0, 0.15);
+  color: inherit;
+}
+
 .source-chip-best {
   font-size: 9px;
 }

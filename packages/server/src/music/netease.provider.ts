@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Track } from './types';
+import type { VipCategory } from './types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
 import { QqQuality } from './qq.provider';
@@ -87,8 +88,14 @@ interface NeteaseSearchSong {
   ar?: { id: number; name: string }[];
   al?: { id: number; name: string; picUrl?: string };
   dt?: number;
-  /** 内联权限对象，与 v3 song/detail 的 privileges[] 同构（id/fee/pl/st）。 */
+  /** 内联权限对象，与 v3 song/detail 的 privileges[] 同构（id/fee/pl/st）。
+   *  ⚠️ 2026-09 实测：cloudsearch/pc schema 实际把 privilege 字段设为 null，
+   *  fee 移到 song 顶层（见下）。读 providers 必须 schema 才能判付费。 */
   privilege?: NeteasePrivilege;
+  /** 2026-09 实测：cloudsearch/pc schema 把 fee 放在 song 顶层
+   *  （0=免费；1=数字专辑；4/8=付费单曲 / VIP 试听）。detectNeteaseVipCategory
+   *  从这里读，与 privilege.fee 同等地位。 */
+  fee?: number;
 }
 
 interface NeteaseSearchResponse {
@@ -141,6 +148,35 @@ export function detectNeteaseVipLocked(
   if (typeof p.fee === 'number' && p.fee > 0) return true;
   // 老逻辑：pl > 0 视为可播
   return !(typeof p.pl === 'number' && p.pl > 0);
+}
+
+
+/**
+ * 网易云 search 响应里的付费分类。比 detectNeteaseVipLocked 二元更细，给
+ * SourceChip 渲染 [P]/[NP] 标签用。判定基于 song 顶层 fee + privilege：
+ *   - fee===1: 数字专辑（黑胶 VIP 不能解锁 → 'paid-album'）
+ *   - fee===4 或 fee===8: 付费单曲 / VIP 试听 → 'paid-track'
+ *   - privilege.pl <= 0 + 无 fee 异常路径 → 'vip-only'（黑胶独占）
+ * undefined = 未知 / 免费。
+ *
+ * 2026-09 实测：cloudsearch/pc schema 把 fee 移到 song 顶层，privilege 字段
+ * 是 null —— 所以这里从 song.fee 直接读（不要只看 privilege.fee）。 */
+export function detectNeteaseVipCategory(
+  s: { fee?: number; privilege?: NeteasePrivilege },
+): VipCategory | undefined {
+  // 数字专辑（必须购买，黑胶 VIP 也解锁不了）
+  if (s.fee === 1) return 'paid-album';
+  // 付费单曲（fee=4 或 fee=8）
+  if (s.fee === 4 || s.fee === 8) return 'paid-track';
+  // privilege.pl ≤ 0 + 无 fee 兜底（cloudsearch/pc schema privilege=null 的退化路径）
+  if (
+    s.privilege &&
+    typeof s.privilege.pl === 'number' &&
+    s.privilege.pl <= 0
+  ) {
+    return 'vip-only';
+  }
+  return undefined;
 }
 
 @Injectable()
@@ -334,6 +370,10 @@ export class NeteaseMusicProvider {
         vipLocked: s.privilege
           ? detectNeteaseVipLocked(s.privilege)
           : !isVip,
+        // 付费分类（数字专辑/付费单曲/VIP 独占），比 vipLocked 二元更细。
+        // cloudsearch/pc 实际把 fee 放到 song 顶层、privilege 是 null，所以
+        // 这里从 song.fee 直接读，不要只看 privilege.fee。
+        vipCategory: detectNeteaseVipCategory({ fee: s.fee, privilege: s.privilege }),
       };
     });
   }

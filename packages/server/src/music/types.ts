@@ -20,7 +20,23 @@ export interface Track {
   mediaMid?: string;
   /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。见 SourceInfo.vipLocked。 */
   vipLocked?: boolean;
+  /**
+   * 具体付费分类，给 chip 渲染 [P]/[NP] 标签用。和 vipLocked 一起返回：
+   *  - vipLocked=true：用户当前被锁，需要哪种付费才能解锁
+   *    （paid-album=数字专辑、paid-track=付费单曲、vip-only=VIP 独占、vip-month=会员月费）
+   *  - vipLocked=false：用户当前可播，但来源仍标着历史付费类型（chip 显示 [P] 表示
+   *    「是数字专辑但已购买或 VIP 解锁」——网易云这里和「真的购买」不完全等同，可能
+   *    是黑胶 VIP 解锁；tooltip 解释）
+   * undefined = 未知 / 免费，不显示 [P]/[NP] 标签。 */
+  vipCategory?: VipCategory;
 }
+
+/** 付费分类层级 —— 比 vipLocked 二元更细。SourceChip 用它决定加什么标签。
+ *  - paid-album    : 数字专辑（QQ=price_album / pay_album；netease=fee===1）
+ *  - paid-track    : 付费单曲（QQ=price_track / pay_track；netease=fee===4 或 8）
+ *  - vip-only      : 平台 VIP 独占（QQ=pay_play；netease=privilege.pl≤0 且无 fee）
+ *  - vip-month     : 会员月费独占（QQ=pay_month=1） */
+export type VipCategory = 'paid-album' | 'paid-track' | 'vip-only' | 'vip-month';
 
 /** 单个平台上的搜索结果条目。 */
 export interface SourceInfo {
@@ -38,6 +54,9 @@ export interface SourceInfo {
    * `undefined` = 未知（按可播处理）。selectBestSource 会**优先避开** vipLocked 的源，
    * 只有全部源都锁时才退回它，避免"选了 VIP 源播成 30s 试听"。 */
   vipLocked?: boolean;
+  /** 付费分类（见 Track.vipCategory）。buildUnifiedItems 从 track 透传到 SourceInfo，
+   * 前端 SourceChip 据此决定是否加 [P]/[NP] 标签。 */
+  vipCategory?: VipCategory;
 }
 
 /** 单一录音版本（同 (key, type) 内一个 duration cluster = 一个版本）。 */

@@ -299,6 +299,8 @@ function toVersionEntry(
     url: track.audioUrl,
     mediaMid: track.mediaMid,
     vipLocked: track.vipLocked,
+    // 付费分类从 provider.search 透传。SourceChip 据此加 [P]/[NP] 标签。
+    vipCategory: track.vipCategory,
   }));
   const main =
     priority.map((p) =>

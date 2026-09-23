@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Track } from './types';
+import type { VipCategory } from './types';
 import { ProviderSession } from '../common/session';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { randomBytes } from 'node:crypto';
@@ -153,6 +154,31 @@ export function detectQqVipLocked(
     if ((pay.pay_play ?? pay.payplay) === 1) return qqVip !== true;
   }
   return false;
+}
+
+
+/**
+ * QQ search 响应里的付费分类 —— 比 detectQqVipLocked 二元更细。判定顺序
+ * 短路求值（命中频率高的放前面）：
+ *   1. 数字专辑：pay_album===1 或 price_album>0 → 'paid-album'
+ *   2. 付费单曲：pay_track===1 或 price_track>0 → 'paid-track'
+ *   3. 会员月费独占：pay_month===1 → 'vip-month'
+ *   4. 绿钻独占：pay_play=1 → 'vip-only'
+ * undefined = 未知 / 免费。SourceChip 据此显示 [P]/[NP] 标签。
+ */
+export function detectQqVipCategory(pay: QqPay | undefined): VipCategory | undefined {
+  if (!pay) return undefined;
+  // 数字专辑
+  if (pay.pay_album === 1) return 'paid-album';
+  if (typeof pay.price_album === 'number' && pay.price_album > 0) return 'paid-album';
+  // 付费单曲
+  if (pay.pay_track === 1) return 'paid-track';
+  if (typeof pay.price_track === 'number' && pay.price_track > 0) return 'paid-track';
+  // 会员月费独占（pay_month=1 + price_*=0 仍要锁，绿钻不覆盖会员月费）
+  if (pay.pay_month === 1) return 'vip-month';
+  // 绿钻独占（pay_play=1）
+  if ((pay.pay_play ?? pay.payplay) === 1) return 'vip-only';
+  return undefined;
 }
 
 @Injectable()
@@ -587,6 +613,10 @@ export class QqMusicProvider {
       // 见 spec/paid-album-detection：QQ 付费字段有 4 个独立维度（pay_play /
       // pay_album / pay_track / fee），detectQqVipLocked 综合判定。
       vipLocked: detectQqVipLocked(s.pay, session.qqVip),
+      // 付费分类（数字专辑/付费单曲/VIP 月费/绿钻独占），比 vipLocked 二元
+      // 更细，给 SourceChip 渲染 [P]/[NP] 标签用。detectQqVipCategory 与
+      // detectQqVipLocked 用同一份 pay 字段，逻辑基本同源但更细分。
+      vipCategory: detectQqVipCategory(s.pay),
     }));
   }
 

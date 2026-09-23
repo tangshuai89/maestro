@@ -577,6 +577,95 @@ async function main() {
     console.log('✅ 13j. search 全部付费字段 0 → vipLocked=false（回归保护）');
   }
 
+  // ── 13k. vipCategory: pay_album=1 → 'paid-album' ──────────────────
+  // SourceChip 渲染用 vipCategory 决定是否加 [P]/[NP] 标签。付费专辑
+  // 路径加 paid-album 类 → chip 切到平台 brand 强背景（黄/红）+ tag。
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'albc1',
+                name: '数字专辑',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 240,
+                mediaMid: 'MMalbc1',
+                pay: { pay_play: 0, pay_album: 1 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: false }), 'albc', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipCategory, 'paid-album',
+      'pay_album=1 → vipCategory=paid-album（数字专辑）');
+    console.log('✅ 13k. vipCategory pay_album=1 → paid-album');
+  }
+
+  // ── 13l. vipCategory: price_track=200 → 'paid-track' ─────────────
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'ptc1',
+                name: '付费单曲',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 240,
+                mediaMid: 'MMptc1',
+                pay: { pay_play: 0, pay_month: 1, price_track: 200, price_album: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: false }), 'ptc', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipCategory, 'paid-track',
+      'price_track=200 → vipCategory=paid-track（付费单曲，不走 paid-album）');
+    console.log('✅ 13l. vipCategory price_track=200 → paid-track');
+  }
+
+  // ── 13m. vipCategory: 全部字段 0 → undefined（免费） ─────────────
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'free4',
+                name: '免费歌',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 240,
+                mediaMid: 'MMfree4',
+                pay: { pay_play: 0, fee: 0, pay_month: 0, price_track: 0, price_album: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: false }), 'free4', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipCategory, undefined,
+      '全部付费字段 0 → vipCategory=undefined（免费，不加 [P]/[NP]）');
+    console.log('✅ 13m. vipCategory 全部 0 → undefined');
+  }
+
   // ── 14. fetchRadioBatch: 种子轮转（mock 返回不同 batch） ────────
   {
     let callCount = 0;
@@ -1146,7 +1235,7 @@ async function main() {
     console.log(`✅ 37. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 qq.provider.test 全部 47 项通过');
+  console.log('\n🎉 qq.provider.test 全部 50 项通过');
 }
 
 main().catch((err) => {

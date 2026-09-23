@@ -515,6 +515,10 @@ export async function searchTracks(
   return res.items;
 }
 
+/** 付费分类层级（镜像 server/types.ts 的 VipCategory）。SourceChip 据此显示
+ *  [P]/[NP] 标签：paid-album → 黄色（QQ）/ 红色（netease）背景 + tag。 */
+export type VipCategory = 'paid-album' | 'paid-track' | 'vip-only' | 'vip-month';
+
 /** 统一搜索结果里每个平台的源信息（服务端 SourceInfo 的前端镜像）。 */
 export interface UnifiedSourceInfo {
   platform: MusicProvider;
@@ -525,6 +529,11 @@ export interface UnifiedSourceInfo {
   /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。服务端已据此选
    *  bestSource；客户端跨平台降级/升级时也可用它避开锁源。 */
   vipLocked?: boolean;
+  /** 付费分类（付费专辑 / 付费单曲 / VIP 独占 / 会员月费）。和 vipLocked 配对：
+   *  - vipLocked=true → chip 加 [NP]（未购）
+   *  - vipLocked=false + paid-album → chip 加 [P]（已购或 VIP 解锁，tooltip 说明）
+   *  - 其他 vipLocked=0 → 不加标签 */
+  vipCategory?: VipCategory;
 }
 
 /** 统一搜索结果（去重合并后）单条。 */
