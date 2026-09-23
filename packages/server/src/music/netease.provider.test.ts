@@ -242,16 +242,17 @@ async function main() {
               {
                 id: 3001,
                 name: '稻香',
-                artists: [{ id: 1, name: '周杰伦' }],
-                album: { id: 30, name: '魔杰座', picUrl: 'https://p.example.com/30.jpg' },
-                duration: 223000,
+                // cloudsearch/pc schema：ar/al/dt + 内联 privilege
+                ar: [{ id: 1, name: '周杰伦' }],
+                al: { id: 30, name: '魔杰座', picUrl: 'https://p.example.com/30.jpg' },
+                dt: 223000,
+                privilege: { id: 3001, pl: 320000, fee: 0 },
               },
             ],
           },
         };
       }
-      // enrichment → 空覆盖（验证不阻塞）
-      return { code: 200, songs: [], privileges: [] };
+      return { code: 200, result: { songs: [] } };
     });
     const tracks = await prov.search(SESSION, '稻香', 30);
     restore();
@@ -262,7 +263,9 @@ async function main() {
     assert.strictEqual(t.artist, '周杰伦');
     assert.strictEqual(t.album, '魔杰座');
     assert.strictEqual(t.duration, 223);
-    console.log('✅ 13. search: 正常返回 → tracks 字段映射');
+    assert.ok(/p\.example\.com\/30\.jpg\?param=300y300/.test(t.coverUrl), '封面带缩放参数');
+    assert.strictEqual(t.vipLocked, false);
+    console.log('✅ 13. search: 正常返回 → tracks 字段映射（cloudsearch schema）');
   }
 
   // ── 14. search: 空结果 → 返回 [] ────────────────────────────────
@@ -274,75 +277,187 @@ async function main() {
     console.log('✅ 14. search: 空结果 → 返回 []');
   }
 
-  // ── 15. search: enrichment 补封面 + vipLocked ───────────────────
+  // ── 15. search: 内联 privilege 给 vipLocked + al.picUrl 给封面 ──
+  // cloudsearch/pc 单曲自带 privilege 和封面，不再需要 v3 detail 补充请求。
   {
-    let callIdx = 0;
-    const restore = mockFetch(() => {
-      callIdx++;
-      if (callIdx === 1) {
-        return {
-          code: 200,
-          result: {
-            songs: [
-              {
-                id: 4001,
-                name: '夜曲',
-                artists: [{ id: 1, name: '周杰伦' }],
-                album: { id: 40, name: '十一月的萧邦' },
-                duration: 226000,
-              },
-            ],
+    const restore = mockFetch(() => ({
+      code: 200,
+      result: {
+        songs: [
+          {
+            id: 4001,
+            name: '夜曲',
+            ar: [{ id: 1, name: '周杰伦' }],
+            al: { id: 40, name: '十一月的萧邦', picUrl: 'https://enrich.example.com/40.jpg' },
+            dt: 226000,
+            privilege: { id: 4001, pl: 0, fee: 1 },
           },
-        };
-      }
-      // enrichment → 补封面 + pl=0 (vipLocked)
-      return {
-        code: 200,
-        songs: [{ id: 4001, al: { id: 40, name: '十一月的萧邦', picUrl: 'https://enrich.example.com/40.jpg' } }],
-        privileges: [{ id: 4001, pl: 0, fee: 1 }],
-      };
-    });
+        ],
+      },
+    }));
     const tracks = await prov.search(SESSION, '夜曲', 30);
     restore();
     assert.strictEqual(tracks.length, 1);
     const t = tracks[0];
     assert.ok(
       /enrich\.example\.com\/40\.jpg\?param=300y300/.test(t.coverUrl),
-      `enrichment 封面应带 ?param=300y300，实际 ${t.coverUrl}`,
+      `封面应带 ?param=300y300，实际 ${t.coverUrl}`,
     );
     assert.strictEqual(t.vipLocked, true, 'pl<=0 应标 vipLocked=true');
-    console.log('✅ 15. search: enrichment 补封面 + vipLocked');
+    console.log('✅ 15. search: 内联 privilege → vipLocked + al.picUrl → 封面');
   }
 
-  // ── 16. search: enrichment 失败不阻塞（仍返回 tracks） ──────────
+  // ── 15a. search: pl>0 但 fee=1（数字专辑）→ vipLocked=true ──────
+  // 修「台北车站」类 bug：原代码只看 pl>0 错判成"已解锁"。
+  // 数字专辑的 pl=128000 实际是 128kbps 30s 试听，必须锁。
   {
-    let callIdx = 0;
-    const restore = mockFetch(() => {
-      callIdx++;
-      if (callIdx === 1) {
-        return {
-          code: 200,
-          result: {
-            songs: [
-              {
-                id: 5001,
-                name: '青花瓷',
-                artists: [{ id: 1, name: '周杰伦' }],
-                album: { id: 50, name: '我很忙', picUrl: 'https://p.example.com/50.jpg' },
-                duration: 238000,
-              },
-            ],
+    const restore = mockFetch(() => ({
+      code: 200,
+      result: {
+        songs: [
+          {
+            id: 7001,
+            name: '数字专辑歌',
+            ar: [{ id: 1, name: '某歌手' }],
+            al: { id: 70, name: '数字专辑', picUrl: 'https://alb.example.com/70.jpg' },
+            dt: 240000,
+            privilege: { id: 7001, pl: 128000, fee: 1 },
           },
-        };
-      }
-      // enrichment → 非 JSON 响应触发抛错，但 search 应吞掉
-      return { text: async () => '<<<html>not json</html>>>', ok: true, status: 200 };
-    });
-    const tracks = await prov.search(SESSION, '青花瓷', 30);
+        ],
+      },
+    }));
+    const tracks = await prov.search(SESSION, '数字专辑', 30);
     restore();
-    assert.strictEqual(tracks.length, 1, 'enrichment 失败不应阻塞 search');
-    assert.strictEqual(tracks[0].title, '青花瓷');
-    console.log('✅ 16. search: enrichment 失败不阻塞（仍返回 tracks）');
+    assert.strictEqual(tracks.length, 1);
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      true,
+      'pl=128000 但 fee=1（数字专辑）→ 锁（旧 bug：只看 pl>0 会错判解锁）',
+    );
+    console.log('✅ 15a. search pl=128000 + fee=1（数字专辑）→ vipLocked=true');
+  }
+
+  // ── 15b. search: pl>0 且 fee=0 → 不锁（保留旧行为，回归保护） ───
+  {
+    const restore = mockFetch(() => ({
+      code: 200,
+      result: {
+        songs: [
+          {
+            id: 7002,
+            name: '免费歌',
+            ar: [{ id: 1, name: '某歌手' }],
+            al: { id: 71, name: '某专辑', picUrl: 'https://alb.example.com/71.jpg' },
+            dt: 200000,
+            privilege: { id: 7002, pl: 320000, fee: 0 },
+          },
+        ],
+      },
+    }));
+    const tracks = await prov.search(SESSION, '免费歌', 30);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, false, 'pl>0 且 fee=0 → 不锁（保留旧行为）');
+    console.log('✅ 15b. search pl>0 + fee=0 → vipLocked=false（回归）');
+  }
+
+  // ── 15c. search: pl>0 + fee=8（VIP 付费单曲）→ 一律锁 ───────────
+  {
+    const restore = mockFetch(() => ({
+      code: 200,
+      result: {
+        songs: [
+          {
+            id: 7003,
+            name: 'VIP 单曲',
+            ar: [{ id: 1, name: '某歌手' }],
+            al: { id: 72, name: '某专辑', picUrl: 'https://alb.example.com/72.jpg' },
+            dt: 220000,
+            privilege: { id: 7003, pl: 999000, fee: 8 },
+          },
+        ],
+      },
+    }));
+    const tracks = await prov.search(SESSION, 'VIP单曲', 30);
+    restore();
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      true,
+      'pl=999000 + fee=8（VIP 付费单曲）→ 一律锁',
+    );
+    console.log('✅ 15c. search pl>0 + fee=8 → vipLocked=true');
+  }
+
+  // ── 15d. search: privilege 缺失 → 非 VIP 兜底锁 ────────────────
+  // 沿用旧 enrichment 的「未知 = 不能播」规则：privilege 缺失时非 VIP
+  // 一律锁（保守）；SESSION 无 neteaseVip → 视为非 VIP → vipLocked=true。
+  {
+    const restore = mockFetch(() => ({
+      code: 200,
+      result: {
+        songs: [
+          {
+            id: 7004,
+            name: '权限缺失的歌',
+            ar: [{ id: 1, name: '某歌手' }],
+            al: { id: 73, name: '某专辑' },
+            dt: 180000,
+            // privilege 完全缺失
+          },
+        ],
+      },
+    }));
+    const tracks = await prov.search(SESSION, '权限缺失', 30);
+    restore();
+    assert.strictEqual(tracks.length, 1, 'privilege 缺失不应阻塞 tracks');
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      true,
+      'privilege 缺失 + 非 VIP session → 保守锁',
+    );
+    console.log('✅ 15d. search privilege 缺失 + 非 VIP → vipLocked=true（兜底）');
+  }
+
+  // ── 15e. search: privilege 缺失 → VIP session 不锁 ─────────────
+  {
+    const restore = mockFetch(() => ({
+      code: 200,
+      result: {
+        songs: [
+          { id: 7005, name: 'VIP 权限缺失歌', ar: [{ id: 1, name: '某歌手' }], dt: 180000 },
+        ],
+      },
+    }));
+    const tracks = await prov.search(
+      { musicU: 'x', csrfToken: 'y', neteaseVip: true },
+      'VIP权限缺失',
+      30,
+    );
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, false, 'privilege 缺失 + VIP → 不锁');
+    console.log('✅ 15e. search privilege 缺失 + VIP → vipLocked=false');
+  }
+
+  // ── 16. search: 非 200 code（405 风控）→ 显式抛错 ──────────────
+  // 回归：/api/search/get/web 对登录态返回 {code:405,msg:"操作频繁"}，
+  // 旧代码 result 缺失 → 静默当 0 首，用户看到"暂无结果"误以为歌不存在。
+  {
+    const restore = mockFetch(() => ({
+      code: 405,
+      msg: '操作频繁，请稍候再试',
+    }));
+    let threw = false;
+    try {
+      await prov.search(SESSION, '浓缩蓝鲸', 30);
+    } catch (err) {
+      threw = true;
+      assert.ok(
+        /405/.test((err as Error).message) && /操作频繁/.test((err as Error).message),
+        `错误信息应带 code 和 msg，实际: ${(err as Error).message}`,
+      );
+    }
+    restore();
+    assert.ok(threw, 'code!==200 应抛错而不是返回 []');
+    console.log('✅ 16. search: code=405（风控）→ 显式抛错，不静默空列表');
   }
 
   // ── 17. getStreamPath: 正常返回 url ─────────────────────────────
@@ -584,7 +699,7 @@ async function main() {
     console.log(`✅ 32. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 netease.provider.test 全部 32 项通过');
+  console.log('\n🎉 netease.provider.test 全部 36 项通过');
 }
 
 main().catch((err) => {

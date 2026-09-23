@@ -281,6 +281,180 @@ async function main() {
     console.log('✅ 13. search 非 VIP 歌曲（pay_play=0）→ vipLocked=false');
   }
 
+  // ── 13a. search: pay_album=1（数字专辑）+ 非 VIP → vipLocked=true ───
+  // 见 spec/paid-album-detection：绿钻不能解锁数字专辑，必须购买
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'album1',
+                name: '专辑歌',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '数字专辑', mid: 'a' },
+                interval: 240,
+                file: { strMediaMid: 'MMalb' },
+                pay: { pay_play: 0, pay_album: 1 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: false }), '专辑', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, true, 'pay_album=1 + 非 VIP → 锁');
+    console.log('✅ 13a. search pay_album=1（数字专辑）+ 非 VIP → vipLocked=true');
+  }
+
+  // ── 13b. search: pay_album=1 + VIP 用户 → 仍锁（数字专辑绿钻也放不了）
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'album2',
+                name: '专辑歌2',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '数字专辑', mid: 'a' },
+                interval: 240,
+                file: { strMediaMid: 'MMalb2' },
+                pay: { pay_play: 0, pay_album: 1 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: true }), '专辑', 20);
+    restore();
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      true,
+      'pay_album=1 + VIP → 仍锁（必须购买，绿钻不解）',
+    );
+    console.log('✅ 13b. search pay_album=1 + VIP → vipLocked=true（绿钻不解数字专辑）');
+  }
+
+  // ── 13c. search: pay_track=1（付费单曲）→ 一律锁 ────────────────
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'paytrack1',
+                name: '付费歌',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 200,
+                file: { strMediaMid: 'MMpt' },
+                pay: { pay_play: 0, pay_track: 1 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: true }), '付费单曲', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, true, 'pay_track=1 → 锁');
+    console.log('✅ 13c. search pay_track=1（付费单曲）→ vipLocked=true');
+  }
+
+  // ── 13d. search: fee>0（兜底信号）→ 一律锁 ────────────────────
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'fee1',
+                name: 'fee>0 歌',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 200,
+                file: { strMediaMid: 'MMfee' },
+                pay: { fee: 1, pay_play: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: true }), 'fee', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, true, 'fee=1 → 锁（兜底命中付费）');
+    console.log('✅ 13d. search fee>0 → vipLocked=true');
+  }
+
+  // ── 13e. search: pay 整体缺失 → 不锁（保守放行，保留旧行为） ─────
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'nopay1',
+                name: '无 pay 字段的歌',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 200,
+                file: { strMediaMid: 'MMnp' },
+                // 注意：没有 pay 字段
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: undefined }), 'nopay', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, false, 'pay 缺失 → 不锁（保守放行）');
+    console.log('✅ 13e. search pay 缺失 → vipLocked=false（保守放行）');
+  }
+
+  // ── 13f. search: fee=0（pay_play=0 同时显式 fee=0）→ 不锁 ───────
+  // 防止 happy path 被 fee>0 兜底误伤
+  {
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        data: {
+          song: {
+            list: [
+              {
+                mid: 'free2',
+                name: 'fee=0 的免费歌',
+                singer: [{ name: '某歌手', mid: 's' }],
+                album: { name: '某专辑', mid: 'a' },
+                interval: 200,
+                file: { strMediaMid: 'MMf2' },
+                pay: { pay_play: 0, fee: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    }));
+    const tracks = await prov.search(sess({ qqVip: false }), 'fee0', 20);
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, false, 'fee=0 + pay_play=0 → 不锁');
+    console.log('✅ 13f. search fee=0 + pay_play=0 → vipLocked=false（防兜底误伤）');
+  }
+
   // ── 14. fetchRadioBatch: 种子轮转（mock 返回不同 batch） ────────
   {
     let callCount = 0;
@@ -850,7 +1024,7 @@ async function main() {
     console.log(`✅ 37. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 qq.provider.test 全部 37 项通过');
+  console.log('\n🎉 qq.provider.test 全部 43 项通过');
 }
 
 main().catch((err) => {
