@@ -289,6 +289,10 @@ function createWindow(): void {
     height: 800,
     minWidth: 960,
     minHeight: 640,
+    // hiddenInset：红绿灯叠在内容上、不画原生标题栏 —— 自定义 .titlebar
+    // 本就当拖拽区设计（左侧 96px 净空），mini 模式更是整条 pill 即窗口。
+    // 仅 darwin；其他平台保持默认标题栏。
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
     // macOS traffic-light buttons live in the top-left. The renderer
     // titlebar reserves a 80px safe area on the left so it doesn't
     // overlap the system buttons (or the green fullscreen button when
@@ -661,6 +665,94 @@ ipcMain.on('player:state', (_event, state: PlaybackState) => {
     artist: state?.artist,
   };
   refreshTray();
+});
+
+// ── Player mode → window size ─────────────────────────────────────────────
+// renderer 在 theater ↔ mini 切换时 send 'player:mode'。mini 把窗口收成
+// 悬浮小条（Apple Music miniPlayer 形态），theater 恢复切入前的 bounds。
+// 与 'player:state' 同在 module 顶层注册（ipcMain.on 不受 Bug #1 影响——
+// 那是 ipcMain.handle 的 invoke 时序问题）。
+
+const NORMAL_MIN_SIZE = { width: 960, height: 640 };
+// 600×104 ≈ Apple Music miniPlayer 形态：整条 pill 即窗口（hiddenInset
+// titlebar 不占地），pill 四周留 6px 边距 + 左上净空给红绿灯。
+const MINI_SIZE = { width: 600, height: 104 };
+const MINI_MIN_SIZE = { width: 460, height: 96 };
+
+/** 切 mini 前的主窗口状态；null = 当前不在 mini。 */
+let theaterWindowState: {
+  bounds: Electron.Rectangle;
+  maximized: boolean;
+  fullScreen: boolean;
+} | null = null;
+
+const TRAFFIC_LIGHTS_POS = { x: 18, y: 18 };
+// 移到窗口外 = 真隐藏。setWindowButtonVisibility(false) 在 hiddenInset 下
+// 只把按钮变灰留下残影块，物理移出可视区才彻底。
+const TRAFFIC_LIGHTS_OFFSCREEN = { x: -100, y: -100 };
+
+/** mini 模式红绿灯显隐（macOS only）：hover 显 / 移出窗口隐。 */
+function setLightsVisible(win: BrowserWindow, visible: boolean): void {
+  if (process.platform !== 'darwin') return;
+  win.setWindowButtonPosition(visible ? TRAFFIC_LIGHTS_POS : TRAFFIC_LIGHTS_OFFSCREEN);
+  win.setWindowButtonVisibility(visible); // 双保险，不同版本行为不一
+}
+
+ipcMain.on('player:mode', (_event, mode: 'theater' | 'mini') => {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  if (mode !== 'mini' && mode !== 'theater') return;
+
+  if (mode === 'mini') {
+    if (theaterWindowState) return; // 已在 mini —— 别覆盖保存的 bounds
+    theaterWindowState = {
+      bounds: win.getNormalBounds(),
+      maximized: win.isMaximized(),
+      fullScreen: win.isFullScreen(),
+    };
+    const applyMini = () => {
+      const s = theaterWindowState;
+      if (win.isDestroyed() || !s) return;
+      win.setMinimumSize(MINI_MIN_SIZE.width, MINI_MIN_SIZE.height);
+      win.setBounds(
+        {
+          // 水平居中收缩、y 不动 —— titlebar 留在原位，窗口往下收成一条
+          x: s.bounds.x + Math.round((s.bounds.width - MINI_SIZE.width) / 2),
+          y: s.bounds.y,
+          width: MINI_SIZE.width,
+          height: MINI_SIZE.height,
+        },
+        true, // macOS animate
+      );
+    };
+    if (win.isFullScreen()) {
+      // setBounds 在全屏退出动画期间会被吞 → 等 leave-full-screen 再缩
+      win.once('leave-full-screen', applyMini);
+      win.setFullScreen(false);
+    } else {
+      if (win.isMaximized()) win.unmaximize();
+      applyMini();
+    }
+    // mini = 干净 pill：红绿灯默认收起来，hover 窗口时 renderer 再让显示
+    setLightsVisible(win, false);
+  } else {
+    const s = theaterWindowState;
+    theaterWindowState = null;
+    win.setMinimumSize(NORMAL_MIN_SIZE.width, NORMAL_MIN_SIZE.height);
+    setLightsVisible(win, true);
+    if (!s) return;
+    win.setBounds(s.bounds, true);
+    if (s.maximized) win.maximize();
+    else if (s.fullScreen) win.setFullScreen(true);
+  }
+});
+
+/** mini 模式红绿灯显隐（macOS only）：renderer 用 mousemove/mouseleave
+ *  跟踪 hover，通过这里切原生按钮位置（移出窗口 = 隐藏）。 */
+ipcMain.on('window-buttons:visibility', (_event, visible: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    setLightsVisible(mainWindow, Boolean(visible));
+  }
 });
 
 // ── App lifecycle ───────────────────────────────────────────────────────────

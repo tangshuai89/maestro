@@ -132,6 +132,20 @@ const electronAPI = {
   reportPlaybackState: (state: PlaybackState): void =>
     ipcRenderer.send('player:state', state),
 
+  /**
+   * Report player mode ('theater' | 'mini') so main can shrink the window
+   * to a floating mini bar and restore it back. Fire-and-forget.
+   */
+  reportPlayerMode: (mode: 'theater' | 'mini'): void =>
+    ipcRenderer.send('player:mode', mode),
+
+  /**
+   * Show/hide the macOS traffic-light buttons (mini 模式：默认隐藏，
+   * hover 到窗口才显示 —— Apple Music miniPlayer 式干净 pill）。
+   */
+  setWindowButtonsVisible: (visible: boolean): void =>
+    ipcRenderer.send('window-buttons:visibility', visible),
+
   /** Tell main we're in Electron so the renderer can branch its behaviour. */
   isElectron: true as const,
 

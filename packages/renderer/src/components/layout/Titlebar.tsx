@@ -1,4 +1,5 @@
 import type { DeezerEditorial, MusicProvider, QqQuality } from '../../api';
+import type { PlayerMode } from '../mini/MiniPlayer';
 import SourceMenu from './SourceMenu';
 import QualityMenu from './QualityMenu';
 import DeezerPresetSelect from './DeezerPresetSelect';
@@ -32,6 +33,9 @@ interface Props {
   onOpenLiked: () => void;
   // Settings (backup / export / import)
   onOpenSettings: () => void;
+  // Player mode (theater ↔ mini，⌘⇧M)
+  playerMode: PlayerMode;
+  onTogglePlayerMode: () => void;
 }
 
 /**
@@ -61,6 +65,8 @@ export default function Titlebar({
   likedCount,
   onOpenLiked,
   onOpenSettings,
+  playerMode,
+  onTogglePlayerMode,
 }: Props) {
   const showQuality =
     (provider === 'qq' || provider === 'netease') && loggedIn;
@@ -137,6 +143,15 @@ export default function Titlebar({
           {accountName || 'User'}
         </button>
       )}
+
+      <button
+        className="titlebar-btn mode-btn"
+        onClick={onTogglePlayerMode}
+        title={playerMode === 'mini' ? '展开剧场模式（⌘⇧M）' : 'Mini 模式（⌘⇧M）'}
+        aria-label={playerMode === 'mini' ? '展开剧场模式' : '切换到 Mini 模式'}
+      >
+        {playerMode === 'mini' ? '⛶' : '▭'}
+      </button>
 
       <button
         className="titlebar-btn settings-btn-icon"

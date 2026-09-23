@@ -12,6 +12,7 @@ import { readCachedLibrary } from './lib/likedCache';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
 import TheaterView from './components/views/TheaterView';
+import MiniPlayer, { type PlayerMode } from './components/mini/MiniPlayer';
 import Titlebar from './components/layout/Titlebar';
 import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
@@ -120,6 +121,80 @@ export default function App() {
   });
   const [likedVersion, setLikedVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // theater ↔ mini 浮层切换（specs/mini-player）。<audio> 常驻本组件，
+  // 切 mode 只是 TheaterView/MiniPlayer 的条件渲染 —— Web Audio graph 不动。
+  // 持久化到 localStorage，重启恢复上次模式。
+  const [playerMode, setPlayerMode] = useState<PlayerMode>(() => {
+    try {
+      return localStorage.getItem('player-mode') === 'mini' ? 'mini' : 'theater';
+    } catch {
+      return 'theater';
+    }
+  });
+  const { bgLayerRef, coverBackdropRef } = player;
+  useEffect(() => {
+    try {
+      localStorage.setItem('player-mode', playerMode);
+    } catch {
+      /* private mode — 不持久化也能用 */
+    }
+    // Electron 下让 main 把窗口收成小条 / 还原；浏览器 dev 无 electronAPI 跳过。
+    window.electronAPI?.reportPlayerMode(playerMode);
+
+    // 切回 theater 时 .th-cover 是全新挂载的 div —— 它的 background-image 只在
+    // 换歌时由 presentCover 命令式写入 ref.current，mode 切换不会重放。
+    // bg-layer 常驻且持有同一封面，把它的 image 镜回新 div；bg 为空（无封面或
+    // 在途 fetch）则跳过 —— 在途的 applyCoverImage 落地时惰性读 ref.current，
+    // 会写到新 div 上。
+    if (playerMode === 'theater') {
+      const bg = bgLayerRef.current;
+      const cover = coverBackdropRef.current;
+      if (bg?.style.backgroundImage && cover && !cover.style.backgroundImage) {
+        cover.style.backgroundImage = bg.style.backgroundImage;
+      }
+    }
+
+    // mini 模式红绿灯 hover 显隐（AM miniPlayer 式）：mouse 在窗口内 → 显示，
+    // 离开窗口 → 隐藏。mousemove 节流成可见性翻转（visible flag 去重 IPC）。
+    // main 端在进 mini 时已默认隐藏；退出 mini 由 main 统一恢复显示。
+    if (playerMode !== 'mini') return;
+    const api = window.electronAPI;
+    if (!api?.setWindowButtonsVisible) return;
+    let visible = false;
+    const setVisible = (v: boolean) => {
+      if (v === visible) return;
+      visible = v;
+      api.setWindowButtonsVisible(v);
+    };
+    const onMove = () => setVisible(true);
+    const onLeave = () => setVisible(false);
+    window.addEventListener('mousemove', onMove);
+    // 红绿灯是原生控件，悬停其上可能不发 DOM mousemove —— 进窗口的
+    // mouseenter 兜底，保证从任何角度 hover 上来都能显出按钮。
+    document.documentElement.addEventListener('mouseenter', onMove);
+    document.documentElement.addEventListener('mouseleave', onLeave);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      document.documentElement.removeEventListener('mouseenter', onMove);
+      document.documentElement.removeEventListener('mouseleave', onLeave);
+      api.setWindowButtonsVisible(true);
+    };
+  }, [playerMode, bgLayerRef, coverBackdropRef]);
+  // Cmd+Shift+M（避开 macOS Cmd+M 最小化）。setPlayerMode 是稳定引用，
+  // effect 内直接调，不把 handler 加进依赖。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setPlayerMode((m) => (m === 'mini' ? 'theater' : 'mini'));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const handleTogglePlayerMode = () =>
+    setPlayerMode((m) => (m === 'mini' ? 'theater' : 'mini'));
   const reloadLikedCount = async () => {
     // 先用缓存秒出首帧（避免 ❤ 按钮从 0 闪到 N），后台拉到后用真值覆盖。
     const cached = readCachedLibrary();
@@ -230,7 +305,7 @@ export default function App() {
   return (
     // search-open adds a class the CSS uses to freeze the cover animations
     // behind the search overlay's backdrop-filter (avoids flicker).
-    <div className={`app theater-mode${player.searchOpen ? ' search-open' : ''}`}>
+    <div className={`app ${playerMode === 'mini' ? 'mini-mode' : 'theater-mode'}${player.searchOpen ? ' search-open' : ''}`}>
       <Titlebar
         provider={player.provider}
         onSwitchProvider={player.switchToProvider}
@@ -263,12 +338,30 @@ export default function App() {
           setLikedOpen(true);
         }}
         onOpenSettings={() => setSettingsOpen(true)}
+        playerMode={playerMode}
+        onTogglePlayerMode={handleTogglePlayerMode}
       />
 
       {/* Full-window blurred cover layer — the backdrop the glass cards blur.
           background-image is set by useCoverArt via bgLayerRef. */}
       <div className="bg-layer" ref={player.bgLayerRef} aria-hidden="true" />
 
+      {playerMode === 'mini' ? (
+        <MiniPlayer
+          track={player.track}
+          playing={player.playing}
+          loading={player.loading}
+          liked={player.track?.liked ?? false}
+          currentTime={player.currentTime}
+          duration={player.duration}
+          onPlayPause={player.handlePlayPause}
+          onSkip={player.handleSkip}
+          onPrev={player.handlePrev}
+          onLike={() => void player.handleLike()}
+          onSeek={player.seek}
+          onExpand={handleTogglePlayerMode}
+        />
+      ) : (
       <TheaterView
         track={player.track}
         playing={player.playing}
@@ -302,6 +395,7 @@ export default function App() {
         onConfigureReco={() => reco.setRecoKeyOpen(true)}
         onRecoSeed={() => reco.handleRecoSeed(player.track?.title, player.track?.artist)}
       />
+      )}
 
       {/* Always mounted (never conditionally unmounted) so the Web Audio graph
           built on it stays valid for the whole session — createMediaElement-

@@ -1,0 +1,257 @@
+@use '../abstracts' as *;
+
+// ─────────────────────────────────────────────────────────────────
+// Mini Player —— 底部悬浮播控条 + .app.mini-mode 覆写。
+// spec：specs/mini-player/spec.md
+// token 门禁：本文件预算 0 —— 只许 var(--token) / color-mix(var…)，
+// 不写 #hex/rgb()/hsl() 字面量（scan-hardcoded-colors --gate）。
+// ─────────────────────────────────────────────────────────────────
+
+// mini 模式下清掉 Bento 布局的 padding/gap（与 .theater-mode 同手法）；
+// bg-layer 保留但压暗 —— 浮层背后一层淡淡的封面晕染（设计 spec §7）。
+.app.mini-mode {
+  padding: 0;
+  gap: 0;
+}
+.app.mini-mode .bg-layer {
+  opacity: 0.2;
+}
+
+// mini 窗口只有 ~620px 宽 —— titlebar 放不下完整按钮组。只留 mode 切换
+// （回 theater 的入口），其余隐藏：它们打开的浮层（搜索/库/设置）都比
+// mini 窗口大，本来就得先展开。空出的整条 titlebar 正好当拖拽区。
+.app.mini-mode .titlebar {
+  padding-left: 80px; // 仍避开 macOS traffic lights
+}
+.app.mini-mode .titlebar > *:not(.mode-btn) {
+  display: none;
+}
+.app.mini-mode .titlebar .mode-btn {
+  margin-left: auto; // 收右，左半留给拖拽
+}
+
+// mount 入场：从底部滑上浮起
+@keyframes mini-player-in {
+  from {
+    transform: translate(-50%, 16px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+.mini-player {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  z-index: z('mini-player');
+
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(560px, calc(100% - 48px));
+  padding: 10px var(--space-4-ui);
+
+  // 玻璃拟态：与 .glass-card 同一配方（cover-accent 微染 + backdrop-blur）
+  background: color-mix(
+    in oklab,
+    var(--cover-accent) 8%,
+    color-mix(in srgb, var(--white) 6%, transparent)
+  );
+  border: 1px solid color-mix(in oklab, var(--cover-accent) 16%, var(--border));
+  border-radius: var(--radius-lg);
+  @include backdrop-blur(30px, 160%);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 var(--glass-fill-strong);
+
+  animation: mini-player-in 0.35s var(--ease-out);
+}
+
+// ── 封面（<button>：点击 = 展开回 theater，Apple Music miniPlayer 行为）──
+.mini-cover {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: 0 0 12px var(--cover-glow);
+  cursor: pointer;
+}
+.mini-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mini-cover-symbol {
+  position: absolute;
+  inset: 0;
+  @include flex-center;
+  font-size: 18px;
+  color: var(--primitive-off-white);
+}
+
+// ── 曲目信息 + 进度 ───────────────────────────────────────────────
+.mini-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mini-title {
+  @include truncate;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+.mini-sub {
+  @include truncate;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.25;
+}
+.mini-progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-ui);
+  margin-top: 2px;
+}
+.mini-progress {
+  flex: 1 1 auto;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--track);
+  cursor: pointer;
+  // 加宽热区：3px 视觉条 + 上下 5px 透明可点区
+  padding: 5px 0;
+  background-clip: content-box;
+}
+.mini-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--accent-live); // 跟随封面色，与音量条/进度条一致
+  transition: width 0.2s linear;
+}
+.mini-time {
+  flex: 0 0 auto;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+// ── 按钮组 ────────────────────────────────────────────────────────
+.mini-buttons {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.mini-btn {
+  @include flex-center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 100ms var(--ease-spring);
+}
+.mini-btn:hover:not(:disabled) {
+  background: var(--glass-fill-strong);
+  border-color: var(--glass-stroke);
+}
+.mini-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.mini-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+// 播放键大一圈，playing 态染 accent-live
+.mini-btn--play {
+  width: 36px;
+  height: 36px;
+  border-color: var(--glass-stroke);
+  background: var(--glass-fill);
+}
+.mini-btn--play.is-playing {
+  color: var(--accent-live);
+  border-color: color-mix(in srgb, var(--accent-live) 45%, transparent);
+}
+
+// 红心态与 .th-like.is-liked 同色（--status-liked）
+.mini-btn--like.is-liked {
+  color: var(--status-liked);
+}
+
+// loading spinner：18px 圆环，与 .th-core-spinner 同手法
+.mini-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--track);
+  border-top-color: var(--accent-live);
+  animation: mini-spin 0.8s linear infinite;
+}
+@keyframes mini-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 紧凑 pill 形态：窗口真被 main 缩成小条（≤220px 高）时启用。
+// Apple Music miniPlayer 同款 —— pill 撑满窗口（四周 6px 边距）、
+// titlebar 整体隐藏、红绿灯直接叠在 pill 左上净空区、整条 pill 可拖拽。
+// 大窗口 / 浏览器 dev 下仍是底部浮层 + 精简 titlebar。
+// ─────────────────────────────────────────────────────────────────
+@media (max-height: 220px) {
+  .app.mini-mode .titlebar {
+    display: none;
+  }
+
+  // pill 贴满窗口、无外边：边框/圆角/外阴影全去掉，只剩内侧顶部一道
+  // 高光发丝线。透明度拉高 —— 背后 bg-layer 封面晕染透上来（0.45）。
+  .app.mini-mode .bg-layer {
+    opacity: 0.45;
+  }
+
+  .app.mini-mode .mini-player {
+    inset: 0;
+    width: auto;
+    transform: none;
+    animation: none; // inset 布局下 translate(-50%) 入场动画会错位
+    border: none;
+    border-radius: 0;
+    background: color-mix(
+      in oklab,
+      var(--cover-accent) 10%,
+      color-mix(in srgb, var(--white) 3%, transparent)
+    );
+    box-shadow: inset 0 1px 0 var(--glass-fill-strong);
+    padding: 24px 14px 12px; // 顶部 24px 净空 = 红绿灯(trafficLight 18,18)+拖拽带
+    -webkit-app-region: drag; // 整条 pill 即拖拽区
+  }
+
+  // 可交互元素排除出拖拽区（按钮 / 进度条 / 封面）
+  .app.mini-mode .mini-player button,
+  .app.mini-mode .mini-progress {
+    -webkit-app-region: no-drag;
+  }
+}
