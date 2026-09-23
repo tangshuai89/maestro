@@ -30,11 +30,12 @@ import {
   stripFuriganaParens,
   stripParensContent,
   stripTrailingMeta,
+  titleAliasMatch,
 } from '@maestro/common';
 // 音译佐证：跨脚本艺人（Spotify 罗马音 vs QQ/网易云 汉字/假名）的判等。
 // mergeCrossScript（库导入合并）与 searchEquivalent（搜索匹配）共用同一套
 // 音译逻辑，避免库导入对跨脚本艺人「合并不上」而搜索却「能匹配」的口径分裂。
-import { artistTransliterationMatch } from './translit';
+import { artistTransliterationMatch, titleTransliterationMatch } from './translit';
 export {
   artistLooseMatch,
   cjkUnify,
@@ -411,17 +412,88 @@ export function sortByRelevance(
   return [...items].sort((a, b) => score(b) - score(a) || rank(a) - rank(b));
 }
 
+export interface BuildUnifiedItemsOptions {
+  /**
+   * 跨脚本证据合并（统一搜索专用开关；library import 走 mergeCrossScript
+   * 另一套口径，不传此参保持原行为）。
+   *
+   * 背景（2026-09-23「寂寞，好了」用户场景）：Spotify/Deezer 对华语曲目常
+   * 返回罗马音/英文元数据（Evan Yo / Ji Mo, Hao Liao），normalizeKey 与
+   * CJK 条目落到不同 key → 同一首歌被拆成两行，用户以为"Spotify 没搜到"。
+   *
+   * 与 mergeCrossScript 的关键差异——**标题门更严**：mergeCrossScript 只要
+   * 「一边 CJK 一边拉丁」就放行（库导入场景可接受）；搜索结果是全目录密度
+   * （搜艺人名时同艺人几十首），裸 isCrossScript 会把同艺人的不同歌误并
+   * （「我可以」↔「Death of Me」只要时长撞上）。这里跨脚本标题必须过
+   * **音译佐证**（titleTransliterationMatch：拼音多音字展开 + kuromoji），
+   * 同脚本标题仍走 displayKey 相等 + 策展别名表。
+   */
+  crossScriptMerge?: boolean;
+}
+
+type Group = RawGroup & { entries: RawSearchEntry[] };
+
+/**
+ * 两组（同 versionType）是否「同一首歌的证据足够」——跨脚本组间合并的判等。
+ * 判定顺序按成本升序：duration（数值）→ title（displayKey/别名/音译）→
+ * artist（别名表/音译，最贵）。
+ */
+function groupMergeEvidence(a: Group, b: Group): boolean {
+  // 1) duration：任一对 ≤30s（DIFFERENT_VERSION_DURATION_TOLERANCE_SEC，
+  //    跨平台同歌不同 master 的 intro/outro 差异常到 15-25s）。两侧全部时长
+  //    未知（≤0）时放行——与 clusterByDuration 对未知时长的口径一致。
+  let anyKnown = false;
+  let close = false;
+  for (const ea of a.entries) {
+    for (const eb of b.entries) {
+      const da = ea.track.duration;
+      const db = eb.track.duration;
+      if (da > 0 && db > 0) {
+        anyKnown = true;
+        if (Math.abs(da - db) <= DIFFERENT_VERSION_DURATION_TOLERANCE_SEC) {
+          close = true;
+        }
+      }
+    }
+  }
+  if (anyKnown && !close) return false;
+
+  // 2) title：组内 normalizeKey 相等 ⇒ 同组标题等价，取代表比较即可。
+  const ta = a.entries[0].track.title;
+  const tb = b.entries[0].track.title;
+  const ka = displayKey(stripTrailingMeta(ta), '');
+  const kb = displayKey(stripTrailingMeta(tb), '');
+  const titleOk =
+    ka === kb ||
+    titleAliasMatch(ta, tb) ||
+    // 跨脚本（一侧 CJK 一侧拉丁）才走音译——CJK↔CJK 不同 key 的标题
+    // 若也按拼音判等，「异地」↔「一地」这类同音异形会误并（比 includes
+    // 更松的事故面），故仅对真正跨脚本的标题启用音译佐证。
+    (isCrossScript(ka, kb) &&
+      titleTransliterationMatch(
+        stripParensContent(ta),
+        stripParensContent(tb),
+      ));
+  if (!titleOk) return false;
+
+  // 3) artist：策展别名表/段段配对 OR 音译佐证——与 mergeCrossScript 同口径。
+  //    「蔡旻佑 ↔ Evan Yo」命中别名表；「黒うさP ↔ Kurousa P」命中音译。
+  const aa = a.entries[0].track.artist;
+  const ab = b.entries[0].track.artist;
+  return artistLooseMatch(aa, ab) || artistTransliterationMatch(aa, ab);
+}
+
 export function buildUnifiedItems(
   _deduped: Map<string, Track>,
   all: RawSearchEntry[],
   priority: MusicProvider[] = PLAY_PRIORITY,
+  opts: BuildUnifiedItemsOptions = {},
 ): UnifiedSearchItem[] {
   // 1) 按 (normalizeKey, versionType) 分组（Phase 1 redesign）：
   // 同一首歌（normalizeKey 相同）的不同 version（studio / live / acoustic /
   // remix / instrumental）→ 不同 item；同 version 内部继续按 duration 聚类。
   // 旧版只按 normalizeKey 分组，结果是 Live / Remix 都跟 studio 各自成 cluster
   // ——搜索"盲选"一下十几条，根本看不过来。
-  type Group = RawGroup & { entries: RawSearchEntry[] };
   const byGroup = new Map<string, Group>();
   for (const e of all) {
     const key = normalizeKey(e.track.title, e.track.artist);
@@ -433,8 +505,47 @@ export function buildUnifiedItems(
     byGroup.set(groupKey, g);
   }
 
+  let groups = [...byGroup.values()];
+
+  // 1.5) 跨脚本证据合并（opt-in）：同 versionType 组间，标题同义 + 艺人可桥 +
+  //      时长任一对 ≤30s → union-find 并成一组。并组后 entries 直接进
+  //      clusterByDuration——跨平台同录音源自然落到同一版本 cluster
+  //      （Deezer 342s 与 QQ 342s 合并成一个 version 的两个 source）。
+  if (opts.crossScriptMerge) {
+    const parent = groups.map((_, i) => i);
+    const find = (i: number): number => {
+      while (parent[i] !== i) {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+      }
+      return i;
+    };
+    for (let i = 0; i < groups.length; i++) {
+      for (let j = i + 1; j < groups.length; j++) {
+        const a = groups[i];
+        const b = groups[j];
+        // 不同 versionType（live vs studio 等）在设计口径上就是不同 item，
+        // 跨脚本合并不破坏这个边界。
+        if (a.versionType !== b.versionType) continue;
+        if (find(i) === find(j)) continue;
+        if (groupMergeEvidence(a, b)) parent[find(j)] = find(i);
+      }
+    }
+    const merged = new Map<number, Group>();
+    for (let i = 0; i < groups.length; i++) {
+      const root = find(i);
+      const g = merged.get(root);
+      if (g) {
+        g.entries.push(...groups[i].entries);
+      } else {
+        merged.set(root, groups[i]);
+      }
+    }
+    groups = [...merged.values()];
+  }
+
   const items: UnifiedSearchItem[] = [];
-  for (const group of byGroup.values()) {
+  for (const group of groups) {
     // Phase 2 redesign：search "盲选" 之前会出现十几条 album/live/remix 不同
     // 录音版本。Phase 1 按 versionType 分组但同 type 内还按 3s duration 拆 cluster，
     // 结果是专辑短版/长版/Live 短版/Live 长版...各自成 item，仍然太多。

@@ -671,6 +671,10 @@ export class MusicService {
       ? Math.min(50, Math.max(1, Math.floor(pageSize)))
       : 20;
 
+    // 预热 kuromoji（不阻塞搜索）：buildUnifiedItems 的跨脚本合并会用
+    // romanizeJa 读日文汉字名/标题的读音。词典未就绪时该路线降级为空——
+    // 拼音/别名表不受影响；与各平台搜索并行加载，通常 merge 时已就绪。
+    void warmupJa();
     // 并行搜索三个平台，单个超时 5 秒不阻塞其他平台。
     const results = await Promise.all(
       MUSIC_PROVIDERS.map((p) => this.searchOneProvider(session, p, kw)),
@@ -693,7 +697,12 @@ export class MusicService {
     const priority = this.readChannelPriority(session);
 
     // 构建 UnifiedSearchItem，每个 item 聚合各平台的 source。
-    const items = buildUnifiedItems(deduped, allTracks, priority);
+    // crossScriptMerge：Spotify/Deezer 常返回罗马音/英文元数据（Evan Yo /
+    // Ji Mo, Hao Liao），normalizeKey 与 CJK 条目不同 key——不合并的话同一首
+    // 歌被拆成两行（2026-09-23「寂寞，好了」用户报障）。
+    const items = buildUnifiedItems(deduped, allTracks, priority, {
+      crossScriptMerge: true,
+    });
 
     // 分页前按查询相关性重排：buildUnifiedItems 输出序 = 平台段首次出现序
     // （qq 段整体在前），平台独占曲目会被埋到第一页之外（如网易云独有的

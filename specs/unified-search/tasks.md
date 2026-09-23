@@ -46,3 +46,26 @@
       `platform:trackId → 平台内名次` 映射传入，同分按 rank 升序 → 各平台 top
       结果交错冒头。实测端到端：裘德《浓缩蓝鲸》升至综合搜索第 1-2 位。
       新增 R5 用例。
+- [x] 21. 统一搜索跨脚本证据合并（`buildUnifiedItems` 新增 opt-in
+      `crossScriptMerge`，仅 `searchUnified` 传 true；library import 仍走
+      mergeCrossScript 旧口径不动）：修 2026-09-23「寂寞，好了」报障——
+      Spotify 实际返回 `寂寞，好了 | Evan Yo | 346s`、Deezer 返回罗马音
+      `Ji Mo, Hao Liao | Evan Yo | Loneliness | 342s`，但 normalizeKey 对
+      跨脚本元数据（Evan Yo ↔ 蔡旻佑）落到不同 key，同一首歌被拆成三行，
+      用户以为"Spotify 没搜到"且 Deezer 拼音行看着很怪。实现：分组后按
+      union-find 做组间证据合并——同 versionType 内「标题同义 + 艺人可桥
+      + 任一对时长 ≤30s」才并组。标题门刻意比 mergeCrossScript 严：搜索
+      结果是全目录密度，裸 isCrossScript 会把同艺人不同歌误并（「我可以」
+      ↔「Death of Me」时长撞上就翻车），跨脚本标题必须过**音译佐证**——
+      新增 `translit.ts:titleTransliterationMatch`（pinyin-pro 逐字
+      `multiple:true` 多音字笛卡尔展开，覆盖词级消歧给不出的读音如
+      了→liao；kuromoji(cn2t) 管日文汉字如 花火↔Hanabi；变体上限
+      4读音/字×24变体防爆炸；**只认整串相等不做 includes**，防
+      Song↔Song II 误并）。CJK↔CJK 同音异形（异地↔一地）不并——音译
+      仅对真跨脚本启用。艺人走 artistLooseMatch 别名表（蔡旻佑↔Evan Yo
+      已在表）或 artistTransliterationMatch。`searchUnified` 搜索前
+      `void warmupJa()` 并行预热 kuromoji，未就绪优雅降级。新增
+      search-crossscript-groups.test.ts 8 用例（含开关关闭回归护栏、
+      live/studio 边界、>30s 时长门、翻唱不同艺人拒绝）。实测端到端：
+      「寂寞，好了」合并为 1 item，versions 覆盖 qq/netease/spotify/deezer
+      四源，翻唱条目全部正确保持独立。
