@@ -14,7 +14,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02020a;
+  background: var(--primitive-bg-bottom);
   color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
@@ -262,7 +262,7 @@
   transition: width 0.25s ease;
 }
 
-.set-health-bar-fill--good { background: #3dffa2; }
+.set-health-bar-fill--good { background: var(--status-sync); }
 .set-health-bar-fill--mid { background: #ffb800; }
 .set-health-bar-fill--bad { background: var(--status-error); }
 .set-health-bar-fill--zero { background: transparent; }
@@ -312,7 +312,7 @@
 }
 
 .set-stat-value {
-  color: #00e5ff;
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -345,13 +345,13 @@
 .set-btn--accent {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  color: #00e5ff;
+  color: var(--accent);
 }
 
 .set-btn--accent:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  color: #00e5ff;
+  color: var(--accent);
 }
 
 .set-btn--danger {
@@ -462,6 +462,6 @@
   font-size: 12px;
   line-height: 1.4;
 
-  &--ok { color: #3dffa2; }
+  &--ok { color: var(--status-sync); }
   &--err { color: var(--status-error); }
 }
