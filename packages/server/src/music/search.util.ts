@@ -50,6 +50,35 @@ export {
 export type RawSearchEntry = { track: Track; platform: MusicProvider };
 
 /** 去重: 相同 normalizeKey 的歌合并为一条，保留第一个出现的。 */
+/**
+ * 从 UnifiedSearchItem.sources 重算 crossPlatformLikeTotal 派生量。
+ *
+ * 累加规则（见 specs/cross-platform-likes）：
+ *   - 只算 source.likeCount 非 undefined 的 source（QQ + 网易云）
+ *   - display 用 m_show / count.toLocaleString() 拼接（加号分隔，浏览器自动
+ *     加空格分隔可读——D.1 紧凑样式由 HUD 自己 wrap span）
+ *   - platforms[] 按 sources 出现序（用于上标 ¹/² 渲染）
+ *   - 全部 source 都没数 → 整个字段 undefined（避免和"0"混淆）
+ */
+export function recomputeCrossPlatformLikeTotal(
+  item: UnifiedSearchItem,
+): void {
+  const buckets: Array<{ source: 'qq' | 'netease'; count: number; display: string }> = [];
+  for (const s of item.sources) {
+    if ((s.platform === 'qq' || s.platform === 'netease') && s.likeCount) {
+      buckets.push(s.likeCount);
+    }
+  }
+  if (buckets.length === 0) {
+    delete item.crossPlatformLikeTotal;
+    return;
+  }
+  const count = buckets.reduce((a, b) => a + b.count, 0);
+  const display = buckets.map((b) => b.display).join(' + ');
+  const platforms = buckets.map((b) => b.source);
+  item.crossPlatformLikeTotal = { count, display, platforms };
+}
+
 export function dedupTracks(all: RawSearchEntry[]): Map<string, Track> {
   const map = new Map<string, Track>();
   for (const { track } of all) {

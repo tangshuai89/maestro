@@ -1,0 +1,10 @@
+- [ ] 1. types.ts: SourceInfo 加 likeCount 字段（count/display/source）
+- [ ] 2. types.ts: UnifiedSearchItem 加 crossPlatformLikeTotal 派生字段
+- [ ] 3. qq.provider.ts: getTrackFavCount(session, songmid) 走 SongFavRead
+- [ ] 4. netease.provider.ts: getTrackLikeCount(session, songId) 走 /api/song/detail
+- [ ] 5. music.service.ts: searchUnified 后异步 fire-and-forget 填充 likeCount（带缓存 + withTimeout(5s)）
+- [ ] 6. music.service.ts: importLiked / patchLibraryWithSources 同样填充
+- [ ] 7. TheaterView.tsx: HUD 改读 crossPlatformLikeTotal，D.1 样式（上标 + 加号）
+- [ ] 8. e2e: "QQ + 网易云都有 → 上标¹+²"；"仅 QQ → 上标¹"；"超时 → undefined 不阻塞"；"切歌过渡态 → …"
+- [ ] 9. typecheck + lint + 全量测试通过
+- [ ] 10. 清理 _qq-fav-test.ts 临时文件

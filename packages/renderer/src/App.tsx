@@ -368,6 +368,7 @@ export default function App() {
         loading={player.loading}
         liked={player.track?.liked ?? false}
         fanOutCount={player.fanOutCount}
+        currentUnified={player.currentUnified}
         currentTime={player.currentTime}
         duration={player.duration}
         provider={player.provider ?? 'qq'}

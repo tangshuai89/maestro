@@ -108,6 +108,11 @@ export function usePlayer(
   const [error, setError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fanOutCount, setFanOutCount] = useState<number>(0);
+  // 当前播放曲目对应的 UnifiedSearchItem（reactive 镜像 — render 用）。
+  // ref 在 presentTrack 等热路径里更新，但 TheaterView 等子组件需要 re-render，
+  // 所以同时 setState。setCurrentUnified 不带 prev 回调：与 currentUnifiedRef
+  // 一一对应，写 ref 的同一处必然 setState，不需要 reconcile。
+  const [currentUnified, setCurrentUnified] = useState<UnifiedSearchItem | undefined>(undefined);
   // 本首歌是否因请求音质是 VIP 试听、被自动降到标准音质播放（UI 如实展示）。
   const [trialFellBack, setTrialFellBack] = useState(false);
 
@@ -285,6 +290,7 @@ export function usePlayer(
       const isNewSong =
         !unified || unified.id !== currentUnifiedRef.current?.id;
       currentUnifiedRef.current = unified;
+      setCurrentUnified(unified);
       if (isNewSong) {
         triedPlatformsRef.current = new Set();
         serverEquivTriedRef.current = false;
@@ -1440,6 +1446,7 @@ export function usePlayer(
     searchOpen,
     setSearchOpen,
     fanOutCount,
+    currentUnified,
     trialFellBack,
     qqQuality,
     deezerPreset,
