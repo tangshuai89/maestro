@@ -354,6 +354,61 @@ function toUnifiedItem(
   };
 }
 
+/**
+ * 统一搜索结果按查询相关性重排（稳定排序）。
+ *
+ * 为什么需要：`buildUnifiedItems` 的输出序 = `all` 里各平台段首次出现的顺序
+ * （MUSIC_PROVIDERS 序：qq 段整体在前）。平台内部 rank 跨平台不可比，且平台
+ * 独占曲目会被挤出第一页——实测「浓缩蓝鲸」：QQ 返回 25 条弱相关结果占满前
+ * 排，网易云独有的「浓缩蓝鲸 · 裘德」落到 index 25，pageSize=20 时第一页
+ * 根本看不到。各平台的 rank 信号只在"同一首歌内的源选择"里有意义，对 item
+ * 级的展示序必须用 query 相关性重排。
+ *
+ * 打分规则（标题匹配 > 歌手匹配 > 多 token 命中）：
+ *  - 标题 key 全等 query key +120；前缀 +70；包含 +50
+ *  - 歌手 key 全等 +60；包含 +30
+ *  - 多 token 查询（"裘德 浓缩蓝鲸"）：每个 token 命中标题或歌手 +20
+ *  - 0 分保持插入序（stable sort）——全不匹配时退回原平台段序，不回归
+ *
+ * `rankOf`（可选）：item 在其来源平台结果里的最佳排名（0 起）。同分时按
+ * 它升序——同名翻唱/同题歌曲的 query 分完全一致，此时各平台自己的排序
+ * 才是最可靠的相关性信号：「浓缩蓝鲸」QQ 返回 25 条同名翻唱全得 +120，
+ * 没有 rank tie-break 时网易云第 1 位的裘德原版仍被整段 QQ 块压在页外；
+ * 有了它，ne#0 与 qq#0 并列、优于 qq#1… → 平台各自的 top 结果交错排前。
+ *
+ * 只用于统一搜索（music.service.searchUnified 分页前）；库合并路径
+ * （match.service → buildUnifiedItems）没有 query，不调它。
+ */
+export function sortByRelevance(
+  items: UnifiedSearchItem[],
+  query: string,
+  rankOf?: (item: UnifiedSearchItem) => number,
+): UnifiedSearchItem[] {
+  const qKey = displayKey(query, '');
+  if (!qKey) return items;
+  const rank = rankOf ?? (() => 0);
+  const tokens = query
+    .split(/\s+/)
+    .map((t) => displayKey(t, ''))
+    .filter((t) => t && t !== qKey); // 单 token = 整串，已在全串比较里计分
+  const score = (it: UnifiedSearchItem): number => {
+    const titleK = displayKey(it.title, '');
+    const artistK = displayKey(it.artist, '');
+    let s = 0;
+    if (titleK === qKey) s += 120;
+    else if (titleK.startsWith(qKey)) s += 70;
+    else if (titleK.includes(qKey)) s += 50;
+    if (artistK === qKey) s += 60;
+    else if (artistK.includes(qKey)) s += 30;
+    for (const tk of tokens) {
+      if (titleK.includes(tk) || artistK.includes(tk)) s += 20;
+    }
+    return s;
+  };
+  // Array.prototype.sort 自 ES2019 起稳定——同分同 rank 保持插入序。
+  return [...items].sort((a, b) => score(b) - score(a) || rank(a) - rank(b));
+}
+
 export function buildUnifiedItems(
   _deduped: Map<string, Track>,
   all: RawSearchEntry[],

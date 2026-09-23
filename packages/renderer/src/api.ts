@@ -72,6 +72,8 @@ export interface Track {
   duration: number;
   liked: boolean;
   mediaMid?: string; // QQ 取流用的 media_mid（高音质需要）
+  /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。server Track 同名字段。 */
+  vipLocked?: boolean;
 }
 
 /** QQ 音质档位。standard=m4a，high=320mp3，lossless=flac（需会员）。 */
@@ -617,28 +619,44 @@ export async function searchOne(
       signal,
     }),
   );
-  return res.items.map((t): UnifiedSearchItem => ({
-    id: `${t.provider}:${t.id}`,
-    title: t.title,
-    artist: t.artist,
-    album: t.album,
-    coverUrl: t.coverUrl,
-    duration: t.duration,
-    bestSource: t.provider,
-    // 单平台搜索结果没有 versionType 分类（接口返回原始 Track），默认 studio。
-    // 跨平台 searchUnified 由服务端 classifyVersion 标注。
-    versionType: 'studio',
-    versions: [],  // 单平台搜索没 versionType 分类，默认空数组（自己）。
-    sources: [
-      {
-        platform: t.provider,
-        trackId: t.id,
-        hasCopyright: true,
-        url: t.audioUrl,
-        ...(t.mediaMid ? { mediaMid: t.mediaMid } : {}),
-      },
-    ],
-  }));
+  return res.items.map((t): UnifiedSearchItem => {
+    const source: UnifiedSourceInfo = {
+      platform: t.provider,
+      trackId: t.id,
+      hasCopyright: true,
+      url: t.audioUrl,
+      ...(t.mediaMid ? { mediaMid: t.mediaMid } : {}),
+      ...(t.vipLocked !== undefined ? { vipLocked: t.vipLocked } : {}),
+    };
+    return {
+      id: `${t.provider}:${t.id}`,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      coverUrl: t.coverUrl,
+      duration: t.duration,
+      bestSource: t.provider,
+      // 单平台搜索结果没有 versionType 分类（接口返回原始 Track），默认 studio。
+      // 跨平台 searchUnified 由服务端 classifyVersion 标注。
+      versionType: 'studio',
+      // 单平台结果没有多版本概念，versions 填一条指向自己。注意不能留空：
+      // SearchPanel.handleRowClick 播的是 item.versions[0]（不变量 =
+      // versions[0] 即主版本），空数组会让行点击静默无效（单曲结果点不播）。
+      versions: [
+        {
+          id: `${t.provider}:${t.id}:v0`,
+          duration: t.duration,
+          sources: [source],
+          bestSource: t.provider,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          coverUrl: t.coverUrl,
+        },
+      ],
+      sources: [source],
+    };
+  });
 }
 
 /**

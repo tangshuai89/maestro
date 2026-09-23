@@ -30,6 +30,7 @@ import {
   mergeCrossScript,
   PLAY_PRIORITY,
   selectBestSource,
+  sortByRelevance,
 } from './search.util';
 import { extractVersionTag, splitArtists, type VersionTag } from '@maestro/common';
 import { MatchService } from '../match/match.service';
@@ -683,10 +684,27 @@ export class MusicService {
     // 构建 UnifiedSearchItem，每个 item 聚合各平台的 source。
     const items = buildUnifiedItems(deduped, allTracks, priority);
 
+    // 分页前按查询相关性重排：buildUnifiedItems 输出序 = 平台段首次出现序
+    // （qq 段整体在前），平台独占曲目会被埋到第一页之外（如网易云独有的
+    // 「浓缩蓝鲸 · 裘德」被 25 条 QQ 弱相关结果挤出 pageSize=20 的首页）。
+    // rankMap 记录每条 track 在自己平台结果里的名次，供 sortByRelevance
+    // 在同分（同名歌）时按"各平台自家排名"交错——平台 top 结果优先冒头。
+    const rankMap = new Map<string, number>();
+    for (const r of results) {
+      r.tracks.forEach((t, i) => rankMap.set(`${r.platform}:${t.id}`, i));
+    }
+    const sorted = sortByRelevance(items, kw, (it) =>
+      Math.min(
+        ...it.sources.map(
+          (s) => rankMap.get(`${s.platform}:${s.trackId}`) ?? Number.MAX_SAFE_INTEGER,
+        ),
+      ),
+    );
+
     // 分页（服务端分页，不依赖前端截断）。
-    const total = items.length;
+    const total = sorted.length;
     const start = (safePage - 1) * effectivePageSize;
-    const paged = items.slice(start, start + effectivePageSize);
+    const paged = sorted.slice(start, start + effectivePageSize);
 
     // 记录失败平台（不影响返回，前端可选展示）。
     const errors = results.filter((r) => r.error);
