@@ -60,6 +60,23 @@ grep -rn "packages/[a-z]*/src/" .opencode/ .claude/ AGENTS.md HARNESS.md
    改了（如新增 harness 专属命令）时才同步本表
 5. **改本表（HARNESS.md）**：确保表格与目录里实际存在的文件一一对应；用 `ls` 验
 
+## 推送纪律（commit 后是否直推 master）
+
+> 2026-09-23 约定——避免来回切换 harness 时对"能不能直接 push"产生歧义。
+
+| 改动类型 | 是否直推 master |
+| --- | --- |
+| 文档（README / CHANGELOG / spec / docs/） | ✅ 直接 commit + push |
+| harness 配置（`.opencode/` / `.claude/` / `.codex/` / `AGENTS.md` / `HARNESS.md` / `CLAUDE.md`） | ✅ 直接 commit + push |
+| 普通功能 / 代码改动 / 行为变更 / 新依赖 / 锁文件 | ❌ 不直推；先 commit、给 diff 摘要、等用户点头再 push；常规走 PR 流程 |
+
+**判断口诀**：**"harness 间一致就能直推，运行时行为变更就停一下"**——前者只
+是约定同步，错了用户能秒回滚；后者错了会影响实际播放/搜索/打包，需要
+至少一道人工 review。
+
+**例外**：所有改动如触 `package.json` / `package-lock.json` / `.env*` / 任何
+凭据 / Widevine CDM / EVS 凭据相关——一律走 PR + 等用户明确"可以 push"。
+
 ## 已知边界
 
 - **Codex 没有项目级 slash 命令**——直接读 `CLAUDE.md` + 当前任务的 `specs/<x>/spec.md`
