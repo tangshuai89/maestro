@@ -13,8 +13,10 @@ import {
   detectLiked,
   dislike,
   dislikeMerged,
+  fetchTrackLikeCount,
   findEquivalentSource,
   getApiOrigin,
+  recomputeCrossPlatformLikeTotal,
   reportRecoSignal,
 } from '../api';
 import type {
@@ -291,6 +293,11 @@ export function usePlayer(
         !unified || unified.id !== currentUnifiedRef.current?.id;
       currentUnifiedRef.current = unified;
       setCurrentUnified(unified);
+      // 切歌瞬间 fire-and-forget 拉 ❤ 数（覆盖电台路径：电台自动切歌时
+      // searchUnified 不会触发 fillLikeCountsForItems，需 renderer 端单独触发）。
+      // 2s 超时不阻塞；同一首歌重复切同一首也安全（fill 完再做一次 likeCount
+      // 返回新对象，前端用 setX(mutated) 触发 re-render）。
+      if (unified) void fillLikeCountForCurrentTrack(unified, setCurrentUnified);
       if (isNewSong) {
         triedPlatformsRef.current = new Set();
         serverEquivTriedRef.current = false;
@@ -724,6 +731,37 @@ export function usePlayer(
   }, [detectAndApplyLiked]);
 
   /** WPS 连上后重切当前歌——从 30s 预览路径切换到 WPS 全曲路径。 */
+/**
+ * 切歌时 fire-and-forget 拉 ❤ 数：
+ *   1. 对 unified.sources 里 qq/netease 两个 platform 各调一次 fetchTrackLikeCount
+ *   2. 写回 source.likeCount
+ *   3. recomputeCrossPlatformLikeTotal 重算派生
+ *   4. setCurrentUnified({...item}) 触发 React re-render（HUD 显示新数字）
+ * 整体 2s 超时（公开匿名接口通常 <500ms），失败留 undefined，HUD 显示 …。
+ */
+async function fillLikeCountForCurrentTrack(
+  item: UnifiedSearchItem,
+  setItem: (next: UnifiedSearchItem | undefined) => void,
+): Promise<void> {
+  const targets = item.sources.filter(
+    (s) => (s.platform === 'qq' || s.platform === 'netease') && !s.likeCount,
+  );
+  if (targets.length === 0) return;
+  const settled = await Promise.allSettled(
+    targets.map(async (s) => {
+      const r = await fetchTrackLikeCount(s.platform as 'qq' | 'netease', s.trackId);
+      if (r) {
+        s.likeCount = r;
+      }
+    }),
+  );
+  // 至少一个成功 → 重算 + 触发 re-render
+  if (settled.some((r) => r.status === 'fulfilled')) {
+    recomputeCrossPlatformLikeTotal(item);
+    setItem({ ...item });
+  }
+}
+
   const refreshTrackForWps = useCallback(() => {
     const cur = trackRef.current;
     const unified = currentUnifiedRef.current;

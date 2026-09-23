@@ -245,6 +245,30 @@ export async function toggleLike(
  * （含之前单独心过的），UI 角标直接用它的 length 表达"这首歌在几个平台有 ❤"；
  * liked=false 时是空数组。
  */
+/**
+ * 单曲 ❤ 数拉取（fire-and-forget）。server 端 QQ/网易云走公开匿名接口，
+ * 5s 超时 + 30s/1h 缓存。失败/超时返回 null，HUD 显示 fallback。
+ * Body: { platform: 'qq'|'netease', trackId: string }
+ */
+export async function fetchTrackLikeCount(
+  platform: 'qq' | 'netease',
+  trackId: string,
+): Promise<{ count: number; display: string; source: 'qq' | 'netease' } | null> {
+  try {
+    const res = await fetchWithToken(`${API_BASE}/music/track/likeCount`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, trackId }),
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    return (await res.json()) as { count: number; display: string; source: 'qq' | 'netease' };
+  } catch {
+    return null;
+  }
+}
+
 export async function fanOutLike(
   mergedId: string,
   sources: Array<{ platform: MusicProvider; trackId: string }>,
@@ -1187,4 +1211,24 @@ export async function getBackupInfo(): Promise<{
   return json(
     await fetchWithToken(`${API_BASE}/storage/info`, { credentials: 'include' }),
   );
+}
+
+
+/** 跨平台 ❤ 累加重算（client 镜像 — server/src/music/search.util.ts:recomputeCrossPlatformLikeTotal）。
+ *  fire-and-forget 拉完 likeCount 后调一次，更新 item.crossPlatformLikeTotal。 */
+export function recomputeCrossPlatformLikeTotal(item: {
+  sources: Array<{ platform: string; likeCount?: SourceLikeCount }>;
+  crossPlatformLikeTotal?: CrossPlatformLikeTotal;
+}): void {
+  const buckets = item.sources
+    .filter((s) => (s.platform === 'qq' || s.platform === 'netease') && s.likeCount)
+    .map((s) => s.likeCount!);
+  if (buckets.length === 0) {
+    delete item.crossPlatformLikeTotal;
+    return;
+  }
+  const count = buckets.reduce((a, b) => a + b.count, 0);
+  const display = buckets.map((b) => b.display).join(' + ');
+  const platforms = buckets.map((b) => b.source);
+  item.crossPlatformLikeTotal = { count, display, platforms };
 }
