@@ -133,8 +133,10 @@ Maestro は、この 4 つのプラットフォームを**あなた自身が所�
 │                                                               │
 │   src/                                                        │
 │     App.tsx        シンな合成レイヤー                          │
-│     hooks/         8 つの集中フック（player がオーディオコア）│
-│     components/    6 グループにわたる 19 コンポーネント         │
+│     hooks/         9 つの集中フック（player がオーディオコア；│
+│                   useSpotifyWpsPlayer / useCoverArt / useTheme）│
+│     components/    8 グループにわたる 22 コンポーネント        │
+│                   （mini/ · settings/ を含む）                │
 │     lib/           format · storage · coverColor              │
 │     styles/        SCSS 7-1（abstracts / base / components）  │
 │                    —— main.scss 単一、tsx にはスタイル import なし│
@@ -182,23 +184,31 @@ packages/
                 App.tsx                  合成レイヤー（<TheaterView/> をマウント）
                 main.tsx                 エントリ
                 api.ts                   データ層
-                hooks/                   8 つのフック（usePlayer がオーディオコア、
-                                          useSpotifyWpsPlayer が Premium 全曲）
-                components/
-                  common/     Modal · ErrorPanel
-                  layout/     Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
-                  player/     CoverCard · NowPlayingCard · LyricsCard · LyricsPanel
-                              ProgressBar · VolumeControl · VolumeIcon · TransportBar
-                  search/     SearchPanel · SourceChip
-                  modals/     NeteaseCookieModal · RecoKeyModal
-                              LikedLibraryModal · SettingsModal
+                hooks/                   9 つのフック（usePlayer がオーディオコア；
+                                          useSpotifyWpsPlayer が castLabs Electron fork
+                                          経由で Premium 全曲をラップ；
+                                          + useCoverArt · useTheme）
+                components/    22 components across 8 groups
+                  common/      Modal · ErrorPanel · AuthErrorPanel · RecoLoading
+                  layout/      Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
+                  mini/        MiniPlayer      ← Apple Music 風ミニバー
+                                                 （P1 フロート + ウィンドウ追従リサイズ）
+                  search/      SearchPanel · SourceChip · providerLogos
+                  modals/      NeteaseCookieModal · RecoKeyModal
+                               LikedLibraryModal · SettingsModal
+                  settings/    AccountsList · ChannelPriorityList
+                               LibraryManager · SourceHealthSection
                   source-select/SourceSelect
-                  views/      TheaterView       ← AETHER シアター主画面（PR #56）
+                  views/       TheaterView    ← AETHER シアター主画面
+                                                 （PR #56、旧 player/ 子コンポーネントを
+                                                 全て内包）
                 lib/         format · storage · coverColor · lyrics cache
                               · likedCache · spotify-wps · debug (wpsLog/Error)
                 styles/      main.scss + SCSS 7-1 partials
-                              components/_theater.scss（シアター样式、約 900 行）
-                              components/_app-shell.scss（.theater-mode 切替含む）
+                              components/_theater.scss（シアター样式、約 1309 行）
+                              components/_mini-player.scss（ミニバー样式、約 257 行）
+                              components/_settings-modal.scss（Settings 全画面样式、約 466 行）
+                              components/_app-shell.scss（.theater-mode / .mini-mode 切替含む）
   server/     NestJS バックエンド
               src/
                 common/   config · storage · session · provider レジストリ
@@ -365,13 +375,24 @@ cd packages/electron && CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack
 
 1. **本番パッケージング** —— NestJS サイドカー + 正しい prod API ベースで
    `electron-builder` が実用的な App を出せるようにする。
-2. **Spotify 対等** —— Premium フル尺再生 + ♥ 書き戻し。
+2. **Spotify 対等** —— Premium フル尺再生はアプリ層 end-to-end 完了、
+   **外部 EVS 署名のみがブロッカー**（本期のエンジニアリング範囲外）。
 3. **ローカル永続化の強化** —— 統合ライブラリとセッション cookie のバックアップ /
    リストア。再インストールで状態を失わない。
 4. **歌詞品質** —— 既存の歌詞取得をもっと目立たせ、「タップでコピー」「タップで
    共有」のアフォーダンスを追加。
-5. **Settings とオンボーディングの仕上げ** —— 初回起動時の Key フロー、ライブラリ
-   バックアップ場所、ソース接続ヘルス。
+5. **Settings とオンボーディングの仕上げ** —— ✅ **実装済み**（PR #88）：
+   DeepSeek key リセット、ライブラリ管理、ソース接続ヘルス、チャンネル優先度
+   （ドラッグ並び替え）+ AETHER 全画面スタイル復元。
+6. **Mini Player モード** —— ✅ P1 実装済み（commit `71205ae`）：Apple Music 風
+   フロート + メインウィンドウ追従リサイズ（620×170）、`Cmd+Shift+M` で切替、
+   `<audio>` 再生成なし。
+7. **有料コンテンツ識別** —— ✅ vipLocked 検出 + クロスプラットフォーム fallback で
+   vipLocked 候補をスキップ（`d30c3e5` · `10a5a77` · `fa91734`）：ユーザー視点で
+   「再生不可」時に Deezer 30 秒プレビューに誤降格しない。
+8. **異文字メタデータ統合** —— ✅ 検索側厳格ロジック（PR #87 `3c09fd8`）：
+   CJK ↔ ラテン文字の異文字を統合（「寂莫、好了」+ Deezer ローマ字など）、
+   library import は緩いロジックのまま不变。詳細は `docs/cross-script-matching.md`。
 
 ---
 

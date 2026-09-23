@@ -132,8 +132,10 @@ number of platform parity items — see [NEXT-ITERATION.md](./NEXT-ITERATION.md)
 │                                                              │
 │   src/                                                       │
 │     App.tsx        thin composition layer                    │
-│     hooks/         8 focused hooks (player owns the audio core)│
-│     components/    19 components across 6 groups            │
+│     hooks/         9 focused hooks (player owns the audio core;│
+│                   useSpotifyWpsPlayer / useCoverArt / useTheme)│
+│     components/    22 components across 8 groups            │
+│                   (incl. mini/ · settings/)                  │
 │     lib/           format · storage · coverColor             │
 │     styles/        SCSS 7-1 (abstracts / base / components) │
 │                    — single main.scss, zero style imports   │
@@ -181,23 +183,31 @@ packages/
                 App.tsx                  composition layer (mounts <TheaterView/>)
                 main.tsx                 entry
                 api.ts                   data layer
-                hooks/                   8 hooks (usePlayer owns the audio core,
-                                          useSpotifyWpsPlayer for Premium 全曲)
-                components/
-                  common/     Modal · ErrorPanel
-                  layout/     Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
-                  player/     CoverCard · NowPlayingCard · LyricsCard · LyricsPanel
-                              ProgressBar · VolumeControl · VolumeIcon · TransportBar
-                  search/     SearchPanel · SourceChip
-                  modals/     NeteaseCookieModal · RecoKeyModal
-                              LikedLibraryModal · SettingsModal
+                hooks/                   9 hooks (usePlayer owns the audio core;
+                                          useSpotifyWpsPlayer wraps Premium 全曲
+                                          via the castLabs Electron fork;
+                                          + useCoverArt · useTheme)
+                components/    22 components across 8 groups
+                  common/      Modal · ErrorPanel · AuthErrorPanel · RecoLoading
+                  layout/      Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
+                  mini/        MiniPlayer      ← Apple Music 式迷你条
+                                                 （P1 浮层 + 窗口跟随缩放）
+                  search/      SearchPanel · SourceChip · providerLogos
+                  modals/      NeteaseCookieModal · RecoKeyModal
+                               LikedLibraryModal · SettingsModal
+                  settings/    AccountsList · ChannelPriorityList
+                               LibraryManager · SourceHealthSection
                   source-select/SourceSelect
-                  views/      TheaterView       ← AETHER 剧场主界面（PR #56）
+                  views/       TheaterView    ← AETHER 剧场主界面
+                                                 （PR #56，含 cover/lyrics/transport/进度环
+                                                 等所有原 player/ 子组件的内嵌实现）
                 lib/         format · storage · coverColor · lyrics cache
                               · likedCache · spotify-wps · debug (wpsLog/Error)
                 styles/      main.scss + SCSS 7-1 partials
-                              components/_theater.scss (剧场视图样式，~900 行)
-                              components/_app-shell.scss (含 .theater-mode 切换)
+                              components/_theater.scss (剧场视图样式，~1309 行)
+                              components/_mini-player.scss (迷你条样式，~257 行)
+                              components/_settings-modal.scss (Settings 全屏样式，~466 行)
+                              components/_app-shell.scss (含 .theater-mode / .mini-mode 切换)
   server/     NestJS back-end
               src/
                 common/   config · storage · session · provider registry
@@ -215,6 +225,8 @@ packages/
   common/     @maestro/common — 跨包类型 / normalizer / artistAlias / 接口
 specs/        Phase-level spec files (one per P0–P6 + packaging + cross-cutting)
               + tasks.md under each
+              + 新增 mini-player · token-adoption · d11-visual-regression
+              + paid-album-detection · cross-script-matching（搜索侧严口径，详见 docs/）
 
 # Tooling & design pipeline
 .mcp.json          figma-remote MCP（AI 可读 / 写 Figma 设计稿）
@@ -304,7 +316,13 @@ defaults.
 - **Deezer** — no login. Anonymous public editorial charts stream 30-second
   previews.
 - **Spotify** — click **登录**, OAuth PKCE flow. Liked-songs read + ❤ write
-  in v1; full-track play requires Spotify Premium (deferred).
+  (`PUT /v1/me/tracks`) work without Premium; full-track play also wired
+  end-to-end via the Web Playback SDK on the castLabs Electron fork
+  (Premium required) — currently **blocked at the Widevine license
+  server (HTTP 500)** because the fork's free build is dev-VMP-signed
+  and Spotify's production license server rejects it. Fix = **Apple
+  Developer Account ($99/yr) + castLabs EVS (free) VMP signing**;
+  see [NEXT-ITERATION.md §0](./NEXT-ITERATION.md).
 
 ---
 
@@ -363,13 +381,22 @@ and the acceptance criteria for each item. At a glance:
 
 1. **Production packaging** — NestJS sidecar + correct prod API base so
    `electron-builder` ships a working app.
-2. **Spotify parity** — full-track play (Premium) and ❤ write-back.
+2. **Spotify parity** — full-track play (Premium) 应用层已端到端打通，**仅卡外部
+   EVS 签名**（已不属本期工程范围）。
 3. **Local persistence hardening** — back up / restore the unified library
    and session cookies so re-installs don't lose state.
 4. **Lyrics quality** — surface the existing lyrics fetch more prominently
    and add a "tap to copy" / "tap to share" affordance.
-5. **Settings & onboarding polish** — first-run key flow, library backup
-   location, and source-connection health.
+5. **Settings & onboarding polish** — ✅ **已落地**（PR #88）：DeepSeek key
+   重置、库管理、源连接健康、渠道优先级（拖拽排序）+ AETHER 全屏风格还原。
+6. **Mini Player 模式** — ✅ P1 已落地（commit `71205ae`）：Apple Music 式
+   浮层 + 主窗口跟随缩放（620×170），`Cmd+Shift+M` 切换，`<audio>` 不重建。
+7. **付费内容识别** — ✅ vipLocked 检测 + 跨平台 fallback 跳过 vipLocked 候选
+   （`d30c3e5` · `10a5a77` · `fa91734`）：用户感知「不能播」时不会误降级到
+   Deezer 30s 预览。
+8. **跨脚本元数据合并** — ✅ 搜索侧严口径（PR #87 `3c09fd8`）：CJK ↔ 拉丁
+   script 在搜索链路下合并（如「寂寞，好了」+ Deezer 罗马音），library
+   import 走宽口径不变，详见 `docs/cross-script-matching.md`。
 
 ---
 

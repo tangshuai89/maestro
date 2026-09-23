@@ -121,8 +121,9 @@ DeepSeek 推荐、红心分发）均端到端可用。剩余主要是生产打�
 │                                                               │
 │   src/                                                        │
 │     App.tsx        轻组合层                                   │
-│     hooks/         8 个聚焦的 hook（player 持有音频核心）     │
-│     components/    19 个组件，分 6 组                         │
+│     hooks/         9 个聚焦的 hook（player 持有音频核心；      │
+│                   useSpotifyWpsPlayer / useCoverArt / useTheme）│
+│     components/    22 个组件，分 8 组（含 mini/ · settings/）   │
 │     lib/           format · storage · coverColor              │
 │     styles/        SCSS 7-1（abstracts / base / components）  │
 │                    —— 单一 main.scss，tsx 中零样式导入        │
@@ -167,23 +168,30 @@ packages/
                 App.tsx                  组合层（挂 <TheaterView/>）
                 main.tsx                 入口
                 api.ts                   数据层
-                hooks/                   8 个 hooks（usePlayer 持有音频核心，
-                                          useSpotifyWpsPlayer 处理 Premium 全曲）
-                components/
-                  common/     Modal · ErrorPanel
-                  layout/     Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
-                  player/     CoverCard · NowPlayingCard · LyricsCard · LyricsPanel
-                              ProgressBar · VolumeControl · VolumeIcon · TransportBar
-                  search/     SearchPanel · SourceChip
-                  modals/     NeteaseCookieModal · RecoKeyModal
-                              LikedLibraryModal · SettingsModal
+                hooks/                   9 个 hooks（usePlayer 持有音频核心；
+                                          useSpotifyWpsPlayer 经 castLabs Electron fork
+                                          处理 Premium 全曲；+ useCoverArt · useTheme）
+                components/    22 components across 8 groups
+                  common/      Modal · ErrorPanel · AuthErrorPanel · RecoLoading
+                  layout/      Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
+                  mini/        MiniPlayer      ← Apple Music 式迷你条
+                                                 （P1 浮层 + 窗口跟随缩放）
+                  search/      SearchPanel · SourceChip · providerLogos
+                  modals/      NeteaseCookieModal · RecoKeyModal
+                               LikedLibraryModal · SettingsModal
+                  settings/    AccountsList · ChannelPriorityList
+                               LibraryManager · SourceHealthSection
                   source-select/SourceSelect
-                  views/      TheaterView       ← AETHER 剧场主界面（PR #56）
+                  views/       TheaterView    ← AETHER 剧场主界面
+                                                 （PR #56，含 cover/lyrics/transport/进度环
+                                                 等所有原 player/ 子组件的内嵌实现）
                 lib/         format · storage · coverColor · lyrics cache
                               · likedCache · spotify-wps · debug (wpsLog/Error)
                 styles/      main.scss + SCSS 7-1 partials
-                              components/_theater.scss（剧场视图样式，约 900 行）
-                              components/_app-shell.scss（含 .theater-mode 切换）
+                              components/_theater.scss（剧场视图样式，约 1309 行）
+                              components/_mini-player.scss（迷你条样式，约 257 行）
+                              components/_settings-modal.scss（Settings 全屏样式，约 466 行）
+                              components/_app-shell.scss（含 .theater-mode / .mini-mode 切换）
   server/     NestJS 后端
               src/
                 common/   config · storage · session · provider 注册
@@ -343,11 +351,21 @@ cd packages/electron && CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack
 
 1. **生产打包** —— NestJS sidecar + 正确的 prod API 基址，让 `electron-builder`
    能出一个真正可用的 App。
-2. **Spotify 对等** —— Premium 全曲播放 + ❤ 写回。
+2. **Spotify 对等** —— Premium 全曲播放应用层已端到端打通，**仅卡外部 EVS 签名**
+   （已不属本期工程范围）。
 3. **本地持久化加固** —— 备份 / 恢复统一库与会话 cookie，重装不丢。
 4. **歌词质量** —— 把已有的歌词拉取更显眼地呈现出来，加「点击复制 / 分享」
    的小入口。
-5. **Settings & 首次启动打磨** —— 首次启动的 Key 配置流、库备份位置、源连接健康。
+5. **Settings & 首次启动打磨** —— ✅ **已落地**（PR #88）：DeepSeek key 重置、
+   库管理、源连接健康、渠道优先级（拖拽排序）+ AETHER 全屏风格还原。
+6. **Mini Player 模式** —— ✅ P1 已落地（commit `71205ae`）：Apple Music 式
+   浮层 + 主窗口跟随缩放（620×170），`Cmd+Shift+M` 切换，`<audio>` 不重建。
+7. **付费内容识别** —— ✅ vipLocked 检测 + 跨平台 fallback 跳过 vipLocked 候选
+   （`d30c3e5` · `10a5a77` · `fa91734`）：用户感知「不能播」时不会误降级到
+   Deezer 30s 预览。
+8. **跨脚本元数据合并** —— ✅ 搜索侧严口径（PR #87 `3c09fd8`）：CJK ↔ 拉丁
+   script 在搜索链路下合并（如「寂寞，好了」+ Deezer 罗马音），library import
+   走宽口径不变，详见 `docs/cross-script-matching.md`。
 
 ---
 
