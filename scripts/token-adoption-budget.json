@@ -3,7 +3,7 @@
   "budget": {
     "packages/renderer/src/styles/components/_liked-modal.scss": 41,
     "packages/renderer/src/styles/abstracts/_variables.scss": 22,
-    "packages/renderer/src/styles/components/_theater.scss": 21,
+    "packages/renderer/src/styles/components/_theater.scss": 14,
     "packages/renderer/src/components/search/providerLogos.tsx": 12,
     "packages/renderer/src/components/views/TheaterView.tsx": 9,
     "packages/renderer/src/styles/components/_search-panel.scss": 9,
