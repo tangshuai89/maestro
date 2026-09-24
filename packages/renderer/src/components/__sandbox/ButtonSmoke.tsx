@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 export function ButtonSmoke() {
   return (
     <TooltipProvider>
-      <div className="bg-background text-foreground p-8 flex flex-col gap-6 min-w-[480px]">
+      <div className="shadcn-smoke-root bg-background text-foreground p-8 flex flex-col gap-6 min-w-[480px]">
         <h2 className="text-lg font-semibold">shadcn Phase 1 smoke</h2>
         <div className="flex flex-wrap gap-3">
           <Button>Primary</Button>

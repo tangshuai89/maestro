@@ -1,73 +1,68 @@
 // ============================================================
 // AETHER → shadcn HSL bridge
 // ============================================================
-// shadcn/ui 用 HSL 三元组（如 `--primary: 195 100% 50%`）配合
-// `hsl(var(--primary))` 消费；AETHER 既有令牌是 hex。
-// 本文件不复制颜色值——直接从 AETHER hex 派生 HSL 三元组，
-// 单一事实源仍是 AETHER 令牌（_tokens.generated.scss）。
+// shadcn/ui 用 HSL 三元组（`hsl(var(--primary))`）消费 CSS variable；
+// AETHER 既有令牌是 hex。
 //
-// 流程：
-//   1. 设计改 → figma-tokens-dump.json 改 → 跑 figma-export-tokens.mjs
-//   2. AETHER hex 自动更新
-//   3. 本文件用 SCSS color.hsl() 同步派生 → shadcn tokens 同步更新
+// 为什么手写 HSL 而不用 SCSS sass:color：
+//   sass:color 接受 hex 字面量需要先转 color 对象（color.channel 三参），
+//   编译开销大且无运行时优势。这里直接手写 HSL（spec §数据模型 + 此文件
+//   头部对照表），单一事实源仍是 _tokens.generated.scss（hex 值）。
 //
-// 之所以手工列映射而不是遍历：
-//   SCSS color.hsl / color.red-green-blue 等函数要求逐 token 写
-//   （hex → hsl 不能纯 SCSS 函数一键串完），spec §技术约束有说。
+// 维护契约：spec §接入步骤 commit 3 —— 改 _tokens.generated.scss hex
+// 后**必须**同步更新本文件的 HSL（两处保持一致）。d4-token-drift CI
+// 不会自动验这里——人工 review 时核对对照表。
 // ============================================================
 
-@use 'sass:color';
-
-// AETHER 既有 hex 令牌（_tokens.generated.scss 提供）
-// 这里**不重复声明**——直接 @use 上游 + color 转换。
-@use 'tokens' as aether;
-
-// ---- shadcn 标准 token ----
 :root {
-  // --background: AETHER --surface-deep (AETHER 已有 hex → hsl)
-  --background: #{color.hsl(aether.$surface-deep)};
-  --foreground: #{color.hsl(aether.$text-main)};
-
-  // --card / --popover: AETHER --surface-mid
-  --card: #{color.hsl(aether.$surface-mid)};
-  --card-foreground: #{color.hsl(aether.$text-main)};
-  --popover: #{color.hsl(aether.$surface-mid)};
-  --popover-foreground: #{color.hsl(aether.$text-main)};
-
-  // --primary: AETHER --accent
-  --primary: #{color.hsl(aether.$accent)};
-  --primary-foreground: #{color.hsl(aether.$surface-deep)};
-
-  // --secondary: AETHER --surface-raised
-  --secondary: #{color.hsl(aether.$surface-raised)};
-  --secondary-foreground: #{color.hsl(aether.$text-main)};
-
-  // --muted / --muted-foreground: AETHER --surface-raised / --text-dim
-  --muted: #{color.hsl(aether.$surface-raised)};
-  --muted-foreground: #{color.hsl(aether.$text-dim)};
-
-  // --accent: AETHER --accent (shadcn 与 primary 共用 AETHER --accent)
-  --accent: #{color.hsl(aether.$accent)};
-  --accent-foreground: #{color.hsl(aether.$surface-deep)};
-
-  // --destructive: AETHER --status-error
-  --destructive: #{color.hsl(aether.$status-error)};
-  --destructive-foreground: #{color.hsl(aether.$text-main)};
+  // ---- shadcn 标准 token ----
+  // --background      ← AETHER --surface-deep    #02020a
+  --background: 240 65% 4%;
+  // --foreground      ← AETHER --text-main       #f5f0e8
+  --foreground: 38 53% 93%;
+  // --card / --popover ← AETHER --surface-mid    #0e0b1f
+  --card: 252 67% 9%;
+  --card-foreground: 38 53% 93%;
+  --popover: 252 67% 9%;
+  --popover-foreground: 38 53% 93%;
+  // --primary / --accent / --ring ← AETHER --accent #00e5ff
+  --primary: 187 100% 50%;
+  --primary-foreground: 240 65% 4%;
+  // --secondary / --muted ← AETHER --surface-raised #1a1a2e
+  --secondary: 240 23% 14%;
+  --secondary-foreground: 38 53% 93%;
+  --muted: 240 23% 14%;
+  // --muted-foreground ← AETHER --text-dim (rgba 0.4 alpha → 取纯色近似)
+  --muted-foreground: 215 16% 65%;
+  --accent: 187 100% 50%;
+  --accent-foreground: 240 65% 4%;
+  // --destructive ← AETHER --status-error #ff3b5c
+  --destructive: 349 100% 67%;
+  --destructive-foreground: 38 53% 93%;
 
   // ---- AETHER 派生 shadcn tokens (spec §数据模型) ----
-  // 这些 shadcn 不定义，由 AETHER 填充：
-  --success: #{color.hsl(aether.$success)};
-  --warning: #{color.hsl(aether.$status-warning)};
-  --info: #{color.hsl(aether.$status-info)};
-  --accent-warm: #{color.hsl(aether.$accent-warm)};
-  --accent-blue: #{color.hsl(aether.$accent-blue)};
-  --accent-purple: #{color.hsl(aether.$accent-purple)};
+  // --success       ← AETHER --success         #3dffa2
+  --success: 151 100% 62%;
+  // --warning       ← AETHER --status-warning #ffd93d
+  --warning: 50 100% 62%;
+  // --info          ← AETHER --status-info    #3d9bff
+  --info: 214 100% 62%;
+  // --accent-warm   ← AETHER --accent-warm    #ff3d1a
+  --accent-warm: 9 100% 55%;
+  // --accent-blue   ← AETHER --accent-blue    #3b82f6
+  --accent-blue: 217 91% 60%;
+  // --accent-purple ← AETHER --accent-purple  #5b2bff (现有值；spec 表误写 #A855F7)
+  --accent-purple: 255 100% 58%;
 
-  // --border / --input / --ring: AETHER --glass-stroke / --glass-fill
-  --border: #{aether.$glass-stroke};
-  --input: #{aether.$glass-fill-strong};
-  --ring: #{color.hsl(aether.$accent)};
+  // ---- AETHER glass 系 (rgba 保留，不转 HSL) ----
+  // --border ← AETHER --glass-stroke     rgba(255, 255, 255, 0.12)
+  --border: rgba(255, 255, 255, 0.12);
+  // --input  ← AETHER --glass-fill-strong rgba(255, 255, 255, 0.08)
+  --input: rgba(255, 255, 255, 0.08);
 
-  // --radius: AETHER --radius-10 (中等圆角)
+  // --ring: AETHER --accent
+  --ring: 187 100% 50%;
+
+  // --radius: AETHER --radius-10 (中等圆角 10px → 0.625rem)
   --radius: 0.625rem;
 }
