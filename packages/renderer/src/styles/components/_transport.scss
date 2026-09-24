@@ -69,8 +69,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ff7b7b;
-  box-shadow: 0 0 0 2px rgba(24, 24, 28, 0.96);
+  background: color-mix(in srgb, var(--status-error) 80%, var(--white) 20%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--surface-raised) 96%, transparent);
   pointer-events: none;
 }
 
@@ -97,7 +97,7 @@
 
 .like-btn.liked:hover {
   color: var(--heart-active);
-  background: rgba(239, 68, 68, 0.08);
+  background: color-mix(in srgb, var(--status-error) 8%, transparent);
 }
 
 // Heart fan-out 角标：显示这一首被心动了多少个平台（>1 才显示）。绝对定位到
@@ -116,7 +116,7 @@
   font-weight: 700;
   line-height: 18px;
   text-align: center;
-  box-shadow: 0 0 0 2px rgba(24, 24, 28, 0.96);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--surface-raised) 96%, transparent);
   pointer-events: none;
 }
 
