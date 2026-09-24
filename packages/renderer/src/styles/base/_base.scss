@@ -1,3 +1,16 @@
+// Tailwind 两层（shadcn Phase 1 commit 4 落地）：
+//   components → shadcn/ui 组件 className (.btn / .card / ...)
+//   utilities → Tailwind 原子工具类 (bg-primary / text-foreground / ...)
+//
+// 注：**不引入 @tailwind base（Preflight CSS reset）** —— 与 AETHER
+// SCSS 体系冲突：master baseline 的 ThearterView 渲染依赖 SCSS reset，
+// Tailwind Preflight 把 button / input / a 默认样式覆盖了，导致 visual CI
+// 4 档 theater baseline 全飘红（18367-25491 像素差异 = ~2-3%）。
+// 仅 components + utilities 提供 shadcn className + 原子工具类，
+// AETER SCSS reset（_reset.scss）继续负责全局 reset。
+@tailwind components;
+@tailwind utilities;
+
 // The <body> base: typography + the layered cover-driven background wash.
 // (Font files themselves are loaded via a <link> in index.html; here we
 // just apply the stacks from --font-*.)

@@ -63,7 +63,7 @@
 .th-nebula--violet {
   width: 34.7vw; height: 34.7vw;
   left: 2.8vw; top: -6.1vh;
-  background: #5b2bff;
+  background: var(--accent-purple);
   opacity: 0.25;
   filter: blur(60px);
 }
@@ -71,7 +71,7 @@
 .th-nebula--cyan {
   width: 31.3vw; height: 31.3vw;
   left: 57.3vw; top: 50.5vh;
-  background: #00e5ff;
+  background: var(--accent);
   opacity: 0.2;
   filter: blur(60px);
 }
@@ -79,7 +79,7 @@
 .th-nebula--acid {
   width: 27.8vw; height: 27.8vw;
   left: 32vw; top: -5.5vh;
-  background: #b57bff;
+  background: var(--ai);
   opacity: 0.12;
   filter: blur(50px);
 }
