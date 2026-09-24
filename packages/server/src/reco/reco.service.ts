@@ -97,7 +97,7 @@ const FILL_CONCURRENCY = 6;
 /** 每 session「最近推荐过」历史上限——手动连点推荐也据此自动去重复读。 */
 const RECO_HISTORY_MAX = 200;
 /** DeepSeek chat 补全的硬超时——LLM 偶尔卡很久，25s 后 abort。 */
-const RECOMMEND_TIMEOUT_MS = 25_000;
+export const RECOMMEND_TIMEOUT_MS = 25_000;
 
 /** 用户填的 key 存哪。 */
 const SECRETS_KEY = 'secrets:deepseek';
@@ -1154,6 +1154,19 @@ ${list}
       );
     }
     return data.choices?.[0]?.message?.content ?? '';
+  }
+
+  /**
+   * NL playlist 共用入口（specs/nl-playlist/）：复用同一 LLM 调用 + 错误抛错模式
+   * （timeout / 429 / 5xx → HttpException），但语义上给 parse-intent 端点用。
+   * 不直接暴露 callDeepSeek（private）是为了避免 controller 跳过解析 + 校验层。
+   */
+  async callDeepSeekForParse(
+    apiKey: string,
+    messages: Array<{ role: 'system' | 'user'; content: string }>,
+    opts: { maxTokens?: number } = {},
+  ): Promise<string> {
+    return this.callDeepSeek(apiKey, messages, opts);
   }
 
   // ── 响应解析（带 retry: 围栏 / 整体 JSON 两种） ─────────
