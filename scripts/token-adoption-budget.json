@@ -2,7 +2,6 @@
   "_comment": "棘轮门禁：每个文件允许的硬编码颜色数量上限，**只许降不许升**。数字由 `node scripts/scan-hardcoded-colors.mjs --write-budget` 生成（可复现，不要手改）。改完一处硬编码就把对应数字减一；exempt 里的文件是算法生成颜色、不参与门禁（必须写原因）。",
   "budget": {
     "packages/renderer/src/styles/components/_liked-modal.scss": 41,
-    "packages/renderer/src/styles/abstracts/_variables.scss": 22,
     "packages/renderer/src/styles/components/_theater.scss": 14,
     "packages/renderer/src/components/search/providerLogos.tsx": 12,
     "packages/renderer/src/styles/components/_settings-modal.scss": 8,
@@ -29,6 +28,7 @@
     "packages/renderer/src/lib/coverColor.ts": "运行时从封面图取色后写进 --cover-accent / --cover-glow（rgb 插值 + 无封面时的兜底色），不是设计令牌的复制品",
     "packages/renderer/src/lib/placeholderCover.ts": "按曲名 hash 生成占位封面渐变，颜色是算法产物",
     "packages/renderer/src/lib/lyricsShare.ts": "导出台词分享图时的 canvas 绘制调色板（纸质主题），与 AETHER 界面令牌无关",
-    "packages/renderer/src/lib/debug.ts": "console %c 调试样式色"
+    "packages/renderer/src/lib/debug.ts": "console %c 调试样式色",
+    "packages/renderer/src/styles/abstracts/_variables.scss": "compile-time SCSS constants (z-index / breakpoints / overlay palette) — spec §不做什么 \"SCSS 变量集中管\"，不参与 token 化（与 token-adoption spec §S3-7 遗留色板归属决策相符）"
   }
 }
