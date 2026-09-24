@@ -1,3 +1,11 @@
+// Tailwind 三层（shadcn Phase 1 commit 4 落地）：
+//   base  → 预飞行 reset (preflight)
+//   components → shadcn/ui 组件 className (.btn / .card / ...)
+//   utilities → Tailwind 原子工具类 (bg-primary / text-foreground / ...)
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 // The <body> base: typography + the layered cover-driven background wash.
 // (Font files themselves are loaded via a <link> in index.html; here we
 // just apply the stacks from --font-*.)
