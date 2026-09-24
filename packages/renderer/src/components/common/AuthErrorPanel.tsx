@@ -45,9 +45,9 @@ const SEVERITY: Record<AuthErrorCode, 'FATAL' | 'WARN' | 'INFO'> = {
 };
 
 const SEVERITY_COLOR: Record<string, string> = {
-  fatal: '#FF3B5C',
-  warn: '#FFD93D',
-  info: '#3D9BFF',
+  fatal: 'var(--status-error)',
+  warn: 'var(--status-warning)',
+  info: 'var(--status-info)',
 };
 
 export default function AuthErrorPanel({
@@ -85,7 +85,7 @@ export default function AuthErrorPanel({
   if (!error) return null;
   const title = FRIENDLY[error.code];
   const severity = SEVERITY[error.code];
-  const sevColor = SEVERITY_COLOR[severity.toLowerCase()] ?? '#FF3B5C';
+  const sevColor = SEVERITY_COLOR[severity.toLowerCase()] ?? 'var(--status-error)';
   const showPaste = (provider === 'qq' || provider === 'netease') && Boolean(onPasteCookie);
   const hasStack = error.message.includes('\n');
 
