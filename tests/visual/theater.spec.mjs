@@ -82,7 +82,17 @@ for (const s of SIZES) {
     await expect(canvas).toHaveAttribute('data-density', s.density);
 
     // 2) 截图比对
-    await expect(page.locator('.th-root')).toHaveScreenshot(`theater-${s.name}.png`);
+    // mask: 隔离 .th-hud-sync（HUD ❤ 数字区域）。这块渲染逻辑是 PR 主动改的
+    // （feat/hud-cross-platform-likes：D.1 紧凑加号 + 上标），所以测试目的是
+    // **其他 CSS 不要漂移**，而不是 ❤ 数字本身的像素级比对（❤ 数字字面值每次
+    // 跑都不一样——和真实数据耦合——本来就该排除）。
+    // 其他 4 处文字区域（brand / 选一首歌 / 等待播放 / 底部副标题）spec 已承认
+    // 跨 darwin 字体引擎时序差异是已知噪声源（0.1% 容差在 PR #86 假红过），
+    // 不在 mask 范围——容差留 0.5%（playwright.config.mjs 注释里"实测跨机器
+    // 噪声 0.29%-0.39%"）。
+    await expect(page.locator('.th-root')).toHaveScreenshot(`theater-${s.name}.png`, {
+      mask: [page.locator('.th-hud-sync')],
+    });
   });
 }
 });
