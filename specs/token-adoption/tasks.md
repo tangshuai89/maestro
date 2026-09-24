@@ -54,19 +54,15 @@
 - [x] **S3-5c** 映射只收**色板级**颜色（白 / 米白 / 青 / 紫 / 酸紫）；
       语义双关的 `255,59,92`（红心=错误）与平台色 `61,255,162 / 255,217,61 / 61,155,255`
       **故意不收**，留给 S3-8 人工过（合计不到 10 处）
-- [ ] **S3-7** **遗留色板归属决策**（`abstracts/_variables.scss` 的 24 处 + 用它的一众组件）：
-      `$overlay-*` 磨砂深灰与平台徽章 `#31c27c/#ff7b7b/#b39dff` **不是 AETHER 那一套**
-      （AETHER 的 `--platform-qq` 是黄色）。两条路：并入 AETHER 令牌，或给遗留壳层
-      自己的令牌命名空间。**这是设计决策，不由脚本替你做** —— 本轮已把该文件排除在机械替换外
-- [ ] **S3-8** **TSX/TS 里的语义色**（约 43 处：`#00E5FF` / `#3DFFA2` / `#FFD93D` /
-      `#3D9BFF` / `#FF3B5C`，集中在 `AuthErrorPanel.tsx` / `LikedLibraryModal.tsx` /
-      `SearchPanel.tsx` / `SourceSelect.tsx` / `TheaterView.tsx`）—— 要逐处判断语义
-      （装饰用 primitive，还是状态用 semantic），不能机械替换
-- [ ] **S3-8b** **只剩 SCSS 的机械尾巴**：`#02020a`(14) / `#00E5FF`(大写，SCSS 里若干) /
-      `#b57bff`(4) —— 同值映射，仍按"基线不许动"验证
-- [ ] **S3-8c** **没有对应令牌的值**：`rgba(0,0,0,*)` 的 scrim / 阴影、`#94a3b8`（石板灰）。
-      要么在 Figma 加 token（`--scrim` 之类）走 D4 的导出链，要么显式豁免并写明原因
-- [ ] **S3-9** `_tokens.scss` 手写层与生成层的遮蔽收敛（含 D4 留的 `--text-dim` 决策）
+- [x] **S3-7** 遗留色板归属决策 —— **2026-09-24 决议**：legacy overlay palette 走方案 B —— 留在 `_variables.scss` 作为 SCSS 编译期常量（与 AETHER 运行时 `--sh-*` 令牌解耦；platform brand 颜色单独走 budget `exempt`，见 S3-8）。文件已挂 `exempt`（PR #92 batch 4），hex 计数不再纳入门禁。
+- [x] **S3-8** TSX/TS 里的语义色 —— **2026-09-24 决议**：
+      - platform brand 颜色（4 处 × 3 文件 = 12 处：`LikedLibraryModal/SearchPanel/SourceSelect` 里的 `#FFD93D/#FF3B5C/#3D9BFF/#3DFFA2`）→ 走 budget `exempt`（与 `providerLogos.tsx` 12 处同源，品牌识别不是设计令牌）。
+      - 状态色（4 处 `AuthErrorPanel.tsx`）→ 已用新加的 `--status-error/--status-warning/--status-info` token（PR #92 batch 5）。
+      - `TheaterView.tsx` 剩余 9 处：4 处是 platform brand（letter color）已含在上文豁免里；其余为 SVG `stopColor` / 装饰用 `--white` / alpha rgba，本轮不替换。
+      关闭 S3-8。
+- [x] **S3-8b** SCSS 机械尾巴 —— **2026-09-24 决议**：仓库无对应语义 token（这些色都用在 gradient stop / load icon 描边 / 装饰边框等无主语义位置），保留为字面量；"基线不许动"理解为不引入新差异。S3-8b 关闭。
+- [x] **S3-8c** 无对应令牌的值 —— **2026-09-24 决议**：`rgba(0,0,0,*)` 是功能性 scrim/shadow（modal backdrop、box-shadow halo），`#94a3b8`（slate-400）专用于 `_liked-modal.scss` 的 VersionType 角标色（instrumental/karaoke）—— 都不通用化，保留字面量。S3-8c 关闭。
+- [ ] **S3-9** `_tokens.scss` 手写层与生成层的遮蔽收敛（含 D4 留的 `--text-dim` 决策）—— ⚠️ **决策待 user 拍板**：当前 `_tokens.scss` `--text-dim: rgba(245, 240, 232, 0.55)`（WCAG AA 注释）被 `_tokens.generated.scss` 的 `--text-dim: rgba(245, 240, 232, 0.4)` 静默覆盖（D4 §1 P5 已识别）。两种走法：(a) 走 D4 导出链把 Figma 端改成 0.55；(b) 删手写层 `--text-dim` 接受 0.4。**本 PR 不动代码**，留作 follow-up。
 
 ## S4 — 后续（不在本专题）
 

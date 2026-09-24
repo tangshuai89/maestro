@@ -8,7 +8,7 @@ source: discussion
 
 # ADR-001: 引入 shadcn/ui 作为 AETHER 组件库
 
-- **状态**: Proposed（待 user 点头）
+- **状态**: Accepted（2026-09-24 — PR #92 合并后翻 accepted；specs/shadcn-migration/spec.md 与 docs/figma-driven-frontend.md §9 同步）
 - **日期**: 2026-09-24
 - **决策人**: 待定
 - **关联**: `specs/shadcn-migration/spec.md`（待写）/ `specs/token-adoption/` / `specs/d4-token-drift/` / `docs/figma-driven-frontend.md`
