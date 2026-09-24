@@ -16,7 +16,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--surface-deep);
+  background: #02020a;
   color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
@@ -122,7 +122,7 @@
 .sp-badge.is-active {
   background: var(--badge);
   border-color: var(--badge);
-  color: var(--surface-deep);
+  color: #02020a;
   box-shadow: 0 0 10px var(--badge);
 }
 
@@ -388,7 +388,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--surface-deep) 62%, transparent);
+  background: rgba(2, 2, 10, 0.62);
   color: var(--status-sync);
   opacity: 0;
   transition: opacity 0.15s ease;

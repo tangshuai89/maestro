@@ -278,7 +278,7 @@
   background: color-mix(in srgb, var(--accent) 85%, transparent);
   border-radius: 1.5px;
 }
-.th-orbit-tick.is-gold { background: color-mix(in srgb, var(--status-warning) 85%, transparent); }
+.th-orbit-tick.is-gold { background: rgba(255, 210, 74, 0.85); }
 
 // 流星飞线（Figma A 帧 progress-arc 矢量：细青线束扫过行星）
 // 设计稿位置：canvas (430,271)，即相对舞台中心 (0,-149)，尺寸 358.78×452.77。
@@ -844,7 +844,7 @@
   border-radius: 50%;
   border: none;
   background: radial-gradient(circle, var(--white) 0%, #80f2ff 24%, var(--neon) 48%, #2d88ff 74%, var(--violet) 100%);
-  color: var(--surface-deep);
+  color: #02020a;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -875,8 +875,8 @@
 .th-core-spinner {
   width: 18px; height: 18px;
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--surface-deep) 30%, transparent);
-  border-top-color: var(--surface-deep);
+  border: 2px solid rgba(2, 2, 10, 0.3);
+  border-top-color: #02020a;
   animation: th-spin 0.8s linear infinite;
 }
 @keyframes th-spin { to { transform: rotate(360deg); } }

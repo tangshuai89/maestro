@@ -12,57 +12,65 @@
 // 维护契约：spec §接入步骤 commit 3 —— 改 _tokens.generated.scss hex
 // 后**必须**同步更新本文件的 HSL（两处保持一致）。d4-token-drift CI
 // 不会自动验这里——人工 review 时核对对照表。
+//
+// ⚠️ 命名空间（2026-09-24 修复）：所有 shadcn 变量一律带 `sh-` 前缀。
+// 曾用 shadcn 原生名（--accent / --accent-purple / --primary …）直接写在
+// :root，与 AETHER 同名令牌**撞车**（--accent 被 AETHER 用了 78 处、
+// --accent-purple 11 处）——bridge 在 main.scss 里晚于 tokens.generated
+// 加载，把 AETHER 的 hex 覆盖成 HSL 三元组，导致 var(--accent) 在剧场
+// 视图全线失效（轨道环 / 扫描弧 / 播放按钮霓虹全部消失）。加前缀后两套
+// 令牌互不干扰；Tailwind config 消费方改读 --sh-*。
 // ============================================================
 
 :root {
-  // ---- shadcn 标准 token ----
-  // --background      ← AETHER --surface-deep    #02020a
-  --background: 240 65% 4%;
-  // --foreground      ← AETHER --text-main       #f5f0e8
-  --foreground: 38 53% 93%;
-  // --card / --popover ← AETHER --surface-mid    #0e0b1f
-  --card: 252 67% 9%;
-  --card-foreground: 38 53% 93%;
-  --popover: 252 67% 9%;
-  --popover-foreground: 38 53% 93%;
-  // --primary / --accent / --ring ← AETHER --accent #00e5ff
-  --primary: 187 100% 50%;
-  --primary-foreground: 240 65% 4%;
-  // --secondary / --muted ← AETHER --surface-raised #1a1a2e
-  --secondary: 240 23% 14%;
-  --secondary-foreground: 38 53% 93%;
-  --muted: 240 23% 14%;
-  // --muted-foreground ← AETHER --text-dim (rgba 0.4 alpha → 取纯色近似)
-  --muted-foreground: 215 16% 65%;
-  --accent: 187 100% 50%;
-  --accent-foreground: 240 65% 4%;
-  // --destructive ← AETHER --status-error #ff3b5c
-  --destructive: 349 100% 67%;
-  --destructive-foreground: 38 53% 93%;
+  // ---- shadcn 标准 token（sh- 前缀，避免与 AETHER 撞名）----
+  // --sh-background    ← AETHER --primitive-bg-bottom #02020a
+  --sh-background: 240 65% 4%;
+  // --sh-foreground    ← AETHER --text-main          #f5f0e8
+  --sh-foreground: 38 53% 93%;
+  // --sh-card / --sh-popover ← 深底浮层 #0e0b1f
+  --sh-card: 252 67% 9%;
+  --sh-card-foreground: 38 53% 93%;
+  --sh-popover: 252 67% 9%;
+  --sh-popover-foreground: 38 53% 93%;
+  // --sh-primary / --sh-accent / --sh-ring ← AETHER --accent #00e5ff
+  --sh-primary: 187 100% 50%;
+  --sh-primary-foreground: 240 65% 4%;
+  // --sh-secondary / --sh-muted ← 次级浮层底 #1a1a2e
+  --sh-secondary: 240 23% 14%;
+  --sh-secondary-foreground: 38 53% 93%;
+  --sh-muted: 240 23% 14%;
+  // --sh-muted-foreground ← AETHER --text-dim (rgba 0.4 alpha → 取纯色近似)
+  --sh-muted-foreground: 215 16% 65%;
+  --sh-accent: 187 100% 50%;
+  --sh-accent-foreground: 240 65% 4%;
+  // --sh-destructive ← AETHER --status-error #ff3b5c
+  --sh-destructive: 349 100% 67%;
+  --sh-destructive-foreground: 38 53% 93%;
 
   // ---- AETHER 派生 shadcn tokens (spec §数据模型) ----
-  // --success       ← AETHER --success         #3dffa2
-  --success: 151 100% 62%;
-  // --warning       ← AETHER --status-warning #ffd93d
-  --warning: 50 100% 62%;
-  // --info          ← AETHER --status-info    #3d9bff
-  --info: 214 100% 62%;
-  // --accent-warm   ← AETHER --accent-warm    #ff3d1a
-  --accent-warm: 9 100% 55%;
-  // --accent-blue   ← AETHER --accent-blue    #3b82f6
-  --accent-blue: 217 91% 60%;
-  // --accent-purple ← AETHER --accent-purple  #5b2bff (现有值；spec 表误写 #A855F7)
-  --accent-purple: 255 100% 58%;
+  // --sh-success       ← AETHER --success         #3dffa2
+  --sh-success: 151 100% 62%;
+  // --sh-warning       ← AETHER --status-warning #ffd93d
+  --sh-warning: 50 100% 62%;
+  // --sh-info          ← AETHER --status-info    #3d9bff
+  --sh-info: 214 100% 62%;
+  // --sh-accent-warm   ← AETHER --accent-warm    #ff3d1a
+  --sh-accent-warm: 9 100% 55%;
+  // --sh-accent-blue   ← AETHER --accent-blue    #3b82f6
+  --sh-accent-blue: 217 91% 60%;
+  // --sh-accent-purple ← AETHER --accent-purple  #5b2bff (现有值；spec 表误写 #A855F7)
+  --sh-accent-purple: 255 100% 58%;
 
   // ---- AETHER glass 系 (rgba 保留，不转 HSL) ----
-  // --border ← AETHER --glass-stroke     rgba(255, 255, 255, 0.12)
-  --border: rgba(255, 255, 255, 0.12);
-  // --input  ← AETHER --glass-fill-strong rgba(255, 255, 255, 0.08)
-  --input: rgba(255, 255, 255, 0.08);
+  // --sh-border ← AETHER --glass-stroke     rgba(255, 255, 255, 0.12)
+  --sh-border: rgba(255, 255, 255, 0.12);
+  // --sh-input  ← AETHER --glass-fill-strong rgba(255, 255, 255, 0.08)
+  --sh-input: rgba(255, 255, 255, 0.08);
 
-  // --ring: AETHER --accent
-  --ring: 187 100% 50%;
+  // --sh-ring: AETHER --accent
+  --sh-ring: 187 100% 50%;
 
-  // --radius: AETHER --radius-10 (中等圆角 10px → 0.625rem)
-  --radius: 0.625rem;
+  // --sh-radius: AETHER --radius-10 (中等圆角 10px → 0.625rem)
+  --sh-radius: 0.625rem;
 }

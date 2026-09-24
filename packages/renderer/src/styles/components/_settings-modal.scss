@@ -263,7 +263,7 @@
 }
 
 .set-health-bar-fill--good { background: var(--status-sync); }
-.set-health-bar-fill--mid { background: var(--status-warning); }
+.set-health-bar-fill--mid { background: #ffb800; }
 .set-health-bar-fill--bad { background: var(--status-error); }
 .set-health-bar-fill--zero { background: transparent; }
 

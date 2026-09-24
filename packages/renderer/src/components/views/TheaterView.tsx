@@ -353,13 +353,13 @@ export default function TheaterView(props: TheaterViewProps) {
             <svg className="th-streaks" viewBox="0 0 360.781 454.773">
               <path className="th-streaks-path"
                 d="M1 1C199.613 2 367.224 89.2524 123.054 64.5371C422.991 168.896 447.655 356.24 141.014 200.961C414.402 447.604 275.085 575.264 39.564 293.923"
-                fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" />
+                fill="none" stroke="#00E5FF" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </div>
           <svg className="th-scan" viewBox="0 0 390 390" aria-hidden="true">
             <path className="th-scan-arc"
               d="M 195 20 A 175 175 0 0 1 316.4 73.6"
-              fill="none" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" strokeWidth="3"
+              fill="none" stroke="rgba(0, 229, 255, 0.5)" strokeWidth="3"
               strokeLinecap="round" />
           </svg>
           <div className="th-cover" ref={coverBackdropRef}
