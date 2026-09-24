@@ -15,6 +15,8 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { MusicService, type LikeMeta } from './music.service';
+import { QqMusicProvider } from './qq.provider';
+import { NeteaseMusicProvider } from './netease.provider';
 import { LyricsService } from './lyrics.service';
 import {
   normalizeProvider,
@@ -78,6 +80,8 @@ export class MusicController {
     private readonly lyricsService: LyricsService,
     private readonly sessionService: SessionService,
     private readonly health: SourceHealthService,
+    private readonly qq: QqMusicProvider,
+    private readonly netease: NeteaseMusicProvider,
   ) {}
 
   @Get('next')
@@ -446,6 +450,35 @@ export class MusicController {
       session,
       normalizeProvider(provider),
     );
+  }
+
+  /**
+   * 单曲 ❤ 数拉取：被 renderer 端 presentTrack fire-and-forget 调用，覆盖
+   * 电台路径切歌时 searchUnified fillLikeCountsForItems 不触发的盲区。
+   *
+   * Body: { platform: 'qq' | 'netease', trackId: string }
+   * Returns: { count: number; display: string; source: 'qq'|'netease' } | null
+   */
+  @Post('track/likeCount')
+  async getTrackLikeCount(
+    @Body() body: { platform: 'qq' | 'netease'; trackId: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    if (body?.platform === 'qq') {
+      return this.qq.getTrackFavCount(
+        session.providers.qq ?? {},
+        body.trackId,
+      );
+    }
+    if (body?.platform === 'netease') {
+      return this.netease.getTrackLikeCount(
+        session.providers.netease ?? {},
+        body.trackId,
+      );
+    }
+    return null;
   }
 
   /**

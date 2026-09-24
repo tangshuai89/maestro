@@ -5,6 +5,7 @@ import { ProviderSession } from '../common/session';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { randomBytes } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
+import { withTimeout } from '../common/timeout';
 
 /** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
 export type QqQuality = 'standard' | 'high' | 'lossless';
@@ -468,6 +469,73 @@ export class QqMusicProvider {
       );
       return null;
     }
+  }
+
+  /**
+   * 取歌曲被收藏数（公开匿名 musicu.fcg）。QQ 通过
+   * `music.musicasset.SongFavRead / GetSongFansNumberById` 同时返回
+   *   - `m_numbers.{songId}`：精确整数（> 0 时）
+   *   - `m_show.{songId}`：UI 显示字符串（如 "5700w+"、"100+"、"3"）
+   *
+   * 接口验证：晴天 97773 → m_numbers=1000001, m_show="5700w+"
+   * （2026-09-23 实测，无 QQ cookie、明文 POST）。
+   *
+   * @param songmid  队列里的 mid（不是数字 songId——内部 resolveSongId 转）。
+   * @returns 失败/超时/服务下线 → null；成功 → `{ count, display }`。
+   *          `count = 0` 也是合法值（极少新歌确实 0 收藏），前端按"没数"渲染
+   *          留给调用方判断。
+   *
+   * ⚠️ 该接口对多源混用字符串/数字 ID 都接受，但保险起见我们走 resolveSongId
+   *    统一拿数字——避免 QQ 内部因为 string vs int 漏匹配。
+   */
+  async getTrackFavCount(
+    session: ProviderSession,
+    songmid: string,
+  ): Promise<{ count: number; display: string } | null> {
+    return withTimeout(async () => {
+      const songId = await this.resolveSongId(session, songmid);
+      if (songId == null) return null;
+      const url =
+        'https://u.y.qq.com/cgi-bin/musicu.fcg' +
+        '?format=json&inCharset=utf8&outCharset=utf-8&platform=yqq.json' +
+        '&needNewCode=0';
+      const body = {
+        result: {
+          module: 'music.musicasset.SongFavRead',
+          method: 'GetSongFansNumberById',
+          param: { v_songId: [songId] },
+        },
+      };
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': QqMusicProvider.UA,
+            Referer: 'https://y.qq.com/',
+          },
+          body: JSON.stringify(body),
+        });
+        const j = (await res.json()) as {
+          result?: {
+            code?: number;
+            data?: { m_numbers?: Record<string, number>; m_show?: Record<string, string> };
+          };
+        };
+        if (j.result?.code !== 0) return null;
+        const numbers = j.result.data?.m_numbers ?? {};
+        const shows = j.result.data?.m_show ?? {};
+        const count = numbers[String(songId)];
+        const display = shows[String(songId)];
+        if (typeof count !== 'number') return null;
+        return { count, display: display ?? count.toLocaleString() };
+      } catch (err) {
+        this.logger.warn(
+          `QQ getTrackFavCount failed for ${songmid}: ${(err as Error).message}`,
+        );
+        return null;
+      }
+    }, 5000) as Promise<{ count: number; display: string } | null>;
   }
 
   /**

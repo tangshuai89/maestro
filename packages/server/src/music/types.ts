@@ -57,6 +57,28 @@ export interface SourceInfo {
   /** 付费分类（见 Track.vipCategory）。buildUnifiedItems 从 track 透传到 SourceInfo，
    * 前端 SourceChip 据此决定是否加 [P]/[NP] 标签。 */
   vipCategory?: VipCategory;
+  /**
+   * 歌曲在该平台被收藏/喜欢的总数。**只** QQ + 网易云填；Deezer/Spotify 留
+   * undefined（这两家平台不暴露 ❤ 公开字段——Deezer 只有 rank、Spotify 只有
+   * popularity 0-100）。
+   *
+   * 数据源：
+   *   - QQ      → `music.musicasset.SongFavRead / GetSongFansNumberById` 公开匿名
+   *               接口，返回 `m_numbers`（精确）+ `m_show`（UI 格式如 "5700w+"）。
+   *   - 网易云  → `/api/song/detail?ids=[id]` 公开匿名，返回 `likedCount`。
+   *
+   * `undefined` = 未知/未拉到（与"0"区别开）。`search.util.buildUnifiedItems`
+   * 不会主动去拉，是 `music.service.searchUnified` 在返回结果后异步 fire-and-forget
+   * 调 provider 的 getTrackFavCount/getTrackLikeCount 填充（带 5s 超时 + 30s/1h 缓存）。
+   */
+  likeCount?: {
+    /** 精确数字（QQ 来自 m_numbers；网易云来自 likedCount） */
+    count: number;
+    /** UI 显示字符串（QQ 来自 m_show；网易云 = count.toLocaleString()） */
+    display: string;
+    /** 平台名（debug / 上标 tooltip 用） */
+    source: 'qq' | 'netease';
+  };
 }
 
 /** 单一录音版本（同 (key, type) 内一个 duration cluster = 一个版本）。 */
@@ -114,6 +136,19 @@ export interface UnifiedSearchItem {
    * `undefined` / 缺失 = 视为 sources 平台列表（搜索结果里兼容老路径）。
    * 库（library）总是显式填好。 */
   likedPlatforms?: MusicProvider[];
+  /**
+   * 跨平台 ❤ 累加 = Σ source.likeCount.count（只算 likeable 平台）。
+   * 派生字段，不持久化——每次 `buildUnifiedItems` / `getLibrary` 时现算。
+   *
+   * `undefined` = 全部 source 都没 likeCount（避免和"0"混淆）。
+   * HUD 读这个字段（D.1 样式：QQ + 网易云紧凑加号 + 上标）。
+   * 见 `specs/cross-platform-likes`。 */
+  crossPlatformLikeTotal?: {
+    count: number;
+    display: string;
+    /** 累加来源平台列表（顺序 = sources 顺序），用于上标渲染 */
+    platforms: Array<'qq' | 'netease'>;
+  };
 }
 
 export interface UnifiedSearchResult {

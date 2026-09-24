@@ -4,6 +4,7 @@ import type { VipCategory } from './types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
 import { QqQuality } from './qq.provider';
+import { withTimeout } from '../common/timeout';
 
 /**
  * 网易云音乐：私人 FM + 播放 URL + 红心。
@@ -320,6 +321,54 @@ export class NeteaseMusicProvider {
    *
    * 返回的 audioUrl 交由 music.service 拼成后端代理相对路径。
    */
+  /**
+   * 取歌曲被收藏数（公开匿名 song/detail 接口）。返回 `songs[0].likedCount`。
+   *
+   * ⚠️ 注意网易云 `search` 接口**不返回** `likedCount`，但 detail 接口（公开匿名）
+   * 会返回——这是为什么走 detail 路径而非 search 路径的原因。
+   *
+   * @returns 失败/超时/服务下线 → null；成功 → `{ count, display }`。
+   */
+  async getTrackLikeCount(
+    session: ProviderSession,
+    songId: string,
+  ): Promise<{ count: number; display: string } | null> {
+    return withTimeout(async () => {
+      const url =
+        'https://music.163.com/api/song/detail?ids=[' +
+        encodeURIComponent(songId) +
+        ']';
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': UA,
+            Referer: 'https://music.163.com/',
+            Accept: 'application/json, text/plain, */*',
+            // 详情接口公开匿名，但带 appver 头更稳（与现有 apiCall 同源风控绕过）
+            Cookie:
+              `MUSIC_U=${session.musicU}; os=pc; appver=8.9.70` +
+              (session.csrfToken ? `; __csrf=${session.csrfToken}` : ''),
+            'X-Real-IP': NETEASE_REAL_IP,
+            'X-Forwarded-For': NETEASE_REAL_IP,
+          },
+        });
+        const j = (await res.json()) as {
+          code?: number;
+          songs?: Array<{ id?: number; likedCount?: number }>;
+        };
+        if (j.code !== 200 || !j.songs?.length) return null;
+        const liked = j.songs[0].likedCount;
+        if (typeof liked !== 'number') return null;
+        return { count: liked, display: liked.toLocaleString() };
+      } catch (err) {
+        this.logger.warn(
+          `netease getTrackLikeCount failed for ${songId}: ${(err as Error).message}`,
+        );
+        return null;
+      }
+    }, 5000) as Promise<{ count: number; display: string } | null>;
+  }
+
   async search(
     session: ProviderSession,
     keyword: string,

@@ -245,6 +245,30 @@ export async function toggleLike(
  * （含之前单独心过的），UI 角标直接用它的 length 表达"这首歌在几个平台有 ❤"；
  * liked=false 时是空数组。
  */
+/**
+ * 单曲 ❤ 数拉取（fire-and-forget）。server 端 QQ/网易云走公开匿名接口，
+ * 5s 超时 + 30s/1h 缓存。失败/超时返回 null，HUD 显示 fallback。
+ * Body: { platform: 'qq'|'netease', trackId: string }
+ */
+export async function fetchTrackLikeCount(
+  platform: 'qq' | 'netease',
+  trackId: string,
+): Promise<{ count: number; display: string; source: 'qq' | 'netease' } | null> {
+  try {
+    const res = await fetchWithToken(`${API_BASE}/music/track/likeCount`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, trackId }),
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    return (await res.json()) as { count: number; display: string; source: 'qq' | 'netease' };
+  } catch {
+    return null;
+  }
+}
+
 export async function fanOutLike(
   mergedId: string,
   sources: Array<{ platform: MusicProvider; trackId: string }>,
@@ -519,6 +543,26 @@ export async function searchTracks(
  *  [P]/[NP] 标签：paid-album → 黄色（QQ）/ 红色（netease）背景 + tag。 */
 export type VipCategory = 'paid-album' | 'paid-track' | 'vip-only' | 'vip-month';
 
+/** 单平台 ❤ 计数（前端镜像 server SourceInfo.likeCount）。HUD D.1 累加用。 */
+export interface SourceLikeCount {
+  /** 精确数字（QQ 来自 m_numbers；网易云来自 likedCount） */
+  count: number;
+  /** UI 显示字符串（QQ 来自 m_show；网易云 = count.toLocaleString()） */
+  display: string;
+  /** 平台名（debug / 上标 tooltip 用） */
+  source: 'qq' | 'netease';
+}
+
+/** 跨平台 ❤ 累加（server UnifiedSearchItem.crossPlatformLikeTotal 镜像）。
+ *  HUD 紧凑显示：`QQ 数字¹ + 网易云 数字²`。
+ *  undefined = 全部 source 都没 likeCount（避免和"0"混淆）。 */
+export interface CrossPlatformLikeTotal {
+  count: number;
+  display: string;
+  /** 累加来源平台列表（顺序 = sources 顺序），用于上标 ¹/² 渲染 */
+  platforms: Array<'qq' | 'netease'>;
+}
+
 /** 统一搜索结果里每个平台的源信息（服务端 SourceInfo 的前端镜像）。 */
 export interface UnifiedSourceInfo {
   platform: MusicProvider;
@@ -534,6 +578,9 @@ export interface UnifiedSourceInfo {
    *  - vipLocked=false + paid-album → chip 加 [P]（已购或 VIP 解锁，tooltip 说明）
    *  - 其他 vipLocked=0 → 不加标签 */
   vipCategory?: VipCategory;
+  /** 歌曲在该平台被 ❤ 数（公开匿名拉）。只 QQ + 网易云会填；详见
+   *  `specs/cross-platform-likes`。 */
+  likeCount?: SourceLikeCount;
 }
 
 /** 统一搜索结果（去重合并后）单条。 */
@@ -573,6 +620,9 @@ export interface UnifiedSearchItem {
   /** UI 角标显示用：用户在哪些平台 ❤ 了这首歌（import + 运行时 fanOut 合并）。
    *  缺失时回退到 sources.map(s => s.platform)。 */
   likedPlatforms?: MusicProvider[];
+  /** 跨平台 ❤ 累加 = QQ + 网易云 likeCount 之和。HUD D.1 紧凑加号 + 上标读这个。
+   *  详见 `specs/cross-platform-likes`。undefined = 全部 source 都没拉到。 */
+  crossPlatformLikeTotal?: CrossPlatformLikeTotal;
 }
 
 /** 统一搜索的整页响应。 */
@@ -1161,4 +1211,24 @@ export async function getBackupInfo(): Promise<{
   return json(
     await fetchWithToken(`${API_BASE}/storage/info`, { credentials: 'include' }),
   );
+}
+
+
+/** 跨平台 ❤ 累加重算（client 镜像 — server/src/music/search.util.ts:recomputeCrossPlatformLikeTotal）。
+ *  fire-and-forget 拉完 likeCount 后调一次，更新 item.crossPlatformLikeTotal。 */
+export function recomputeCrossPlatformLikeTotal(item: {
+  sources: Array<{ platform: string; likeCount?: SourceLikeCount }>;
+  crossPlatformLikeTotal?: CrossPlatformLikeTotal;
+}): void {
+  const buckets = item.sources
+    .filter((s) => (s.platform === 'qq' || s.platform === 'netease') && s.likeCount)
+    .map((s) => s.likeCount!);
+  if (buckets.length === 0) {
+    delete item.crossPlatformLikeTotal;
+    return;
+  }
+  const count = buckets.reduce((a, b) => a + b.count, 0);
+  const display = buckets.map((b) => b.display).join(' + ');
+  const platforms = buckets.map((b) => b.source);
+  item.crossPlatformLikeTotal = { count, display, platforms };
 }

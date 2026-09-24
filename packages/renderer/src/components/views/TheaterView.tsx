@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react';
-import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality } from '../../api';
+import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality, CrossPlatformLikeTotal } from '../../api';
 import { clampText } from '../../lib/format';
 import { theaterDensity, canvasScale, lyricWindow, type TheaterDensity } from '../../lib/theaterLayout';
 
@@ -30,6 +30,9 @@ export interface TheaterViewProps {
   loading: boolean;
   liked: boolean;
   fanOutCount: number;
+  /** 当前播放曲目对应的 UnifiedSearchItem（含 crossPlatformLikeTotal）。
+   *  HUD ❤ 计数改读此字段的派生量；undefined = 还没拉到，按 fallback 渲染。 */
+  currentUnified?: { crossPlatformLikeTotal?: CrossPlatformLikeTotal };
   currentTime: number;
   duration: number;
   provider: MusicProvider;
@@ -163,7 +166,7 @@ function ThIcon({ icon, size = 16, color, fill }: { icon: string; size?: number;
 
 export default function TheaterView(props: TheaterViewProps) {
   const {
-    track, playing, loading, liked, fanOutCount,
+    track, playing, loading, liked, fanOutCount, currentUnified,
     currentTime, duration,
     provider, qqQuality, trialFellBack, likedCount,
     coverBackdropRef,
@@ -283,7 +286,35 @@ export default function TheaterView(props: TheaterViewProps) {
             </span>
             <span className="th-hud-sync">
               <span className="th-hud-heart" aria-hidden="true">♥</span>
-              <span>{likedCount > 0 ? likedCount.toLocaleString() : (fanOutCount > 0 ? `${fanOutCount}/4` : '—')}</span>
+              <span>
+                {(() => {
+                  // D.1：跨平台 ❤ 累加 = QQ + 网易云 likeCount 之和
+                  // （specs/cross-platform-likes）。fallback 链：crossPlat → likedCount → fanOutCount/4 → —
+                  const t = currentUnified?.crossPlatformLikeTotal;
+                  if (t) {
+                    // 上标：QQ→¹、网易云→²；按 platforms 顺序拼接
+                    const sup = t.platforms
+                      .map((p) => (p === 'qq' ? '¹' : '²'))
+                      .join('');
+                    return (
+                      <>
+                        {t.display}
+                        <sup
+                          className="th-hud-like-sup"
+                          title={t.platforms
+                            .map((p) => (p === 'qq' ? 'QQ' : '网易云'))
+                            .join(' + ')}
+                        >
+                          {sup}
+                        </sup>
+                      </>
+                    );
+                  }
+                  if (likedCount > 0) return likedCount.toLocaleString();
+                  if (fanOutCount > 0) return `${fanOutCount}/4`;
+                  return '—';
+                })()}
+              </span>
             </span>
           </div>
           <div className="th-hud-badges" role="group" aria-label="平台">
