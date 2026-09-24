@@ -399,6 +399,56 @@
     "b": 0.361,
     "a": 1
    }
+  },
+  {
+   "name": "Color/semantic/status-warning",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1.0,
+    "g": 0.8509803921568627,
+    "b": 0.23921568627450981,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/status-info",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.23921568627450981,
+    "g": 0.6078431372549019,
+    "b": 1.0,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/success",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.23921568627450981,
+    "g": 1.0,
+    "b": 0.6352941176470588,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/accent-warm",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 1.0,
+    "g": 0.23921568627450981,
+    "b": 0.10196078431372549,
+    "a": 1
+   }
+  },
+  {
+   "name": "Color/semantic/accent-blue",
+   "resolvedType": "COLOR",
+   "value": {
+    "r": 0.23137254901960785,
+    "g": 0.5098039215686274,
+    "b": 0.9647058823529412,
+    "a": 1
+   }
   }
  ]
 }
