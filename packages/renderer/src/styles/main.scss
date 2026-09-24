@@ -12,6 +12,7 @@
 // Base
 @use 'base/tokens';
 @use 'base/tokens.generated' as generated;
+@use 'base/tokens-bridge' as bridge;
 @use 'base/themes';
 @use 'base/reset';
 @use 'base/base';

@@ -1,0 +1,73 @@
+// ============================================================
+// AETHER → shadcn HSL bridge
+// ============================================================
+// shadcn/ui 用 HSL 三元组（如 `--primary: 195 100% 50%`）配合
+// `hsl(var(--primary))` 消费；AETHER 既有令牌是 hex。
+// 本文件不复制颜色值——直接从 AETHER hex 派生 HSL 三元组，
+// 单一事实源仍是 AETHER 令牌（_tokens.generated.scss）。
+//
+// 流程：
+//   1. 设计改 → figma-tokens-dump.json 改 → 跑 figma-export-tokens.mjs
+//   2. AETHER hex 自动更新
+//   3. 本文件用 SCSS color.hsl() 同步派生 → shadcn tokens 同步更新
+//
+// 之所以手工列映射而不是遍历：
+//   SCSS color.hsl / color.red-green-blue 等函数要求逐 token 写
+//   （hex → hsl 不能纯 SCSS 函数一键串完），spec §技术约束有说。
+// ============================================================
+
+@use 'sass:color';
+
+// AETHER 既有 hex 令牌（_tokens.generated.scss 提供）
+// 这里**不重复声明**——直接 @use 上游 + color 转换。
+@use 'tokens' as aether;
+
+// ---- shadcn 标准 token ----
+:root {
+  // --background: AETHER --surface-deep (AETHER 已有 hex → hsl)
+  --background: #{color.hsl(aether.$surface-deep)};
+  --foreground: #{color.hsl(aether.$text-main)};
+
+  // --card / --popover: AETHER --surface-mid
+  --card: #{color.hsl(aether.$surface-mid)};
+  --card-foreground: #{color.hsl(aether.$text-main)};
+  --popover: #{color.hsl(aether.$surface-mid)};
+  --popover-foreground: #{color.hsl(aether.$text-main)};
+
+  // --primary: AETHER --accent
+  --primary: #{color.hsl(aether.$accent)};
+  --primary-foreground: #{color.hsl(aether.$surface-deep)};
+
+  // --secondary: AETHER --surface-raised
+  --secondary: #{color.hsl(aether.$surface-raised)};
+  --secondary-foreground: #{color.hsl(aether.$text-main)};
+
+  // --muted / --muted-foreground: AETHER --surface-raised / --text-dim
+  --muted: #{color.hsl(aether.$surface-raised)};
+  --muted-foreground: #{color.hsl(aether.$text-dim)};
+
+  // --accent: AETHER --accent (shadcn 与 primary 共用 AETHER --accent)
+  --accent: #{color.hsl(aether.$accent)};
+  --accent-foreground: #{color.hsl(aether.$surface-deep)};
+
+  // --destructive: AETHER --status-error
+  --destructive: #{color.hsl(aether.$status-error)};
+  --destructive-foreground: #{color.hsl(aether.$text-main)};
+
+  // ---- AETHER 派生 shadcn tokens (spec §数据模型) ----
+  // 这些 shadcn 不定义，由 AETHER 填充：
+  --success: #{color.hsl(aether.$success)};
+  --warning: #{color.hsl(aether.$status-warning)};
+  --info: #{color.hsl(aether.$status-info)};
+  --accent-warm: #{color.hsl(aether.$accent-warm)};
+  --accent-blue: #{color.hsl(aether.$accent-blue)};
+  --accent-purple: #{color.hsl(aether.$accent-purple)};
+
+  // --border / --input / --ring: AETHER --glass-stroke / --glass-fill
+  --border: #{aether.$glass-stroke};
+  --input: #{aether.$glass-fill-strong};
+  --ring: #{color.hsl(aether.$accent)};
+
+  // --radius: AETHER --radius-10 (中等圆角)
+  --radius: 0.625rem;
+}
