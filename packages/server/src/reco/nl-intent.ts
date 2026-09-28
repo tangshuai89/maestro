@@ -121,12 +121,51 @@ export function buildParseIntentPrompt(
   ];
 }
 
-/** 从 LLM 响应中抠出 <json>...</json>，容错：整段就是 JSON 也接受。 */
+/**
+ * 从 LLM 响应中抠出 JSON，容错四层（按命中概率排序）：
+ *   1. `<json>...</json>` 包裹 —— prompt 里要求的格式
+ *   2. ```json ... ``` / ``` ... ``` 围栏 —— DeepSeek 常见输出
+ *   3. 整段就是 JSON（trim 后以 { 开头 } 结尾）
+ *   4. 从任意文本里扫描**第一个平衡的** {...}（前面有解释文字/空格时兜底）
+ *
+ * 2026-09-28 实测教训（C1 探针）：`response_format: json_object` 会让
+ * DeepSeek **忽略** prompt 里的 `<json>` 包裹要求，直接吐裸 JSON，且可能
+ * 前面带空白或一行说明。只认「整段就是 JSON」会 4/4 全挂 —— 必须有第 4 层。
+ */
 export function extractJsonBlock(raw: string): string {
   const trimmed = raw.trim();
-  const match = trimmed.match(/<json>([\s\S]*?)<\/json>/i);
-  if (match) return match[1].trim();
+
+  // 1. <json>...</json>
+  const tagged = trimmed.match(/<json>([\s\S]*?)<\/json>/i);
+  if (tagged) return tagged[1].trim();
+
+  // 2. ```json ... ``` 围栏
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]+?)```/i);
+  if (fence) return fence[1].trim();
+
+  // 3. 整段就是 JSON
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+
+  // 4. 扫描第一个平衡的 {...}（跳过字符串字面量里的花括号/转义引号）
+  const start = trimmed.indexOf('{');
+  if (start >= 0) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = start; i < trimmed.length; i++) {
+      const ch = trimmed[i];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) return trimmed.slice(start, i + 1);
+      }
+    }
+  }
+
   throw new Error('response_missing_json_block');
 }
 

@@ -19,8 +19,17 @@
 
 ## Phase C — 联调 + 验收
 
-- [ ] **C1** Prompt 调试：5–10 个真实场景（"夜跑""慵懒""九十年代摇滚"…）跑通
-- [ ] **C2** "排除 / 更多像"约束端到端验证
+- [x] **C1** Prompt 调试 —— 5 个真实场景跑通（`scripts/nl-playlist-probe.mjs`）：
+      夜跑电子乐 / 周末慵懒民谣 / 九十年代摇滚排除周杰伦 / Deadmau5 prog house /
+      通勤轻快（带 ❤ 库上下文 6 首，rationale 正确引用「用户常听五月天」）。
+      **修掉一个真 bug**：`response_format=json_object` 让 DeepSeek 忽略
+      prompt 的 `<json>` 包裹直接吐裸 JSON，`extractJsonBlock` 四场景全挂 →
+      改为四层兜底（<json> / ```围栏 / 整段 JSON / 平衡花括号扫描，跳过
+      字符串字面量与转义）。4 个回归断言已补进 nl-playlist.test.ts。
+- [x] **C2** "排除 / 更多像"约束验证 ——
+      「九十年代摇滚，排除周杰伦」→ exclude_artists=[周杰伦] + era 1990–1999；
+      「像 Deadmau5 那种」→ similar_artists=[Deadmau5] + genres=progressive house。
+      两条约束都被 `intentToPromptHints` 翻译进 prompt（该函数有单测覆盖）。
 - [x] **C3** 错误路径：缺 key / 429 / 5xx / JSON parse fail / network — UI 全部友好提示
       > 服务端 5 条路径已在 `nl-playlist.e2e.test.ts` 覆盖（428/429/5xx/502 非 JSON
       > + 400 输入校验）；renderer 侧 NLPlaylistModal 三处 error banner
