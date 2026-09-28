@@ -1,7 +1,7 @@
 /**
  * NL playlist controller（specs/nl-playlist/ commit 1 = A1+A2）。
  *
- * POST /api/reco/parse-intent —— 客户端给一句人话，DeepSeek 解析成 NLIntent。
+ * POST /reco/parse-intent —— 客户端给一句人话，DeepSeek 解析成 NLIntent。
  * 后续 commit 2 (A3) 才把 Intent 拼进 reco.run 扩展入参。
  */
 import {
@@ -17,12 +17,14 @@ import {
   Get,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { RecoService } from './reco.service';
 import { MusicService } from '../music/music.service';
 import { SessionService } from '../common/session';
 import { PlaylistService, type Playlist } from '../library/playlist.service';
+import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 import {
   buildParseIntentPrompt,
   parseIntentResponse,
@@ -42,7 +44,11 @@ interface ParseIntentResponse {
   raw?: string;
 }
 
-@Controller()  // 路由前缀各方法自填（@Post('library/playlists') 等）
+/** All routes here are CSRF-gated by RequireInternalTokenGuard —— 与其余
+ *  controller 同一条审计基线（audit 1.1）；parse-intent 会消耗用户的
+ *  DeepSeek token，绝不能裸奔。 */
+@UseGuards(RequireInternalTokenGuard)
+@Controller()  // 路由前缀各方法自填（@Post('reco/parse-intent') 等）
 export class NLPlaylistController {
   constructor(
     private readonly reco: RecoService,
@@ -51,7 +57,7 @@ export class NLPlaylistController {
     private readonly playlists: PlaylistService,
   ) {}
 
-  @Post('api/reco/parse-intent')
+  @Post('reco/parse-intent')
   async parseIntent(
     @Body() body: ParseIntentRequest,
     @Req() req: Request,
@@ -103,7 +109,7 @@ export class NLPlaylistController {
 
   // ── 歌单 CRUD（specs/nl-playlist/ §Task A4+A5）──────────────
 
-  @Post('api/library/playlists')
+  @Post('library/playlists')
   createPlaylist(
     @Body() body: { name: string; tracks: any[]; prompt?: string; source?: 'nl' | 'manual' },
     @Req() req: Request,
@@ -113,7 +119,7 @@ export class NLPlaylistController {
     return this.playlists.create(session.id, body);
   }
 
-  @Get('api/library/playlists')
+  @Get('library/playlists')
   listPlaylists(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -122,7 +128,7 @@ export class NLPlaylistController {
     return this.playlists.list(session.id);
   }
 
-  @Get('api/library/playlists/:id')
+  @Get('library/playlists/:id')
   getPlaylist(
     @Param('id') id: string,
     @Req() req: Request,
@@ -132,7 +138,7 @@ export class NLPlaylistController {
     return this.playlists.get(session.id, id);
   }
 
-  @Delete('api/library/playlists/:id')
+  @Delete('library/playlists/:id')
   deletePlaylist(
     @Param('id') id: string,
     @Req() req: Request,
@@ -142,7 +148,7 @@ export class NLPlaylistController {
     return this.playlists.delete(session.id, id);
   }
 
-  @Patch('api/library/playlists/:id')
+  @Patch('library/playlists/:id')
   patchPlaylist(
     @Param('id') id: string,
     @Body() body: { name?: string; append?: any[]; remove?: string[] },

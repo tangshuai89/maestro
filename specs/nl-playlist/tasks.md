@@ -2,20 +2,20 @@
 
 ## Phase A — 服务端
 
-- [ ] **A1** `parse-intent` prompt 模板（强约束 JSON 包裹 `<json>...</json>`，库上下文 ≤ 50 首）
-- [ ] **A2** `parse-intent` service：DeepSeek 调用 + JSON 解析 + 422/429/502 状态码（与 reco 一致）
-- [ ] **A3** `reco.run` 扩展：接受 `intent?` / `exclude_titles?` / `exclude_artists?`；向后兼容（无 intent 走原路径）
-- [ ] **A4** `Playlist` 数据模型（ULID id + .storage/playlists.json）+ storage helper
-- [ ] **A5** `POST /api/library/playlists` + `GET /api/library/playlists` + `GET/DELETE/PATCH /:id`
-- [ ] **A6** 单测：parse-intent JSON 解析 / fallback / rate-limit；reco.run 扩展字段；Playlist CRUD
+- [x] **A1** `parse-intent` prompt 模板（强约束 JSON 包裹 `<json>...</json>`，库上下文 ≤ 50 首）
+- [x] **A2** `parse-intent` service：DeepSeek 调用 + JSON 解析 + 422/429/502 状态码（与 reco 一致）
+- [x] **A3** `reco.run` 扩展：接受 `intent?` / `exclude_titles?` / `exclude_artists?`；向后兼容（无 intent 走原路径）
+- [x] **A4** `Playlist` 数据模型（crypto.randomUUID() id + `state.json` 里 `playlists:{sessionId}` key）+ storage helper
+- [x] **A5** `POST /library/playlists` + `GET /library/playlists` + `GET/DELETE/PATCH /:id`
+- [x] **A6** 单测：parse-intent JSON 解析 / fallback / rate-limit；reco.run 扩展字段；Playlist CRUD
 
 ## Phase B — 渲染端
 
-- [ ] **B1** shadcn `Textarea` 组件复制（ownership 模式，与 PR #92 一致）
-- [ ] **B2** `NLPlaylistModal` 组件（shadcn Dialog + Textarea + 结果列表 + 覆盖/追加切换）
-- [ ] **B3** ✨ 入口：lite 模式复用；theater 模式 search 框上方按钮
-- [ ] **B4** `usePlaylist` hook（拉 / 存 / 删 / 改）+ 最简歌单列表 UI
-- [ ] **B5** 保存为歌单二次 Dialog（name 输入 + 提交）
+- [x] **B1** shadcn `Textarea` 组件复制（ownership 模式，与 PR #92 一致）
+- [x] **B2** `NLPlaylistModal` 组件（shadcn Dialog + Textarea + 结果列表 + 覆盖/追加切换）
+- [x] **B3** ✨ 入口：lite 模式复用；theater 模式 search 框上方按钮
+- [x] **B4** `usePlaylist` hook（拉 / 存 / 删 / 改）+ 最简歌单列表 UI
+- [x] **B5** 保存为歌单二次 Dialog（name 输入 + 提交）
 
 ## Phase C — 联调 + 验收
 

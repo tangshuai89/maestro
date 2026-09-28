@@ -2,7 +2,7 @@
  * 本地歌单 hook（specs/nl-playlist/ §Task B4）。
  *
  * 职责：拉 / 存 / 删 / 改 歌单 + 本地 optimistic 更新 + 错误态。
- * 状态来源：server `/api/library/playlists`（PlaylistService，见
+ * 状态来源：server `/library/playlists`（PlaylistService，见
  * `packages/server/src/library/playlist.service.ts`）。
  *
  * 不做：歌单内曲目排序 / 拖拽（spec §不做什么 v2）；跨设备同步。

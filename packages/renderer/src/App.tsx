@@ -423,6 +423,10 @@ export default function App() {
         <SearchPanel
           onPlay={player.playSearch}
           onClose={() => player.setSearchOpen(false)}
+          onOpenNL={() => {
+            player.setSearchOpen(false);
+            setNlOpen(true);
+          }}
         />
       )}
 
@@ -461,11 +465,18 @@ export default function App() {
         <NLPlaylistModal
           open
           onClose={() => setNlOpen(false)}
+          queueLength={player.queueUnifiedItems?.length ?? 0}
           onPlay={(items, idx) => {
             setNlOpen(false);
             player.setError(null);
             player.playSearch(items, idx);
           }}
+          onAppendQueue={(items) => {
+            setNlOpen(false);
+            player.setError(null);
+            player.appendToQueue(items);
+          }}
+          onNeedKey={() => reco.setRecoKeyOpen(true)}
         />
       )}
 

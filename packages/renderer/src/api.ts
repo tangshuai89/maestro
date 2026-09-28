@@ -288,21 +288,19 @@ export interface NLIntent {
 }
 
 /**
- * POST /api/reco/parse-intent —— 把用户自然语言解析成 NLIntent。
- * 错误透传：400 / 428 / 429 / 502 抛 fetch 错误。
+ * POST /reco/parse-intent —— 把用户自然语言解析成 NLIntent。
+ * 走 json() 统一出口：400 / 428 / 429 / 502 抛 AuthError（带 .status，
+ * UI 据此分流——428 开 RecoKeyModal，其余走错误文案）。
  */
 export async function parseIntent(text: string): Promise<{ intent: NLIntent; raw?: string }> {
-  const res = await fetchWithToken(`${API_BASE}/api/reco/parse-intent`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => '');
-    throw new Error(`parse_intent_failed_${res.status}: ${msg.slice(0, 200)}`);
-  }
-  return (await res.json()) as { intent: NLIntent; raw?: string };
+  return json(
+    await fetchWithToken(`${API_BASE}/reco/parse-intent`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }),
+  );
 }
 
 /* ── 本地歌单 CRUD（specs/nl-playlist/ A4+A5）────────────────── */
@@ -319,7 +317,7 @@ export interface Playlist {
 
 export async function listPlaylists(): Promise<Playlist[]> {
   return json(
-    await fetchWithToken(`${API_BASE}/api/library/playlists`, {
+    await fetchWithToken(`${API_BASE}/library/playlists`, {
       credentials: 'include',
     }),
   );
@@ -332,7 +330,7 @@ export async function createPlaylist(body: {
   source?: 'nl' | 'manual';
 }): Promise<Playlist> {
   return json(
-    await fetchWithToken(`${API_BASE}/api/library/playlists`, {
+    await fetchWithToken(`${API_BASE}/library/playlists`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -347,7 +345,7 @@ export async function patchPlaylist(
 ): Promise<Playlist> {
   return json(
     await fetchWithToken(
-      `${API_BASE}/api/library/playlists/${encodeURIComponent(id)}`,
+      `${API_BASE}/library/playlists/${encodeURIComponent(id)}`,
       {
         method: 'PATCH',
         credentials: 'include',
@@ -361,7 +359,7 @@ export async function patchPlaylist(
 export async function deletePlaylist(id: string): Promise<{ ok: true }> {
   return json(
     await fetchWithToken(
-      `${API_BASE}/api/library/playlists/${encodeURIComponent(id)}`,
+      `${API_BASE}/library/playlists/${encodeURIComponent(id)}`,
       { method: 'DELETE', credentials: 'include' },
     ),
   );

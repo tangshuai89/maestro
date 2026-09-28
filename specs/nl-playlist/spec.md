@@ -9,14 +9,14 @@ W3 spec-first 落地：先钉死意图 schema 与接口，再写实现。复
 
 ## 验收标准
 
-- [ ] 输入一句自然语言 → 数秒内生成 ≥10 首可播队列，风格 / 语言 / 年代与描述吻合
-- [ ] "排除 X""更多像 Y"等约束能体现在结果里（见 §数据模型 Intent schema）
-- [ ] 无 DeepSeek key → 走 `specs/reco-deepseek` 既有 428 友好提示
-- [ ] 429 / 5xx → fail loud + UI 提示，不静默吞
-- [ ] LLM 输出非 JSON / 字段缺失 → 报错并保留 raw 给 debug
-- [ ] 生成的队列可一键存为本地歌单（持久化到 `.storage/playlists.json`）
-- [ ] 输入入口在 lite 模式 ✨ 按钮 + theater 模式搜索框上方入口（均用 shadcn `Dialog` + `Textarea`）
-- [ ] 生成的队列覆盖当前播放队列时给"会清空当前队列"确认弹窗
+- [ ] 输入一句自然语言 → 数秒内生成 ≥10 首可播队列，风格 / 语言 / 年代与描述吻合（C1 e2e 待验）
+- [ ] "排除 X""更多像 Y"等约束能体现在结果里（见 §数据模型 Intent schema；C2 e2e 待验）
+- [x] 无 DeepSeek key → 走 `specs/reco-deepseek` 既有 428 友好提示（打开 RecoKeyModal）
+- [x] 429 / 5xx → fail loud + UI 提示，不静默吞
+- [x] LLM 输出非 JSON / 字段缺失 → 报错并保留 raw 给 debug
+- [x] 生成的队列可一键存为本地歌单（持久化到 `state.json` 的 `playlists:{sessionId}` key）
+- [x] 输入入口在 lite 模式 ✨ 按钮 + theater 模式搜索框上方入口（均用 shadcn `Dialog` + `Textarea`）
+- [x] 生成的队列覆盖当前播放队列时给"会清空当前队列"确认弹窗；也可选「追加到队列」
 
 ## 数据模型
 
@@ -43,7 +43,7 @@ interface NLIntent {
 
 ```ts
 interface Playlist {
-  id: string;                       // ulid
+  id: string;                       // crypto.randomUUID()
   name: string;                     // ≤ 60 字（用户可改名）
   tracks: UnifiedSearchItem[];      // 与 LibraryItem 同结构
   source: 'nl' | 'manual';
@@ -53,15 +53,15 @@ interface Playlist {
 }
 ```
 
-存储：`.storage/playlists.json`（与 `.storage/library.json` 同层；
-沿用 `StorageService`）。
+存储：`StorageService` 里 `playlists:{sessionId}` key（落在 `.storage/state.json`，
+与 `library:{id}` 同层按 session 隔离；沿用 StorageService 的 debounce 写盘）。
 
 ## 接口规格
 
 ### 后端（NestJS）
 
 ```
-POST /api/reco/parse-intent
+POST /reco/parse-intent
 Request:  { text: string; }
 Response: { intent: NLIntent; raw?: string }
 Errors:
@@ -72,7 +72,7 @@ Errors:
 ```
 
 ```
-POST /api/reco/run  （扩展既有端点，向后兼容）
+POST /reco/run  （扩展既有端点，向后兼容）
 Request:
   { count?: number;
     language?: 'zh'|'en'|'ja'|'auto';
@@ -88,15 +88,15 @@ Errors: 同既有 + intent 字段 schema 校验失败 400
 ```
 
 ```
-POST /api/library/playlists
-Request:  { name: string; tracks: UnifiedSearchItem[]; prompt?: string }
+POST /library/playlists
+Request:  { name: string; tracks: UnifiedSearchItem[]; prompt?: string; source?: 'nl'|'manual' }
 Response: Playlist
 Errors:  400 name 非法 / tracks 为空
 
-GET    /api/library/playlists           → Playlist[]（按 updatedAt 倒序）
-GET    /api/library/playlists/:id       → Playlist
-DELETE /api/library/playlists/:id       → { ok: true }
-PATCH  /api/library/playlists/:id       → Playlist（改 name / append / remove）
+GET    /library/playlists           → Playlist[]（按 updatedAt 倒序）
+GET    /library/playlists/:id       → Playlist
+DELETE /library/playlists/:id       → { ok: true }
+PATCH  /library/playlists/:id       → Playlist（改 name / append / remove）
 ```
 
 ## UI 行为
@@ -109,15 +109,15 @@ PATCH  /api/library/playlists/:id       → Playlist（改 name / append / remov
 - `Textarea` 自由文本输入（autoFocus，placeholder 给出 3–5 个示例）
 - `Button` "生成" 触发 → 显示 loading（disable + spinner）
 - 解析结果：`Card` 列表显示 `UnifiedSearchItem`，点击单首立即播（沿用 SearchPanel 行为）
-- "覆盖当前队列 / 追加到当前队列" 切换
-- "保存为歌单" 按钮（弹 secondary `Dialog` 填名字 → `POST /api/library/playlists`）
+- "覆盖当前队列 / 追加到当前队列" 切换；覆盖且当前队列非空 → 先弹确认 Dialog
+- "保存为歌单" 按钮（弹 secondary `Dialog` 填名字 → `POST /library/playlists`）
 
-错误提示：用 App 既有 `setError` 走 error banner（与 reco 一致），不静默。
+错误提示：modal 内联错误条（不静默）；428 额外打开既有 `RecoKeyModal`。
 
 ## 状态缓存
 
 不额外缓存 intent 解析结果（一次性，2s 内出）；reco 结果走 `reco-deepseek` 既有 dedup seen 集。
-Playlist 列表落 `.storage/playlists.json`（启动时一次性 load 到内存，写入 debounce 500ms）。
+Playlist 列表落 `state.json` 的 `playlists:{sessionId}` key（沿用 StorageService 的内存缓存 + 200ms debounce 写盘）。
 
 ## 不做什么
 
@@ -152,10 +152,11 @@ Playlist 列表落 `.storage/playlists.json`（启动时一次性 load 到内存
 - `specs/nl-playlist/tasks.md`
 
 ### 改动
-- `packages/server/src/reco/reco.controller.ts`        — `reco.run` 加 intent / exclude_* 字段
-- `packages/server/src/reco/reco.service.ts`          — intent 路径（跳过 LLM 选曲，扩展 prompt 拼装）
-- `packages/renderer/src/components/modals/SearchPanel.tsx` — 加 ✨ 入口
-- `packages/renderer/src/components/lite/...`（lite 模式的 ✨ 按钮） — 复用入口
+- `packages/server/src/reco/reco.controller.ts`        — `reco.run` 加 intent / exclude_* 字段 + schema 校验 400
+- `packages/server/src/reco/reco.service.ts`          — intent 折进 select/generate 两条路径 + 排除艺人硬过滤
+- `packages/renderer/src/components/search/SearchPanel.tsx` — 加 ✨ 入口（theater）
+- `packages/renderer/src/components/mini/MiniPlayer.tsx` — lite 模式 ✨ 入口
+- `packages/renderer/src/hooks/usePlayer.ts`           — `appendToQueue`（追加模式）
 - `packages/renderer/src/hooks/usePlaylist.ts`（新） — 拉 / 存 / 删 / 改
 
 ### 不动

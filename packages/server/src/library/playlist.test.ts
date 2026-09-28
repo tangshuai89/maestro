@@ -31,9 +31,9 @@ const mkTrack = (id: string) =>
   const a = svc.create('s1', { name: 'my list', tracks: [mkTrack('1')] });
   assert.strictEqual(a.name, 'my list');
   const b = svc.create('s1', { name: 'my list', tracks: [mkTrack('1')] });
-  assert.strictEqual(b.name, 'my list (2)');
+  assert.strictEqual(b.name, 'my list-2');
   const c = svc.create('s1', { name: 'my list', tracks: [mkTrack('1')] });
-  assert.strictEqual(c.name, 'my list (3)');
+  assert.strictEqual(c.name, 'my list-3');
   console.log('  ✓ naming collision: -2/-3 suffix');
 }
 

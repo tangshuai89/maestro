@@ -1,9 +1,9 @@
 /**
  * NL playlist modal（specs/nl-playlist/ §Task B2 + B4 + B5）。
  *
- * 流程：自然语言 → POST /api/reco/parse-intent → NLIntent
+ * 流程：自然语言 → POST /reco/parse-intent → NLIntent
  *      → POST /reco/run (intent) → UnifiedSearchItem[]（跨平台搜索回填已可播）
- *      → 播放队列 / 保存为本地歌单（POST /api/library/playlists）
+ *      → 播放队列 / 保存为本地歌单（POST /library/playlists）
  *
  * 组件来源：shadcn Dialog + Textarea + Button（PR #92 ownership 模式）。
  * 本 PR 范围不含：歌单内曲目排序 / 拖拽 / 多轮对话（spec §不做什么 v2）。
@@ -29,8 +29,14 @@ import { usePlaylist } from '../../hooks/usePlaylist';
 export interface NLPlaylistModalProps {
   open: boolean;
   onClose: () => void;
-  /** 播放整条队列（复用 player.playSearch）。 */
+  /** 播放整条队列（复用 player.playSearch，覆盖现有队列）。 */
   onPlay: (items: UnifiedSearchItem[], index: number) => void;
+  /** 追加到当前队列（player.appendToQueue，不清空）。 */
+  onAppendQueue?: (items: UnifiedSearchItem[]) => void;
+  /** 428 无 DeepSeek key → 打开 RecoKeyModal（沿用 reco 的友好提示路径）。 */
+  onNeedKey?: () => void;
+  /** 当前播放队列长度——>0 且覆盖模式时先弹确认（spec §验收）。 */
+  queueLength?: number;
 }
 
 const SAMPLE_PROMPTS = [
@@ -40,12 +46,23 @@ const SAMPLE_PROMPTS = [
   '像 Deadmau5 那种 prog house，节奏快一点',
 ];
 
-export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps) {
+export function NLPlaylistModal({
+  open,
+  onClose,
+  onPlay,
+  onAppendQueue,
+  onNeedKey,
+  queueLength = 0,
+}: NLPlaylistModalProps) {
   const [text, setText] = React.useState('');
   const [intent, setIntent] = React.useState<NLIntent | null>(null);
   const [items, setItems] = React.useState<UnifiedSearchItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // 「覆盖队列 / 追加」切换（spec §UI）；覆盖且已有队列时弹确认（spec §验收）。
+  const [mode, setMode] = React.useState<'replace' | 'append'>('replace');
+  const [confirmItems, setConfirmItems] =
+    React.useState<UnifiedSearchItem[] | null>(null);
 
   // 保存为歌单：二次 Dialog
   const [saveOpen, setSaveOpen] = React.useState(false);
@@ -61,6 +78,8 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
       setItems([]);
       setError(null);
       setLoading(false);
+      setMode('replace');
+      setConfirmItems(null);
       setSaveOpen(false);
       setSaveName('');
     }
@@ -78,10 +97,27 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
       const res = await runReco({ intent: parsed });
       setItems(res.items ?? []);
     } catch (e) {
-      setError((e as Error).message ?? '生成失败');
+      const err = e as { status?: number; message?: string };
+      // 428 没设 DeepSeek key → 打开 RecoKeyModal（spec §验收：走既有 428
+      // 友好提示路径）；message 是服务端原文（json() 抬上来的）。
+      if (err.status === 428) onNeedKey?.();
+      setError(err.message ?? '生成失败');
     } finally {
       setLoading(false);
     }
+  };
+
+  /** 整条队列播放：追加模式直接接尾；覆盖模式且已有队列先确认。 */
+  const requestPlayQueue = (tracks: UnifiedSearchItem[]) => {
+    if (mode === 'append' && onAppendQueue) {
+      onAppendQueue(tracks);
+      return;
+    }
+    if (queueLength > 0) {
+      setConfirmItems(tracks);
+      return;
+    }
+    onPlay(tracks, 0);
   };
 
   const onSave = async () => {
@@ -140,7 +176,7 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
                 key={p}
                 type="button"
                 onClick={() => setText(p)}
-                className="rounded-full border border-sh-border px-3 py-1 text-xs text-sh-muted-foreground hover:bg-sh-accent/20"
+                className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-accent/20"
               >
                 {p}
               </button>
@@ -148,7 +184,7 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-xs text-sh-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {text.length}/500
             </span>
             <div className="flex gap-2">
@@ -179,25 +215,25 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
           )}
 
           {intent && (
-            <div className="rounded-md border border-sh-border bg-sh-card/40 p-3 text-sm">
+            <div className="rounded-md border border-border bg-card/40 p-3 text-sm">
               <div className="mb-2 font-medium">我理解的意图</div>
               {intent.rationale && (
-                <div className="mb-2 text-sh-muted-foreground">
+                <div className="mb-2 text-muted-foreground">
                   {intent.rationale}
                 </div>
               )}
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                <dt className="text-sh-muted-foreground">心情</dt>
+                <dt className="text-muted-foreground">心情</dt>
                 <dd>{intent.mood || '—'}</dd>
-                <dt className="text-sh-muted-foreground">风格</dt>
+                <dt className="text-muted-foreground">风格</dt>
                 <dd>{intent.genres.length ? intent.genres.join('、') : '—'}</dd>
-                <dt className="text-sh-muted-foreground">节奏</dt>
+                <dt className="text-muted-foreground">节奏</dt>
                 <dd>{intent.tempo}</dd>
-                <dt className="text-sh-muted-foreground">语言</dt>
+                <dt className="text-muted-foreground">语言</dt>
                 <dd>{intent.language}</dd>
                 {intent.exclude_artists.length > 0 && (
                   <>
-                    <dt className="text-sh-muted-foreground">排除艺人</dt>
+                    <dt className="text-muted-foreground">排除艺人</dt>
                     <dd>{intent.exclude_artists.join('、')}</dd>
                   </>
                 )}
@@ -206,16 +242,41 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
           )}
 
           {items.length > 0 && (
-            <div className="rounded-md border border-sh-border p-3">
+            <div className="rounded-md border border-border p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-medium">
                   生成的队列（{items.length} 首）
                 </span>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                  {/* spec §UI：覆盖当前队列 / 追加到当前队列 切换 */}
+                  <div className="flex overflow-hidden rounded-md border border-border text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setMode('replace')}
+                      className={`px-2.5 py-1 ${
+                        mode === 'replace'
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      覆盖队列
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode('append')}
+                      className={`px-2.5 py-1 ${
+                        mode === 'append'
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      追加
+                    </button>
+                  </div>
                   <Button size="sm" variant="outline" onClick={onOpenSave}>
                     保存为歌单
                   </Button>
-                  <Button size="sm" onClick={() => onPlay(items, 0)}>
+                  <Button size="sm" onClick={() => requestPlayQueue(items)}>
                     ▶ 播放
                   </Button>
                 </div>
@@ -226,7 +287,7 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
                     <button
                       type="button"
                       onClick={() => onPlay(items, i)}
-                      className="w-full truncate text-left hover:text-sh-accent-foreground"
+                      className="w-full truncate text-left hover:text-accent-foreground"
                     >
                       {i + 1}. {it.title} — {it.artist}
                     </button>
@@ -237,7 +298,7 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
           )}
 
           {pl.playlists.length > 0 && (
-            <div className="rounded-md border border-sh-border p-3">
+            <div className="rounded-md border border-border p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-medium">我的歌单</span>
                 <Button
@@ -257,9 +318,9 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
                   >
                     <button
                       type="button"
-                      onClick={() => onPlay(p.tracks, 0)}
+                      onClick={() => requestPlayQueue(p.tracks)}
                       disabled={p.tracks.length === 0}
-                      className="flex-1 truncate text-left hover:text-sh-accent-foreground disabled:opacity-50"
+                      className="flex-1 truncate text-left hover:text-accent-foreground disabled:opacity-50"
                     >
                       {p.name}（{p.tracks.length}）
                     </button>
@@ -307,6 +368,37 @@ export function NLPlaylistModal({ open, onClose, onPlay }: NLPlaylistModalProps)
                 {saving ? '保存中…' : '保存'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* spec §验收：覆盖当前播放队列前的确认弹窗 */}
+      <Dialog
+        open={confirmItems !== null}
+        onOpenChange={(o) => !o && setConfirmItems(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>替换当前队列？</DialogTitle>
+            <DialogDescription>
+              播放将清空当前队列
+              {queueLength > 0 ? `（${queueLength} 首）` : ''}
+              ，改为播放这 {confirmItems?.length ?? 0} 首。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmItems(null)}>
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                const t = confirmItems;
+                setConfirmItems(null);
+                if (t) onPlay(t, 0);
+              }}
+            >
+              替换并播放
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

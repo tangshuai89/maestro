@@ -8,13 +8,14 @@
  *   4. pickLibrarySample —— 去重 + 上限 50
  *   5. validateParseIntentInput —— 空 / 超 500
  */
-
+export {};
 
 const assert = require('node:assert');
 const {
   buildParseIntentPrompt,
   extractJsonBlock,
   intentToPromptHints,
+  normalizeIntentInput,
   parseIntentResponse,
   pickLibrarySample,
   validateParseIntentInput,
@@ -194,10 +195,11 @@ const {
   assert.ok(out1.includes('风格标签：electronic、house'), 'genres line');
   assert.ok(out1.includes('节奏偏好：fast'), 'tempo line');
   assert.ok(out1.includes('年代：2015–2025'), 'era line');
+  assert.ok(out1.includes('想要类似这些艺人的歌：deadmau5'), 'similar_artists line');
   assert.ok(out1.includes('不要这些艺人的歌：徐梦圆'), 'exclude_artists from intent');
   assert.ok(out1.includes('不要这些风格：ballad'), 'exclude_genres from intent');
   assert.ok(!out1.includes('参考曲目'), 'no similar_tracks → no line');
-  assert.strictEqual(out1.length, 6);
+  assert.strictEqual(out1.length, 7);
 
   // tempo 'any' → 不出节奏行
   const out2 = intentToPromptHints({
@@ -229,6 +231,19 @@ const {
   assert.ok(out4.includes('不要这些标题的歌：七里香'), 'extra exclude_titles');
   assert.ok(out4.includes('不要这些艺人的歌：周杰伦'), 'extra exclude_artists');
 
+  // intent.exclude_artists 与 extra.exclude_artists 合并成一行（去重），
+  // 不再出现两条「不要这些艺人的歌」。
+  const out4b = intentToPromptHints(
+    { mood: '', genres: [], tempo: 'any', language: 'any',
+      similar_artists: [], similar_tracks: [],
+      exclude_artists: ['周杰伦'], exclude_genres: [],
+      target_count: 12, rationale: '' },
+    { exclude_artists: ['周杰伦', '薛之谦'] },
+  );
+  const artistLines = out4b.filter((h: string) => h.startsWith('不要这些艺人的歌'));
+  assert.strictEqual(artistLines.length, 1, 'merged into single line');
+  assert.ok(artistLines[0].includes('周杰伦') && artistLines[0].includes('薛之谦'), 'merged content');
+
   // 完整 intent + extra 同时 → 都出现且不重复
   const out5 = intentToPromptHints(
     { mood: '跑步', genres: ['rock'], tempo: 'fast', language: 'zh',
@@ -241,7 +256,43 @@ const {
   assert.ok(out5.includes('不要这些艺人的歌：薛之谦'), 'from intent');
   assert.ok(out5.includes('不要这些标题的歌：浮夸'), 'from extra');
   assert.ok(!out5.some(h => h.includes('不要这些艺人的歌：') && h === '不要这些艺人的歌：'), 'no dup exclude_artists');
-  console.log('  ✓ intentToPromptHints: full / tempo any / era single / extra / combined');
+  console.log('  ✓ intentToPromptHints: full / tempo any / era single / extra / merged / combined');
+}
+
+// ── 7. normalizeIntentInput —— POST /reco/run 的 intent 校验（400）────
+{
+  // 合法 intent → 归一后返回
+  const ok = normalizeIntentInput({
+    mood: 'x', genres: ['rock'], tempo: 'fast', language: 'zh',
+    similar_artists: [], similar_tracks: [], exclude_artists: [],
+    exclude_genres: [], target_count: 15, rationale: '',
+  });
+  assert.strictEqual(ok.tempo, 'fast');
+  assert.strictEqual(ok.target_count, 15);
+
+  // 缺字段 → 默认（不 400）
+  const sparse = normalizeIntentInput({});
+  assert.strictEqual(sparse.tempo, 'any');
+  assert.strictEqual(sparse.target_count, 12);
+
+  // 非对象 → 400
+  for (const bad of ['x', 42, null, ['a']]) {
+    assert.throws(
+      () => normalizeIntentInput(bad),
+      (e: any) => e?.response?.statusCode === 400,
+    );
+  }
+  // 数组字段非数组 → 400
+  assert.throws(
+    () => normalizeIntentInput({ genres: 'rock' }),
+    (e: any) => e?.response?.statusCode === 400 && e?.response?.error === 'intent_field_invalid',
+  );
+  // era 非对象 → 400
+  assert.throws(
+    () => normalizeIntentInput({ era: 2000 }),
+    (e: any) => e?.response?.statusCode === 400,
+  );
+  console.log('  ✓ normalizeIntentInput: ok / defaults / 400 non-object / 400 bad fields');
 }
 
 

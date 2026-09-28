@@ -61,21 +61,26 @@ export function intentToPromptHints(
     const to = intent.era.to ?? '今';
     out.push(`年代：${from}–${to}`);
   }
+  if (intent.similar_artists.length) {
+    out.push(`想要类似这些艺人的歌：${intent.similar_artists.join('、')}`);
+  }
   if (intent.similar_tracks.length) {
     out.push(`参考曲目（像这些歌的感觉）：${intent.similar_tracks.join('、')}`);
-  }
-  if (intent.exclude_artists.length) {
-    out.push(`不要这些艺人的歌：${intent.exclude_artists.join('、')}`);
   }
   if (intent.exclude_genres.length) {
     out.push(`不要这些风格：${intent.exclude_genres.join('、')}`);
   }
+  // 排除艺人合并成一行：intent.exclude_artists 与顶层 exclude_artists
+  // 同义，分开推会产生两行重复的「不要这些艺人的歌」。
+  const bannedArtists = [
+    ...new Set([...intent.exclude_artists, ...(extra?.exclude_artists ?? [])]),
+  ];
+  if (bannedArtists.length) {
+    out.push(`不要这些艺人的歌：${bannedArtists.join('、')}`);
+  }
   // 客户端额外 excludes（NL 路径或手动都走这条）
   if (extra?.exclude_titles?.length) {
     out.push(`不要这些标题的歌：${extra.exclude_titles.join('、')}`);
-  }
-  if (extra?.exclude_artists?.length) {
-    out.push(`不要这些艺人的歌：${extra.exclude_artists.join('、')}`);
   }
   return out;
 }
@@ -149,7 +154,12 @@ export function parseIntentResponse(raw: string): { intent: NLIntent; raw: strin
     );
   }
   const b = body as Record<string, unknown>;
+  return { intent: toIntent(b), raw };
+}
 
+/** 把 duck-typed body 归一成 NLIntent：enum 降级 'any'、target_count clamp
+ *  8-20、数组裁剪、era 单边。LLM 输出与客户端入参共用这一套。 */
+function toIntent(b: Record<string, unknown>): NLIntent {
   // tempo / language enum 校验（不合法 → 降级 'any'，不阻塞）
   const tempo = TEMPO_VALUES.has(b.tempo as string)
     ? (b.tempo as NLIntent['tempo'])
@@ -176,21 +186,57 @@ export function parseIntentResponse(raw: string): { intent: NLIntent; raw: strin
   }
 
   return {
-    intent: {
-      mood: String(b.mood ?? '').slice(0, 50),
-      genres: toStrArr(b.genres).slice(0, 6),
-      tempo,
-      language,
-      ...(era ? { era } : {}),
-      similar_artists: toStrArr(b.similar_artists).slice(0, 4),
-      similar_tracks: toStrArr(b.similar_tracks).slice(0, 4),
-      exclude_artists: toStrArr(b.exclude_artists).slice(0, 8),
-      exclude_genres: toStrArr(b.exclude_genres).slice(0, 4),
-      target_count,
-      rationale: String(b.rationale ?? '').slice(0, 80),
-    },
-    raw,
+    mood: String(b.mood ?? '').slice(0, 50),
+    genres: toStrArr(b.genres).slice(0, 6),
+    tempo,
+    language,
+    ...(era ? { era } : {}),
+    similar_artists: toStrArr(b.similar_artists).slice(0, 4),
+    similar_tracks: toStrArr(b.similar_tracks).slice(0, 4),
+    exclude_artists: toStrArr(b.exclude_artists).slice(0, 8),
+    exclude_genres: toStrArr(b.exclude_genres).slice(0, 4),
+    target_count,
+    rationale: String(b.rationale ?? '').slice(0, 80),
   };
+}
+
+/** intent 里数组字段的白名单——非数组直接 400，而不是静默丢字段。 */
+const INTENT_ARRAY_FIELDS = [
+  'genres',
+  'similar_artists',
+  'similar_tracks',
+  'exclude_artists',
+  'exclude_genres',
+] as const;
+
+/**
+ * POST /reco/run 的 intent 入参校验（spec §接口规格：schema 校验失败 400）。
+ * 非对象 / 数组字段非数组 / era 非对象 → 400；缺字段走默认（与 LLM 解析同
+ * 一套 toIntent 归一），避免把"少传字段"和"传错类型"混为一谈。
+ */
+export function normalizeIntentInput(v: unknown): NLIntent {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    throw new HttpException(
+      { statusCode: HttpStatus.BAD_REQUEST, error: 'intent_not_object', message: 'intent 必须是对象' },
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  const b = v as Record<string, unknown>;
+  for (const f of INTENT_ARRAY_FIELDS) {
+    if (b[f] !== undefined && !Array.isArray(b[f])) {
+      throw new HttpException(
+        { statusCode: HttpStatus.BAD_REQUEST, error: 'intent_field_invalid', message: `intent.${f} 必须是数组` },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+  if (b.era !== undefined && (typeof b.era !== 'object' || b.era === null || Array.isArray(b.era))) {
+    throw new HttpException(
+      { statusCode: HttpStatus.BAD_REQUEST, error: 'intent_field_invalid', message: 'intent.era 必须是对象' },
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  return toIntent(b);
 }
 
 function toStrArr(v: unknown): string[] {

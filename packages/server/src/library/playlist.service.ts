@@ -1,10 +1,10 @@
 /**
  * 本地歌单 CRUD（specs/nl-playlist/ Phase A commit 3 = A4+A5）。
  *
- * 存储：`.storage/playlists-{sessionId}.json`（按 session 隔离，与
- * `library:{id}` 同层；用 StorageService 单一入口）。
+ * 存储：StorageService 里 `playlists:{sessionId}` key（落在 `.storage/state.json`，
+ * 按 session 隔离，与 `library:{id}` 同层；沿用 StorageService 的 debounce 写盘）。
  *
- * 命名空间：spec §风险 命名冲突自动 -2/-3 后缀。
+ * 命名冲突：同名自动追加 `-2`、`-3`（spec §风险）。
  */
 import {
   BadRequestException,
@@ -69,8 +69,8 @@ export class PlaylistService {
     const taken = new Set(existing.map((p) => p.name));
     if (!taken.has(trimmed)) return trimmed;
     let i = 2;
-    while (taken.has(`${trimmed} (${i})`)) i++;
-    return `${trimmed} (${i})`;
+    while (taken.has(`${trimmed}-${i}`)) i++;
+    return `${trimmed}-${i}`;
   }
 
   private validateTracks(tracks: unknown): UnifiedSearchItem[] {
