@@ -10,6 +10,7 @@ import { StorageService } from '../common/storage';
 import { Session, SessionService } from '../common/session';
 import { MusicService } from '../music/music.service';
 import { normalizeKey } from '../music/search.util';
+import { intentToPromptHints, type NLIntent } from './nl-intent';
 import type { UnifiedSearchItem } from '../music/types';
 import {
   buildProfileCore,
@@ -97,7 +98,24 @@ const FILL_CONCURRENCY = 6;
 /** 每 session「最近推荐过」历史上限——手动连点推荐也据此自动去重复读。 */
 const RECO_HISTORY_MAX = 200;
 /** DeepSeek chat 补全的硬超时——LLM 偶尔卡很久，25s 后 abort。 */
-const RECOMMEND_TIMEOUT_MS = 25_000;
+export const RECOMMEND_TIMEOUT_MS = 25_000;
+
+/**
+ * NL playlist：客户端只传 exclude_titles / exclude_artists（没传 intent）
+ * 时的占位 intent——全空字段让 intentToPromptHints 只产出 extra 排除行。
+ */
+const EMPTY_INTENT: NLIntent = {
+  mood: '',
+  genres: [],
+  tempo: 'any',
+  language: 'any',
+  similar_artists: [],
+  similar_tracks: [],
+  exclude_artists: [],
+  exclude_genres: [],
+  target_count: 12,
+  rationale: '',
+};
 
 /** 用户填的 key 存哪。 */
 const SECRETS_KEY = 'secrets:deepseek';
@@ -212,6 +230,15 @@ export class RecoService {
       exclude?: Array<{ title: string; artist: string }>;
       /** 以某首歌为种子开推荐（"放点像这首的"）——候选围绕它的艺人展开。 */
       seed?: { title: string; artist: string };
+      /** NL playlist 路径（specs/nl-playlist/）：parse-intent 后传入；扩展 prompt
+       *  hints，并把 target_count / language / mood / similar_artists 折进已有路径。
+       * 不传时 run() 行为完全与改造前一致（向后兼容）。 */
+      intent?: NLIntent;
+      /** NL playlist 路径：按标题排除（soft，落到 prompt hints；硬过滤需
+       *  {title,artist} 双键，仍走上面 exclude 字段）。 */
+      exclude_titles?: string[];
+      /** NL playlist 路径：按艺人排除（同上，soft）。 */
+      exclude_artists?: string[];
     } = {},
   ): Promise<RecoResult> {
     const apiKey = this.getApiKey();
@@ -226,7 +253,10 @@ export class RecoService {
       throw new BadRequestException('library_empty：先 POST /music/library/import');
     }
 
-    const count = Math.min(Math.max(opts.count ?? 10, 1), 30);
+    // intent 传了就用 intent.target_count（spec §数据模型：8-20 已 clamp 过），
+    // 不传则保持原 opts.count 行为
+    const requestedCount = opts.intent?.target_count ?? opts.count;
+    const count = Math.min(Math.max(requestedCount ?? 10, 1), 30);
     const t0 = Date.now();
     const tPoolStart = t0;
     let llmMs = 0;
@@ -239,9 +269,49 @@ export class RecoService {
     const signals = this.loadSignals(session);
     const negatives = negativeTracks(signals);
     const exclude = this.mergeExclude(opts.exclude, [...history, ...negatives]);
+    // NL playlist 路径：把 intent 翻译成额外 prompt hints，并把
+    // target_count / language / mood 折进已有 opts。
+    // 不传 intent → nlOpts 为空对象，{...opts, ...nlOpts} 与原 opts 等价。
+    const nlOpts: {
+      language?: string;
+      mood?: string;
+      intentHints?: string[];
+    } = opts.intent
+      ? {
+          ...(opts.intent.language && opts.intent.language !== 'any'
+            ? { language: opts.intent.language }
+            : {}),
+          ...(opts.intent.mood?.trim()
+            ? { mood: opts.intent.mood }
+            : {}),
+          intentHints: intentToPromptHints(opts.intent, {
+            exclude_titles: opts.exclude_titles,
+            exclude_artists: opts.exclude_artists,
+          }),
+        }
+      : opts.exclude_titles?.length || opts.exclude_artists?.length
+        ? {
+            // 客户端只传了 exclude_titles/exclude_artists（没传 intent）——
+            // 空 intent 占位，让 extra 排除行进 prompt。
+            intentHints: intentToPromptHints(EMPTY_INTENT, {
+              exclude_titles: opts.exclude_titles,
+              exclude_artists: opts.exclude_artists,
+            }),
+          }
+        : {};
+    // NL 路径：显式排除的艺人 → 候选池硬剔除 + generate 输出后置过滤的
+    // 双保险。只用 prompt hint 挡不住 select 模式把被排除艺人挑出来。
+    const nlExcludeArtistKeys = new Set(
+      [...(opts.intent?.exclude_artists ?? []), ...(opts.exclude_artists ?? [])]
+        .map((a) => normalizeKey(a, ''))
+        .filter(Boolean),
+    );
     // P0-b：行为信号（带时间衰减）折进口味档案 + 拉黑被反复跳过的艺人。
     const signalScores = artistSignalScores(signals);
-    const bannedArtists = bannedArtistKeys(signalScores);
+    const bannedArtists = new Set<string>([
+      ...bannedArtistKeys(signalScores),
+      ...nlExcludeArtistKeys,
+    ]);
     // 种子模式本身就是一次强正反馈（用户主动说"我要更多这种"）。
     if (opts.seed?.title && opts.seed?.artist) {
       this.recordSignals(session, [{ ...opts.seed, type: 'seed' }]);
@@ -267,8 +337,21 @@ export class RecoService {
       count,
       opts.seed,
       bannedArtists,
+      // NL 排除艺人是一次性要求——剔除后的池不能读/写共享缓存
+      // （cacheKey 不含排除集，否则会污染后续普通推荐最多 10min）。
+      nlExcludeArtistKeys.size ? { noCache: true } : {},
     );
-    const pool = built.pool;
+    let pool = built.pool;
+    // NL 路径：显式排除的艺人从候选池硬剔除（bannedArtists 已在新池构建
+    // 时滤过；这里是第二道保险）。不原地改数组——避免误改到缓存对象。
+    if (nlExcludeArtistKeys.size) {
+      pool = {
+        ...pool,
+        candidates: pool.candidates.filter(
+          (c) => !nlExcludeArtistKeys.has(normalizeKey(c.artist, '')),
+        ),
+      };
+    }
     const poolMs = Date.now() - tPoolStart;
     const useSelect = pool.candidates.length >= count;
     // prompt 只列前 N 条（输入 token 直接决定首字延迟）；池子仍是全量，供补位。
@@ -286,8 +369,11 @@ export class RecoService {
             Math.ceil(count * SELECT_OVERASK),
             listed.length,
           ),
-          language: opts.language,
-          mood: opts.mood,
+          // NL 路径：intent 的 language/mood 覆盖顶层入参（nlOpts 只在
+          // intent 明确给了非 any / 非空值时才设置）。
+          language: nlOpts.language ?? opts.language,
+          mood: nlOpts.mood ?? opts.mood,
+          intentHints: nlOpts.intentHints,
           exclude,
           seed: opts.seed,
         }),
@@ -303,7 +389,7 @@ export class RecoService {
         this.logger.warn('reco: 挑选模式未产出可用 picks，回退自由生成');
         const fb = await this.callDeepSeek(
           apiKey,
-          this.buildGeneratePrompt(profile, opts, exclude, count),
+          this.buildGeneratePrompt(profile, { ...opts, ...nlOpts }, exclude, count),
           { maxTokens: GENERATE_MAX_TOKENS },
         );
         raw = fb;
@@ -316,13 +402,27 @@ export class RecoService {
       );
       raw = await this.callDeepSeek(
         apiKey,
-        this.buildGeneratePrompt(profile, opts, exclude, count),
+        this.buildGeneratePrompt(profile, { ...opts, ...nlOpts }, exclude, count),
         { maxTokens: GENERATE_MAX_TOKENS },
       );
       rawItems = this.parseRecommendations(raw);
       mode = 'generate';
     }
     llmMs = Date.now() - tLlmStart;
+
+    // NL 排除艺人的后置保险：generate 路径没有候选池可滤，模型仍可能把被
+    // 排除艺人写进结果；select 路径的池已滤过，这里一般 0 命中。
+    if (nlExcludeArtistKeys.size) {
+      const before = rawItems.length;
+      rawItems = rawItems.filter(
+        (it) => !nlExcludeArtistKeys.has(normalizeKey(it.artist, '')),
+      );
+      if (rawItems.length < before) {
+        this.logger.log(
+          `reco: NL 排除艺人后置剔除 ${before - rawItems.length} 首`,
+        );
+      }
+    }
 
     // 2026-08-14 防御性预筛：即便 prompt 写得很清楚，模型仍可能输出 DJ/伴奏/
     // 慢摇这种"二次加工"歌名（实测「推荐 DJ 版晴天」「推荐 XXX 伴奏」）。
@@ -393,6 +493,9 @@ export class RecoService {
       mood?: string;
       exclude?: Array<{ title: string; artist: string }>;
       topArtists?: string[];
+      /** NL playlist 路径：额外 hint 行（心情/风格/年代/排除…）。追加在
+       *  existing 句尾（avoid 之后、"请按 JSON..."之前）。 */
+      intentHints?: string[];
     },
   ): Array<{ role: 'system' | 'user'; content: string }> {
     const libList = library
@@ -444,7 +547,7 @@ export class RecoService {
 只输出这一个 JSON 对象。`;
 
     const lang = opts.language && opts.language !== 'auto'
-      ? `语言偏好：${opts.language === 'zh' ? '中文' : opts.language === 'en' ? '英文' : opts.language === 'ja' ? '日文' : opts.language}`
+      ? `语言偏好：${opts.language === 'zh' ? '中文' : opts.language === 'en' ? '英文' : opts.language === 'ja' ? '日文' : opts.language === 'ko' ? '韩文' : opts.language}`
       : '语言不限';
     const mood = opts.mood ? `当前心情：${opts.mood}` : '';
     // #6 高频歌手锚点：明确点名用户最常听的歌手，让「风格相近」更贴脸。
@@ -461,7 +564,10 @@ export class RecoService {
             .map((e) => `- ${e.title} - ${e.artist}`)
             .join('\n')}`
         : '';
-    const user = `我的口味库（采样）：\n${libList}${anchor}\n\n${lang}\n${mood}${avoid}\n\n请按 JSON 数组输出 ${opts.count} 首推荐。`;
+    const intentHints = opts.intentHints?.length
+      ? '\n' + opts.intentHints.join('\n')
+      : '';
+    const user = `我的口味库（采样）：\n${libList}${anchor}\n\n${lang}\n${mood}${avoid}${intentHints}\n\n请按 JSON 数组输出 ${opts.count} 首推荐。`;
 
     return [
       { role: 'system', content: system },
@@ -862,6 +968,9 @@ export class RecoService {
       mood?: string;
       exclude?: Array<{ title: string; artist: string }>;
       seed?: { title: string; artist: string };
+      /** NL playlist：intent 派生的额外要求（心情/风格/年代/排除…），
+       *  单列「本次要求」段进 prompt——比口味档案更代表"这次想听什么"。 */
+      intentHints?: string[];
     },
   ): Array<{ role: 'system' | 'user'; content: string }> {
     const system = [
@@ -905,7 +1014,9 @@ export class RecoService {
                 ? '英文'
                 : opts.language === 'ja'
                   ? '日文'
-                  : opts.language
+                  : opts.language === 'ko'
+                    ? '韩文'
+                    : opts.language
           }`
         : '语言不限';
     const mood = opts.mood ? `当前心情：${opts.mood}` : '';
@@ -921,13 +1032,17 @@ export class RecoService {
     const seedLine = opts.seed
       ? `\n# 本次特别要求\n用户正在听《${opts.seed.title}》- ${opts.seed.artist}，想要**更多像这首一样**的歌：候选清单里凡是与它气质/编排/语种接近的，优先挑；不要求覆盖整个口味档案。`
       : '';
+    // NL playlist：用户原话翻译出的要求（心情/风格/年代/排除…）。
+    const intentBlock = opts.intentHints?.length
+      ? `\n# 本次要求（用户原话意图，优先于上面的口味档案）\n${opts.intentHints.join('\n')}`
+      : '';
     const user = `# 口味档案
 库里共 ${profile.size} 首。${anchorLine}
 口味采样（节选，仅供判断风格）：
 ${sample}
 
 ${lang}
-${mood}${seedLine}${avoid}
+${mood}${seedLine}${intentBlock}${avoid}
 
 # 候选清单（只能从这里面挑）
 ${list}
@@ -943,7 +1058,13 @@ ${list}
   /** 自由生成 prompt 的统一入口（含 v1.1 的超额要逻辑）。 */
   private buildGeneratePrompt(
     profile: TasteProfile,
-    opts: { language?: string; mood?: string },
+    opts: {
+      language?: string;
+      mood?: string;
+      /** NL playlist：intent 派生的额外 hint 行（spec A3）。similar_artists
+       *  也走 hint（「想要类似这些艺人的歌」），不混进"最常听"锚点。 */
+      intentHints?: string[];
+    },
     exclude: Array<{ title: string; artist: string }>,
     count: number,
   ): Array<{ role: 'system' | 'user'; content: string }> {
@@ -955,6 +1076,7 @@ ${list}
       mood: opts.mood,
       exclude,
       topArtists: profile.anchors,
+      ...(opts.intentHints?.length ? { intentHints: opts.intentHints } : {}),
     });
   }
 
@@ -1154,6 +1276,19 @@ ${list}
       );
     }
     return data.choices?.[0]?.message?.content ?? '';
+  }
+
+  /**
+   * NL playlist 共用入口（specs/nl-playlist/）：复用同一 LLM 调用 + 错误抛错模式
+   * （timeout / 429 / 5xx → HttpException），但语义上给 parse-intent 端点用。
+   * 不直接暴露 callDeepSeek（private）是为了避免 controller 跳过解析 + 校验层。
+   */
+  async callDeepSeekForParse(
+    apiKey: string,
+    messages: Array<{ role: 'system' | 'user'; content: string }>,
+    opts: { maxTokens?: number } = {},
+  ): Promise<string> {
+    return this.callDeepSeek(apiKey, messages, opts);
   }
 
   // ── 响应解析（带 retry: 围栏 / 整体 JSON 两种） ─────────

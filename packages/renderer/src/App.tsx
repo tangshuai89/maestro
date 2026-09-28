@@ -18,6 +18,7 @@ import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
 import RecoKeyModal from './components/modals/RecoKeyModal';
 import LikedLibraryModal from './components/modals/LikedLibraryModal';
+import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
 import RecoLoading from './components/common/RecoLoading';
@@ -110,6 +111,7 @@ export default function App() {
   // Liked library modal: 缓存的库（getLibrary 不强制 import）—— titlebar ❤
   // 按钮上展示数量，点击弹窗内自己处理 refresh。
   const [likedOpen, setLikedOpen] = useState(false);
+  const [nlOpen, setNlOpen] = useState(false);
   // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
   // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
   const [likedCount, setLikedCount] = useState<number>(() => {
@@ -360,6 +362,7 @@ export default function App() {
           onLike={() => void player.handleLike()}
           onSeek={player.seek}
           onExpand={handleTogglePlayerMode}
+          onOpenNL={() => setNlOpen(true)}
         />
       ) : (
       <TheaterView
@@ -420,6 +423,10 @@ export default function App() {
         <SearchPanel
           onPlay={player.playSearch}
           onClose={() => player.setSearchOpen(false)}
+          onOpenNL={() => {
+            player.setSearchOpen(false);
+            setNlOpen(true);
+          }}
         />
       )}
 
@@ -451,6 +458,25 @@ export default function App() {
             if (typeof newCount === 'number') setLikedCount(newCount);
             else void reloadLikedCount();
           }}
+        />
+      )}
+
+      {nlOpen && (
+        <NLPlaylistModal
+          open
+          onClose={() => setNlOpen(false)}
+          queueLength={player.queueUnifiedItems?.length ?? 0}
+          onPlay={(items, idx) => {
+            setNlOpen(false);
+            player.setError(null);
+            player.playSearch(items, idx);
+          }}
+          onAppendQueue={(items) => {
+            setNlOpen(false);
+            player.setError(null);
+            player.appendToQueue(items);
+          }}
+          onNeedKey={() => reco.setRecoKeyOpen(true)}
         />
       )}
 

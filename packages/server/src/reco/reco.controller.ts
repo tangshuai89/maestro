@@ -12,6 +12,7 @@ import { Request, Response } from 'express';
 import { RecoService } from './reco.service';
 import { SessionService } from '../common/session';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
+import { normalizeIntentInput, type NLIntent } from './nl-intent';
 
 /** All routes here are CSRF-gated by RequireInternalTokenGuard. */
 @UseGuards(RequireInternalTokenGuard)
@@ -40,11 +41,27 @@ export class RecoController {
       exclude?: Array<{ title?: string; artist?: string }>;
       /** 以某首歌为种子（"放点像这首的"）。 */
       seed?: { title?: string; artist?: string };
+      /** NL playlist（specs/nl-playlist/）：parse-intent 的产物，schema 不符 → 400。 */
+      intent?: unknown;
+      /** NL playlist：按标题排除（soft，落 prompt hint）。 */
+      exclude_titles?: unknown;
+      /** NL playlist：按艺人排除（soft hint + 候选池硬过滤）。 */
+      exclude_artists?: unknown;
     } = {},
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
+    // intent schema 校验：传了就必须是合法 NLIntent（spec：校验失败 400）。
+    const intent: NLIntent | undefined =
+      body?.intent !== undefined ? normalizeIntentInput(body.intent) : undefined;
+    // 宽松清洗 exclude_*：只留 string，其余丢弃（与 exclude 同款口径）。
+    const toStrList = (v: unknown): string[] | undefined =>
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 50)
+        : undefined;
+    const exclude_titles = toStrList(body?.exclude_titles);
+    const exclude_artists = toStrList(body?.exclude_artists);
     // 宽松清洗 exclude：只留有 title+artist 的项，其余丢弃（脏数据不 400）。
     const exclude = Array.isArray(body?.exclude)
       ? body.exclude
@@ -65,7 +82,14 @@ export class RecoController {
       body.seed.artist.trim()
         ? { title: body.seed.title.trim(), artist: body.seed.artist.trim() }
         : undefined;
-    return this.reco.run(session, { ...(body ?? {}), exclude, seed });
+    return this.reco.run(session, {
+      ...(body ?? {}),
+      exclude,
+      seed,
+      intent,
+      exclude_titles,
+      exclude_artists,
+    });
   }
 
   /**

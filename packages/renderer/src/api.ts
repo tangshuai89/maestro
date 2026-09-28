@@ -269,6 +269,102 @@ export async function fetchTrackLikeCount(
   }
 }
 
+/**
+ * NL playlist intent schema（specs/nl-playlist/ §数据模型）。
+ * 服务端 mirror：packages/server/src/reco/nl-intent.ts。
+ */
+export interface NLIntent {
+  mood: string;
+  genres: string[];
+  tempo: 'slow' | 'medium' | 'fast' | 'any';
+  language: 'zh' | 'en' | 'ja' | 'ko' | 'any';
+  era?: { from?: number; to?: number };
+  similar_artists: string[];
+  similar_tracks: string[];
+  exclude_artists: string[];
+  exclude_genres: string[];
+  target_count: number;
+  rationale: string;
+}
+
+/**
+ * POST /reco/parse-intent —— 把用户自然语言解析成 NLIntent。
+ * 走 json() 统一出口：400 / 428 / 429 / 502 抛 AuthError（带 .status，
+ * UI 据此分流——428 开 RecoKeyModal，其余走错误文案）。
+ */
+export async function parseIntent(text: string): Promise<{ intent: NLIntent; raw?: string }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/reco/parse-intent`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }),
+  );
+}
+
+/* ── 本地歌单 CRUD（specs/nl-playlist/ A4+A5）────────────────── */
+
+export interface Playlist {
+  id: string;
+  name: string;
+  tracks: UnifiedSearchItem[];
+  source: 'nl' | 'manual';
+  prompt?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function listPlaylists(): Promise<Playlist[]> {
+  return json(
+    await fetchWithToken(`${API_BASE}/library/playlists`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+export async function createPlaylist(body: {
+  name: string;
+  tracks: UnifiedSearchItem[];
+  prompt?: string;
+  source?: 'nl' | 'manual';
+}): Promise<Playlist> {
+  return json(
+    await fetchWithToken(`${API_BASE}/library/playlists`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function patchPlaylist(
+  id: string,
+  body: { name?: string; append?: UnifiedSearchItem[]; remove?: string[] },
+): Promise<Playlist> {
+  return json(
+    await fetchWithToken(
+      `${API_BASE}/library/playlists/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    ),
+  );
+}
+
+export async function deletePlaylist(id: string): Promise<{ ok: true }> {
+  return json(
+    await fetchWithToken(
+      `${API_BASE}/library/playlists/${encodeURIComponent(id)}`,
+      { method: 'DELETE', credentials: 'include' },
+    ),
+  );
+}
+
 export async function fanOutLike(
   mergedId: string,
   sources: Array<{ platform: MusicProvider; trackId: string }>,
@@ -805,6 +901,16 @@ export interface RecoRequest {
   exclude?: Array<{ title: string; artist: string }>;
   /** "放点像这首的"：以某首歌为种子开推荐。 */
   seed?: { title: string; artist: string };
+  /**
+   * NL playlist 路径（specs/nl-playlist/ A3）：parse-intent 的产物直接喂进
+   * reco.run，跳过二次意图解析。target_count / language / mood /
+   * similar_artists / 排除项都从 intent 派生。
+   */
+  intent?: NLIntent;
+  /** 按标题排除（soft，落 prompt hint）。 */
+  exclude_titles?: string[];
+  /** 按艺人排除（soft，落 prompt hint）。 */
+  exclude_artists?: string[];
 }
 
 export interface RecoRunResult {

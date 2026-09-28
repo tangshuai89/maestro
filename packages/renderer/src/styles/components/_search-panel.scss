@@ -128,6 +128,25 @@
 
 // ── search-bar（960×56 @ y=112，居中） ───────────────────────────
 
+.sp-nl-entry {
+  position: absolute;
+  top: 76px;
+  left: 64px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  &:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
 .sp-search-bar {
   position: absolute;
   top: 112px;

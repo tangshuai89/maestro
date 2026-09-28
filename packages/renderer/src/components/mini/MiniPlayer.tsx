@@ -27,6 +27,8 @@ export interface MiniPlayerProps {
   onSeek: (seconds: number) => void;
   /** 回 theater 模式。 */
   onExpand: () => void;
+  /** spec B3：lite 模式 NL 歌单入口 ✨ */
+  onOpenNL?: () => void;
 }
 
 // lucide 风格内联 SVG（stroke 制，currentColor 上色）——与 TheaterView 同一套
@@ -88,6 +90,7 @@ export default function MiniPlayer({
   onLike,
   onSeek,
   onExpand,
+  onOpenNL,
 }: MiniPlayerProps) {
   const hasTrack = Boolean(track);
   const effTime = hasTrack ? currentTime : 0;
@@ -137,7 +140,18 @@ export default function MiniPlayer({
         )}
       </button>
 
-      <div className="mini-info">
+      {(onOpenNL) && (
+          <button
+            type="button"
+            onClick={onOpenNL}
+            className="mini-nl-entry"
+            title="说一句话生成歌单（DeepSeek）"
+            aria-label="NL 歌单"
+          >
+            ✨ NL 歌单
+          </button>
+        )}
+        <div className="mini-info">
         <div className="mini-title">
           {track ? clampText(track.title, 24) : '等待播放'}
         </div>

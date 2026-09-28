@@ -877,6 +877,34 @@ async function fillLikeCountForCurrentTrack(
     [presentTrack, detectAndApplyLiked, wpsRef],
   );
 
+  /** NL playlist「追加到当前队列」（specs/nl-playlist/ §UI 覆盖/追加切换）：
+   *  解析后接到现有队列尾部，不清空、不切歌。没有现存队列时退化成
+   *  从头播放（等价 playSearch(items, 0)）。 */
+  const appendToQueue = useCallback(
+    (unifiedItems: UnifiedSearchItem[]) => {
+      const q = queueRef.current;
+      if (!q || q.tracks.length === 0) {
+        playSearch(unifiedItems, 0);
+        return;
+      }
+      const { tracks, unifiedItems: aligned } = parsePlayableQueue(unifiedItems, {
+        wpsReady: Boolean(wpsRef?.current?.wpsReady),
+      });
+      if (tracks.length === 0) {
+        setError('没有可播放的音源');
+        return;
+      }
+      q.tracks = [...q.tracks, ...tracks];
+      q.unifiedItems = q.unifiedItems
+        ? [...q.unifiedItems, ...aligned]
+        : aligned;
+      // idx 不变但 items 引用变了——主动推一版 snapshot 给 reactive consumer。
+      setQueueSnapshot({ idx: q.idx, items: q.unifiedItems });
+      setError(null);
+    },
+    [playSearch, wpsRef],
+  );
+
   // Auto-load on provider / preset change (but skip once when delaying a
   // source switch so the current song isn't interrupted).
   useEffect(() => {
@@ -1502,6 +1530,7 @@ async function fillLikeCountForCurrentTrack(
     changeDeezerPreset,
     loadNextTrack,
     playSearch,
+    appendToQueue,
     applyWpsProgress,
     handlePlayPause,
     handleSkip,
