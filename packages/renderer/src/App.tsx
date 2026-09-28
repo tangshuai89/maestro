@@ -457,7 +457,17 @@ export default function App() {
         />
       )}
 
-      {nlOpen && <NLPlaylistModal open onClose={() => setNlOpen(false)} />}
+      {nlOpen && (
+        <NLPlaylistModal
+          open
+          onClose={() => setNlOpen(false)}
+          onPlay={(items, idx) => {
+            setNlOpen(false);
+            player.setError(null);
+            player.playSearch(items, idx);
+          }}
+        />
+      )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 
