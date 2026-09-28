@@ -14,6 +14,7 @@ const assert = require('node:assert');
 const {
   buildParseIntentPrompt,
   extractJsonBlock,
+  intentToPromptHints,
   parseIntentResponse,
   pickLibrarySample,
   validateParseIntentInput,
@@ -177,5 +178,71 @@ const {
   assert.strictEqual(validateParseIntentInput('a'.repeat(500)), 'a'.repeat(500));
   console.log('  ✓ validateParseIntentInput: trim / empty / non-string / 501 / 500');
 }
+
+
+// ── 6. intentToPromptHints —— run() 把 NLIntent 翻进 prompt 的桥 ────
+{
+  // 完整 intent → 6 行 hint
+  const out1 = intentToPromptHints({
+    mood: '夜跑', genres: ['electronic', 'house'], tempo: 'fast',
+    language: 'zh', era: { from: 2015, to: 2025 },
+    similar_artists: ['deadmau5'], similar_tracks: [],
+    exclude_artists: ['徐梦圆'], exclude_genres: ['ballad'],
+    target_count: 15, rationale: '',
+  });
+  assert.ok(out1.includes('心情/场景：夜跑'), 'mood line');
+  assert.ok(out1.includes('风格标签：electronic、house'), 'genres line');
+  assert.ok(out1.includes('节奏偏好：fast'), 'tempo line');
+  assert.ok(out1.includes('年代：2015–2025'), 'era line');
+  assert.ok(out1.includes('不要这些艺人的歌：徐梦圆'), 'exclude_artists from intent');
+  assert.ok(out1.includes('不要这些风格：ballad'), 'exclude_genres from intent');
+  assert.ok(!out1.includes('参考曲目'), 'no similar_tracks → no line');
+  assert.strictEqual(out1.length, 6);
+
+  // tempo 'any' → 不出节奏行
+  const out2 = intentToPromptHints({
+    mood: '轻', genres: [], tempo: 'any', language: 'any',
+    similar_artists: [], similar_tracks: [],
+    exclude_artists: [], exclude_genres: [],
+    target_count: 12, rationale: '',
+  });
+  assert.deepStrictEqual(out2, ['心情/场景：轻']);
+
+  // era 单边（只 to）→ 仍输出
+  const out3 = intentToPromptHints({
+    mood: '', genres: [], tempo: 'any', language: 'any',
+    era: { to: 1999 },
+    similar_artists: [], similar_tracks: [],
+    exclude_artists: [], exclude_genres: [],
+    target_count: 12, rationale: '',
+  });
+  assert.ok(out3.includes('年代：?–1999'));
+
+  // extra.exclude_titles / exclude_artists（顶层 NL 路径，叠加）
+  const out4 = intentToPromptHints(
+    { mood: '', genres: [], tempo: 'any', language: 'any',
+      similar_artists: [], similar_tracks: [],
+      exclude_artists: [], exclude_genres: [],
+      target_count: 12, rationale: '' },
+    { exclude_titles: ['七里香'], exclude_artists: ['周杰伦'] },
+  );
+  assert.ok(out4.includes('不要这些标题的歌：七里香'), 'extra exclude_titles');
+  assert.ok(out4.includes('不要这些艺人的歌：周杰伦'), 'extra exclude_artists');
+
+  // 完整 intent + extra 同时 → 都出现且不重复
+  const out5 = intentToPromptHints(
+    { mood: '跑步', genres: ['rock'], tempo: 'fast', language: 'zh',
+      similar_artists: [], similar_tracks: ['光辉岁月'],
+      exclude_artists: ['薛之谦'], exclude_genres: [],
+      target_count: 12, rationale: '' },
+    { exclude_titles: ['浮夸'] },
+  );
+  assert.ok(out5.includes('心情/场景：跑步'));
+  assert.ok(out5.includes('不要这些艺人的歌：薛之谦'), 'from intent');
+  assert.ok(out5.includes('不要这些标题的歌：浮夸'), 'from extra');
+  assert.ok(!out5.some(h => h.includes('不要这些艺人的歌：') && h === '不要这些艺人的歌：'), 'no dup exclude_artists');
+  console.log('  ✓ intentToPromptHints: full / tempo any / era single / extra / combined');
+}
+
 
 console.log('\n✅ nl-playlist logic: all tests passed');

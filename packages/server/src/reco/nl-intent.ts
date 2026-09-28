@@ -11,7 +11,6 @@
  *   - 服务端兜底：target_count clamp 8-20，genre/tempo/language enum 校验
  */
 import { HttpException, HttpStatus, Logger } from '@nestjs/common';
-import { RECOMMEND_TIMEOUT_MS } from './reco.service';
 import { normalizeKey } from '../music/search.util';
 
 const log = new Logger('NLIntent');
@@ -36,6 +35,50 @@ const LANGUAGE_VALUES = new Set(['zh', 'en', 'ja', 'ko', 'any']);
 
 /** 客户端输入边界（与 spec §接口规格 400 一致）。 */
 const MAX_TEXT_LEN = 500;
+
+/**
+ * 把 NLIntent（+ 可选 extra excludes）翻译成 buildPrompt 附加的 hint 行。
+ * 空数组 = 不附加（向后兼容——run() 不传 intent 时与改造前完全一致）。
+ *
+ * 设计：这些是**软 prompt hints**，不是硬过滤器。硬过滤仍走原有
+ * `exclude: {title, artist}[]`（dedupAgainstLibrary + filterByExclude）。
+ * spec §验收"排除…能体现在结果里"——软约束在 LLM prompt 里已足够，
+ * 硬过滤要求 {title,artist} 双键匹配，标题/艺人单独传过来的会失配。
+ */
+export function intentToPromptHints(
+  intent: NLIntent,
+  extra?: { exclude_titles?: string[]; exclude_artists?: string[] },
+): string[] {
+  const out: string[] = [];
+  const mood = intent.mood?.trim();
+  if (mood) out.push(`心情/场景：${mood}`);
+  if (intent.genres.length) {
+    out.push(`风格标签：${intent.genres.join('、')}`);
+  }
+  if (intent.tempo !== 'any') out.push(`节奏偏好：${intent.tempo}`);
+  if (intent.era && (intent.era.from || intent.era.to)) {
+    const from = intent.era.from ?? '?';
+    const to = intent.era.to ?? '今';
+    out.push(`年代：${from}–${to}`);
+  }
+  if (intent.similar_tracks.length) {
+    out.push(`参考曲目（像这些歌的感觉）：${intent.similar_tracks.join('、')}`);
+  }
+  if (intent.exclude_artists.length) {
+    out.push(`不要这些艺人的歌：${intent.exclude_artists.join('、')}`);
+  }
+  if (intent.exclude_genres.length) {
+    out.push(`不要这些风格：${intent.exclude_genres.join('、')}`);
+  }
+  // 客户端额外 excludes（NL 路径或手动都走这条）
+  if (extra?.exclude_titles?.length) {
+    out.push(`不要这些标题的歌：${extra.exclude_titles.join('、')}`);
+  }
+  if (extra?.exclude_artists?.length) {
+    out.push(`不要这些艺人的歌：${extra.exclude_artists.join('、')}`);
+  }
+  return out;
+}
 
 const SYSTEM_PROMPT = `你是 Maestro 播放器的"音乐口味翻译官"。把用户自由文本需求解析成严格结构的 JSON。
 规则：
@@ -189,6 +232,3 @@ export function validateParseIntentInput(text: unknown): string {
   }
   return text.trim();
 }
-
-/** Re-export 给上层 import 方便。 */
-export { RECOMMEND_TIMEOUT_MS };
