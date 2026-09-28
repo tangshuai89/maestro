@@ -7,10 +7,14 @@
 import {
   Body,
   Controller,
+  Delete,
   HttpException,
   HttpStatus,
   Logger,
+  Param,
+  Patch,
   Post,
+  Get,
   Req,
   Res,
 } from '@nestjs/common';
@@ -18,6 +22,7 @@ import { Request, Response } from 'express';
 import { RecoService } from './reco.service';
 import { MusicService } from '../music/music.service';
 import { SessionService } from '../common/session';
+import { PlaylistService, type Playlist } from '../library/playlist.service';
 import {
   buildParseIntentPrompt,
   parseIntentResponse,
@@ -37,15 +42,16 @@ interface ParseIntentResponse {
   raw?: string;
 }
 
-@Controller('api/reco')
+@Controller()  // 路由前缀各方法自填（@Post('library/playlists') 等）
 export class NLPlaylistController {
   constructor(
     private readonly reco: RecoService,
     private readonly music: MusicService,
     private readonly sessionService: SessionService,
+    private readonly playlists: PlaylistService,
   ) {}
 
-  @Post('parse-intent')
+  @Post('api/reco/parse-intent')
   async parseIntent(
     @Body() body: ParseIntentRequest,
     @Req() req: Request,
@@ -93,5 +99,57 @@ export class NLPlaylistController {
         `target=${intent.target_count}`,
     );
     return { intent, raw };
+  }
+
+  // ── 歌单 CRUD（specs/nl-playlist/ §Task A4+A5）──────────────
+
+  @Post('api/library/playlists')
+  createPlaylist(
+    @Body() body: { name: string; tracks: any[]; prompt?: string; source?: 'nl' | 'manual' },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Playlist {
+    const session = this.sessionService.resolve(req, res);
+    return this.playlists.create(session.id, body);
+  }
+
+  @Get('api/library/playlists')
+  listPlaylists(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Playlist[] {
+    const session = this.sessionService.resolve(req, res);
+    return this.playlists.list(session.id);
+  }
+
+  @Get('api/library/playlists/:id')
+  getPlaylist(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Playlist {
+    const session = this.sessionService.resolve(req, res);
+    return this.playlists.get(session.id, id);
+  }
+
+  @Delete('api/library/playlists/:id')
+  deletePlaylist(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): { ok: true } {
+    const session = this.sessionService.resolve(req, res);
+    return this.playlists.delete(session.id, id);
+  }
+
+  @Patch('api/library/playlists/:id')
+  patchPlaylist(
+    @Param('id') id: string,
+    @Body() body: { name?: string; append?: any[]; remove?: string[] },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Playlist {
+    const session = this.sessionService.resolve(req, res);
+    return this.playlists.patch(session.id, id, body);
   }
 }
