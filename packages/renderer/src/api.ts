@@ -269,6 +269,42 @@ export async function fetchTrackLikeCount(
   }
 }
 
+/**
+ * NL playlist intent schema（specs/nl-playlist/ §数据模型）。
+ * 服务端 mirror：packages/server/src/reco/nl-intent.ts。
+ */
+export interface NLIntent {
+  mood: string;
+  genres: string[];
+  tempo: 'slow' | 'medium' | 'fast' | 'any';
+  language: 'zh' | 'en' | 'ja' | 'ko' | 'any';
+  era?: { from?: number; to?: number };
+  similar_artists: string[];
+  similar_tracks: string[];
+  exclude_artists: string[];
+  exclude_genres: string[];
+  target_count: number;
+  rationale: string;
+}
+
+/**
+ * POST /api/reco/parse-intent —— 把用户自然语言解析成 NLIntent。
+ * 错误透传：400 / 428 / 429 / 502 抛 fetch 错误。
+ */
+export async function parseIntent(text: string): Promise<{ intent: NLIntent; raw?: string }> {
+  const res = await fetchWithToken(`${API_BASE}/api/reco/parse-intent`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(`parse_intent_failed_${res.status}: ${msg.slice(0, 200)}`);
+  }
+  return (await res.json()) as { intent: NLIntent; raw?: string };
+}
+
 export async function fanOutLike(
   mergedId: string,
   sources: Array<{ platform: MusicProvider; trackId: string }>,

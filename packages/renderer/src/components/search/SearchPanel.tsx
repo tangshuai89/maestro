@@ -36,6 +36,8 @@ import SourceChip from './SourceChip';
 interface Props {
   onPlay: (items: UnifiedSearchItem[], index: number) => void;
   onClose: () => void;
+  /** spec B3：NL 歌单入口（theater 模式：search 框上方 ✨ 按钮） */
+  onOpenNL?: () => void;
 }
 
 const PAGE_SIZE = 20;
@@ -52,7 +54,7 @@ const PLATFORM_BADGE: Record<MusicProvider, { letter: string; color: string }> =
   spotify: { letter: 'S', color: '#3DFFA2' },
 };
 
-export default function SearchPanel({ onPlay, onClose }: Props) {
+export default function SearchPanel({ onPlay, onClose, onOpenNL }: Props) {
   const [q, setQ] = useState('');
   const [items, setItems] = useState<UnifiedSearchItem[]>([]);
   const [page, setPage] = useState(1);
@@ -314,6 +316,18 @@ export default function SearchPanel({ onPlay, onClose }: Props) {
             })}
           </div>
         </header>
+
+        {/* spec B3：theater 模式 NL 歌单入口 ✨ */}
+        {onOpenNL && (
+          <button
+            type="button"
+            className="sp-nl-entry"
+            onClick={onOpenNL}
+            title="说一句话生成歌单（DeepSeek）"
+          >
+            ✨ NL 歌单
+          </button>
+        )}
 
         {/* search-bar（960×56 @ y=112） */}
         <div className="sp-search-bar">
