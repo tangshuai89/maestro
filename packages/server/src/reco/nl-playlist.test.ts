@@ -42,6 +42,14 @@ const {
   assert.match(msgs2[1].content, /歌0/);
   assert.match(msgs2[1].content, /歌49/);
   assert.doesNotMatch(msgs2[1].content, /歌50/);
+  // 2026-09-28 E7 压测修：锚点段必须写明「用户本次说的话优先于锚点」，
+  // 否则模型会把锚点当默认解（实测「不要人声」→ exclude_artists=[五月天]）。
+  assert.match(msgs2[1].content, /优先级\*\*高于\*\*这份锚点/);
+  assert.match(msgs2[1].content, /锚点不得主导/);
+  // 否定语义 + 数量词规则必须在 system prompt 里
+  assert.match(msgs[0].content, /否定词要落对地方/);
+  assert.match(msgs[0].content, /用户本次说的话 > 口味锚点/);
+  assert.match(msgs[0].content, /多来点/);
   console.log('  ✓ buildParseIntentPrompt: empty lib / 80 lib clamp to 50');
 }
 
@@ -62,6 +70,26 @@ const {
   );
   assert.strictEqual(extractJsonBlock('{"a":1}'), '{"a":1}');
   assert.throws(() => extractJsonBlock('hello world'), /response_missing_json_block/);
+
+  // 2026-09-28 C1 实测回归：response_format=json_object 让 DeepSeek 忽略
+  // <json> 包裹，直接吐裸 JSON，且可能带前导空白 / 说明文字。
+  assert.strictEqual(
+    extractJsonBlock('\n   {"mood":"夜跑"}  '),
+    '{"mood":"夜跑"}',
+  );
+  assert.strictEqual(
+    extractJsonBlock('```json\n{"mood":"夜跑"}\n```'),
+    '{"mood":"夜跑"}',
+  );
+  assert.strictEqual(
+    extractJsonBlock('好的，这是解析结果：\n{"mood":"夜跑","era":{"from":1990}}'),
+    '{"mood":"夜跑","era":{"from":1990}}',
+  );
+  // 字符串字面量里的花括号 / 转义引号不能打乱配平扫描
+  assert.strictEqual(
+    extractJsonBlock('x {"rationale":"他说 \"{好}\" 很好","mood":"a"} y'),
+    '{"rationale":"他说 \"{好}\" 很好","mood":"a"}',
+  );
   console.log('  ✓ extractJsonBlock: <json> / bare JSON / fail');
 }
 

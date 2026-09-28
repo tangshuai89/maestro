@@ -92,8 +92,15 @@ const SYSTEM_PROMPT = `你是 Maestro 播放器的"音乐口味翻译官"。把�
 3. genre/similar_artists/similar_tracks/exclude_artists/exclude_genres 数组里只放"明确提到或强烈暗示"的；猜不到就空数组
 4. mood ≤ 50 字，rationale ≤ 80 字
 5. 排除某艺人/某流派直接放进对应数组；"更多像 X" → similar_artists 放 X
+5a. **否定词要落对地方**："不要人声/不要日语/不要吵"是对**声音/语言/流派**的约束 →
+   分别进 exclude_genres（如 vocal、j-pop）或用 language 表达；用户没点名任何艺人时，
+   exclude_artists **必须留空**，绝不能拿锚点里的艺人去顶替
+5b. **用户本次说的话 > 口味锚点**。锚点只在用户没给方向时兜底。用户点名了艺人/流派/
+   情绪/场景时，similar_artists 优先放**用户点名的**，其次才是锚点里的，最多 2 个；
+   锚点艺人只在你与用户方向一致时保留
 6. era 给出 {from,to}，支持单边（如 2000 至今 → to 留空）
-7. target_count 默认 12，按用户语气的"多一点/少一点"微调到 8-20 之间
+7. target_count 默认 12。只在用户明确表达数量意图时才改（"多来点"→16~18，
+   "少一点/就几首"→8~10）；没有数量词就填 12，别因为场景"听起来应该很多"而加
 schema：
 {mood:string,genres:string[0-6],tempo:'slow'|'medium'|'fast'|'any',language:'zh'|'en'|'ja'|'ko'|'any',era?:{from?:number,to?:number},similar_artists:string[0-4],similar_tracks:string[0-4],exclude_artists:string[0-8],exclude_genres:string[0-4],target_count:number,rationale:string}`;
 
@@ -107,7 +114,12 @@ export function buildParseIntentPrompt(
 ): Array<{ role: 'system' | 'user'; content: string }> {
   const userParts: string[] = [`用户需求：${text}`];
   if (librarySample.length > 0) {
-    userParts.push('用户最近 ❤ 的歌（口味锚点，仅参考，不要直接重复）：');
+    userParts.push(
+      '用户最近 ❤ 的歌（口味锚点）：这些**只是兜底参考**，用于用户没明确表达方向时推断。\n' +
+        '⚠️ 硬约束：用户本次说的话优先级**高于**这份锚点。若用户点了名某个艺人/流派/情绪，' +
+        '以用户说的为准，锚点不得主导 genres / similar_artists / exclude。\n' +
+        '以下仅供理解用户底色，不要直接重复这些歌：',
+    );
     userParts.push(
       librarySample
         .slice(0, 50)
@@ -121,12 +133,51 @@ export function buildParseIntentPrompt(
   ];
 }
 
-/** 从 LLM 响应中抠出 <json>...</json>，容错：整段就是 JSON 也接受。 */
+/**
+ * 从 LLM 响应中抠出 JSON，容错四层（按命中概率排序）：
+ *   1. `<json>...</json>` 包裹 —— prompt 里要求的格式
+ *   2. ```json ... ``` / ``` ... ``` 围栏 —— DeepSeek 常见输出
+ *   3. 整段就是 JSON（trim 后以 { 开头 } 结尾）
+ *   4. 从任意文本里扫描**第一个平衡的** {...}（前面有解释文字/空格时兜底）
+ *
+ * 2026-09-28 实测教训（C1 探针）：`response_format: json_object` 会让
+ * DeepSeek **忽略** prompt 里的 `<json>` 包裹要求，直接吐裸 JSON，且可能
+ * 前面带空白或一行说明。只认「整段就是 JSON」会 4/4 全挂 —— 必须有第 4 层。
+ */
 export function extractJsonBlock(raw: string): string {
   const trimmed = raw.trim();
-  const match = trimmed.match(/<json>([\s\S]*?)<\/json>/i);
-  if (match) return match[1].trim();
+
+  // 1. <json>...</json>
+  const tagged = trimmed.match(/<json>([\s\S]*?)<\/json>/i);
+  if (tagged) return tagged[1].trim();
+
+  // 2. ```json ... ``` 围栏
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]+?)```/i);
+  if (fence) return fence[1].trim();
+
+  // 3. 整段就是 JSON
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+
+  // 4. 扫描第一个平衡的 {...}（跳过字符串字面量里的花括号/转义引号）
+  const start = trimmed.indexOf('{');
+  if (start >= 0) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = start; i < trimmed.length; i++) {
+      const ch = trimmed[i];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) return trimmed.slice(start, i + 1);
+      }
+    }
+  }
+
   throw new Error('response_missing_json_block');
 }
 
