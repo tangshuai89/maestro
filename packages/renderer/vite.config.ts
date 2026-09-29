@@ -34,6 +34,12 @@ export default defineConfig({
       '/auth': { target: 'http://127.0.0.1:3200', changeOrigin: true },
       '/reco': { target: 'http://127.0.0.1:3200', changeOrigin: true },
       '/storage': { target: 'http://127.0.0.1:3200', changeOrigin: true },
+      // `/library/*` — NL 歌单 CRUD（specs/nl-playlist A4/A5）。2026-09-29 漏配：
+      // 请求打不到 server，vite 自己接住并回 index.html，前端拿到 HTML 去
+      // `res.json()` → `Unexpected token '<', "<!doctype "... is not valid JSON`。
+      // 症状具有迷惑性（"歌单操作失败"），因为同 modal 里的 parse-intent
+      // 走 `/reco` 是通的，只有「列出/保存歌单」这几个动作炸。
+      '/library': { target: 'http://127.0.0.1:3200', changeOrigin: true },
     },
   },
   build: {
