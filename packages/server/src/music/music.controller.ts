@@ -918,14 +918,21 @@ export class MusicController {
   }
 
   /**
-   * Fetch synced lyrics for a track. Delegates to the per-provider
-   * implementation in music.service — QQ returns null (no public
-   * lyric API without an app signature), NetEase parses LRC from
-   * /api/song/lyric, Deezer returns unsynced plain text or LRC
-   * from the public track endpoint.
+   * 多源聚合歌词（默认「合并」模式）：并行拉 QQ / NetEase / Deezer 的
+   * 候选源 → LRC 合并去重（并集 + 时间容差去重 + 错位源整源丢弃）→
+   * 平台全落空才走 lyrics.ovh 第三方兜底（纯文本）。
    *
-   * Response: { lyrics: [{time, text}, ...] } or { lyrics: null }
-   * when the provider or track has no lyrics.
+   * `merge=0` 走旧快路径：第一个命中即返回，不打其余源。
+   *
+   * Response: {
+   *   lyrics: [{time, text}, ...] | null,
+   *   synced: boolean,              // false = 纯文本（无时间戳）
+   *   source: string | null,        // 主来源（向后兼容）
+   *   mergedFrom: string[],         // 实际贡献了行的来源，length>1 = 多源合并
+   *   added: number,                // 低优先级源补进来的行数
+   *   dropped: number,              // 文本重复被去重丢弃的行数
+   *   rejected: string[],           // 时间轴对不齐被弃用的来源
+   * }
    */
   @SkipInternalToken()
   @Get('lyrics')
@@ -935,6 +942,7 @@ export class MusicController {
     @Query('sources') sources: string | undefined,
     @Query('title') title: string | undefined,
     @Query('artist') artist: string | undefined,
+    @Query('merge') merge: string | undefined,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -946,8 +954,17 @@ export class MusicController {
       parseSourcesParam(sources),
       title ?? '',
       artist ?? '',
+      { merge: merge !== '0' && merge !== 'false' },
     );
-    return { lyrics: result.lines, synced: result.synced, source: result.source };
+    return {
+      lyrics: result.lines,
+      synced: result.synced,
+      source: result.source,
+      mergedFrom: result.mergedFrom,
+      added: result.added,
+      dropped: result.dropped,
+      rejected: result.rejected,
+    };
   }
 
   /**
@@ -974,7 +991,15 @@ export class MusicController {
       artist ?? '',
       Number.isFinite(dur) ? dur : 0,
     );
-    return { lyrics: result.lines, synced: result.synced, source: result.source };
+    return {
+      lyrics: result.lines,
+      synced: result.synced,
+      source: result.source,
+      mergedFrom: result.mergedFrom,
+      added: result.added,
+      dropped: result.dropped,
+      rejected: result.rejected,
+    };
   }
 
   /**
