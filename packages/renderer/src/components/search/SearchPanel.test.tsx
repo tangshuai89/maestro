@@ -212,6 +212,122 @@ describe('SearchPanel', () => {
     expect(onPlay).not.toHaveBeenCalled();
   });
 
+  // 用户报障：搜「浓缩蓝鲸」ALL 模式下裘德那首的 Spotify 行（Spotify 把艺人
+  // 记作 "Jude Chiu"）点了没反应 —— Spotify 停发 preview_url 后代理只能 502，
+  // <audio> 静默卡 00:00。行必须置灰，且与 parsePlayableQueue 的准入一致。
+  const SPOTIFY_NO_PREVIEW: UnifiedSearchItem[] = [
+    {
+      id: 'merged-spotify-sp1-studio',
+      title: '浓缩蓝鲸',
+      artist: 'Jude Chiu',
+      album: '浓缩蓝鲸',
+      coverUrl: '',
+      duration: 277,
+      bestSource: 'spotify',
+      versionType: 'studio',
+      sources: [
+        { platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/sp/1', vipLocked: true, noPreview: true },
+      ],
+      versions: [
+        {
+          id: 'ver-sp1',
+          duration: 277,
+          bestSource: 'spotify',
+          sources: [
+            { platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/sp/1', vipLocked: true, noPreview: true },
+          ],
+        },
+      ],
+    },
+  ];
+
+  it('Spotify 独占 + 无 preview（WPS 未连）→ row 置灰、点击不播', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: SPOTIFY_NO_PREVIEW, page: 1, pageSize: 20, total: 1,
+    });
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '浓缩蓝鲸');
+    await waitFor(() => {
+      expect(screen.getByText('浓缩蓝鲸')).toBeInTheDocument();
+    });
+    const row = screen.getByText('浓缩蓝鲸').closest('.sp-row') as HTMLElement;
+    expect(row.classList.contains('sp-row--disabled')).toBe(true);
+    // 不是"无版权"——是有源但拿不到音频，文案要分开
+    expect(screen.getByText('无音源')).toBeInTheDocument();
+    // tooltip 必须说清真正的原因（之前这里是 bestSource!==null 去猜的）
+    expect(row.getAttribute('title')).toContain('Premium');
+    fireEvent.click(row);
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  // 2026-09-29 审查发现的文案撒谎：不可播有三类原因（无版权 / Spotify 无
+  // 30s 预览 / 没源），而置灰 / tooltip / 行内角标曾各判一次，用
+  // `bestSource !== null` 猜原因——于是"QQ 源无版权"会被说成"只有 Spotify
+  // 源"、角标也会显示成"无音源"。现在三者都读 api.playableReason。
+  const QQ_NO_COPYRIGHT: UnifiedSearchItem[] = [
+    {
+      id: 'qq-nc',
+      title: '无版权歌',
+      artist: '未知',
+      album: '',
+      coverUrl: '',
+      duration: 200,
+      bestSource: 'qq',
+      versionType: 'studio',
+      // bestSource 是 qq 且**确实有源**，只是没版权 —— 绝不能说成 Spotify
+      sources: [{ platform: 'qq', trackId: 'q1', hasCopyright: false, url: '/qq/1' }],
+      versions: [
+        {
+          id: 'ver-q1',
+          duration: 200,
+          bestSource: 'qq',
+          sources: [{ platform: 'qq', trackId: 'q1', hasCopyright: false, url: '/qq/1' }],
+        },
+      ],
+    },
+  ];
+
+  it('QQ 源无版权 → 角标/tooltip 说「无版权」，不误报成 Spotify 无预览', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: QQ_NO_COPYRIGHT, page: 1, pageSize: 20, total: 1,
+    });
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '无版权歌');
+    await waitFor(() => {
+      expect(screen.getByText('无版权歌')).toBeInTheDocument();
+    });
+    const row = screen.getByText('无版权歌').closest('.sp-row') as HTMLElement;
+    expect(row.classList.contains('sp-row--disabled')).toBe(true);
+    // 角标
+    expect(screen.getByText('无版权')).toBeInTheDocument();
+    expect(screen.queryByText('无音源')).toBeNull();
+    // tooltip：说无版权，**不含** Spotify / Premium 那句
+    const title = row.getAttribute('title') ?? '';
+    expect(title).toContain('无版权');
+    expect(title).not.toContain('Spotify');
+    expect(title).not.toContain('Premium');
+    fireEvent.click(row);
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it('Spotify 独占 + 无 preview 但 WPS 已连 → row 可播', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: SPOTIFY_NO_PREVIEW, page: 1, pageSize: 20, total: 1,
+    });
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} wpsReady />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '浓缩蓝鲸');
+    await waitFor(() => {
+      expect(screen.getByText('浓缩蓝鲸')).toBeInTheDocument();
+    });
+    const row = screen.getByText('浓缩蓝鲸').closest('.sp-row') as HTMLElement;
+    expect(row.classList.contains('sp-row--disabled')).toBe(false);
+    fireEvent.click(row);
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
   it('切换 source 到 qq → 调 searchOne 而不是 searchUnified', async () => {
     vi.useFakeTimers();
     render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);

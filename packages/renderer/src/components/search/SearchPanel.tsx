@@ -4,6 +4,8 @@ import {
   searchOne,
   fetchLyricsAvailability,
   isPlayableEntry,
+  playableReason,
+  unplayableText,
 } from '../../api';
 import type { MusicProvider, UnifiedSearchItem } from '../../api';
 import { PROVIDER_LABELS } from '../../api';
@@ -403,14 +405,13 @@ export default function SearchPanel({
             const hasVersions = it.versions.length > 1;
             const isExpanded = expandedIds.has(it.id);
             const mainPlayable = isPlayableEntry(it, wpsReady);
-            // 两种不可播分开说：真·无版权 vs 有源但拿不到音频（Spotify 停发
-            // preview_url，只有 Premium 的 WPS 全曲通道能放）。
-            const noAudioOnly = !mainPlayable && it.bestSource !== null;
+            // 文案 / 角标 / 置灰三者都来自同一个判定（api.playableReason）。
+            // 之前这三处各判一次：用 `bestSource !== null` 去**猜**原因，于是
+            // "QQ 源无版权"既会被说成"只有 Spotify 源"，角标也会显示成"无音源"。
+            const mainReason = playableReason(it, wpsReady);
             const rowTitle = mainPlayable
               ? `播放：${it.title} - ${it.artist}`
-              : noAudioOnly
-                ? '只有 Spotify 源且无 30s 预览：需切到 Spotify 音源用 Premium 全曲播放'
-                : '所有平台都无版权';
+              : (unplayableText(it, wpsReady) ?? '当前没有可播的音源');
             return (
               <div key={it.id} className={`sp-item${isExpanded ? ' is-open' : ''}`}>
                 <div
@@ -477,7 +478,7 @@ export default function SearchPanel({
                   )}
                   {!mainPlayable && (
                     <span className="sp-no-rights">
-                      {noAudioOnly ? '无音源' : '无版权'}
+                      {mainReason === 'no-copyright' ? '无版权' : '无音源'}
                     </span>
                   )}
                   {hasVersions && (
@@ -531,7 +532,7 @@ export default function SearchPanel({
                             ? `播放：${vTitle} - ${vArtist}${
                                 v.duration > 0 ? ` · ${formatDuration(v.duration)}` : ''
                               }`
-                            : '所有平台都无版权'
+                            : (unplayableText(v, wpsReady) ?? '当前没有可播的音源')
                         }
                       >
                         <span className="sp-sub-row-dot" aria-hidden="true" />

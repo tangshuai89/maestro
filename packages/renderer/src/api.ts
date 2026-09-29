@@ -887,12 +887,61 @@ export function isPlayableEntry(
   entry: Pick<UnifiedSearchItem, 'bestSource' | 'sources'>,
   wpsReady = false,
 ): boolean {
+  return playableReason(entry, wpsReady) === null;
+}
+
+/** 不可播的原因（决定 SearchPanel 怎么跟用户解释）。 */
+export type UnplayableReason = 'no-copyright' | 'spotify-no-preview' | 'no-source';
+
+/** 这条为什么不可播的人类可读原因（与 isSourcePlayable 同一条流水线）。 */
+const UNPLAYABLE_TEXT: Record<UnplayableReason, string> = {
+  'no-copyright': '所有平台都无版权',
+  'spotify-no-preview':
+    '只有 Spotify 源且无 30s 预览：需切到 Spotify 音源用 Premium 全曲播放',
+  'no-source': '当前没有可播的音源',
+};
+
+/**
+ * 不可播原因（null = 可播）。
+ *
+ * **为什么要有它**：SearchPanel 的行置灰和 tooltip 文案必须来自**同一个**判定。
+ * 之前两者各判一次（`isPlayableEntry` 判真假、`bestSource !== null` 猜原因），
+ * 于是"QQ 源无版权"也会被说成"只有 Spotify 源"—— 文案与事实不符。现在
+ * `isPlayableEntry` 是本函数的薄封装，判定与解释天然同源。
+ */
+export function playableReason(
+  entry: Pick<UnifiedSearchItem, 'bestSource' | 'sources'>,
+  wpsReady = false,
+): UnplayableReason | null {
   if (wpsReady && entry.sources.some((s) => s.platform === 'spotify')) {
-    return true;
+    return null;
   }
-  if (!entry.bestSource) return false;
-  const src = entry.sources.find((s) => s.platform === entry.bestSource);
-  return Boolean(src) && isSourcePlayable(src!, wpsReady);
+  const src = entry.bestSource
+    ? entry.sources.find((s) => s.platform === entry.bestSource)
+    : undefined;
+  if (src) {
+    // 先分无版权：它比"没音频"更基础，且与平台无关
+    if (!src.hasCopyright) return 'no-copyright';
+    if (src.platform === 'spotify' && src.noPreview && !wpsReady) {
+      return 'spotify-no-preview';
+    }
+    return null;
+  }
+  // 定位不到 bestSource（为 null，或指向一个不存在的源）→ 不可播，但原因要分清：
+  // 所有源都无版权 → 说"无版权"（这是更常见也更该解释的那个）；否则才是"没源"。
+  if (entry.sources.length > 0 && entry.sources.every((s) => !s.hasCopyright)) {
+    return 'no-copyright';
+  }
+  return 'no-source';
+}
+
+/** 不可播原因的用户可见文案；可播时返回 null。 */
+export function unplayableText(
+  entry: Pick<UnifiedSearchItem, 'bestSource' | 'sources'>,
+  wpsReady = false,
+): string | null {
+  const reason = playableReason(entry, wpsReady);
+  return reason === null ? null : UNPLAYABLE_TEXT[reason];
 }
 
 export function pickPlayableTrack(
