@@ -272,7 +272,44 @@ void (async () => {
     assert.strictEqual(t.album, 'Album X');
     assert.strictEqual(t.coverUrl, 'http://img');
     assert.strictEqual(t.duration, 180);
+    assert.strictEqual(t.noPreview, false, '有 preview_url → noPreview=false');
     console.log('✅ 13. search: 命中结果字段映射（id/title/artist/album/coverUrl/duration）');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+// ── 13b. search: preview_url 缺失 → noPreview=true ───────
+// 2024-11 起 Spotify 对多数应用停发 preview_url。这类曲目 getStreamPath
+// 会抛 spotify_no_preview（502），<audio> 一个字节都拿不到 —— 必须标出来，
+// 否则统一搜索里 Spotify 独占的行"看起来可播、点下去停在 00:00"。
+{
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        tracks: {
+          items: [
+            { id: 't2', name: '浓缩蓝鲸', artists: [{ id: 'a1', name: 'Jude Chiu' }],
+              duration_ms: 277000, preview_url: null },
+            { id: 't3', name: 'With Preview', artists: [{ id: 'a1', name: 'A' }],
+              duration_ms: 200000, preview_url: 'http://preview' },
+          ],
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+
+  try {
+    const session = {
+      spotify: { accessToken: 'valid-tok', refreshToken: 'r', expiresAt: Date.now() + 60_000 },
+    };
+    const results = await svc.search(session as any, '浓缩蓝鲸');
+    assert.strictEqual(results[0].noPreview, true, 'preview_url=null → noPreview');
+    assert.strictEqual(results[1].noPreview, false);
+    // vipLocked 与 noPreview 是两码事：前者"能出声但受限"，后者"没有音频"。
+    assert.strictEqual(results[0].vipLocked, true);
+    console.log('✅ 13b. search: preview_url=null → noPreview=true（与 vipLocked 分开）');
   } finally {
     globalThis.fetch = origFetch;
   }

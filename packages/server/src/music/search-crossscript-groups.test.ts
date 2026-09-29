@@ -177,6 +177,46 @@ void (async () => {
     ]);
     assert.strictEqual(items.length, 2, '不同艺人应保持 2 条');
   });
+  // ── 9. 裘德 ↔ Jude Chiu（2026-09-29 用户报障：搜「浓缩蓝鲸」ALL 模式）──
+  //
+  // ⚠️ 诚实的范围声明（2026-09-29 审查补写）：这两条**不测策展别名**。
+  // 变异验证：把 `artistAlias.ts` 里的 `裘德: ['Jude Chiu']` 整行删掉，
+  // 用例 9/10 依然全绿 —— 因为 buildUnifiedItems 的合并入口是 **title + 时长**
+  // （繁简经 cjkUnify 归一后「浓缩蓝鲸」==「濃縮藍鯨」），艺名只是佐证之一。
+  // 真实数据（album 不同 / 时长差 8s）下实测：加不加别名，合并结果**完全相同**，
+  // 甚至都会退化成「只剩 spotify 源」—— 那才是用户报障的真正形态。
+  //
+  // 别名本身的判等由 common/src/artistAlias.test.ts 守（那里变异会红）。
+  // 这里守的是「合并产物对下游是否可用」：合并后 bestSource 必须落在**能出声**
+  // 的那个源上，否则就是"合并成一行但仍点了卡死"。
+  check('9. 浓缩蓝鲸 裘德 ↔ Jude Chiu → 合并，且 bestSource 落回网易云', () => {
+    const items = merge([
+      T('netease', 'n1', '浓缩蓝鲸', '裘德', 277),
+      T('spotify', 's1', '浓缩蓝鲸', 'Jude Chiu', 277),
+    ]);
+    assert.strictEqual(items.length, 1, '同一首歌应合并成 1 条');
+    assert.strictEqual(items[0].artist, '裘德', '展示元数据取优先级更高的中文源');
+    assert.deepStrictEqual(
+      items[0].sources.map((s: { platform: string }) => s.platform).sort(),
+      ['netease', 'spotify'],
+    );
+    assert.strictEqual(items[0].bestSource, 'netease', 'bestSource 应落回能出声的网易云');
+    // 合并产物必须能被下游判成"可播"——这是这条断言真正的价值所在：
+    // 之前只有 sources/bestSource 的形状断言，漏了"点下去会怎样"。
+    const best = items[0].sources.find((s: { platform: string }) => s.platform === items[0].bestSource);
+    assert.ok(best && best.hasCopyright, 'bestSource 必须是有版权、能出声的源');
+  });
+
+  // ── 10. 同名翻唱不被这条别名带进来（合并只认表内那一对）──
+  check('10. 同时长的拉丁名翻唱（Aiden）/ 形近中文名（桀德）→ 各自成条', () => {
+    const items = merge([
+      T('netease', 'n1', '浓缩蓝鲸', '裘德', 277),
+      T('spotify', 's1', '浓缩蓝鲸', 'Jude Chiu', 277),
+      T('netease', 'n2', '浓缩蓝鲸', 'Aiden', 277),
+      T('netease', 'n3', '浓缩蓝鲸', '桀德', 276),
+    ]);
+    assert.strictEqual(items.length, 3, '裘德(合并) + Aiden + 桀德');
+  });
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

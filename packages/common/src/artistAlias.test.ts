@@ -95,5 +95,25 @@ check('幾田りら ↔ Lilas', stageNameAliasMatch('幾田りら', 'Lilas'));
 check('幾田りら ↔ Lilas Ikuta', stageNameAliasMatch('幾田りら', 'Lilas Ikuta'));
 check('幾田りら (ikura) ↔ Lilas（带括号注释）', stageNameAliasMatch('幾田りら (ikura)', 'Lilas'));
 
+// ── 9. 裘德 ↔ Jude Chiu（Spotify 英文艺名，非音译）──────────
+// 2026-09-29 用户报障：搜「浓缩蓝鲸」ALL 模式下同一首歌两行——网易云写
+// 「裘德」、Spotify 写「Jude Chiu」。拼音 qiude 与 Jude 无关，只能上策展表。
+//
+// ⚠️ 这条别名的**生效路径要说清楚**（2026-09-29 审查实测）：它服务的是
+// artistLooseMatch / stageNameAliasMatch 的调用方——renderer 的
+// groupLibrary（我的喜欢弹窗分组）与 server 的 artistTransliterationMatch。
+// 而统一搜索的合并入口是 **title + 时长**（繁简经 cjkUnify 归一后即可对上），
+// 删掉本条别名后 `buildUnifiedItems` 的合并结果**完全不变**（实测：同 title
+// 同 duration、album 不同 + duration 差 8s、title 繁体三种 fixture 均如此）。
+// 所以：**修复"点了没反应"的是 noPreview 置灰，不是这条别名**；别名治的是
+// 「库分组 / 推荐去重把同一个人的两行拆开」那类问题。
+// 下面这 4 条断言是有效的（变异验证：删掉别名行 → 红）。
+console.log('\n── 裘德 ↔ Jude Chiu（Spotify 英文艺名）──');
+check('裘德 ↔ Jude Chiu', stageNameAliasMatch('裘德', 'Jude Chiu'));
+check('裘德 ↔ Jude Chiu（artistLooseMatch）', artistLooseMatch('裘德', 'Jude Chiu'));
+// 表内只认这一对：形近中文名 / 同专辑同时长的翻唱者不许蹭进来
+check('桀德 ↔ Jude Chiu 不并', stageNameAliasMatch('桀德', 'Jude Chiu'), false);
+check('裘德 ↔ Jude 不并（值必须整串相等）', stageNameAliasMatch('裘德', 'Jude'), false);
+
 console.log(`\n🎉 artistAlias.test 通过 ${passed} 项，失败 ${failed} 项`);
 if (failed > 0) process.exit(1);

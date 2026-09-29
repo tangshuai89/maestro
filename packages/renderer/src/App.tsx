@@ -585,6 +585,9 @@ export default function App() {
       {player.searchOpen && (
         <SearchPanel
           onPlay={player.playSearch}
+          // WPS 已连 → Spotify 源能走 SDK 全曲流，那些没有 preview_url 的
+          // Spotify 行仍可播；否则它们必须置灰（点了只会卡在 00:00）。
+          wpsReady={wps.wpsReady}
           onClose={() => player.setSearchOpen(false)}
           onOpenNL={() => {
             player.setSearchOpen(false);
