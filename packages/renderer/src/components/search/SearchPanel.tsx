@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { searchUnified, searchOne, fetchLyricsAvailability } from '../../api';
+import {
+  searchUnified,
+  searchOne,
+  fetchLyricsAvailability,
+  isPlayableEntry,
+} from '../../api';
 import type { MusicProvider, UnifiedSearchItem } from '../../api';
 import { PROVIDER_LABELS } from '../../api';
 import { formatDuration, clampText } from '../../lib/format';
@@ -38,6 +43,13 @@ interface Props {
   onClose: () => void;
   /** spec B3：NL 歌单入口（theater 模式：search 框上方 ✨ 按钮） */
   onOpenNL?: () => void;
+  /**
+   * Spotify Web Playback SDK 是否已连（Premium + provider=spotify）。
+   * 决定 Spotify 源算不算"能出声"：停发 preview_url 后，非 WPS 态下
+   * Spotify 独占的行点下去只会卡在 00:00，必须置灰而不是假装可播。
+   * 与 `parsePlayableQueue` 共用 `isPlayableEntry`，两边口径不能漂。
+   */
+  wpsReady?: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -54,7 +66,12 @@ const PLATFORM_BADGE: Record<MusicProvider, { letter: string; color: string }> =
   spotify: { letter: 'S', color: '#3DFFA2' },
 };
 
-export default function SearchPanel({ onPlay, onClose, onOpenNL }: Props) {
+export default function SearchPanel({
+  onPlay,
+  onClose,
+  onOpenNL,
+  wpsReady = false,
+}: Props) {
   const [q, setQ] = useState('');
   const [items, setItems] = useState<UnifiedSearchItem[]>([]);
   const [page, setPage] = useState(1);
@@ -239,7 +256,9 @@ export default function SearchPanel({ onPlay, onClose, onOpenNL }: Props) {
     const item = items[index];
     if (!item) return;
     const v = item.versions[versionIdx];
-    if (!v || !v.bestSource) return;
+    // 可播判定走 isPlayableEntry：光看 bestSource 会放行"Spotify 独占且没有
+    // preview_url"的版本，playSearch 那边又会把它从队列里丢掉，点击变成静默无效。
+    if (!v || !isPlayableEntry(v, wpsReady)) return;
     const view = items.map((it, idx) => {
       if (idx !== index) return it;
       return {
@@ -383,10 +402,15 @@ export default function SearchPanel({ onPlay, onClose, onOpenNL }: Props) {
           {items.map((it, i) => {
             const hasVersions = it.versions.length > 1;
             const isExpanded = expandedIds.has(it.id);
-            const mainPlayable = it.bestSource !== null;
+            const mainPlayable = isPlayableEntry(it, wpsReady);
+            // 两种不可播分开说：真·无版权 vs 有源但拿不到音频（Spotify 停发
+            // preview_url，只有 Premium 的 WPS 全曲通道能放）。
+            const noAudioOnly = !mainPlayable && it.bestSource !== null;
             const rowTitle = mainPlayable
               ? `播放：${it.title} - ${it.artist}`
-              : '所有平台都无版权';
+              : noAudioOnly
+                ? '只有 Spotify 源且无 30s 预览：需切到 Spotify 音源用 Premium 全曲播放'
+                : '所有平台都无版权';
             return (
               <div key={it.id} className={`sp-item${isExpanded ? ' is-open' : ''}`}>
                 <div
@@ -451,7 +475,11 @@ export default function SearchPanel({ onPlay, onClose, onOpenNL }: Props) {
                   {lyricsAvail[it.id] && (
                     <span className="sp-lyrics-badge" title="有歌词" aria-label="有歌词">词</span>
                   )}
-                  {!mainPlayable && <span className="sp-no-rights">无版权</span>}
+                  {!mainPlayable && (
+                    <span className="sp-no-rights">
+                      {noAudioOnly ? '无音源' : '无版权'}
+                    </span>
+                  )}
                   {hasVersions && (
                     <button
                       type="button"
@@ -478,7 +506,7 @@ export default function SearchPanel({ onPlay, onClose, onOpenNL }: Props) {
                 {isExpanded &&
                   it.versions.slice(1).map((v, vi) => {
                     const versionIdx = vi + 1;
-                    const playable = v.bestSource !== null;
+                    const playable = isPlayableEntry(v, wpsReady);
                     // 版本行显示该版本的**真实元数据**（不是 "v2 / 2:35"）：
                     // 同名同 type 不代表元数据相同（`盲选` vs `盲选 (Live)`、
                     // 时长 1:20 vs 6:07），用户要靠歌名/歌手/专辑才选得出版本。

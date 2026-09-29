@@ -15,6 +15,15 @@ import {
   type BackupBundle,
 } from '../../lib/backup-crypto';
 import { collectLocalStorage, restoreLocalStorage } from '../../lib/storage';
+import type { PlayerMode } from '../../lib/storage';
+import {
+  EQ_BANDS,
+  EQ_PRESETS,
+  sliderMin,
+  sliderMax,
+  sliderStep,
+  type AudioFxPrefs,
+} from '../../lib/audioFx';
 import RecoKeyModal from './RecoKeyModal';
 import ChannelPriorityList from '../settings/ChannelPriorityList';
 import AccountsList from '../settings/AccountsList';
@@ -24,28 +33,78 @@ import SourceHealthSection from '../settings/SourceHealthSection';
 /**
  * AETHER Settings — 设置全屏（Figma 03/Screen/Settings 还原）。
  *
- * §5 Settings 完整化后从 3 节 → 8 节：
- *   ① DeepSeek key（状态 + 重置 / 设新 key）
- *   ② 渠道优先级（拖拽排序 + 保存/重置）
- *   ③ 平台账号（4 平台登录态 + 登出）
- *   ④ 库管理（每平台独立清空 + 一键全清二次确认）
- *   ⑤ 源连接健康（近 24h 成功率 + 进度条）
- *   ⑥ 本地自动备份
- *   ⑦ 导出会话快照（加密 .maestro-backup）
- *   ⑧ 导入并合并
+ * §5 Settings 完整化后从 3 节 → 8 节，#6.3 Lite 模式 +1 → 9 节，
+ * #7.1 EQ 再 +1 → 10 节：
+ *   ① 播放模式（完整 / 迷你 / 极简 —— specs/lite-mode）
+ *   ② 音频（EQ 开关 / 8 预置 / 10 滑块 —— specs/audio-fx）
+ *   ③ DeepSeek key（状态 + 重置 / 设新 key）
+ *   ④ 渠道优先级（拖拽排序 + 保存/重置）
+ *   ⑤ 平台账号（4 平台登录态 + 登出）
+ *   ⑥ 库管理（每平台独立清空 + 一键全清二次确认）
+ *   ⑦ 源连接健康（近 24h 成功率 + 进度条）
+ *   ⑧ 本地自动备份
+ *   ⑨ 导出会话快照（加密 .maestro-backup）
+ *   ⑩ 导入并合并
  *
  * 画布保留 1440×900 缩放，内部用 .set-scroll 可滚动列。
  */
 
 interface Props {
   onClose: () => void;
+  /** 当前播放视图（theater / mini / lite）—— 状态在 App，modal 只做选择器。 */
+  playerMode: PlayerMode;
+  onChangePlayerMode: (mode: PlayerMode) => void;
+  /**
+   * EQ 偏好的**镜像**（specs/audio-fx §2.1）。modal 自己不持有 EQ 状态：
+   * 状态在 usePlayer 里，因为只有它能把增益推到 live BiquadFilter 上。
+   * 这里只读它来渲染滑块位置与预置高亮，改动一律回调上去。
+   */
+  audioFx: AudioFxPrefs;
+  onEqEnabled: (enabled: boolean) => void;
+  onEqBandGain: (index: number, dB: number) => void;
+  onApplyEqPreset: (presetId: string) => void;
+}
+
+/** ① 播放模式三态的中文名 + 快捷键提示（specs/lite-mode / specs/mini-player）。 */
+const PLAYER_MODE_OPTIONS: Array<{
+  mode: PlayerMode;
+  label: string;
+  hint: string;
+}> = [
+  { mode: 'theater', label: '完整', hint: 'AETHER 剧场界面（封面 / 歌词 / 推荐卡）' },
+  { mode: 'mini', label: '迷你', hint: '底部悬浮播控条 · ⌘⇧M' },
+  { mode: 'lite', label: '极简', hint: '只剩歌名 + 切歌 + ✨ 推荐 · ⌘⇧L' },
+];
+
+/**
+ * dB 读数格式化：`+3.5` / `-2.0` / `0.0`。
+ *
+ * 0 不带 `+` 号 —— "+0.0" 读起来像"确实推了 0"，而 0 的语义是"没动"，
+ * 两者在读数里必须能一眼分开。正负号保留且固定一位小数：
+ * 步进是 0.5，一位小数刚好精确表示任何一档，多写是噪音。
+ * 写死一位小数（而不是 `String(dB)`）还顺带避免了 0.30000000000000004
+ * 这类浮点尾巴出现在 UI 上。
+ */
+function formatDb(dB: number): string {
+  const v = Math.round(dB * 10) / 10;
+  const body = Math.abs(v).toFixed(1);
+  if (v === 0) return body;
+  return v > 0 ? `+${body}` : `-${body}`;
 }
 
 type Status = { kind: 'idle' | 'busy' | 'ok' | 'err'; msg?: string };
 
 const APP_VERSION = '1.0.0';
 
-export default function SettingsModal({ onClose }: Props) {
+export default function SettingsModal({
+  onClose,
+  playerMode,
+  onChangePlayerMode,
+  audioFx,
+  onEqEnabled,
+  onEqBandGain,
+  onApplyEqPreset,
+}: Props) {
   // ── §5 DeepSeek key 节 ─────────────────────────────────────
   const [recoStatus, setRecoStatus] = useState<RecoStatus | null>(null);
   const [recoKeyStatus, setRecoKeyStatus] = useState<Status>({ kind: 'idle' });
@@ -204,9 +263,110 @@ export default function SettingsModal({ onClose }: Props) {
           </button>
         </header>
 
-        {/* 可滚动主体（8 节） */}
+        {/* 可滚动主体（10 节） */}
         <div className="set-scroll">
-          {/* ① DeepSeek key */}
+          {/* ① 播放模式 */}
+          <section className="set-section set-section--compact">
+            <h3 className="set-section-title">播放模式</h3>
+            <p className="set-section-hint">
+              切换即时生效并记住选择 · 播放进度与队列不受影响
+            </p>
+            <div className="set-mode-group" role="group" aria-label="播放模式">
+              {PLAYER_MODE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.mode}
+                  type="button"
+                  className={`set-btn${
+                    playerMode === opt.mode ? ' set-btn--accent' : ''
+                  }`}
+                  aria-pressed={playerMode === opt.mode}
+                  title={opt.hint}
+                  onClick={() => onChangePlayerMode(opt.mode)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+
+          {/* ② 音频（EQ）—— specs/audio-fx */}
+          <section className="set-section set-section--compact audio-fx">
+            <h3 className="set-section-title">音频</h3>
+            <p className="set-section-hint">
+              10 段均衡器 · 改动即时生效并记住，关掉 EQ 时曲线仍保留在下面
+            </p>
+
+            <div className="audio-fx-actions">
+              <button
+                type="button"
+                className={`set-btn${audioFx.eqEnabled ? ' set-btn--accent' : ''}`}
+                aria-pressed={audioFx.eqEnabled}
+                onClick={() => onEqEnabled(!audioFx.eqEnabled)}
+              >
+                {audioFx.eqEnabled ? 'EQ 开' : 'EQ 关'}
+              </button>
+              <div className="audio-fx-presets" role="group" aria-label="EQ 预置">
+                {EQ_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`set-btn${
+                      audioFx.presetId === preset.id ? ' set-btn--accent' : ''
+                    }`}
+                    aria-pressed={audioFx.presetId === preset.id}
+                    title={preset.hint}
+                    onClick={() => onApplyEqPreset(preset.id)}
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 手动拖过滑块后 presetId 变成 null，于是没有任何预置高亮 ——
+                这就是"已修改"的表达。不额外加提示文字：AETHER 的视觉语言里
+                多一句解释不如让状态自己说话（见 spec §2.1）。 */}
+            <div
+              className={`audio-fx-bands${audioFx.eqEnabled ? '' : ' is-bypassed'}`}
+              role="group"
+              aria-label="EQ 频段增益"
+            >
+              {EQ_BANDS.map((band, i) => (
+                <div className="audio-fx-band" key={band.hz}>
+                  <span className="audio-fx-band-label">{band.label}</span>
+                  <input
+                    className="audio-fx-slider"
+                    type="range"
+                    aria-label={`${band.label} Hz`}
+                    min={sliderMin}
+                    max={sliderMax}
+                    step={sliderStep}
+                    value={audioFx.eqGains[i]}
+                    onChange={(e) => onEqBandGain(i, Number(e.target.value))}
+                  />
+                  <span className="audio-fx-band-db">{formatDb(audioFx.eqGains[i])}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* EQ 关着的时候要说清"还能拖"：滑块没被禁用，但声音不变，
+                用户拖了没反应会以为坏了。 */}
+            {!audioFx.eqEnabled && (
+              <p className="audio-fx-note">
+                EQ 已关闭 —— 滑块仍可调整，改动会保留，但当前不参与出声。
+              </p>
+            )}
+
+            {/* 诚实提示（spec §1.1 / §4 验收）：WPS 由 SDK 自己解码输出，
+                renderer 的 <audio> 不参与，所以这条路径上 EQ 一定无效。
+                写成"适用范围"而不是"bug"——它不是缺陷，是路径的客观边界。 */}
+            <p className="set-section-hint">
+              适用范围：Spotify Premium 全曲（WPS）路径下 EQ 不生效 —— 该路径由 SDK 直接解码输出
+            </p>
+          </section>
+
+          {/* ③ DeepSeek key */}
           <section className="set-section">
             <h3 className="set-section-title">DeepSeek API key</h3>
             <p className="set-section-hint">
@@ -253,7 +413,7 @@ export default function SettingsModal({ onClose }: Props) {
             <StatusLine status={recoKeyStatus} />
           </section>
 
-          {/* ② 渠道优先级 */}
+          {/* ④ 渠道优先级 */}
           <section className="set-section">
             <h3 className="set-section-title">渠道优先级</h3>
             <p className="set-section-hint">
@@ -262,14 +422,14 @@ export default function SettingsModal({ onClose }: Props) {
             <ChannelPriorityList />
           </section>
 
-          {/* ③ 平台账号 */}
+          {/* ⑤ 平台账号 */}
           <section className="set-section">
             <h3 className="set-section-title">平台账号</h3>
             <p className="set-section-hint">各音乐平台的登录态 · 未登录时不能跨平台匹配 ❤</p>
             <AccountsList />
           </section>
 
-          {/* ④ 库管理 */}
+          {/* ⑥ 库管理 */}
           <section className="set-section">
             <h3 className="set-section-title">库管理</h3>
             <p className="set-section-hint">
@@ -278,14 +438,14 @@ export default function SettingsModal({ onClose }: Props) {
             <LibraryManager />
           </section>
 
-          {/* ⑤ 源连接健康 */}
+          {/* ⑦ 源连接健康 */}
           <section className="set-section set-section--compact">
             <h3 className="set-section-title">源连接健康</h3>
             <p className="set-section-hint">近 24h 每个平台的搜索成功率（进程内计数）</p>
             <SourceHealthSection />
           </section>
 
-          {/* ⑥ 本地自动备份 */}
+          {/* ⑧ 本地自动备份 */}
           <section className="set-section">
             <h3 className="set-section-title">本地自动备份</h3>
             <p className="set-section-hint">每日自动备份会话快照到本地目录</p>
@@ -306,7 +466,7 @@ export default function SettingsModal({ onClose }: Props) {
             <StatusLine status={backupStatus} />
           </section>
 
-          {/* ⑦ 导出会话快照 */}
+          {/* ⑨ 导出会话快照 */}
           <section className="set-section">
             <h3 className="set-section-title">导出会话快照</h3>
             <p className="set-section-hint">加密导出全部凭据 + 收藏 + 偏好</p>
@@ -338,7 +498,7 @@ export default function SettingsModal({ onClose }: Props) {
             <StatusLine status={exportStatus} />
           </section>
 
-          {/* ⑧ 导入并合并 */}
+          {/* ⑩ 导入并合并 */}
           <section className="set-section">
             <h3 className="set-section-title">导入并合并</h3>
             <p className="set-section-hint">从 .maestro-backup 文件恢复数据</p>

@@ -38,7 +38,160 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ISSUES.md` §2.11** `LikeSyncQueue.backoffMs`: 接受可选 `rng` 参数。文件：
   `packages/server/src/music/like-sync.queue.ts`。
 
+### Fixed
+- **P0/P1/P2/P3 全量审查修掉的 3 个阻塞**（2026-09-28，review → fix）：
+  - **`afterPack-vmp.cjs` 调了不存在的入口**（`python3 -m castlabs_evs.vmp sign-pkg`
+    —— castlabs-evs 只有 `evs-vmp` / `evs-account` 两个 CLI，没有 `python3 -m
+    castlabs_evs` 的 `__main__`）。意味着**不带 `SKIP_VMP=1` 的 `npm run pack`
+    必然抛 `No module named castlabs_evs`**，「0.2 逻辑已就绪」这句话本来是不
+    成立的。现改为解析可执行文件路径（`EVS_VMP_BIN` → `~/.castlabs-evs-venv/bin/
+    evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可读错误。
+  - **打包产物白屏**（跨 P0/P1/P2/P3 的地基 bug）：`vite.config.ts` 没设 `base`，
+    prod 走 `mainWindow.loadFile()` = `file://`，vite 默认 `base='/'` 把产物入口
+    写成 `src="/assets/main-*.js"` —— 绝对路径在 `file://` 下解析到**文件系统根**，
+    index.html 和 lyrics.html（桌面歌词浮窗）一起白屏。`npm run dev` 走
+    `loadURL(http://127.0.0.1:5173)` 所以永远测不出来，只有 `npm run pack` 的
+    产物才命中——而打包冒烟一直卡在 EVS 凭据上从没真跑过。现加 `base: './'` +
+    回归测试 `renderer/src/test/build-base.test.mjs`。
+  - **桌面歌词锁定后无法解锁**（§7.2）：锁定态下浮窗把自己的齿轮藏了
+    （`{!prefs.locked && ...}` + scss `display:none`），设置面板打不开，而
+    `locked` **持久化**到 `userData/desktop-lyrics.json` —— 用户一旦锁上，
+    退出重开照样锁死且依然无解，最后只能 Cmd+Q。修法：Tray 加「桌面歌词 · 锁定
+    位置」勾选项（常驻入口；renderer 侧刻意不放，锁定时收不到鼠标事件）。
+- **P2 Lite 模式 / P3 桌面歌词浮窗审查发现的 13 个缺陷**（2026-09-28 review → fix）：
+  - **P2（#6.3）**：lite 下点 ✨ 被全屏 `RecoLoading` 接管（遮住三元素、且让
+    `LiteView` 的 `recoRunning` 分支变生产不可达死代码）→ 渲染条件排除 lite，
+    loading 交回内联 spinner，决策记进 `spec.md` §6 偏离 5；`overlayOpen` 补
+    `authError` / `showCookieFallback`（原先 lite 下按一次 Esc 关两层）；Space 让位
+    条件补 `BUTTON` / `role="button"`（空格的 click 是 keyup 合成的，keydown 的
+    `preventDefault` 会吃掉，键盘用户只能按 Enter）；从 Settings 切到任何紧凑态自动
+    关设置页（mini 下同样是全屏遮罩，同构一起修）；`LiteView.test.tsx` 的"只渲染三类
+    元素"原是自证式断言，改成「可交互元素恰好 4 个」的可证伪契约；无 DeepSeek key
+    时 ✨ 加 `is-unset` 虚线态；⛶ 退出键 `pointer-events` 随显隐切。
+  - **P3（§7.2）**：`show()` → `showInactive()`（开浮窗不再抢主窗口焦点），接口里把
+    `show()` 删掉让误用在类型上就被挡住；纯 resize 不落盘（Electron `moved` 只在
+    拖动时发 → 拉大的尺寸退出即丢）→ `on()` 加 `'resized'` 与 `moved` 共用 debounce；
+    多显示器还原 bounds 注入 `clampToVisibleDisplay`（按 `workArea` **相交**判可见，
+    位置失效只丢 x/y 保留宽高）；overlay 专属的两个 IPC 通道补 sender 校验（preload
+    是主窗口与浮窗共用的，不校验等于把「锁死用户浮窗」的权限开给任意 renderer）；
+    `getStatus()` 补 `.catch`；浮窗加歌名行（`state.title/artist` 一直在契约里推但
+    从没被读过）；浮窗不再引 Google Fonts（每次开窗一次外网请求 + 离线静默失败）。
+- **P3 桌面歌词 IPC 契约回归测试扩到 6 项**——补一条「overlay 专属通道必须有 sender
+  守卫」的**接线层**断言（controller 行为测了，但"main.ts 那两个 handler 真的调了它"
+  此前只有代码本身保证，而这个仓的教训正是接线错不会报错、只静默失效）。
+- **`reco.test` flaky 修复**——断言卡的是统计量 `hotCount >= 8`（期望 ~9.5），而
+  `pickTasteSeeds` 不注入 `rng` 时用 `Math.random`，偶发抽到 7 就红（2026-09-28 全量
+  `npm test` 炸过一次、单独重跑 5 次全绿）。现在注入 mulberry32(42)：断言强度不变，
+  结果可复现。
+- **`figma-code-connect.json` 补 SettingsModal 的两个 prop**（`playerMode` /
+  `onChangePlayerMode`）——P2 加了 Settings「① 播放模式」节但没同步 Code Connect
+  映射，`npm run test:ci` 里的 `figma-code-connect-validate` 是红的（109/110）。
+
 ### Added
+- **#7.1 10 段均衡器 EQ**（`specs/audio-fx/`）—— 31/62/125/250/500/1k/2k/4k/8k/16k
+  十段 peaking（Q=1）级联 + 8 个预置（平直/流行/摇滚/古典/人声/低音增强/高音增强/夜间）
+  + 总开关，存本地偏好并进备份集，Settings 新增「② 音频」节。
+  - `lib/audioFx.ts`：频段表 / 预置 / 归一（`normaliseGains` 把 localStorage 与备份
+    导入的脏数据挡在 Web Audio 之外 —— NaN 增益 = 静音且**不报错**）。
+  - `lib/eqChain.ts`：链构建与参数推送抽成**纯函数**。`usePlayer` 是大 hook，测它要拉
+    React 运行时 + 假 `<audio>`，而 EQ 恰恰是"写错了不报错、只听起来不对"的地方
+    （串错顺序 = 整体发糊、`.value =` = 每拖一下咔一声）。抽出来后用记录调用的假 ctx
+    就能把连接顺序和参数写法钉死。
+  - 建链只在 graph 建立时做一次，之后只改参数、**绝不重连**：EQ 节点提前建好
+    （哪怕全 0 dB），重连会发生在正在出声的时刻。
+  - 开关关闭 = 各频段 ramp 到 0 dB 而非 disconnect 真旁路（后者会咔哒），曲线保留在
+    prefs 里、重新打开即恢复。
+  - analyser 移到 EQ **之后**（声波环要反映用户听到的声音，不是 EQ 前的原始信号）；
+    `f9 → destination` 与 `f9 → analyser` 并联，analyser 创建失败也不会静音。
+  - UI 诚实标注适用范围：**Spotify WPS 路径不生效**（SDK 自己解码输出）。
+- **crossfade（C 组）本轮不做**——`<audio>` 的 `src` 由 React 绑定，双元素方案要把
+  src 改成命令式管理，会动到 P1/P2/P3 都依赖的"src 绑定"不变量，留作独立一轮。
+- **ReplayGain 明确不做**（spec §5 三条理由）：`loudness` / `replayGain` / `gain_db`
+  在 server types / renderer api / common 里零命中（没元数据可优先）；AnalyserNode
+  拿到的是"已经播过的那几秒"而不是整轨响度（算法不成立）；动态增益与"记住我的音量"
+  直接冲突。在没有元数据时宁可让用户自己拉滑块，也不要一个假的自动归一。
+
+### Added
+- **桌面歌词 IPC 契约回归测试**（`electron/src/desktop-lyrics/ipc-contract.test.ts`，
+  6 项）—— IPC 通道名拼错**不会报任何错**，只会静默失效，typecheck 和单测都
+  覆盖不到（controller 测试是直接调方法、绕过了通道名）。测试按方向分别校验
+  （renderer→main 的 `send/invoke` vs main 侧 `ipcMain.on/handle`；main→renderer
+  的 `on` vs `webContents.send`），并守住「锁定态必须存在浮窗之外的解锁出口」
+  这条产品不变量 + preload 白名单的两条不同订阅路径边界。
+
+- **桌面歌词浮窗**（NEXT-ITERATION §7.2）——中文用户刚需：独立透明无边框置顶窗，
+  随播放逐行高亮。spec `specs/desktop-lyrics/`。
+  - **main 进程**（`packages/electron/src/desktop-lyrics/`）：`prefs.ts`（偏好归一 +
+    `userData/desktop-lyrics.json` 原子落盘）、`window-options.ts`（透明/无边框/
+    `skipTaskbar`/`backgroundThrottling:false` 的纯函数窗口配置）、
+    `desktop-lyrics-controller.ts`（懒建窗口、`screen-saver` 档置顶、
+    `visibleOnAllWorkspaces`、锁定点击穿透 + hover 放行、拖动位置 debounce 落盘）。
+    BrowserWindow 经工厂注入，单测用假窗口，不依赖 electron 运行时。
+  - **播放状态单向流**：主窗口 `hooks/useDesktopLyrics.ts` 算「当前行/下一行/
+    行内进度」（进度按 5% 分桶去抖）→ main 转发 → 浮窗纯展示。浮窗**不碰
+    `<audio>`、不请求后端**，所以开关浮窗不影响播放、Web Audio graph 不动。
+  - **行号判定与 TheaterView 共用** `lib/lyrics.ts` 的 `activeLineWindow`
+    （50ms 行首容差），杜绝"浮窗和面板错行"。
+  - **第二个 HTML 入口** `lyrics.html` + 独立样式 `styles/desktop-lyrics.scss`
+    （只引 token 层；4 组配色是 token 不是硬编码，scanner 预算 0）。
+    产物 4kB JS + 8kB CSS，不拖主 bundle。
+  - **样式可调**：字号 3 档 / 4 组配色（亮·暗·青·琥珀）/ 描边开关 / 锁定，
+    都在浮窗 ⚙ 面板里；位置尺寸与偏好跨重启恢复。
+  - **入口三处同源**：Titlebar `词` 按钮、`⌘⇧D`（`⌘⇧L` 归 lite 模式）、
+    Tray「桌面歌词」勾选项 —— 任一处改动三处同步。
+  - 测试：main 侧 3 个测试文件 + 浮窗组件 10 例 + `lib/lyrics` 17 例。
+  - 未做：全局热键（`globalShortcut`）归 #7.3；逐字卡拉 OK 未做。
+- **Lite 播放模式**（NEXT-ITERATION §6.3）——第三种播放视图 `lite`：整屏只有
+  **歌名 + 上一首/下一首 + ✨ 智能推荐**，一条 spec 落地（`specs/lite-mode/`）。
+  - `PlayerMode` 从 `'theater' | 'mini'` 扩为三态，类型与读写搬进
+    `lib/storage.ts`（`STORAGE_KEYS.playerMode`），顺手进备份/还原集；
+    键名仍是裸 `player-mode`，老用户已选的 theater/mini 不丢。
+  - `components/views/LiteView.tsx`：只消费 `usePlayer` 已暴露的
+    `handlePrev` / `handleSkip`，**不复制播放逻辑**；`<audio>` 常驻 App，
+    切模式只换条件渲染分支 → Web Audio graph 不重建，往返切当前歌/队列/进度
+    天然不丢。
+  - ✨ 复用 `useReco.handleReco()`（与 TheaterView 同一入口）：无 DeepSeek key
+    时走既有「弹 key 框」友好提示。
+  - 三条切换路径：Settings 新增「① 播放模式」节（完整 / 迷你 / 极简三选一）、
+    `⌘⇧L`、lite 内 hover 显形的 `⛶` 键；`Esc` 回 theater、`Space` 播放/暂停
+    补键盘可达性（焦点在输入框 / 浮层打开时一律让位）。
+  - Electron：`player:mode` 收 `'lite'`（`preload` 类型 + `main` 态机）——
+    紧凑态从"只有 mini"泛化成 mini(600×104) / lite(480×300) 两种尺寸，
+    **mini ⇄ lite 互切不再覆盖存档的 theater bounds**（原来只有一条分支）。
+    lite 保留红绿灯（mini 那种 hover 才显的 pill 形态不适合小窗）。
+  - lite 下 titlebar / 搜索面板不渲染（`SearchPanel` 挂载条件只看 `searchOpen`，
+    进 lite 时顺带 `setSearchOpen(false)`），`.app.lite-mode` 走主题令牌背景
+    而不是 `.theater-mode` 的深空黑。
+  - 测试：`LiteView.test.tsx` 7 例（含"只渲染三类可视元素"白盒断言）、
+    `storage.test.mjs` +7 例、`SettingsModal.test.tsx` +1 例（切模式回调）。
+- **多源歌词合并去重**（NEXT-ITERATION §4「多源歌词聚合」）——歌词从
+  first-hit-wins 改成真正的**并集**：并行拉 QQ / NetEase / Deezer 的候选源，
+  按优先级把各自缺的那几行并进来，文本重复的按 400ms 时间容差去重。
+  - `packages/server/src/common/lyrics.ts`：新增纯函数 `mergeLyricSources`
+    （不碰网络，可白盒测试）+ `lyricLineKey`（全角/标点/繁简归一，
+    复用 `@maestro/common` 的 `cjkUnify`，与 catalog 匹配同一条流水线）。
+  - **时间轴对齐**：低优先级源的偏移用「共同词 delta 的众数」估计（不是中位数
+    ——副歌重复会产生离群 delta，中位数会被拖偏）。对齐后的行落回主时间轴，
+    两源各自独有的一行都能补进来。
+  - **错位源整源丢弃**：系统性偏移 > 3s（不同录音 / 人声裁剪不同）→ 整源
+    `rejected`，绝不污染时间轴；单锚点不下结论（误判会整源丢内容）。
+  - **纯文本源不参与合并**：lyrics.ovh / Deezer 无时间戳落不进时间轴，只在
+    「一个 synced 源都没有」时兜底（第三方调用口径不变）。
+  - `lyrics.service.ts`：`getLyricsAggregated` 默认并行合并，返回新增
+    `mergedFrom` / `added` / `dropped` / `rejected`；`?merge=0` 保留旧快路径。
+  - TheaterView 加 `MERGED · QQ+NETEASE (+n)` 徽章（`th-lyric-tag--merged`）。
+  - 测试：`lyrics.test.ts` +13 项（并集/去重/副歌重复/对齐/错位/纯文本/上限/
+    脏数据），`lyrics-aggregate.e2e.test.ts` 重写为 merge + 快路径双模式。
+- **歌词分享图接线 + 无歌词引导**（NEXT-ITERATION §4 收尾）——`downloadLyricsImage`
+  写了但全仓零 import，本轮把它接进 AETHER 剧场。
+  - `lib/lyricsShare.ts` 新增纯函数 `sliceLyricsWindow` / `lyricsImageFileName`：
+    **以用户点的那一行为中心**取 40 行窗口（原来永远从第 1 行截，点长歌第 80 行
+    导出的图里根本没有那句），命中行图上加粗 + accent + 左侧竖条。
+  - `App.tsx` 持副作用（`downloadLyricsImage` + 状态机 `idle/working/done/error`
+    → 2.4s 回落），`TheaterView` 纯展示传 `onExportLyrics(highlightText?)`。
+  - 无歌词态：接上一直没 UI 的「换个源找歌词」（server `/music/lyrics/search`
+    早就存在）+ 新增「去网易云提交歌词 ↗」（链搜索页带歌名歌手）。
+  - 测试：`lyricsShare.test.mjs` 9 项纯逻辑 + `TheaterView.test.tsx` 7 项交互。
 - **推荐离线评测基座**（`specs/reco-deepseek/spec.md` v2.2 段）——留一法把库里
   一部分红心歌藏起来，看推荐能不能把它们找回来，让"变好了吗"有数字可依。
   - `packages/server/src/reco/eval.ts`（新，纯函数）：留出切分（rng 可注入 → 同 seed

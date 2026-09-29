@@ -337,7 +337,12 @@ async function main() {
     const items = [{
       title: '晴天', artist: '周杰伦', album: '叶惠美', coverUrl: '/cover.jpg',
       duration: 270, bestSource: 'qq',
-      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
+      // hasCopyright 必填：parsePlayableQueue 现在用 isPlayableEntry 过滤
+      // （与 SearchPanel 的行可点性共用同一把尺子），而它第一件事就是
+      // `if (!src.hasCopyright) return false`。缺这个字段 = 判成无版权 = 整首
+      // 被丢出队列。服务端 always 填 true（search.util.ts / music.service.ts），
+      // 所以 fixture 也要给全，否则测的是一个生产中不存在的输入。
+      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1', hasCopyright: true }],
     }];
     const result = parsePlayableQueue(items, { wpsReady: false });
     check('32. parsePlayableQueue WPS 关 → pickPlayableTrack', result.tracks.length, 1);
@@ -368,7 +373,7 @@ async function main() {
     const items = [{
       title: 'Test', artist: 'Artist', album: 'Album', coverUrl: '/cover.jpg',
       duration: 200, bestSource: 'qq',
-      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
+      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1', hasCopyright: true }],
     }];
     const result = parsePlayableQueue(items, { wpsReady: true });
     check('34. WPS 开但无 spotify → 回退 pickPlayableTrack', result.tracks[0].provider, 'qq');
@@ -380,7 +385,7 @@ async function main() {
     const items = [{
       title: 'Test', artist: 'Artist', album: 'Album', coverUrl: '/cover.jpg',
       duration: 200, bestSource: null,
-      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
+      sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1', hasCopyright: true }],
     }];
     const result = parsePlayableQueue(items);
     check('35. bestSource=null → 跳过', result.tracks, []);
@@ -393,17 +398,17 @@ async function main() {
       {
         title: 'A', artist: 'X', album: 'Al', coverUrl: '/c.jpg',
         duration: 200, bestSource: 'qq',
-        sources: [{ platform: 'qq', trackId: '1', url: '/u1', mediaMid: 'm1' }],
+        sources: [{ platform: 'qq', trackId: '1', url: '/u1', mediaMid: 'm1', hasCopyright: true }],
       },
       {
         title: 'B', artist: 'Y', album: 'Bl', coverUrl: '/c2.jpg',
         duration: 180, bestSource: null,
-        sources: [{ platform: 'netease', trackId: '2', url: '/u2', mediaMid: 'm2' }],
+        sources: [{ platform: 'netease', trackId: '2', url: '/u2', mediaMid: 'm2', hasCopyright: true }],
       },
       {
         title: 'C', artist: 'Z', album: 'Cl', coverUrl: '/c3.jpg',
         duration: 220, bestSource: 'netease',
-        sources: [{ platform: 'netease', trackId: '3', url: '/u3', mediaMid: 'm3' }],
+        sources: [{ platform: 'netease', trackId: '3', url: '/u3', mediaMid: 'm3', hasCopyright: true }],
       },
     ];
     const result = parsePlayableQueue(items);
@@ -419,7 +424,7 @@ async function main() {
       title: 'T', artist: 'A', album: 'Al', coverUrl: '/c.jpg',
       duration: 200, bestSource: 'qq',
       sources: [
-        { platform: 'qq', trackId: '1', url: '/u1', mediaMid: 'm1' },
+        { platform: 'qq', trackId: '1', url: '/u1', mediaMid: 'm1', hasCopyright: true },
         { platform: 'spotify', trackId: '2', url: '/sp', mediaMid: 'm2' },
       ],
     }];

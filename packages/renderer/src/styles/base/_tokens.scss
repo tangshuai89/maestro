@@ -29,6 +29,33 @@
   --cosmic-near: #f5f0e8;
   --cosmic-far: #fafaf9;
 
+  // ── 桌面歌词浮窗（NEXT-ITERATION §7.2）────────────────────────────────
+  // 浮窗压在**任意**桌面背景上，配色不能跟着主窗口主题走（浅色壁纸 + 白字
+  // = 看不见）。所以这里给 4 组「文字 / 描边 / 强调」三元组，浮窗按用户选择
+  // 切 data-palette；描边是浮窗文字在图片/壁纸上还读得清的关键，默认开启。
+  --lyric-fg-light: #ffffff;
+  --lyric-stroke-light: #0a0a0f;
+  --lyric-accent-light: #4fd1ff;
+
+  --lyric-fg-dark: #1b1b22;
+  --lyric-stroke-dark: #fbfbff;
+  --lyric-accent-dark: #2f6bff;
+
+  --lyric-fg-cyan: #7df9ff;
+  --lyric-stroke-cyan: #04303a;
+  --lyric-accent-cyan: #00e5ff;
+
+  --lyric-fg-amber: #ffd9a0;
+  --lyric-stroke-amber: #2a1602;
+  --lyric-accent-amber: #ffb020;
+
+  // 设置面板：浮窗本体全透明，只有这块小面板要底色
+  --lyric-panel-bg: rgba(14, 14, 20, 0.86);
+  --lyric-panel-fg: #ececf2;
+  --lyric-panel-border: rgba(255, 255, 255, 0.16);
+  --lyric-panel-hover: rgba(255, 255, 255, 0.1);
+  --lyric-panel-shadow: rgba(0, 0, 0, 0.45);
+
   // Error colours (tokenised so dark mode works)
   --error-fg: #c62828;
   --error-fg-soft: rgba(198, 40, 40, 0.7);

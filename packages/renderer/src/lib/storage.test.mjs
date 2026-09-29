@@ -23,6 +23,23 @@ globalThis.localStorage = {
 };
 globalThis.window = globalThis;
 
+// storage.ts 现在有**值导入**（./audioFx 的函数），node ESM 解析不了无扩展名的
+// 相对路径 —— 注册一个 inline loader 补 .ts（与 groupLibrary / lyricsShare 测试同款）。
+// 之前 storage.ts 只 import type '../api'（类型导入运行时被擦除），所以不需要它。
+import { register } from 'node:module';
+const loaderCode = `
+import { extname } from 'node:path';
+export async function resolve(specifier, context, nextResolve) {
+  if ((specifier.startsWith('./') || specifier.startsWith('../')) && context.parentURL && context.parentURL.endsWith('.ts')) {
+    if (!extname(specifier)) {
+      try { return await nextResolve(specifier + '.ts', context); } catch {}
+    }
+  }
+  return nextResolve(specifier, context);
+}
+`;
+register('data:text/javascript,' + encodeURIComponent(loaderCode), import.meta.url);
+
 const {
   STORAGE_KEYS,
   readStoredProvider,
@@ -37,6 +54,10 @@ const {
   writeStoredDeezerPreset,
   readStoredTheme,
   writeStoredTheme,
+  readStoredPlayerMode,
+  writeStoredPlayerMode,
+  readAudioFx,
+  writeAudioFx,
   collectLocalStorage,
   restoreLocalStorage,
 } = await import('./storage.ts');
@@ -61,10 +82,12 @@ function reset() {
 
 // ── 1. STORAGE_KEYS 常量 ──────────────────────────────────────
 {
-  expect('1. STORAGE_KEYS 有 5 个 key', Object.keys(STORAGE_KEYS).length === 5);
+  // 7 个：provider / volume / quality / deezerPreset / theme / playerMode / audioFx
+  expect('1. STORAGE_KEYS 有 7 个 key', Object.keys(STORAGE_KEYS).length === 7);
   expect('1b. STORAGE_KEYS.provider = "music-provider"', STORAGE_KEYS.provider === 'music-provider');
   expect('1c. STORAGE_KEYS.volume = "maestro:volume"', STORAGE_KEYS.volume === 'maestro:volume');
   expect('1d. STORAGE_KEYS.theme = "maestro:theme"', STORAGE_KEYS.theme === 'maestro:theme');
+  expect('1e. STORAGE_KEYS.playerMode = "player-mode"', STORAGE_KEYS.playerMode === 'player-mode');
 }
 
 // ── 2. readStoredProvider：无值 → null ────────────────────────
@@ -380,6 +403,96 @@ reset();
   expect('33d. round-trip quality', readStoredQuality() === 'high');
   expect('33e. round-trip deezerPreset', readStoredDeezerPreset() === 'rock');
   expect('33f. round-trip theme', readStoredTheme() === 'dark');
+}
+
+// ── 34. playerMode（#6.3 lite 模式）──────────────────────────
+reset();
+{
+  expect('34. 默认读出 theater', readStoredPlayerMode() === 'theater');
+  writeStoredPlayerMode('mini');
+  expect('34b. 写入 mini → 读出 mini', readStoredPlayerMode() === 'mini');
+  writeStoredPlayerMode('lite');
+  expect('34c. 写入 lite → 读出 lite', readStoredPlayerMode() === 'lite');
+}
+reset();
+{
+  lsStore.set(STORAGE_KEYS.playerMode, 'kiosk'); // 非法值
+  expect('34d. 非法值回落 theater', readStoredPlayerMode() === 'theater');
+}
+reset();
+{
+  const origSetItem = lsStore.set;
+  lsStore.set = () => { throw new Error('QuotaExceeded'); };
+  let threw = false;
+  try { writeStoredPlayerMode('lite'); } catch { threw = true; }
+  expect('34e. writeStoredPlayerMode LS 异常 → 不崩', !threw);
+  lsStore.set = origSetItem;
+}
+// ── 35. playerMode 进备份集（STORAGE_KEYS 驱动）────────────────
+reset();
+{
+  writeStoredPlayerMode('lite');
+  const snapshot = collectLocalStorage();
+  reset();
+  restoreLocalStorage(snapshot);
+  expect('35. round-trip playerMode', readStoredPlayerMode() === 'lite');
+}
+
+
+// ── Audio FX（specs/audio-fx）─────────────────────────────────
+console.log('── audioFx 偏好 ──');
+{
+  ok('读不到 key 时回落默认', () => {
+    const p = readAudioFx();
+    assert.strictEqual(p.eqEnabled, false);
+    assert.strictEqual(p.eqGains.length, 10);
+    assert.strictEqual(p.eqGains.every((g) => g === 0), true);
+    assert.strictEqual(p.presetId, null);
+    assert.strictEqual(p.crossfadeSec, 0);
+  });
+  ok('写入 → 读回一致', () => {
+    writeAudioFx({
+      eqEnabled: true,
+      eqGains: [3, -2, 0, 0, 0, 0, 0, 0, 1.5, -1],
+      presetId: 'pop',
+      crossfadeSec: 4,
+    });
+    const p = readAudioFx();
+    assert.strictEqual(p.eqEnabled, true);
+    assert.deepStrictEqual(p.eqGains, [3, -2, 0, 0, 0, 0, 0, 0, 1.5, -1]);
+    assert.strictEqual(p.presetId, 'pop');
+    assert.strictEqual(p.crossfadeSec, 4);
+  });
+  ok('备份集包含 audioFx（换机后 EQ 不丢）', () => {
+    const bundle = collectLocalStorage();
+    assert.ok(bundle[STORAGE_KEYS.audioFx], 'audioFx 没进备份集');
+  });
+  ok('垃圾 JSON → 回落合法默认，不抛', () => {
+    const junks = ['{', 'null', '[]', '"str"', '{"eqGains":"nope"}', '{"eqEnabled":1}'];
+    for (const junk of junks) {
+      lsStore.set(STORAGE_KEYS.audioFx, junk);
+      const p = readAudioFx();
+      assert.strictEqual(p.eqGains.length, 10, 'junk 产出非法 eqGains: ' + junk);
+      assert.strictEqual(p.eqEnabled, false);
+      assert.strictEqual(p.crossfadeSec, 0);
+    }
+  });
+  ok('越界 / 非法 presetId 被洗成合法值', () => {
+    lsStore.set(
+      STORAGE_KEYS.audioFx,
+      JSON.stringify({
+        eqEnabled: true,
+        eqGains: [999, -999],
+        presetId: '瞎写的',
+        crossfadeSec: 1e9,
+      }),
+    );
+    const p = readAudioFx();
+    assert.deepStrictEqual(p.eqGains, [12, -12, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.strictEqual(p.presetId, null);
+    assert.strictEqual(p.crossfadeSec, 8);
+  });
+  lsStore.delete(STORAGE_KEYS.audioFx);
 }
 
 console.log(`\n🎉 storage.test: ${passed} passed, ${failed} failed`);

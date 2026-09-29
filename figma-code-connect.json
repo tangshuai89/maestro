@@ -213,7 +213,9 @@
       "reactPath": "packages/renderer/src/components/modals/SettingsModal.tsx",
       "_status": "D1_DONE",
       "props": {
-        "onClose": { "figmaProp": "(回调)", "type": "function" }
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "playerMode": { "figmaProp": "playerMode", "type": "enum[theater|mini|lite]" },
+        "onChangePlayerMode": { "figmaProp": "(回调)", "type": "function", "args": "mode: 'theater' | 'mini' | 'lite'" }
       }
     },
     {

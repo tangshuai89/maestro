@@ -662,6 +662,59 @@
   text-transform: uppercase;
 }
 
+// 歌词交互层：词句可点导出 + 导出/重搜按钮。
+// 歌词流是纯文字设计（无面板 chrome），所以交互态只用「颜色 + 下划线」，
+// 不加底色/边框，避免把文字流变成一排卡片。
+.th-lyric--clickable {
+  cursor: pointer;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+.th-lyric--clickable:hover {
+  color: color-mix(in srgb, var(--text-main) 88%, var(--accent));
+}
+.th-lyric--current.th-lyric--clickable:hover {
+  color: color-mix(in srgb, var(--text-main) 100%, var(--accent));
+}
+
+.th-lyric-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 4px;
+}
+
+.th-lyric-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: color-mix(in srgb, var(--text-main) 34%, transparent);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.th-lyric-action:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.th-lyric-action:disabled {
+  cursor: default;
+  color: color-mix(in srgb, var(--text-main) 16%, transparent);
+}
+
+// LyricsMerged：多源歌词合并徽章（MERGED · QQ+NETEASE）。
+// 低透明度 accent，和 NoLyrics tag 同族但给出「这台在正常工作」的正反馈；
+// 不抢歌词流的视觉权重，所以不加粗也不加底色。
+.th-lyric-tag--merged {
+  align-self: flex-start;
+  color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 // TrialFallback：显示 30S TRIAL Tag/Stat（cyan + 红点）
 // 设计稿 (560,640) 会落在标题带的右侧 —— 歌名最长 460px（居中于 430 → 右边界 660），
 // 长歌名时标签会被压在歌名上。改到控制带右侧的空白区：(560, 755)，与 72px 的

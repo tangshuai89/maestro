@@ -316,6 +316,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+// ── ① 播放模式三选一（segmented group）───────────────────────────
+// 复用 .set-btn 配方，选中态叠 .set-btn--accent；只是把间距收成组。
+.set-mode-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 // ── Button/Text（对应 Figma Button/Text 组件） ──────────────────
 
 .set-btn {
