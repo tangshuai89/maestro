@@ -9,11 +9,19 @@ import {
   Tray,
   Menu,
   nativeImage,
+  // 多显示器：还原浮窗历史坐标前要确认它还落在某块屏的 workArea 内。
+  screen,
 } from 'electron';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
+import {
+  DesktopLyricsController,
+  type DesktopLyricsState,
+  type OverlayLoadTarget,
+  type OverlayWindowLike,
+} from './desktop-lyrics/desktop-lyrics-controller';
 import { oauthBuffer } from './auth/oauth-buffer';
 import { logger } from './lib/logger';
 
@@ -181,6 +189,12 @@ function stopSidecar(graceMs = 0): void {
 
 let tray: Tray | null = null;
 
+/**
+ * 桌面歌词浮窗控制器（NEXT-ITERATION §7.2）。app.whenReady 里创建（要拿
+ * userData 路径），tray / IPC 都从这里取。null = 还没 ready。
+ */
+let desktopLyrics: DesktopLyricsController | null = null;
+
 interface PlaybackState {
   isPlaying: boolean;
   title?: string;
@@ -227,6 +241,38 @@ function refreshTray(): void {
     { label: '下一首', click: () => sendTrayCommand('next') },
     { type: 'separator' },
     { label: '显示主窗口', click: () => showMainWindow() },
+    {
+      label: '桌面歌词',
+      type: 'checkbox',
+      checked: desktopLyrics?.enabled ?? false,
+      click: () => {
+        desktopLyrics?.toggle();
+        refreshTray(); // 勾选态变了立刻重建，否则菜单关掉再开还是旧状态
+      },
+    },
+    {
+      // 🔴 2026-09-28 加：锁定的**唯一**解锁出口。
+      //
+      // 锁定态下浮窗自己没有任何解锁入口（齿轮被 `{!prefs.locked && ...}` +
+      // scss `display:none` 双双藏掉，设置面板打不开），而 `locked` 是**持久化**
+      // 到 userData/desktop-lyrics.json 的 —— 于是用户一旦锁上，退出重开照样
+      // locked 且依然无解，最后只能 Cmd+Q 整个应用。
+      //
+      // 为什么放 Tray 而不是主窗口 renderer：这是唯一在「浮窗不可见 + 不可点」
+      // 时仍然可达的常驻入口；Tray 菜单已是桌面歌词开关的既有载体（§6.4）。
+      // renderer 侧不放是刻意的——浮窗锁定时 renderer 根本收不到鼠标事件。
+      label: '桌面歌词 · 锁定位置',
+      type: 'checkbox',
+      enabled: desktopLyrics?.enabled ?? false, // 浮窗没开时无意义
+      checked: desktopLyrics?.locked ?? false,
+      click: (menuItem) => {
+        desktopLyrics?.handleOverlayControl({
+          action: 'lock',
+          locked: menuItem.checked,
+        });
+        refreshTray();
+      },
+    },
     {
       label: '退出 Maestro',
       click: () => {
@@ -668,18 +714,30 @@ ipcMain.on('player:state', (_event, state: PlaybackState) => {
 });
 
 // ── Player mode → window size ─────────────────────────────────────────────
-// renderer 在 theater ↔ mini 切换时 send 'player:mode'。mini 把窗口收成
-// 悬浮小条（Apple Music miniPlayer 形态），theater 恢复切入前的 bounds。
+// renderer 在 theater ↔ mini ↔ lite 切换时 send 'player:mode'。两个紧凑态
+// （mini 悬浮小条 / lite 极简小窗）把窗口收成各自的形态，theater 恢复切入前
+// 的 bounds/maximized/fullscreen。mini ⇄ lite 之间直接改尺寸，不重存档 ——
+// 否则第二次切会把「已经是小窗」当成 theater 存回去。
 // 与 'player:state' 同在 module 顶层注册（ipcMain.on 不受 Bug #1 影响——
 // 那是 ipcMain.handle 的 invoke 时序问题）。
 
 const NORMAL_MIN_SIZE = { width: 960, height: 640 };
-// 600×104 ≈ Apple Music miniPlayer 形态：整条 pill 即窗口（hiddenInset
-// titlebar 不占地），pill 四周留 6px 边距 + 左上净空给红绿灯。
-const MINI_SIZE = { width: 600, height: 104 };
-const MINI_MIN_SIZE = { width: 460, height: 96 };
+// 紧凑态各自的尺寸。mini = 600×104 ≈ Apple Music miniPlayer 形态（整条 pill
+// 即窗口，hiddenInset titlebar 不占地，四周留 6px 边距 + 左上净空给红绿灯）；
+// lite = 480×300，容得下「歌名 + ◀▶ + ✨」的竖排（specs/lite-mode §4）。
+const COMPACT_SIZE: Record<CompactMode, { width: number; height: number }> = {
+  mini: { width: 600, height: 104 },
+  lite: { width: 480, height: 300 },
+};
+const COMPACT_MIN_SIZE: Record<CompactMode, { width: number; height: number }> = {
+  mini: { width: 460, height: 96 },
+  lite: { width: 360, height: 240 },
+};
 
-/** 切 mini 前的主窗口状态；null = 当前不在 mini。 */
+/** 紧凑（mini / lite）模式；null = 当前是 theater。 */
+type CompactMode = 'mini' | 'lite';
+
+/** 从 theater 切进紧凑态前的主窗口状态；null = 当前不在紧凑态。 */
 let theaterWindowState: {
   bounds: Electron.Rectangle;
   maximized: boolean;
@@ -698,53 +756,61 @@ function setLightsVisible(win: BrowserWindow, visible: boolean): void {
   win.setWindowButtonVisibility(visible); // 双保险，不同版本行为不一
 }
 
-ipcMain.on('player:mode', (_event, mode: 'theater' | 'mini') => {
+/** 应用某个紧凑态的尺寸（水平居中、y 不动 —— 标题栏留在原位）。 */
+function applyCompactSize(win: BrowserWindow, next: CompactMode): void {
+  const saved = theaterWindowState;
+  if (win.isDestroyed() || !saved) return;
+  const size = COMPACT_SIZE[next];
+  const min = COMPACT_MIN_SIZE[next];
+  win.setMinimumSize(min.width, min.height);
+  win.setBounds(
+    {
+      x: saved.bounds.x + Math.round((saved.bounds.width - size.width) / 2),
+      y: saved.bounds.y,
+      width: size.width,
+      height: size.height,
+    },
+    true, // macOS animate
+  );
+}
+
+ipcMain.on('player:mode', (_event, mode: 'theater' | 'mini' | 'lite') => {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
-  if (mode !== 'mini' && mode !== 'theater') return;
+  if (mode !== 'mini' && mode !== 'lite' && mode !== 'theater') return;
 
-  if (mode === 'mini') {
-    if (theaterWindowState) return; // 已在 mini —— 别覆盖保存的 bounds
+  if (mode === 'theater') {
+    const saved = theaterWindowState;
+    theaterWindowState = null;
+    win.setMinimumSize(NORMAL_MIN_SIZE.width, NORMAL_MIN_SIZE.height);
+    setLightsVisible(win, true);
+    if (!saved) return;
+    win.setBounds(saved.bounds, true);
+    if (saved.maximized) win.maximize();
+    else if (saved.fullScreen) win.setFullScreen(true);
+    return;
+  }
+
+  const next: CompactMode = mode;
+  // theater → 紧凑态：这一刻的窗口状态才是"要还原回去"的那份，存一次。
+  if (!theaterWindowState) {
     theaterWindowState = {
       bounds: win.getNormalBounds(),
       maximized: win.isMaximized(),
       fullScreen: win.isFullScreen(),
     };
-    const applyMini = () => {
-      const s = theaterWindowState;
-      if (win.isDestroyed() || !s) return;
-      win.setMinimumSize(MINI_MIN_SIZE.width, MINI_MIN_SIZE.height);
-      win.setBounds(
-        {
-          // 水平居中收缩、y 不动 —— titlebar 留在原位，窗口往下收成一条
-          x: s.bounds.x + Math.round((s.bounds.width - MINI_SIZE.width) / 2),
-          y: s.bounds.y,
-          width: MINI_SIZE.width,
-          height: MINI_SIZE.height,
-        },
-        true, // macOS animate
-      );
-    };
-    if (win.isFullScreen()) {
-      // setBounds 在全屏退出动画期间会被吞 → 等 leave-full-screen 再缩
-      win.once('leave-full-screen', applyMini);
-      win.setFullScreen(false);
-    } else {
-      if (win.isMaximized()) win.unmaximize();
-      applyMini();
-    }
-    // mini = 干净 pill：红绿灯默认收起来，hover 窗口时 renderer 再让显示
-    setLightsVisible(win, false);
-  } else {
-    const s = theaterWindowState;
-    theaterWindowState = null;
-    win.setMinimumSize(NORMAL_MIN_SIZE.width, NORMAL_MIN_SIZE.height);
-    setLightsVisible(win, true);
-    if (!s) return;
-    win.setBounds(s.bounds, true);
-    if (s.maximized) win.maximize();
-    else if (s.fullScreen) win.setFullScreen(true);
   }
+  if (win.isFullScreen()) {
+    // setBounds 在全屏退出动画期间会被吞 → 等 leave-full-screen 再缩
+    win.once('leave-full-screen', () => applyCompactSize(win, next));
+    win.setFullScreen(false);
+  } else {
+    if (win.isMaximized()) win.unmaximize();
+    applyCompactSize(win, next);
+  }
+  // mini = 干净 pill：红绿灯默认收起来，hover 窗口时 renderer 再让显示。
+  // lite 有 ⛶ 退出键 + 足够大的内容区，红绿灯保留（关窗/关应用的常规出口）。
+  setLightsVisible(win, next !== 'mini');
 });
 
 /** mini 模式红绿灯显隐（macOS only）：renderer 用 mousemove/mouseleave
@@ -754,6 +820,63 @@ ipcMain.on('window-buttons:visibility', (_event, visible: unknown) => {
     setLightsVisible(mainWindow, Boolean(visible));
   }
 });
+
+// ── 桌面歌词浮窗 IPC ───────────────────────────────────────────────────────
+// handler 统一在 app.whenReady 里注册（与既有 ipcMain.handle 同规，见 main.ts
+// Bug #1 注记）。主窗口推播放状态 / 开关浮窗；浮窗回报设置与 hover。
+
+function registerDesktopLyricsIpc(): void {
+  /** 主窗口 → main：当前行 / 下一行 / 行内进度（renderer 已做去抖）。 */
+  ipcMain.on('desktop-lyrics:state', (_event, state: DesktopLyricsState) => {
+    if (!state || typeof state !== 'object') return;
+    desktopLyrics?.pushState(state);
+  });
+
+  /** Titlebar 按钮 / 应用内快捷键：开关浮窗。 */
+  ipcMain.on('desktop-lyrics:set-enabled', (_event, enabled: unknown) => {
+    desktopLyrics?.setEnabled(Boolean(enabled));
+  });
+
+  /** 主窗口首帧读一次开关态（避免图标闪一下未激活的样子）。 */
+  ipcMain.handle('desktop-lyrics:status', () =>
+    desktopLyrics?.snapshot() ?? { enabled: false, locked: false },
+  );
+
+  /**
+   * 下面两个通道**只认浮窗自己**发来的消息。
+   *
+   * preload 是主窗口和浮窗共用的同一份桥，主窗口的
+   * `window.electronAPI.desktopLyrics.control()` 走的是完全一样的代码路径 ——
+   * 不校验 sender 就等于把「关掉 / 锁死用户浮窗」的权限开给了任意 renderer。
+   * 判据是 webContents 引用相等：浮窗自己发的照常通过（同一 webContents）。
+   */
+  const fromOverlay = (sender: unknown): boolean =>
+    desktopLyrics?.isOverlaySender(sender) ?? false;
+
+  /** 浮窗 → main：关闭 / 锁定 / 改样式。 */
+  ipcMain.on(
+    'desktop-lyrics:overlay:control',
+    (
+      event,
+      msg: { action?: string; locked?: boolean; prefs?: Record<string, unknown> },
+    ) => {
+      if (!fromOverlay(event.sender)) return;
+      if (!msg || typeof msg.action !== 'string') return;
+      if (msg.action !== 'close' && msg.action !== 'lock' && msg.action !== 'prefs') return;
+      desktopLyrics?.handleOverlayControl({
+        action: msg.action,
+        locked: msg.locked,
+        prefs: msg.prefs as never,
+      });
+    },
+  );
+
+  /** 浮窗 → main：锁定态下鼠标移入/移出（临时解除点击穿透）。 */
+  ipcMain.on('desktop-lyrics:overlay:hover', (event, msg: { inside?: unknown }) => {
+    if (!fromOverlay(event.sender)) return;
+    desktopLyrics?.handleOverlayHover(Boolean(msg?.inside));
+  });
+}
 
 // ── App lifecycle ───────────────────────────────────────────────────────────
 
@@ -915,6 +1038,54 @@ app.whenReady().then(async () => {
     status: widevineStatus,
   }));
 
+  // ── 桌面歌词浮窗（§7.2）────────────────────────────────────────────────
+  // 放在 tray / IPC 注册之前：tray 菜单项要读 controller.enabled，
+  // 浮窗开关态变化也要回刷 tray 勾选。
+  desktopLyrics = new DesktopLyricsController({
+    userDataDir: app.getPath('userData'),
+    preloadPath: path.join(__dirname, 'preload.js'),
+    platform: process.platform,
+    createWindow: (opts) => new BrowserWindow(opts) as unknown as OverlayWindowLike,
+    loadTarget: (): OverlayLoadTarget =>
+      isDev
+        ? { kind: 'url', url: 'http://127.0.0.1:5173/lyrics.html' }
+        : {
+            kind: 'file',
+            file: path.join(process.resourcesPath, 'renderer', 'lyrics.html'),
+          },
+    // 历史坐标可能指向一块已经不存在的显示器（外接屏拔了、分辨率改了）。
+    // 判据用「矩形与某块屏 workArea 是否相交」而不是「x/y 是否在范围内」——
+    // 贴着屏幕边缘只露一半也算看得见，不该被无谓地重摆。
+    // 失效时返回 null：window-options 会丢掉 x/y、保留宽高。
+    clampToVisibleDisplay: (b) => {
+      try {
+        const onScreen = screen.getAllDisplays().some((d) => {
+          const w = d.workArea;
+          return (
+            b.x < w.x + w.width &&
+            b.x + b.width > w.x &&
+            b.y < w.y + w.height &&
+            b.y + b.height > w.y
+          );
+        });
+        return onScreen ? b : null;
+      } catch (err) {
+        // screen 在 app ready 前不可用；查不到就按老行为放行，别把浮窗弄丢。
+        logger.warn('desktop-lyrics: clampToVisibleDisplay failed:', err);
+        return b;
+      }
+    },
+    log: (msg) => logger.warn(msg),
+  });
+  desktopLyrics.onChanged((snap) => {
+    refreshTray();
+    // 主窗口 Titlebar 的按钮图标要跟着 Tray / 浮窗面板的变化走。
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop-lyrics:changed', snap);
+    }
+  });
+  registerDesktopLyricsIpc();
+
   // 1. 启动 sidecar（prod 模式才有），等它就绪
   try {
     await startSidecar();
@@ -925,6 +1096,10 @@ app.whenReady().then(async () => {
 
   // 2. 打开主窗口
   createWindow();
+
+  // 上次退出时浮窗是开着的 → 本次直接开窗（否则偏好里的 enabled=true 没人消费）。
+  // 放在主窗口之后：浮窗开得比主窗口早会先闪一屏「暂无歌词」。
+  if (desktopLyrics?.enabled) desktopLyrics.setEnabled(true);
 
   // 3. 托盘常驻 + 自定义 Dock 图标（dev 也生效，方便验证图标）
   createTray();
@@ -944,6 +1119,8 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  // 浮窗：把拖动中的位置补落盘 + 关窗（否则拖一半退出会丢位置）。
+  desktopLyrics?.dispose();
   // T10 (consistency-fixes G1)：发 SIGTERM 后等 ≤500ms 让 sidecar flushSync。
   // 旧实现：直接 kill('SIGTERM') 不等落定 → sidecar 200ms debounce 内的写入丢失。
   stopSidecar(500);
