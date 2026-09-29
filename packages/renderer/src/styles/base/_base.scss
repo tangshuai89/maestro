@@ -11,6 +11,38 @@
 @tailwind components;
 @tailwind utilities;
 
+// ── Tailwind CSS 变量兜底（2026-09-29）─────────────────────────────
+// 上面的注释解释了为什么**不引 @tailwind base（Preflight）**：Preflight 的
+// reset 部分会把 AETHER 的 button / input / a 默认样式覆盖掉，4 档 theater
+// visual baseline 全飘红。
+//
+// 但 Preflight 还干了一件容易被忽略的事：**给所有元素初始化 `--tw-*`
+// 变量**。缺了它，任何用到这些变量的 utility 都会**静默失效**——
+// CSS 规范里 `transform: translate(var(--tw-translate-x), ...)` 在变量未
+// 定义时是 invalid at computed-value time，整条声明直接作废（不是回退，
+// 是 transform 变成 none / 继承）。
+//
+// 实测症状（2026-09-29）：shadcn `DialogContent` 的居中写法
+// `fixed left-[50%] translate-x-[-50%] translate-y-[-50%]` → left/top 生效
+// 但 translate 整条失效 → modal 从屏幕中线往右铺开、右半截出屏、
+// 「生成」按钮被裁掉。看起来像"布局歪了"，实际是一个 CSS 变量没定义。
+//
+// 这里只补 Preflight 的**变量初始化**部分（`*{}` 全选但只设变量、不碰任何
+// 声明的 reset），transform / rotate / skew / scale 这一族正是 shadcn 组件
+// 实际用到的那部分。新增依赖其它 `--tw-*` 的 utility 时，请一并在此补上
+// 对应变量的初值（值取自 Tailwind v3 Preflight）。
+*,
+::before,
+::after {
+  --tw-translate-x: 0;
+  --tw-translate-y: 0;
+  --tw-rotate: 0;
+  --tw-skew-x: 0;
+  --tw-skew-y: 0;
+  --tw-scale-x: 1;
+  --tw-scale-y: 1;
+}
+
 // The <body> base: typography + the layered cover-driven background wash.
 // (Font files themselves are loaded via a <link> in index.html; here we
 // just apply the stacks from --font-*.)

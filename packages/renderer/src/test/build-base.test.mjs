@@ -9,7 +9,7 @@
 // Run: node src/test/build-base.test.mjs
 
 import * as assert from 'node:assert';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,6 +64,37 @@ function main() {
         );
       }
     }
+  });
+
+  // ── 3. Tailwind --tw-* 变量兜底必须在产物里 ─────────────────────
+  // 背景（2026-09-29）：项目刻意不引 Tailwind Preflight（它的 reset 会覆盖
+  // AETHER 的 button/input 样式，4 档 theater visual baseline 全飘红）。但
+  // Preflight 还负责初始化 `--tw-*` 变量，缺了它 → `.translate-x-[-50%]`
+  // 的 `transform: translate(var(--tw-translate-x), var(--tw-translate-y))`
+  // 因 var 无定义而**整条作废** → shadcn Dialog 居中失效、modal 铺出屏幕。
+  // 注意它不是"回退到 none"就能接受的静默失败，视觉上像布局随机歪掉。
+  check('3. dist 产物里有 --tw-transform 系变量的 `*{}` 兜底初始化', () => {
+    let found = false;
+    for (const entry of ['index.html', 'lyrics.html']) {
+      const file = resolve(pkgRoot, 'dist', entry);
+      if (!existsSync(file)) continue;
+      // HTML 里内联的 CSS 也算（dev 模式与产物两条路径都要覆盖）
+      const html = readFileSync(file, 'utf8');
+      if (/--tw-translate-x:\s*0/.test(html)) found = true;
+    }
+    const assetsDir = resolve(pkgRoot, 'dist', 'assets');
+    if (existsSync(assetsDir)) {
+      for (const f of readdirSync(assetsDir)) {
+        if (!f.endsWith('.css')) continue;
+        const css = readFileSync(resolve(assetsDir, f), 'utf8');
+        if (/--tw-translate-x:\s*0/.test(css)) found = true;
+      }
+    }
+    assert.ok(
+      found,
+      '产物里找不到 `--tw-translate-x: 0` 的通配初始化 —— ' +
+        'Tailwind transform 系 utility（shadcn Dialog 居中等）会静默失效',
+    );
   });
 
   console.log(`\n${failed === 0 ? '🎉' : '⚠️ '} build-base.test: ${passed} passed, ${failed} failed`);
