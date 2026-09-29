@@ -32,6 +32,8 @@ export const EQ_Q = 1;
 export function createEqChain(
   host: EqChainHost,
   bands: readonly { hz: number }[] = EQ_BANDS,
+  /** `<audio>` 的 MediaElementAudioSourceNode。传了就接成 `source → f0`。 */
+  source?: AudioNode,
 ): BiquadFilterNode[] {
   const filters: BiquadFilterNode[] = [];
   for (const band of bands) {
@@ -43,7 +45,15 @@ export function createEqChain(
     filters.push(f);
   }
   for (let i = 0; i < filters.length - 1; i++) filters[i].connect(filters[i + 1]);
-  if (filters.length > 0) filters[filters.length - 1].connect(host.destination);
+  // 🔴 source 必须接在这里。`createMediaElementSource` 一旦调用，<audio> 的
+  // 输出就**永久改路由**到这张图上（不再直连扬声器）—— 漏掉这一行 = 全静音，
+  // 而且没有任何报错（2026-09-29 真的踩了一次：EQ 改造把原先的
+  // `src.connect(analyser)` 删掉却没补 `src.connect(filters[0])`，
+  // 症状是"能取到流、能搜索、就是不响"）。
+  if (source && filters.length > 0) source.connect(filters[0]);
+  // **不接 destination**：末端接谁由调用方决定（usePlayer 串到 analyser 上，
+  // 让 destination 只收到一条路 —— f9 同时接 destination 和 analyser→destination
+  // 会让 destination 把同一份信号加两遍，白白 +6dB）。
   return filters;
 }
 

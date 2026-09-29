@@ -297,16 +297,19 @@ export function usePlayer(
       // EQ 链（specs/audio-fx §2.1）：10 段 peaking **在建立时就插进去**，
       // 即使增益全 0。之后只改 gain 参数，绝不重连 —— 重连发生在正在出声的
       // 时刻必然咔哒（详见 spec §7 风险）。
-      const filters = createEqChain(ctx, EQ_BANDS);
+      // source 一起传进去：createMediaElementSource 之后 <audio> 的输出**永久**
+      // 改路由到这张图上，不显式 connect 就是全静音（无报错，见 eqChain.ts 注释）。
+      const filters = createEqChain(ctx, EQ_BANDS, src);
       eqFiltersRef.current = filters;
 
       const node = ctx.createAnalyser();
       node.fftSize = 256;
       node.smoothingTimeConstant = 0.72;
-      // analyser 放在 EQ **之后**：声波环要反映用户听到的声音（EQ 开了就该看到
-      // 频谱变化），不是反映 EQ 之前的原始信号。
-      // 注意 createEqChain 已经把 f9 接到了 destination，这里再接 analyser ——
-      // Web Audio 允许多路输出，destination 收到的是 EQ 后的信号，analyser 也一样。
+      // 串成 source → f0 → … → f9 → analyser → destination（**单路**）：
+      // analyser 放在 EQ 之后，声波环要反映用户听到的声音（EQ 开了就该看到频谱
+      // 变化），不是反映 EQ 之前的原始信号。
+      // 千万别再把 f9 单独接一次 destination —— destination 会把两条路上的
+      // 同一份信号相加，白白 +6dB。
       filters[filters.length - 1]?.connect(node);
       node.connect(ctx.destination);
       audioCtxRef.current = ctx;

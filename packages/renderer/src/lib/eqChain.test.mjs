@@ -51,6 +51,16 @@ function makeFilter(tag) {
   };
 }
 
+/** 记录 connect 调用的假 source（MediaElementAudioSourceNode 的替身）。 */
+function makeSource(tag) {
+  const calls = [];
+  return {
+    tag,
+    calls,
+    connect: (node) => calls.push({ kind: 'connect', to: node && node.tag }),
+  };
+}
+
 function makeHost(n = 10) {
   const filters = [];
   let i = 0;
@@ -98,7 +108,7 @@ async function main() {
     }
   });
 
-  check('2. 串接顺序 f0→f1→…→f9→destination', () => {
+  check('2. 段间串接顺序 f0→f1→…→f9（末端由调用方接）', () => {
     const { host, filters } = makeHost();
     createEqChain(host, EQ_BANDS);
     const conns = filters.map((f) => f.calls.find((c) => c.kind === 'connect'));
@@ -106,16 +116,41 @@ async function main() {
       assert.ok(conns[i], `第 ${i} 段没有 connect`);
       assert.strictEqual(conns[i].to, `f${i + 1}`, `第 ${i} 段接错了`);
     }
-    assert.strictEqual(conns[9].to, 'destination', '最后一段没接 destination');
+    assert.strictEqual(
+      filters[9].calls.filter((c) => c.kind === 'connect').length,
+      0,
+      'f9 不该由本函数接 destination —— 调用方要串 analyser（见用例 4）',
+    );
   });
 
-  check('3. source 不直接接 destination（否则 EQ 被短路）', () => {
-    // createEqChain 不碰 source；这里断言它**只**创建滤波器并串联，
-    // 没有把最后一节接到别处（destination 之外的多余连接 = 信号被复制）
+  // 🔴 这条是 2026-09-29 那个"能搜索能取流就是不响"的回归测试。
+  // createMediaElementSource 之后 <audio> 输出永久改路由到 Web Audio 图上，
+  // 漏掉 source→f0 这一行 = 全静音且**没有任何报错**（当时 8 个测试全绿，
+  // 因为没有一个断言 source 有没有被接上）。这条断言专门守它。
+  check('3. source 必须接到 f0（漏了就是全静音，且不报错）', () => {
+    const { host, filters } = makeHost();
+    const source = makeSource('src');
+    createEqChain(host, EQ_BANDS, source);
+    const conn = source.calls.find((c) => c.kind === 'connect');
+    assert.ok(conn, 'source 没有被 connect —— 音频会永久静音');
+    assert.strictEqual(conn.to, 'f0', 'source 必须接链首 f0，不是 f9 或 destination');
+    assert.strictEqual(
+      source.calls.filter((c) => c.kind === 'connect').length,
+      1,
+      'source 只接一次（接两次 = 信号叠加）',
+    );
+  });
+
+  check('4. 不传 source 时不连任何东西（容忍 graph 未建）', () => {
     const { host, filters } = makeHost();
     createEqChain(host, EQ_BANDS);
     const allConnects = filters.flatMap((f) => f.calls.filter((c) => c.kind === 'connect'));
-    assert.strictEqual(allConnects.length, 10, '连接数应该是 10（9 内部 + 1 到 destination）');
+    assert.strictEqual(allConnects.length, 9, '只有 9 条段间连接，没有任何对外连接');
+    assert.strictEqual(
+      filters[9].calls.filter((c) => c.kind === 'connect').length,
+      0,
+      '末端不接 destination（destination 只应收到 analyser 这一条路的信号）',
+    );
   });
 
   // ── 4. 推参数 ──────────────────────────────────────────────
