@@ -190,7 +190,9 @@
       "_status": "D1_DONE",
       "props": {
         "onPlay": { "figmaProp": "(回调)", "type": "function", "args": "items: UnifiedSearchItem[], index: number" },
-        "onClose": { "figmaProp": "(回调)", "type": "function" }
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "onOpenNL": { "figmaProp": "(回调)", "type": "function?", "args": "—（打开 NL 歌单弹窗）" },
+        "wpsReady": { "figmaProp": "state", "type": "boolean?", "default": "undefined", "map": { "true": "connected", "false": "disconnected" }, "desc": "Spotify Web Playback SDK 是否已连；决定 Spotify 独占源算不算能出声" }
       }
     },
     {
@@ -213,7 +215,13 @@
       "reactPath": "packages/renderer/src/components/modals/SettingsModal.tsx",
       "_status": "D1_DONE",
       "props": {
-        "onClose": { "figmaProp": "(回调)", "type": "function" }
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "playerMode": { "figmaProp": "playerMode", "type": "enum[theater|mini|lite]" },
+        "onChangePlayerMode": { "figmaProp": "(回调)", "type": "function", "args": "mode: 'theater' | 'mini' | 'lite'" },
+        "audioFx": { "figmaProp": "state", "type": "object", "desc": "EQ 偏好镜像：eqEnabled / eqGains[10] / presetId / crossfadeSec（specs/audio-fx）" },
+        "onEqEnabled": { "figmaProp": "(回调)", "type": "function", "args": "enabled: boolean" },
+        "onEqBandGain": { "figmaProp": "(回调)", "type": "function", "args": "index: number, dB: number" },
+        "onApplyEqPreset": { "figmaProp": "(回调)", "type": "function", "args": "presetId: string" }
       }
     },
     {

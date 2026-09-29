@@ -1,0 +1,284 @@
+// ─────────────────────────────────────────────────────────────────────────
+// 桌面歌词浮窗的独立样式入口（NEXT-ITERATION §7.2）。
+//
+// 浮窗是第二个 BrowserWindow + 第二个 HTML 入口，不能挂在 main.scss 上 ——
+// 那样主窗口会把整套 theater/搜索/弹窗样式都下载一遍。只引 token 层（浮窗
+// 需要 --lyric-* 配色令牌）+ 浮层自己的规则。
+//
+// 注意：本文件所有颜色都来自 var(--lyric-*)，硬编码预算为 0
+// （见 scripts/scan-hardcoded-colors.mjs）。
+// ─────────────────────────────────────────────────────────────────────────
+
+@use 'base/tokens';
+@use 'base/tokens.generated' as generated;
+@use 'base/tokens-bridge';
+
+:root {
+  color-scheme: dark;
+}
+
+// ── 配色选择 ───────────────────────────────────────────────────────────────
+// 令牌层给的是 4 组三元组，这里按用户选择映射成语义名。语义名只在浮窗内用，
+// 不污染主窗口（主窗口没有浮窗，也不需要为它背这些变量）。
+.lyric-overlay[data-palette='light'] {
+  --lyric-fg: var(--lyric-fg-light);
+  --lyric-stroke: var(--lyric-stroke-light);
+  --lyric-accent: var(--lyric-accent-light);
+}
+.lyric-overlay[data-palette='dark'] {
+  --lyric-fg: var(--lyric-fg-dark);
+  --lyric-stroke: var(--lyric-stroke-dark);
+  --lyric-accent: var(--lyric-accent-dark);
+}
+.lyric-overlay[data-palette='cyan'] {
+  --lyric-fg: var(--lyric-fg-cyan);
+  --lyric-stroke: var(--lyric-stroke-cyan);
+  --lyric-accent: var(--lyric-accent-cyan);
+}
+.lyric-overlay[data-palette='amber'] {
+  --lyric-fg: var(--lyric-fg-amber);
+  --lyric-stroke: var(--lyric-stroke-amber);
+  --lyric-accent: var(--lyric-accent-amber);
+}
+
+// ── 窗口本体 ───────────────────────────────────────────────────────────────
+body.lyric-overlay-body {
+  margin: 0;
+  background: transparent; // 透明窗的关键：body 不铺底色
+  overflow: hidden;
+  user-select: none;
+  cursor: grab;
+}
+
+.lyric-overlay {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 100vh;
+  padding: 0 28px;
+  // 整条是拖动区（右上角的设置按钮单独 no-drag）
+  -webkit-app-region: drag;
+  // 字号倍率：用户在浮窗面板里调，主进程存盘后经 prefs 下发
+  --lyric-scale: 1;
+  --lyric-size: calc(30px * var(--lyric-scale));
+  --lyric-next-size: calc(18px * var(--lyric-scale));
+}
+
+// ── 歌词行 ─────────────────────────────────────────────────────────────────
+.lyric-line {
+  margin: 0;
+  // 见 lyrics.html 的说明：浮窗不引 Google Fonts，中文走系统字体栈
+  font-family: -apple-system, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--lyric-fg);
+  // 描边靠 -webkit-text-stroke（macOS/Chromium 都支持），压在任意壁纸上都读得清
+  -webkit-text-stroke: calc(1px * var(--lyric-scale)) var(--lyric-stroke);
+  paint-order: stroke fill;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: lyric-line-in 0.18s var(--ease-out, ease-out) both;
+}
+
+.lyric-line--current {
+  font-size: var(--lyric-size);
+}
+
+// 歌名行（state.title/artist）：桌面歌词唯一的"这是谁的歌"标识。刻意压得很轻
+// ——字号约为歌词的一半、透明度 45%（与下一行同档），不跟当前行抢视线。
+// 描边跟随 lyric-line 的开关，开关掉时也不留黑影。
+.lyric-song {
+  font-size: calc(var(--lyric-size) * 0.5);
+  line-height: 1.2;
+  opacity: 0.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.lyric-line--next {
+  font-size: var(--lyric-next-size);
+  // 下一行只做预告，压到 45% 透明度让层级一眼分明
+  opacity: 0.45;
+}
+
+// 关掉描边：用户在纯色壁纸上不需要那圈黑影
+.lyric-overlay[data-stroke='off'] .lyric-line,
+.lyric-overlay[data-stroke='off'] .lyric-song {
+  -webkit-text-stroke: 0 transparent;
+}
+
+// 暂停：整块降到 55%，并在当前行前挂 ‖ 标记（不占位、不抖动）
+.lyric-overlay[data-playing='false'] .lyric-line {
+  opacity: 0.55;
+}
+
+.lyric-paused-mark {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.62em;
+  margin-right: 0.35em;
+  color: var(--lyric-accent);
+  vertical-align: 0.12em;
+}
+
+// ── 行内进度 ───────────────────────────────────────────────────────────────
+.lyric-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--lyric-fg) 18%, transparent);
+  overflow: hidden;
+}
+
+.lyric-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--lyric-accent);
+  transition: width 0.12s linear;
+}
+
+// ── 无歌词 ─────────────────────────────────────────────────────────────────
+.lyric-empty {
+  margin: 0;
+  // 见 lyrics.html 的说明：浮窗不引 Google Fonts，中文走系统字体栈
+  font-family: -apple-system, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
+  font-size: calc(17px * var(--lyric-scale));
+  font-weight: 500;
+  text-align: center;
+  color: var(--lyric-fg);
+  opacity: 0.7;
+  -webkit-text-stroke: calc(1px * var(--lyric-scale)) var(--lyric-stroke);
+  paint-order: stroke fill;
+}
+
+// ── 设置入口 ───────────────────────────────────────────────────────────────
+.lyric-gear {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--lyric-fg);
+  background: var(--lyric-panel-bg);
+  border: 1px solid var(--lyric-panel-border);
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-app-region: no-drag; // 拖动区里的例外，否则点不动
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+// 锁定时不显示：锁定 = 只看不碰，设置面板是编辑动作
+.lyric-overlay[data-locked='true'] .lyric-gear {
+  display: none;
+}
+
+.lyric-overlay:not([data-locked='true']):hover .lyric-gear,
+.lyric-gear[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.lyric-gear:hover {
+  background: color-mix(in srgb, var(--lyric-panel-bg) 80%, var(--lyric-fg));
+}
+
+// ── 设置面板 ───────────────────────────────────────────────────────────────
+.lyric-settings {
+  position: absolute;
+  top: 34px;
+  right: 10px;
+  z-index: 2;
+  width: 208px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: -apple-system, 'PingFang SC', system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--lyric-panel-fg);
+  background: var(--lyric-panel-bg);
+  border: 1px solid var(--lyric-panel-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px var(--lyric-panel-shadow);
+  -webkit-app-region: no-drag;
+  animation: lyric-line-in 0.16s var(--ease-out, ease-out) both;
+}
+
+.lyric-settings__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lyric-settings__label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.lyric-settings__row {
+  display: flex;
+  gap: 6px;
+}
+
+.lyric-chip {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--lyric-panel-fg);
+  background: transparent;
+  border: 1px solid var(--lyric-panel-border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.lyric-chip:hover {
+  background: var(--lyric-panel-hover);
+}
+
+.lyric-chip[aria-pressed='true'] {
+  border-color: var(--lyric-accent);
+  color: var(--lyric-accent);
+}
+
+.lyric-chip--swatch {
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.lyric-chip--close {
+  color: var(--lyric-panel-fg);
+  border-color: color-mix(in srgb, var(--lyric-panel-fg) 30%, transparent);
+}
+
+@keyframes lyric-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric-line,
+  .lyric-settings {
+    animation: none;
+  }
+  .lyric-progress__fill {
+    transition: none;
+  }
+}

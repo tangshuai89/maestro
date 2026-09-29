@@ -88,6 +88,10 @@ const {
   searchTracks,
   searchUnified,
   searchOne,
+  isSourcePlayable,
+  isPlayableEntry,
+  playableReason,
+  unplayableText,
 } = api;
 
 let passed = 0;
@@ -502,6 +506,124 @@ reset();
   expect('38d. versions[0].sources[0].trackId = n1', it.versions[0].sources[0].trackId === 'n1');
   expect('38e. versions[0] 带版本元数据', it.versions[0].title === '稻香' && it.versions[0].duration === 223);
   expect('38f. vipLocked 透传到 source', it.sources[0].vipLocked === true && it.versions[0].sources[0].vipLocked === true);
+}
+
+// ── 39. searchOne：noPreview 透传（Spotify 无 preview_url）────
+reset();
+{
+  mockResponse = new Response(
+    JSON.stringify({
+      items: [{
+        id: 'sp1', provider: 'spotify', title: '浓缩蓝鲸', artist: 'Jude Chiu',
+        album: '浓缩蓝鲸', coverUrl: '/c.jpg', audioUrl: '/music/stream/spotify/sp1',
+        duration: 277, liked: false, vipLocked: true, noPreview: true,
+      }],
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+  const items = await searchOne('spotify', '浓缩蓝鲸');
+  const it = items[0];
+  expect('39. searchOne noPreview 透传到 source', it.sources[0].noPreview === true);
+  expect('39b. version source 也带 noPreview', it.versions[0].sources[0].noPreview === true);
+}
+
+// ── 40. isSourcePlayable：Spotify 无预览 = 放不出声（除非 WPS）─
+{
+  const sp = { platform: 'spotify', hasCopyright: true, noPreview: true };
+  expect('40. spotify+noPreview+无 WPS → 不可播', isSourcePlayable(sp, false) === false);
+  expect('40b. spotify+noPreview+WPS 已连 → 可播', isSourcePlayable(sp, true) === true);
+  expect(
+    '40c. spotify 有预览 → 可播',
+    isSourcePlayable({ platform: 'spotify', hasCopyright: true }, false) === true,
+  );
+  expect(
+    '40d. 无版权 → 不可播（与 noPreview 无关）',
+    isSourcePlayable({ platform: 'qq', hasCopyright: false }, true) === false,
+  );
+  expect(
+    '40e. netease 不受 noPreview 语义影响',
+    isSourcePlayable({ platform: 'netease', hasCopyright: true, noPreview: true }, false) === true,
+  );
+}
+
+// ── 41. isPlayableEntry：Spotify 独占且无预览 → 整条不可播 ────
+// 用户报障：搜「浓缩蓝鲸」ALL 模式点裘德那首的 Spotify 行（艺人名
+// "Jude Chiu"）→ 代理 502 spotify_no_preview，播放器静默卡 00:00。
+{
+  const spotifyOnly = {
+    bestSource: 'spotify',
+    sources: [{ platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/s', noPreview: true }],
+  };
+  expect('41. Spotify 独占无预览 + 无 WPS → 不可播', isPlayableEntry(spotifyOnly, false) === false);
+  expect('41b. 同一条 + WPS 已连 → 可播', isPlayableEntry(spotifyOnly, true) === true);
+  const neteaseItem = {
+    bestSource: 'netease',
+    sources: [{ platform: 'netease', trackId: 'n1', hasCopyright: true, url: '/n' }],
+  };
+  expect('41c. 网易云源正常可播', isPlayableEntry(neteaseItem, false) === true);
+  expect(
+    '41d. bestSource=null → 不可播',
+    isPlayableEntry({ bestSource: null, sources: [] }, false) === false,
+  );
+  // bestSource 是 netease，但 item 里还挂着一个没预览的 spotify 源 → 仍可播
+  const mixed = {
+    bestSource: 'netease',
+    sources: [
+      { platform: 'netease', trackId: 'n1', hasCopyright: true, url: '/n' },
+      { platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/s', noPreview: true },
+    ],
+  };
+  expect('41e. 混合源按 bestSource 判 → 可播', isPlayableEntry(mixed, false) === true);
+}
+
+// ── 42. playableReason / unplayableText：判定与解释同源 ────────
+// SearchPanel 的置灰、tooltip、行内角标三处都读这里。此前它们各判一次、用
+// `bestSource !== null` 猜原因，于是"QQ 源无版权"会被说成"只有 Spotify 源"。
+{
+  const qqNoCopyright = {
+    bestSource: 'qq',
+    sources: [{ platform: 'qq', trackId: 'q1', hasCopyright: false, url: '/q' }],
+  };
+  expect('42. QQ 无版权 → no-copyright（不是 spotify-no-preview）',
+    playableReason(qqNoCopyright, false) === 'no-copyright');
+  expect('42b. 对应文案', unplayableText(qqNoCopyright, false) === '所有平台都无版权');
+
+  const spNoPreview = {
+    bestSource: 'spotify',
+    sources: [{ platform: 'spotify', trackId: 's1', hasCopyright: true, url: '/s', noPreview: true }],
+  };
+  expect('42c. Spotify 无预览 → spotify-no-preview',
+    playableReason(spNoPreview, false) === 'spotify-no-preview');
+  expect('42d. 文案提 Premium 通道',
+    (unplayableText(spNoPreview, false) || '').includes('Premium'));
+  expect('42e. WPS 已连 → 可播（reason=null）', playableReason(spNoPreview, true) === null);
+  expect('42f. 可播时文案也是 null', unplayableText(spNoPreview, true) === null);
+
+  const noBest = { bestSource: null, sources: [] };
+  expect('42g. bestSource=null 且无源 → no-source', playableReason(noBest, false) === 'no-source');
+  // bestSource 为 null 但**源都无版权** → 应说"无版权"（SearchPanel 既有行为）
+  const nullBestNoCopyright = {
+    bestSource: null,
+    sources: [{ platform: 'qq', trackId: 'q2', hasCopyright: false, url: '/q2' }],
+  };
+  expect('42g2. bestSource=null 但源全无版权 → no-copyright',
+    playableReason(nullBestNoCopyright, false) === 'no-copyright');
+  expect('42g3. 该场景 isPlayableEntry 仍为 false（行为未变）',
+    isPlayableEntry(nullBestNoCopyright, false) === false);
+  const bestMissing = { bestSource: 'qq', sources: [{ platform: 'netease', trackId: 'n', hasCopyright: true, url: '/n' }] };
+  expect('42h. bestSource 指向不存在的源 → no-source',
+    playableReason(bestMissing, false) === 'no-source');
+
+  // isPlayableEntry 必须是 playableReason 的薄封装（两者不能漂）
+  for (const [label, entry, wps] of [
+    ['QQ 无版权', qqNoCopyright, false],
+    ['Spotify 无预览', spNoPreview, false],
+    ['Spotify 无预览 + WPS', spNoPreview, true],
+    ['bestSource=null', noBest, false],
+  ]) {
+    expect(`42i. isPlayableEntry 与 playableReason 一致：${label}`,
+      isPlayableEntry(entry, wps) === (playableReason(entry, wps) === null));
+  }
 }
 
 console.log(`\n🎉 api.test: ${passed} passed, ${failed} failed`);

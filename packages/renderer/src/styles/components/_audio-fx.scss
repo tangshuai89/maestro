@@ -1,0 +1,113 @@
+@use '../abstracts' as *;
+
+// ─────────────────────────────────────────────────────────────────
+// Settings「音频」节的 EQ 控件（specs/audio-fx §2.1 / §6）
+//
+// 为什么独立成文件而不是塞进 _settings-modal.scss：
+//  _settings-modal.scss 是 1440×900 画布的整体骨架，10 个滑块的行式布局
+//  有自己的网格节奏（标签列宽固定、滑块列占满、数值右对齐列固定）。
+//  混进骨架文件会让"节"的样式和"节之间怎么排"两件事互相污染。
+//
+// token 门禁：本文件预算 0 —— 只许 var(--token) / color-mix(var…)，
+// 不写 #hex/rgb()/hsl() 字面量（scan-hardcoded-colors --gate）。
+// ─────────────────────────────────────────────────────────────────
+
+// ── EQ 开关 + 预置行 ────────────────────────────────────────────
+// 复用 .set-mode-group 的"按钮成组"排法，但两行内容不同：
+// 上面是"要不要生效"（1 个按钮），下面是"用哪条曲线"（8 个）。
+.audio-fx-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+// 8 个预置横向排开。flex-wrap 是必须的：1440 宽的画布里 8 个中文按钮
+// （最长"低音增强"4 字）在 12px 字号下约 500px，放得下；但设置窗口
+// 可以被拉窄到画布以下，wrap 掉行比溢出裁切好。
+.audio-fx-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+// ── 10 段滑块组 ─────────────────────────────────────────────────
+// is-bypassed：EQ 关闭时整组降透明度。
+// 为什么用 opacity 而不是 pointer-events: none —— 滑块在 EQ 关着时**要能拖**
+// （改的是存下来的曲线，只是实时听不到，见 spec §2.1）。所以只能视觉弱化，
+// 不能真的禁用，否则用户得先开 EQ 才能编辑，而开关一开声音就变了。
+.audio-fx-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity 0.2s ease;
+}
+
+.audio-fx-bands.is-bypassed {
+  opacity: 0.45;
+}
+
+// 一行 = 频段标签 + 滑块 + 当前 dB。三列用固定宽 + 1fr 分配，
+// 10 行要对齐成一张表，靠的是标签列与数值列定宽、滑块列吃掉剩余空间。
+.audio-fx-band {
+  display: grid;
+  grid-template-columns: 40px 1fr 52px;
+  align-items: center;
+  gap: 12px;
+}
+
+.audio-fx-band-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--text-main) 45%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  @include truncate;
+}
+
+// 数值列定宽 52px 是为了 "+12.0" 与 "-12.0" 宽度一致时右对齐不跳动 ——
+// 拖滑块时数字每帧都在变，列宽一变整组会横向抖。
+.audio-fx-band-db {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--text-main) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  @include truncate;
+}
+
+// 旁路时数值也一起弱化，但再降一档 —— 与标签拉开层次，
+// 让人一眼看出"这一列是读数，那一列是当前态"。
+.audio-fx-bands.is-bypassed .audio-fx-band-db {
+  opacity: 0.7;
+}
+
+// ── range 原生控件的跨平台收敛 ─────────────────────────────────
+// 不写 ::-webkit-slider-* 与 ::-moz-range-* 的完整外观重置：那是纯装饰，
+// 且各浏览器差异大、后续维护成本高。这里只做两件真正影响可用性的事：
+//  1) 固定轨道高度（Firefox 默认轨道比 WebKit 细，两端不齐会显得没对齐）
+//  2) accent-color 一次性把填充色交给系统 —— 各浏览器都支持，
+//     比手搓四套伪元素省事且主题跟随
+.audio-fx-slider {
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.audio-fx-slider:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+// ── 说明文字 ───────────────────────────────────────────────────
+// EQ 关掉时补一行"曲线还在，只是不出声"。用 .set-section-hint 之外再包一层
+// 是因为它在视觉上属于"状态"而不是"介绍"，要跟在滑块组正下方而不是节标题下方。
+.audio-fx-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--text-main) 35%, transparent);
+}

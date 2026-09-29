@@ -8,8 +8,11 @@ import type { LyricsResult, MusicProvider, Track } from '../api';
  * stale content from the old track. Keyed on (track.id, provider).
  *
  * `altSources` are the same song's equivalents on other platforms (from the
- * unified-search item) — the server falls back through them and then
- * lyrics.ovh when the primary provider has no lyrics.
+ * unified-search item) — the server fetches them **in parallel** and merges
+ * the LRC timelines (union + time-tolerance dedupe + misaligned-source
+ * rejection), falling back to lyrics.ovh only when every platform misses.
+ * `mergedFrom` / `added` / `dropped` describe what the merge did, so the
+ * UI can show a "多源合并" badge.
  *
  * `retryByName()` is the manual fallback: when the standard fan-out
  * (primary → altSources → lyrics.ovh) returns null, the UI exposes a
@@ -92,6 +95,10 @@ export function useLyrics(
     lyrics: result?.lines ?? null,
     synced: result?.synced ?? true,
     source: result?.source ?? null,
+    /** 实际贡献了行的来源；length > 1 才算多源合并 */
+    mergedFrom: result?.mergedFrom ?? [],
+    added: result?.added ?? 0,
+    dropped: result?.dropped ?? 0,
     loading,
     retryByName,
   };

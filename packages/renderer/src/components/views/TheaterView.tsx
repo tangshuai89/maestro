@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type RefObject } from 'react';
 import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality, CrossPlatformLikeTotal } from '../../api';
 import { clampText } from '../../lib/format';
 import { theaterDensity, canvasScale, lyricWindow, type TheaterDensity } from '../../lib/theaterLayout';
+// 当前行判定与桌面歌词浮窗共用（§7.2）—— 两边对「唱到哪句」的理解必须一致。
+import { activeLineIndex } from '../../lib/lyrics';
 
 /**
  * AETHER THEATER — 宇宙剧场主视图（v4 设计稿落地）。
@@ -45,6 +47,18 @@ export interface TheaterViewProps {
   lyrics: LyricLine[] | null;
   lyricsSynced: boolean;
   lyricsSource: LyricsSource | null;
+  /** 多源合并：实际贡献了行的来源（length > 1 才显示徽章） */
+  lyricsMergedFrom?: LyricsSource[];
+  /** 合并时低优先级源补进来的行数 */
+  lyricsAdded?: number;
+  /** 歌词请求中（重搜 / 首次加载） */
+  lyricsLoading?: boolean;
+  /** 分享图导出状态（按钮文案 + 禁用态） */
+  lyricsExportState?: 'idle' | 'working' | 'done' | 'error';
+  /** 导出歌词图为本地 PNG；参数是被点击的那一句（undefined = 整段） */
+  onExportLyrics?: (highlightText?: string) => void;
+  /** 「换个源找歌词」：按歌名 + 歌手去各平台重搜一次 */
+  onRetryLyrics?: () => void;
   // ── reco / DeepSeek ──────────────────────────────────────────
   recoConfigured: boolean;
   recoLibrarySize: number;
@@ -97,17 +111,6 @@ function useStardust(trackId: string | undefined) {
     }
     return pts;
   }, [trackId]);
-}
-
-/** 当前歌词行 index（时间已过的最后一行）。 */
-function activeLineIndex(lines: LyricLine[] | null, t: number): number {
-  if (!lines || lines.length === 0) return -1;
-  let idx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].time <= t + 0.05) idx = i;
-    else break;
-  }
-  return idx;
 }
 
 function fmtTime(s: number): string {
@@ -171,6 +174,12 @@ export default function TheaterView(props: TheaterViewProps) {
     provider, qqQuality, trialFellBack, likedCount,
     coverBackdropRef,
     lyrics,
+    lyricsMergedFrom,
+    lyricsAdded,
+    lyricsLoading,
+    lyricsExportState,
+    onExportLyrics,
+    onRetryLyrics,
     recoConfigured, recoLibrarySize, recoRunning, recoMatchRate, recoSuggestions,
     onPlayPause, onSkip, onPrev, onSeek, onLike, onDislike,
     onSwitchProvider, onConfigureReco, onRecoSeed,
@@ -214,6 +223,31 @@ export default function TheaterView(props: TheaterViewProps) {
     ? (activeLine >= 0 ? lyrics?.[activeLine]?.text : null)
     : IDLE_LYRIC_HINT;
   // 当前行之后的行数按档位收敛（regular 3 / compact 1 / narrow 0）
+  // 多源合并徽章：`MERGED · QQ+NETEASE`（只在真的合并了 ≥2 个源时出现）
+  const lyricsMergeTag =
+    !noLyrics && (lyricsMergedFrom?.length ?? 0) > 1
+      ? `MERGED · ${(lyricsMergedFrom ?? [])
+          .slice(0, 3)
+          .map((s) => s.toUpperCase())
+          .join('+')}${(lyricsAdded ?? 0) > 0 ? ` (+${lyricsAdded})` : ''}`
+      : null;
+  // 无歌词时的外援出口：链到网易云搜索这首歌（歌词页右侧可提交缺失歌词）。
+  // 搜素页而不是 create 页——search 路由稳定，且用户需要先确认是同一首。
+  const neteaseSubmitUrl = useMemo(() => {
+    const q = [track?.title, track?.artist].filter(Boolean).join(' ');
+    return `https://music.163.com/#/search/m/?s=${encodeURIComponent(q)}`;
+  }, [track?.title, track?.artist]);
+
+  // 分享按钮文案：状态机驱动的 in-place 反馈（不引入 Toast 基建）
+  const exportLabel =
+    lyricsExportState === 'working'
+      ? '导出中…'
+      : lyricsExportState === 'done'
+        ? '已导出 ✓'
+        : lyricsExportState === 'error'
+          ? '导出失败 · 重试'
+          : '导出歌词图';
+
   const lyricWin = lyricWindow(layout.density);
   const followingLines: string[] = hasTrack
     ? (lyrics ?? [])
@@ -449,23 +483,81 @@ export default function TheaterView(props: TheaterViewProps) {
 
         {/* 歌词文字流（1440 稿 820,320；无面板 chrome，纯文字流） */}
         <section className={`th-lyrics-panel${noLyrics ? ' th-lyrics-panel--no-lyrics' : ''}`} aria-label="歌词">
+          {lyricsMergeTag && !noLyrics && (
+            <span className="th-lyric-tag th-lyric-tag--merged">
+              {lyricsMergeTag}
+            </span>
+          )}
           {noLyrics ? (
             <>
               <span className="th-lyric-tag">LYRICS UNAVAILABLE</span>
               <p className="th-lyric th-lyric--dim">暂无歌词 // NO LYRICS</p>
+              <div className="th-lyric-actions">
+                <button
+                  type="button"
+                  className="th-lyric-action"
+                  onClick={onRetryLyrics}
+                  disabled={lyricsLoading}
+                >
+                  {lyricsLoading ? '搜寻中…' : '↻ 换个源找歌词'}
+                </button>
+                <a
+                  className="th-lyric-action th-lyric-action--link"
+                  href={neteaseSubmitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="在网易云搜索这首歌 → 打开歌词页 → 提交缺失的歌词"
+                >
+                  去网易云提交歌词 ↗
+                </a>
+              </div>
             </>
           ) : (
             <>
               {prevLine && <p className="th-lyric th-lyric--dim">{prevLine}</p>}
               <div className="th-lyric-active">
                 <span className="th-lyric-bar" aria-hidden="true" />
-                <p key={currentLine ?? 'idle'} className="th-lyric th-lyric--current">
+                <p
+                  key={currentLine ?? 'idle'}
+                  className="th-lyric th-lyric--current th-lyric--clickable"
+                  onClick={
+                    currentLine ? () => onExportLyrics?.(currentLine) : undefined
+                  }
+                  title="点击导出这一句的分享图"
+                >
                   {currentLine ?? (loading ? '正在搜寻信号…' : '等待播放')}
                 </p>
               </div>
               {followingLines.map((line, i) => (
-                <p key={`${i}-${line}`} className="th-lyric th-lyric--dim">{line}</p>
+                <p
+                  key={`${i}-${line}`}
+                  className="th-lyric th-lyric--dim th-lyric--clickable"
+                  onClick={() => onExportLyrics?.(line)}
+                  title="点击导出这一句的分享图"
+                >
+                  {line}
+                </p>
               ))}
+              <div className="th-lyric-actions">
+                <button
+                  type="button"
+                  className="th-lyric-action"
+                  onClick={() => onExportLyrics?.()}
+                  disabled={
+                    lyricsExportState === 'working' || !onExportLyrics
+                  }
+                >
+                  ↓ {exportLabel}
+                </button>
+                <button
+                  type="button"
+                  className="th-lyric-action"
+                  onClick={onRetryLyrics}
+                  disabled={lyricsLoading}
+                >
+                  {lyricsLoading ? '搜寻中…' : '↻ 换个源找歌词'}
+                </button>
+              </div>
             </>
           )}
         </section>

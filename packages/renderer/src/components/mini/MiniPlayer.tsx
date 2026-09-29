@@ -7,11 +7,12 @@ import { placeholderCover } from '../../lib/placeholderCover';
  * MiniPlayer —— 底部悬浮播控条（theater ↔ mini，`⌘⇧M` 或顶栏按钮切换）。
  * spec：specs/mini-player/spec.md（设计愿景见 docs/mini-player-mode-spec.md）。
  *
+ * `PlayerMode` 类型已搬到 `lib/storage`（lite 模式加入后有三个态，且要进备份集），
+ * 这里不再重复导出。
+ *
  * 只消费 usePlayer 已暴露的状态，不碰 audio 元素 —— `<audio>` 常驻 App.tsx，
  * 切 mode 只是 TheaterView/MiniPlayer 的条件渲染，Web Audio graph 不重建。
  */
-
-export type PlayerMode = 'theater' | 'mini';
 
 export interface MiniPlayerProps {
   track: Track | null;

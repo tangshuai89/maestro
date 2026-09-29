@@ -1,5 +1,5 @@
 import type { DeezerEditorial, MusicProvider, QqQuality } from '../../api';
-import type { PlayerMode } from '../mini/MiniPlayer';
+import type { PlayerMode } from '../../lib/storage';
 import SourceMenu from './SourceMenu';
 import QualityMenu from './QualityMenu';
 import DeezerPresetSelect from './DeezerPresetSelect';
@@ -33,9 +33,13 @@ interface Props {
   onOpenLiked: () => void;
   // Settings (backup / export / import)
   onOpenSettings: () => void;
-  // Player mode (theater ↔ mini，⌘⇧M)
+  // Player mode (theater ↔ mini，⌘⇧M)。lite 模式下整个 titlebar 不渲染，
+  // 所以这里实际只会在 theater / mini 之间切。
   playerMode: PlayerMode;
   onTogglePlayerMode: () => void;
+  /** 桌面歌词浮窗是否开启（§7.2）。与 Tray 勾选同源，图标据此点亮。 */
+  desktopLyricsOn: boolean;
+  onToggleDesktopLyrics: () => void;
 }
 
 /**
@@ -67,6 +71,8 @@ export default function Titlebar({
   onOpenSettings,
   playerMode,
   onTogglePlayerMode,
+  desktopLyricsOn,
+  onToggleDesktopLyrics,
 }: Props) {
   const showQuality =
     (provider === 'qq' || provider === 'netease') && loggedIn;
@@ -151,6 +157,16 @@ export default function Titlebar({
         aria-label={playerMode === 'mini' ? '展开剧场模式' : '切换到 Mini 模式'}
       >
         {playerMode === 'mini' ? '⛶' : '▭'}
+      </button>
+
+      <button
+        className={`titlebar-btn lyrics-btn${desktopLyricsOn ? ' is-on' : ''}`}
+        onClick={onToggleDesktopLyrics}
+        title={desktopLyricsOn ? '关闭桌面歌词（⌘⇧D）' : '桌面歌词浮窗（⌘⇧D）'}
+        aria-label={desktopLyricsOn ? '关闭桌面歌词' : '开启桌面歌词'}
+        aria-pressed={desktopLyricsOn}
+      >
+        词
       </button>
 
       <button

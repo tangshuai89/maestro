@@ -30,6 +30,7 @@ interface TrackOpts {
   duration?: number;
   mediaMid?: string;
   vipLocked?: boolean;
+  noPreview?: boolean;
 }
 function makeTrack(
   provider: string,
@@ -50,6 +51,7 @@ function makeTrack(
     liked: false,
     mediaMid: opts.mediaMid,
     vipLocked: opts.vipLocked,
+    noPreview: opts.noPreview,
   };
 }
 
@@ -737,4 +739,40 @@ function makeTrack(
   console.log('✅ 10. 全平台无封面透传空串');
 }
 
-console.log('\n🎉 全部 19 个测试通过');
+// ── 11. noPreview 透传到 SourceInfo（Spotify 无 preview_url） ──
+// 服务端只记录事实；"能不能播"由渲染端结合 wpsReady 判（api.isPlayableEntry）。
+// 断掉这条透传 = Spotify 独占行又变回"看起来可播、点了卡 00:00"。
+{
+  const all = [
+    {
+      track: makeTrack('spotify', 'sp-1', '浓缩蓝鲸', 'Jude Chiu', {
+        duration: 277,
+        vipLocked: true,
+        noPreview: true,
+      }),
+      platform: 'spotify',
+    },
+  ];
+  const items = buildUnifiedItems(dedupTracks(all), all);
+  assert.strictEqual(items[0].sources[0].noPreview, true, 'noPreview 应透传到 source');
+  assert.strictEqual(
+    items[0].versions[0].sources[0].noPreview,
+    true,
+    'version 内的 source 也要带 noPreview',
+  );
+  // bestSource 不变：它是 <audio> 侧的"最佳候选"，WPS 全曲通道另算。
+  assert.strictEqual(items[0].bestSource, 'spotify');
+  console.log('✅ 11. noPreview 透传到 SourceInfo');
+}
+
+// ── 12. 非 Spotify 源不带 noPreview ───────────────────────────
+{
+  const all = [
+    { track: makeTrack('netease', 'ne-9', '浓缩蓝鲸', '裘德', { duration: 277 }), platform: 'netease' },
+  ];
+  const items = buildUnifiedItems(dedupTracks(all), all);
+  assert.strictEqual(items[0].sources[0].noPreview, undefined);
+  console.log('✅ 12. 非 Spotify 源 noPreview=undefined');
+}
+
+console.log('\n🎉 全部 21 个测试通过');

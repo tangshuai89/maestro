@@ -29,6 +29,9 @@ export interface Track {
    *    是黑胶 VIP 解锁；tooltip 解释）
    * undefined = 未知 / 免费，不显示 [P]/[NP] 标签。 */
   vipCategory?: VipCategory;
+  /** 这条源**一个字节的音频都拿不到**（不是"只给 30s"，是"没有音频"）。见
+   *  SourceInfo.noPreview。 */
+  noPreview?: boolean;
 }
 
 /** 付费分类层级 —— 比 vipLocked 二元更细。SourceChip 用它决定加什么标签。
@@ -57,6 +60,20 @@ export interface SourceInfo {
   /** 付费分类（见 Track.vipCategory）。buildUnifiedItems 从 track 透传到 SourceInfo，
    * 前端 SourceChip 据此决定是否加 [P]/[NP] 标签。 */
   vipCategory?: VipCategory;
+  /**
+   * 这条源**没有任何可播放音频**——跟 vipLocked（"能出声但只有 30s / 音质受限"）
+   * 是两回事。
+   *
+   * 目前唯一来源：Spotify 自 2024-11 起对多数应用停发 `preview_url`，search
+   * 返回 `preview_url: null` 的曲目走 `/music/stream/spotify/:id` 必定
+   * 502 `spotify_no_preview`——`<audio>` 只会静悄悄卡在 00:00（连
+   * MediaError 都可能不给），用户看到的就是"点了没反应"。
+   *
+   * 服务端只记录事实、不做策略：Premium 用户的 WPS 全曲通道不经 `<audio>`，
+   * 该源仍然能播，所以要不要把它当"不可播"由渲染端按 `wpsReady` 决定
+   * （`api.ts:isPlayableEntry`）。
+   */
+  noPreview?: boolean;
   /**
    * 歌曲在该平台被收藏/喜欢的总数。**只** QQ + 网易云填；Deezer/Spotify 留
    * undefined（这两家平台不暴露 ❤ 公开字段——Deezer 只有 rank、Spotify 只有

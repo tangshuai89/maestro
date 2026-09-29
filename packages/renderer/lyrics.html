@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maestro 桌面歌词</title>
+    <!-- 浮窗是独立 BrowserWindow（§7.2），与主窗口共用 renderer 产物，只是入口不同。
+         ⚠️ 这里**刻意不引 Google Fonts**（index.html 有，是存量、本轮不动）：
+         1. 浮窗每次开窗都会打一次 fonts.googleapis.com，离线 / iOA 拦截环境下静默
+            失败，退回系统字体并伴随一次字体闪烁；
+         2. 中文歌词在 macOS 上用系统苹方（PingFang SC）本来就比 Noto Sans SC 更
+            对味，省掉 300KB+ 的中文 webfont 下载是纯赚。
+         desktop-lyrics.scss 的字体栈已经带 system-ui / -apple-system 兜底，
+         所以离线下的观感与联网时一致（只是字形略有差异）。 -->
+
+  </head>
+  <body class="lyric-overlay-body">
+    <div id="root"></div>
+    <script type="module" src="/src/desktop-lyrics/main.tsx"></script>
+  </body>
+</html>

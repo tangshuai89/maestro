@@ -34,7 +34,16 @@ import {
   writeStoredQuality,
   readStoredDeezerPreset,
   writeStoredDeezerPreset,
+  readAudioFx,
+  writeAudioFx,
 } from '../lib/storage';
+import {
+  EQ_BANDS,
+  applyPreset,
+  clampGain,
+  type AudioFxPrefs,
+} from '../lib/audioFx';
+import { createEqChain, pushEqGains } from '../lib/eqChain';
 import { useCoverArt } from './useCoverArt';
 import { wpsLog } from '../lib/debug';
 import {
@@ -231,6 +240,28 @@ export function usePlayer(
   const mediaSrcRef = useRef<MediaElementAudioSourceNode | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
+  // ── EQ（specs/audio-fx §2.1）────────────────────────────────
+  // 10 个 peaking 滤波器在 graph **建立时**一次性插入链里，之后只改 gain
+  // 参数、绝不 disconnect 重连 —— 重连发生在正在出声的时刻，会咔哒。
+  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const [audioFx, setAudioFx] = useState<AudioFxPrefs>(() => readAudioFx());
+  // graph 可能还没建（首次播放前），届时用 ref 里的最新偏好初始化滤波器。
+  const audioFxRef = useRef<AudioFxPrefs>(audioFx);
+  audioFxRef.current = audioFx;
+
+  /**
+   * 把偏好落到 live 滤波器上。
+   *
+   * 开关关闭时是「把各频段 ramp 到 0 dB」而不是把滤波器从链上摘掉——
+   * 真正的 bypass 要 disconnect，发生在出声时会咔哒（见 spec §7 风险）。
+   * 用户曲线存在 prefs 里，重新打开开关恢复原样而不是被抹平。
+   * 用 setTargetAtTime 而非 `.value =`：后者是阶跃，会咔哒。
+   */
+  const pushEqToFilters = useCallback((prefs: AudioFxPrefs): void => {
+    const ctx = audioCtxRef.current;
+    pushEqGains(eqFiltersRef.current, prefs.eqGains, ctx?.currentTime ?? 0, prefs.eqEnabled);
+  }, []);
+
   const { bgLayerRef, coverBackdropRef, presentCover, presentPlaceholder } =
     useCoverArt();
 
@@ -262,13 +293,29 @@ export function usePlayer(
       const ctx = new Ctor();
       const src = mediaSrcRef.current ?? ctx.createMediaElementSource(audioEl);
       mediaSrcRef.current = src;
+
+      // EQ 链（specs/audio-fx §2.1）：10 段 peaking **在建立时就插进去**，
+      // 即使增益全 0。之后只改 gain 参数，绝不重连 —— 重连发生在正在出声的
+      // 时刻必然咔哒（详见 spec §7 风险）。
+      // source 一起传进去：createMediaElementSource 之后 <audio> 的输出**永久**
+      // 改路由到这张图上，不显式 connect 就是全静音（无报错，见 eqChain.ts 注释）。
+      const filters = createEqChain(ctx, EQ_BANDS, src);
+      eqFiltersRef.current = filters;
+
       const node = ctx.createAnalyser();
       node.fftSize = 256;
       node.smoothingTimeConstant = 0.72;
-      src.connect(node);
+      // 串成 source → f0 → … → f9 → analyser → destination（**单路**）：
+      // analyser 放在 EQ 之后，声波环要反映用户听到的声音（EQ 开了就该看到频谱
+      // 变化），不是反映 EQ 之前的原始信号。
+      // 千万别再把 f9 单独接一次 destination —— destination 会把两条路上的
+      // 同一份信号相加，白白 +6dB。
+      filters[filters.length - 1]?.connect(node);
       node.connect(ctx.destination);
       audioCtxRef.current = ctx;
       setAnalyser(node);
+      // graph 刚建好，把当前偏好一次性灌进去（之前调过 EQ 也会保留）
+      pushEqToFilters(audioFxRef.current);
       if (ctx.state === 'suspended') {
         void ctx.resume().catch((e) => {
           console.warn('[audio] initial context resume() rejected:', e);
@@ -279,7 +326,7 @@ export function usePlayer(
       console.error('[audio] failed to build audio graph', e);
       return null;
     }
-  }, [analyser, audioRef]);
+  }, [analyser, audioRef, pushEqToFilters]);
 
   // Present a Track to the player: resolve absolute audioUrl, swap cover,
   // set play intent. Shared by the server radio and search-result paths.
@@ -1262,6 +1309,52 @@ async function fillLikeCountForCurrentTrack(
     writeStoredDeezerPreset(next);
   };
 
+  /**
+   * 设置某一频段的增益（dB）。UI 拖滑块时每个像素都会调它，所以要保持廉价：
+   * 只改一个 state + 写一次 storage + 一次 setTargetAtTime。
+   */
+  const setEqBandGain = useCallback(
+    (index: number, dB: number) => {
+      setAudioFx((prev) => {
+        const gains = [...prev.eqGains];
+        if (index < 0 || index >= gains.length) return prev;
+        gains[index] = clampGain(dB);
+        // 手动拖过就不再声称自己等于某个预置（UI 据此显示「已修改」）
+        const next: AudioFxPrefs = { ...prev, eqGains: gains, presetId: null };
+        writeAudioFx(next);
+        pushEqToFilters(next);
+        return next;
+      });
+    },
+    [pushEqToFilters],
+  );
+
+  /** 切到某个预置。未知 id 会被 applyPreset 洗成平直，不会抛。 */
+  const applyEqPreset = useCallback(
+    (presetId: string) => {
+      setAudioFx((prev) => {
+        const next = applyPreset(prev, presetId);
+        writeAudioFx(next);
+        pushEqToFilters(next);
+        return next;
+      });
+    },
+    [pushEqToFilters],
+  );
+
+  /** EQ 总开关。关闭 = 各频段 ramp 到 0 dB（曲线保留在 prefs 里，见 pushEqToFilters）。 */
+  const setEqEnabled = useCallback(
+    (enabled: boolean) => {
+      setAudioFx((prev) => {
+        const next: AudioFxPrefs = { ...prev, eqEnabled: enabled };
+        writeAudioFx(next);
+        pushEqToFilters(next);
+        return next;
+      });
+    },
+    [pushEqToFilters],
+  );
+
   const handlePlayPause = () => {
     // Build the graph the first time the user hits play; later clicks just
     // resume the context if needed.
@@ -1542,5 +1635,11 @@ async function fillLikeCountForCurrentTrack(
     refreshTrackForWps,
     seek,
     resetForSwitch,
+    // ── 音频效果（specs/audio-fx §2.1）────────────────────────
+    /** EQ 偏好镜像（SettingsModal 渲染滑块/预置用） */
+    audioFx,
+    setEqEnabled,
+    setEqBandGain,
+    applyEqPreset,
   };
 }

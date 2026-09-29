@@ -1,5 +1,5 @@
 /**
- * parseLrc 白盒测试（Node built-in assert）。
+ * parseLrc + mergeLyricSources 白盒测试（Node built-in assert）。
  * 运行: npx ts-node packages/server/src/common/lyrics.test.ts
  *
  * 覆盖：
@@ -10,10 +10,21 @@
  *  - 空文本 / 空行 / 纯空白行
  *  - 排序验证
  *  - null 返回条件（无时间戳行）
+ *
+ * 多源合并（第 19–31 项）：
+ *  - 比对键归一（全角 / 标点 / 繁简 / 纯标点）
+ *  - 并集增量 + 时间容差去重 / 副歌重复保留
+ *  - 整体偏移对齐 vs 错位源整源丢弃
+ *  - 纯文本兜底路径 / mixed 源 / 行数上限 / 排序稳定性 / 空输入
  */
 export {};
 const assert = require('node:assert');
-const { parseLrc } = require('./lyrics');
+const {
+  parseLrc,
+  lyricLineKey,
+  mergeLyricSources,
+  LYRIC_MAX_MERGED_LINES,
+} = require('./lyrics');
 
 let passed = 0;
 let failed = 0;
@@ -187,6 +198,249 @@ check('18. 1000 行解析不崩溃', () => {
   const lines = parseLrc(lrc);
   assert.ok(lines);
   assert.strictEqual(lines!.length, 1000);
+});
+
+// ── 19. 比对键归一 ────────────────────────────────────────────
+check('19. lyricLineKey：全角/标点/繁简归一，纯标点→空串', () => {
+  assert.strictEqual(lyricLineKey('Hello, World!'), 'helloworld');
+  assert.strictEqual(lyricLineKey('Ｈｅｌｌｏ'), 'hello');
+  assert.strictEqual(lyricLineKey(' 晴天  '), '晴天');
+  // 繁简桥：同一句一边繁体一边简体必须同键
+  assert.strictEqual(lyricLineKey('後來'), lyricLineKey('后来'));
+  // 纯标点 / 空 → 空串（调用方丢弃）
+  assert.strictEqual(lyricLineKey('——'), '');
+  assert.strictEqual(lyricLineKey('   '), '');
+  assert.strictEqual(lyricLineKey(''), '');
+});
+
+// ── 20. 并集：低优先级源补进行 ────────────────────────────────
+check('20. 合并并集：低优先级源补进缺失的行', () => {
+  const merged = mergeLyricSources([
+    {
+      source: 'qq',
+      priority: 0,
+      lines: [
+        { time: 1, text: 'A' },
+        { time: 5, text: 'B' },
+      ],
+    },
+    {
+      source: 'netease',
+      priority: 1,
+      lines: [
+        { time: 1, text: 'A' },
+        { time: 5, text: 'B' },
+        { time: 9, text: 'C' },
+      ],
+    },
+  ])!;
+  assert.deepStrictEqual(merged.sources, ['qq', 'netease']);
+  assert.strictEqual(merged.synced, true);
+  assert.strictEqual(merged.lines.length, 3);
+  assert.strictEqual(merged.added, 1);
+  assert.strictEqual(merged.dropped, 2);
+  assert.deepStrictEqual(
+    merged.lines.map((l) => l.time),
+    [1, 5, 9],
+  );
+});
+
+// ── 21. 时间容差内去重 + 副歌重复保留 ─────────────────────────
+check('21. 容差 400ms 内视为同一句；副歌同词不同时间保留两条', () => {
+  const merged = mergeLyricSources([
+    { source: 'qq', priority: 0, lines: [{ time: 10, text: ' Chorus ' }] },
+    // 200ms 抖动 → 同一句，去重
+    { source: 'netease', priority: 1, lines: [{ time: 10.2, text: 'Chorus' }] },
+    // 6s 后再唱一遍副歌 → 不同时间点，保留
+    { source: 'netease', priority: 1, lines: [{ time: 16, text: 'Chorus' }] },
+  ])!;
+  assert.strictEqual(merged.lines.length, 2, '副歌第二次重复要保留');
+  assert.strictEqual(merged.dropped, 1);
+  assert.deepStrictEqual(merged.lines.map((l) => l.text), ['Chorus', 'Chorus']);
+  // 整体对齐 -0.2s（锚点众数），第二次重复随之平移
+  assert.strictEqual(merged.lines[1].time, 16, '单锚点不判系统性偏移');
+  assert.deepStrictEqual(merged.rejected, []);
+});
+
+// ── 22. 整体偏移的对齐（不是丢弃）────────────────────────────
+check('22. 低优先级源整体晚 1s → 对齐后并入（不丢源）', () => {
+  const merged = mergeLyricSources([
+    {
+      source: 'qq',
+      priority: 0,
+      lines: [
+        { time: 1, text: 'A' },
+        { time: 5, text: 'B' },
+        { time: 9, text: 'C' },
+      ],
+    },
+    {
+      source: 'netease',
+      priority: 1,
+      lines: [
+        { time: 2, text: 'A' },
+        { time: 6, text: 'B' },
+        { time: 10, text: 'C' },
+      ],
+    },
+  ])!;
+  assert.deepStrictEqual(merged.rejected, []);
+  assert.strictEqual(merged.dropped, 3, '三行都对齐成重复');
+  assert.deepStrictEqual(merged.lines.map((l) => l.time), [1, 5, 9]);
+});
+
+// ── 22b. 残差超出容差 → 保留成新行（不猜）────────────────────
+check('22b. 对齐后仍残差 0.5s 的行保留为新行（超出 400ms 容差）', () => {
+  const merged = mergeLyricSources([
+    {
+      source: 'qq',
+      priority: 0,
+      lines: [
+        { time: 1, text: 'A' },
+        { time: 5, text: 'B' },
+        { time: 9, text: 'C' },
+      ],
+    },
+    {
+      source: 'netease',
+      priority: 1,
+      lines: [
+        { time: 2, text: 'A' },
+        { time: 6, text: 'B' },
+        // 锚点众数是 -1s，这行只对齐到 9.5，残差 0.5s > 容差 0.4s
+        { time: 10.5, text: 'C' },
+      ],
+    },
+  ])!;
+  assert.strictEqual(merged.dropped, 2, 'A/B 被判定重复');
+  assert.strictEqual(merged.added, 1, 'C 残差超容差，保留为新行');
+  assert.strictEqual(merged.lines.length, 4);
+});
+
+// ── 23. 错位源整源丢弃 ───────────────────────────────────────
+check('23. 偏移 6s 的源 → rejected，不污染主源时间轴', () => {
+  const merged = mergeLyricSources([
+    {
+      source: 'qq',
+      priority: 0,
+      lines: [
+        { time: 1, text: 'A' },
+        { time: 5, text: 'B' },
+      ],
+    },
+    {
+      source: 'netease',
+      priority: 1,
+      lines: [
+        { time: 7, text: 'A' },
+        { time: 11, text: 'B' },
+      ],
+    },
+  ])!;
+  assert.deepStrictEqual(merged.rejected, ['netease']);
+  assert.deepStrictEqual(merged.sources, ['qq']);
+  assert.strictEqual(merged.lines.length, 2);
+});
+
+// ── 24. 无共同词的两个源 → 都并入（偏移 0）────────────────────
+check('24. 两个毫无共同词的源（不同版本歌词）→ 都保留', () => {
+  const merged = mergeLyricSources([
+    { source: 'qq', priority: 0, lines: [{ time: 1, text: 'A' }] },
+    { source: 'netease', priority: 1, lines: [{ time: 1, text: 'Z' }] },
+  ])!;
+  assert.deepStrictEqual(merged.rejected, []);
+  assert.strictEqual(merged.lines.length, 2);
+  assert.strictEqual(merged.added, 1);
+});
+
+// ── 25. 纯标点行不占时间轴 ───────────────────────────────────
+check('25. 纯标点行（——）被丢弃', () => {
+  const merged = mergeLyricSources([
+    {
+      source: 'qq',
+      priority: 0,
+      lines: [
+        { time: 1, text: 'A' },
+        { time: 2, text: '——' },
+      ],
+    },
+  ])!;
+  assert.strictEqual(merged.lines.length, 1);
+});
+
+// ── 26. 全纯文本源 → synced=false，按 key 去重拼接 ────────────
+check('26. 无 synced 源（lyrics.ovh 纯文本）→ synced=false', () => {
+  const merged = mergeLyricSources([
+    { source: 'lyricsovh', priority: 0, lines: [{ time: 0, text: 'line one' }, { time: 0, text: 'line two' }] },
+    { source: 'deezer', priority: 1, lines: [{ time: 0, text: 'Line One!' }, { time: 0, text: 'line three' }] },
+  ])!;
+  assert.strictEqual(merged.synced, false);
+  assert.strictEqual(merged.lines.length, 3, 'Line 1! 与 line one 同键被去重');
+  assert.strictEqual(merged.added, 1);
+  assert.ok(merged.lines.every((l) => l.time === 0));
+});
+
+// ── 27. synced + 纯文本混合 → 纯文本不参与合并 ───────────────
+check('27. 有 synced 源时纯文本源被忽略', () => {
+  const merged = mergeLyricSources([
+    { source: 'qq', priority: 0, lines: [{ time: 1, text: 'A' }] },
+    { source: 'lyricsovh', priority: 1, lines: [{ time: 0, text: 'plain text' }] },
+  ])!;
+  assert.strictEqual(merged.synced, true);
+  assert.deepStrictEqual(merged.sources, ['qq']);
+  assert.strictEqual(merged.lines.length, 1);
+});
+
+// ── 28. 行数上限截断 ─────────────────────────────────────────
+check('28. 超量源被 LYRIC_MAX_MERGED_LINES 截断', () => {
+  const big = Array.from({ length: LYRIC_MAX_MERGED_LINES + 200 }, (_, i) => ({
+    time: i + 1,
+    text: `line${i}`,
+  }));
+  const merged = mergeLyricSources([
+    { source: 'qq', priority: 0, lines: big },
+    { source: 'netease', priority: 1, lines: [{ time: 99999, text: 'extra' }] },
+  ])!;
+  assert.ok(
+    merged.lines.length <= LYRIC_MAX_MERGED_LINES,
+    `截断后 ${merged.lines.length} 行应 ≤ 上限`,
+  );
+});
+
+// ── 29. 排序：时间升序，同时间按来源优先级 ────────────────────
+check('29. 同时间戳的两行：主源排在前面', () => {
+  const merged = mergeLyricSources([
+    { source: 'netease', priority: 1, lines: [{ time: 3, text: 'B' }] },
+    { source: 'qq', priority: 0, lines: [{ time: 3, text: 'A' }] },
+  ])!;
+  assert.deepStrictEqual(merged.lines, [
+    { time: 3, text: 'A' },
+    { time: 3, text: 'B' },
+  ]);
+});
+
+// ── 30. 空输入 / 空行 → null ─────────────────────────────────
+check('30. 空输入、空行、空文本 → null', () => {
+  assert.strictEqual(mergeLyricSources([]), null);
+  assert.strictEqual(mergeLyricSources([{ source: 'qq', priority: 0, lines: [] }]), null);
+  assert.strictEqual(
+    mergeLyricSources([{ source: 'qq', priority: 0, lines: [{ time: 1, text: '  ' }] }]),
+    null,
+  );
+});
+
+// ── 31. 脏数据防御 ───────────────────────────────────────────
+check('31. 非字符串 text / NaN time 不炸', () => {
+  const merged = mergeLyricSources([
+    {
+      source: 'qq',
+      priority: 0,
+      // 白盒：故意塞脏数据（line 数组在这里是 any 上下文）
+      lines: [{ time: 1, text: 'A' }, { time: NaN, text: null }, { time: 2, text: 'C' }],
+    },
+  ])!;
+  assert.strictEqual(merged.lines.length, 2);
+  assert.strictEqual(merged.synced, true);
 });
 
 console.log(`\n🎉 lyrics.test: ${passed} passed, ${failed} failed`);

@@ -74,6 +74,9 @@ export interface Track {
   mediaMid?: string; // QQ 取流用的 media_mid（高音质需要）
   /** 当前会话大概率放不了全曲（VIP 独占 / 付费 / 只给试听）。server Track 同名字段。 */
   vipLocked?: boolean;
+  /** 这条源没有任何可播放音频（Spotify 无 preview_url）。见
+   *  `UnifiedSourceInfo.noPreview`。 */
+  noPreview?: boolean;
 }
 
 /** QQ 音质档位。standard=m4a，high=320mp3，lossless=flac（需会员）。 */
@@ -674,6 +677,13 @@ export interface UnifiedSourceInfo {
    *  - vipLocked=false + paid-album → chip 加 [P]（已购或 VIP 解锁，tooltip 说明）
    *  - 其他 vipLocked=0 → 不加标签 */
   vipCategory?: VipCategory;
+  /**
+   * 这条源**没有任何可播放音频**（跟 vipLocked 的"只给 30s"不是一回事）。
+   * Spotify 自 2024-11 起对多数应用停发 `preview_url`，这类曲目走
+   * `/music/stream/spotify/:id` 必定 502，`<audio>` 静默卡在 00:00。
+   * Premium + WPS 已连时另有全曲通道 → 见 `isPlayableEntry(entry, wpsReady)`。
+   */
+  noPreview?: boolean;
   /** 歌曲在该平台被 ❤ 数（公开匿名拉）。只 QQ + 网易云会填；详见
    *  `specs/cross-platform-likes`。 */
   likeCount?: SourceLikeCount;
@@ -782,6 +792,7 @@ export async function searchOne(
       url: t.audioUrl,
       ...(t.mediaMid ? { mediaMid: t.mediaMid } : {}),
       ...(t.vipLocked !== undefined ? { vipLocked: t.vipLocked } : {}),
+      ...(t.noPreview ? { noPreview: true } : {}),
     };
     return {
       id: `${t.provider}:${t.id}`,
@@ -843,6 +854,96 @@ export async function findEquivalentSource(
  * 拼回标准 Track 形状。bestSource 为 null 表示「所有平台都无版权」，返回
  * null 让 UI 走灰色不可播放态。
  */
+/**
+ * 这条源在 `<audio>` 里能不能出声。
+ *
+ * `hasCopyright=false` 是"平台没这首歌的版权"；`noPreview=true` 是"有这首歌，
+ * 但拿不到任何音频字节"——Spotify 停发 `preview_url` 后，代理只能回 502，
+ * `<audio>` 连 MediaError 都不一定给，UI 就停在 00:00 假装在播。
+ *
+ * `wpsReady`（Premium + Web Playback SDK 已连）时 Spotify 走 SDK 全曲流、
+ * 不经 `<audio>`，此时 noPreview 不影响可播性。
+ */
+export function isSourcePlayable(
+  src: Pick<UnifiedSourceInfo, 'platform' | 'hasCopyright' | 'noPreview'>,
+  wpsReady = false,
+): boolean {
+  if (!src.hasCopyright) return false;
+  if (src.platform === 'spotify' && src.noPreview && !wpsReady) return false;
+  return true;
+}
+
+/**
+ * item（或某个 version）在当前运行态下有没有能出声的源。
+ *
+ * **SearchPanel 的行可点性与 `parsePlayableQueue` 的丢弃判定必须共用它**——
+ * 两边口径一旦分裂就会出现「行看起来能点、点了队列里却没有这首」的静默失败
+ * （正是 Spotify 独占行点了没反应的那类 bug）。
+ *
+ * 第一条分支对齐 `parsePlayableQueue`：WPS 已连时 Spotify 源优先接管，
+ * 服务端给的 bestSource 是 `<audio>` 路径的选择，这里不用看。
+ */
+export function isPlayableEntry(
+  entry: Pick<UnifiedSearchItem, 'bestSource' | 'sources'>,
+  wpsReady = false,
+): boolean {
+  return playableReason(entry, wpsReady) === null;
+}
+
+/** 不可播的原因（决定 SearchPanel 怎么跟用户解释）。 */
+export type UnplayableReason = 'no-copyright' | 'spotify-no-preview' | 'no-source';
+
+/** 这条为什么不可播的人类可读原因（与 isSourcePlayable 同一条流水线）。 */
+const UNPLAYABLE_TEXT: Record<UnplayableReason, string> = {
+  'no-copyright': '所有平台都无版权',
+  'spotify-no-preview':
+    '只有 Spotify 源且无 30s 预览：需切到 Spotify 音源用 Premium 全曲播放',
+  'no-source': '当前没有可播的音源',
+};
+
+/**
+ * 不可播原因（null = 可播）。
+ *
+ * **为什么要有它**：SearchPanel 的行置灰和 tooltip 文案必须来自**同一个**判定。
+ * 之前两者各判一次（`isPlayableEntry` 判真假、`bestSource !== null` 猜原因），
+ * 于是"QQ 源无版权"也会被说成"只有 Spotify 源"—— 文案与事实不符。现在
+ * `isPlayableEntry` 是本函数的薄封装，判定与解释天然同源。
+ */
+export function playableReason(
+  entry: Pick<UnifiedSearchItem, 'bestSource' | 'sources'>,
+  wpsReady = false,
+): UnplayableReason | null {
+  if (wpsReady && entry.sources.some((s) => s.platform === 'spotify')) {
+    return null;
+  }
+  const src = entry.bestSource
+    ? entry.sources.find((s) => s.platform === entry.bestSource)
+    : undefined;
+  if (src) {
+    // 先分无版权：它比"没音频"更基础，且与平台无关
+    if (!src.hasCopyright) return 'no-copyright';
+    if (src.platform === 'spotify' && src.noPreview && !wpsReady) {
+      return 'spotify-no-preview';
+    }
+    return null;
+  }
+  // 定位不到 bestSource（为 null，或指向一个不存在的源）→ 不可播，但原因要分清：
+  // 所有源都无版权 → 说"无版权"（这是更常见也更该解释的那个）；否则才是"没源"。
+  if (entry.sources.length > 0 && entry.sources.every((s) => !s.hasCopyright)) {
+    return 'no-copyright';
+  }
+  return 'no-source';
+}
+
+/** 不可播原因的用户可见文案；可播时返回 null。 */
+export function unplayableText(
+  entry: Pick<UnifiedSearchItem, 'bestSource' | 'sources'>,
+  wpsReady = false,
+): string | null {
+  const reason = playableReason(entry, wpsReady);
+  return reason === null ? null : UNPLAYABLE_TEXT[reason];
+}
+
 export function pickPlayableTrack(
   item: UnifiedSearchItem,
 ): Track | null {
@@ -1184,7 +1285,14 @@ export interface LyricsResult {
   lines: LyricLine[];
   /** false = 纯文本歌词（无时间戳），面板不做滚动高亮/点击跳转 */
   synced: boolean;
+  /** 主来源（优先级最高的贡献者） */
   source: LyricsSource;
+  /** 实际贡献了行的来源（优先级降序）。length > 1 = 发生了多源合并。 */
+  mergedFrom: LyricsSource[];
+  /** 低优先级源补进来的行数（并集增量） */
+  added: number;
+  /** 文本重复被去重丢弃的行数 */
+  dropped: number;
 }
 
 function sourcesParam(
@@ -1194,8 +1302,12 @@ function sourcesParam(
 }
 
 /**
- * 多源聚合歌词：主 provider → 其余平台 source → lyrics.ovh 兜底。
+ * 多源聚合歌词（默认「合并」模式）：服务端并行拉 QQ / NetEase / Deezer 的
+ * 候选源 → LRC 合并去重（并集 + 时间容差去重 + 错位源整源丢弃）→ 平台
+ * 全落空才走 lyrics.ovh 兜底。
+ *
  * title/artist 供第三方兜底检索；sources 是这首歌在其他平台的等价曲目。
+ * `merge: false` 让服务端走旧快路径（第一个命中即返回）。
  */
 export async function fetchLyrics(
   provider: MusicProvider,
@@ -1204,6 +1316,7 @@ export async function fetchLyrics(
     title?: string;
     artist?: string;
     sources?: Array<{ platform: MusicProvider; trackId: string }>;
+    merge?: boolean;
   },
 ): Promise<LyricsResult | null> {
   const params = new URLSearchParams({ provider, trackId });
@@ -1212,6 +1325,7 @@ export async function fetchLyrics(
   if (opts?.sources && opts.sources.length > 0) {
     params.set('sources', sourcesParam(opts.sources));
   }
+  if (opts?.merge === false) params.set('merge', '0');
   const res = await fetchWithToken(`${API_BASE}/music/lyrics?${params.toString()}`, {
     credentials: 'include',
   });
@@ -1220,12 +1334,19 @@ export async function fetchLyrics(
     lyrics: LyricLine[] | null;
     synced?: boolean;
     source?: LyricsSource | null;
+    mergedFrom?: LyricsSource[];
+    added?: number;
+    dropped?: number;
   };
   if (!data.lyrics || data.lyrics.length === 0) return null;
+  const source = data.source ?? provider;
   return {
     lines: data.lyrics,
     synced: data.synced ?? true,
-    source: data.source ?? provider,
+    source,
+    mergedFrom: data.mergedFrom ?? [source],
+    added: data.added ?? 0,
+    dropped: data.dropped ?? 0,
   };
 }
 
@@ -1265,12 +1386,17 @@ export async function fetchLyricsByName(
     lyrics: LyricLine[] | null;
     synced?: boolean;
     source?: LyricsSource | null;
+    mergedFrom?: LyricsSource[];
   };
   if (!data.lyrics || data.lyrics.length === 0) return null;
+  const source = data.source ?? 'lyricsovh';
   return {
     lines: data.lyrics,
     synced: data.synced ?? true,
-    source: data.source ?? 'lyricsovh',
+    source,
+    mergedFrom: data.mergedFrom ?? [source],
+    added: 0,
+    dropped: 0,
   };
 }
 

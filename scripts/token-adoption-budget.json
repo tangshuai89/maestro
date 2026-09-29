@@ -17,7 +17,7 @@
     "packages/renderer/src/components/modals/SettingsModal.tsx": 2,
     "packages/renderer/src/styles/base/tokens-bridge.scss": 2,
     "packages/renderer/src/styles/components/_source-select.scss": 2,
-    "packages/renderer/src/styles/base/_base.scss": 1,
+    "packages/renderer/src/styles/base/_base.scss": 0,
     "packages/renderer/src/styles/base/_reset.scss": 1,
     "packages/renderer/src/styles/components/_modal.scss": 1,
     "packages/renderer/src/styles/components/_reco-key-modal.scss": 1
@@ -30,6 +30,7 @@
     "packages/renderer/src/styles/abstracts/_variables.scss": "compile-time SCSS constants (z-index / breakpoints / overlay palette) — spec §不做什么 \"SCSS 变量集中管\"，不参与 token 化（与 token-adoption spec §S3-7 遗留色板归属决策相符）",
     "packages/renderer/src/components/modals/LikedLibraryModal.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌",
     "packages/renderer/src/components/search/SearchPanel.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌",
-    "packages/renderer/src/components/source-select/SourceSelect.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌"
+    "packages/renderer/src/components/source-select/SourceSelect.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌",
+    "packages/renderer/src/styles/base/_tw-vars.scss": "Tailwind Preflight 的变量清单机械抄写（--tw-ring-color / --tw-ring-offset-color / --tw-shadow-color）——第三方库的默认值，非 AETHER 设计令牌的复制品；换成 var(--token) 反而会改变 Tailwind 行为。背景见该文件头注释。"
   }
 }

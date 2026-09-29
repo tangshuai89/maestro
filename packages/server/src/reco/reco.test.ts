@@ -214,6 +214,23 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
   console.log('✅ 13. 推荐去重: exclude 排除续播复读 + 进 prompt 避让');
 }
 
+/**
+ * mulberry32 —— 确定性伪随机（与 reco.service.ts 里的实现同款）。
+ *
+ * 存在的唯一理由：让「统计性质」的断言可复现。直接用 Math.random 断言
+ * hotCount >= 8 这种统计量就是 flaky 的温床（见下面第 N 条用例的注释）。
+ */
+function mulberry32(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // ── fillPlatforms 用的最小 UnifiedSearchItem 构造 ──────────
 function uItem(id: string, title: string, artist: string) {
   return {
@@ -534,7 +551,16 @@ void (async () => {
 
     // exploreRatio = 0：纯亲和度加权 → 20:1 的权重差应让绝大多数种子来自常听歌手
     // （加权是概率性的、不是过滤器：长尾歌仍有极小机会被抽中，这正是设计意图）
-    const exploitOnly = pickTasteSeeds(lib, aff, { count: 10, exploreRatio: 0 });
+    //
+    // ⚠️ rng 必须注入（2026-09-28 修）：pickTasteSeeds 不注入时用 Math.random，
+    // 而断言卡的是统计量 hotCount >= 8（期望 ~9.5）。偶发抽到 7 就红 —— 2026-09-28
+    // 的全量 npm test 就这样炸过一次，单独重跑 5 次全绿，是典型 flaky 而非回归。
+    // 注入 mulberry32(42) 后序列固定：断言强度不变，但结果可复现。
+    const exploitOnly = pickTasteSeeds(lib, aff, {
+      count: 10,
+      exploreRatio: 0,
+      rng: mulberry32(42),
+    });
     assert.strictEqual(exploitOnly.length, 10);
     const hotCount = exploitOnly.filter(
       (s: any) => s.artist === '常听歌手',

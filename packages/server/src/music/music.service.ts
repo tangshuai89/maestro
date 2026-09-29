@@ -40,7 +40,10 @@ import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
-import { LyricsService } from './lyrics.service';
+import {
+  LyricsService,
+  type LyricsAggregatedResult,
+} from './lyrics.service';
 import { SourceHealthService } from './source-health.service';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
@@ -3777,8 +3780,7 @@ export class MusicService {
   }
 
   /**
-   * 多源歌词聚合：主平台 → 其余平台 source（按 LYRICS_SOURCE_PRIORITY 顺序）
-   * → lyrics.ovh 兜底。第一个命中即返回，并标注来源与是否带时间戳（synced）。
+   * 多源歌词聚合（透传 LyricsService，默认多源合并去重）。
    * 全部落空返回 { lines: null }。
    */
   async getLyricsAggregated(
@@ -3788,13 +3790,10 @@ export class MusicService {
     extras: Array<{ platform: MusicProvider; trackId: string }>,
     title: string,
     artist: string,
-  ): Promise<{
-    lines: LyricLine[] | null;
-    synced: boolean;
-    source: MusicProvider | 'lyricsovh' | null;
-  }> {
+    opts?: { merge?: boolean },
+  ): Promise<LyricsAggregatedResult> {
     return this.lyricsService.getLyricsAggregated(
-      session, provider, trackId, extras, title, artist,
+      session, provider, trackId, extras, title, artist, opts,
     );
   }
 
@@ -3813,12 +3812,18 @@ export class MusicService {
     title: string,
     artist: string,
     duration: number,
-  ): Promise<{
-    lines: LyricLine[] | null;
-    synced: boolean;
-    source: MusicProvider | 'lyricsovh' | null;
-  }> {
-    if (!title || !artist) return { lines: null, synced: false, source: null };
+  ): Promise<LyricsAggregatedResult> {
+    if (!title || !artist) {
+      return {
+        lines: null,
+        synced: false,
+        source: null,
+        mergedFrom: [],
+        added: 0,
+        dropped: 0,
+        rejected: [],
+      };
+    }
     const tried = new Set<string>();
     for (const platform of IS_LYRIC_SOURCE_PRIORITY) {
       if (tried.has(platform)) continue;
@@ -3831,10 +3836,26 @@ export class MusicService {
       if (!t) continue;
       const lines = await this.getLyrics(session, platform, t.id);
       if (lines && lines.length > 0) {
-        return { lines, synced: isSynced(lines), source: platform };
+        return {
+          lines,
+          synced: isSynced(lines),
+          source: platform,
+          mergedFrom: [platform],
+          added: 0,
+          dropped: 0,
+          rejected: [],
+        };
       }
     }
-    return { lines: null, synced: false, source: null };
+    return {
+      lines: null,
+      synced: false,
+      source: null,
+      mergedFrom: [],
+      added: 0,
+      dropped: 0,
+      rejected: [],
+    };
   }
 
   /**

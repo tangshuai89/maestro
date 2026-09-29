@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
 import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
 import { useLyrics } from './hooks/useLyrics';
+import { useDesktopLyrics } from './hooks/useDesktopLyrics';
 import { useAuth } from './hooks/useAuth';
 import { useReco } from './hooks/useReco';
 import { useTheme } from './hooks/useTheme';
@@ -9,10 +10,17 @@ import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
 import type { LibraryImportResult } from './api';
 import { readCachedLibrary } from './lib/likedCache';
+import {
+  readStoredPlayerMode,
+  writeStoredPlayerMode,
+  type PlayerMode,
+} from './lib/storage';
+import { downloadLyricsImage } from './lib/lyricsShare';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
 import TheaterView from './components/views/TheaterView';
-import MiniPlayer, { type PlayerMode } from './components/mini/MiniPlayer';
+import LiteView from './components/views/LiteView';
+import MiniPlayer from './components/mini/MiniPlayer';
 import Titlebar from './components/layout/Titlebar';
 import SearchPanel from './components/search/SearchPanel';
 import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
@@ -46,6 +54,48 @@ export default function App() {
 
   const player = usePlayer(audioRef, wpsRef, spotifyTierRef);
   const lyrics = useLyrics(player.track, player.provider, player.currentSources);
+
+  // ── 歌词分享图（导出 PNG 到本地下载目录）────────────────────────
+  // 副作用留在 App（composition layer），TheaterView 只管传「点了哪一句」。
+  // 状态机 idle → working → done/error → 2.4s 自动回落，避免 Toast 基建。
+  const [lyricsExport, setLyricsExport] = useState<
+    'idle' | 'working' | 'done' | 'error'
+  >('idle');
+  const lyricsExportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (lyricsExportTimer.current) clearTimeout(lyricsExportTimer.current);
+    },
+    [],
+  );
+  const handleExportLyrics = useCallback(
+    async (highlightText?: string) => {
+      const cur = player.track;
+      const lines = lyrics.lyrics;
+      if (!cur || !lines || lines.length === 0 || lyricsExport === 'working') {
+        return;
+      }
+      if (lyricsExportTimer.current) clearTimeout(lyricsExportTimer.current);
+      setLyricsExport('working');
+      try {
+        const ok = await downloadLyricsImage({
+          title: cur.title,
+          artist: cur.artist,
+          coverUrl: cur.coverUrl ?? '',
+          lines,
+          highlightText: highlightText ?? null,
+        });
+        setLyricsExport(ok ? 'done' : 'error');
+      } catch {
+        setLyricsExport('error');
+      }
+      lyricsExportTimer.current = setTimeout(
+        () => setLyricsExport('idle'),
+        2400,
+      );
+    },
+    [player.track, lyrics.lyrics, lyricsExport],
+  );
   const auth = useAuth(player.provider, player.loadNextTrack, player.setError);
   spotifyTierRef.current = auth.auth.tier ?? undefined;
   // 把 usePlayer 的 reactive queue 状态（queueIdx / queueUnifiedItems）
@@ -124,25 +174,23 @@ export default function App() {
   const [likedVersion, setLikedVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // theater ↔ mini 浮层切换（specs/mini-player）。<audio> 常驻本组件，
-  // 切 mode 只是 TheaterView/MiniPlayer 的条件渲染 —— Web Audio graph 不动。
-  // 持久化到 localStorage，重启恢复上次模式。
-  const [playerMode, setPlayerMode] = useState<PlayerMode>(() => {
-    try {
-      return localStorage.getItem('player-mode') === 'mini' ? 'mini' : 'theater';
-    } catch {
-      return 'theater';
-    }
-  });
+  // theater ↔ mini（specs/mini-player）↔ lite（specs/lite-mode）三态切换。
+  // <audio> 常驻本组件，切 mode 只是 TheaterView/MiniPlayer/LiteView 的条件
+  // 渲染 —— Web Audio graph 不动，当前歌 / 队列 / 进度天然不丢。
+  // 持久化到 localStorage（键在 lib/storage 里），重启恢复上次模式。
+  const [playerMode, setPlayerMode] = useState<PlayerMode>(readStoredPlayerMode);
   const { bgLayerRef, coverBackdropRef } = player;
   useEffect(() => {
-    try {
-      localStorage.setItem('player-mode', playerMode);
-    } catch {
-      /* private mode — 不持久化也能用 */
-    }
-    // Electron 下让 main 把窗口收成小条 / 还原；浏览器 dev 无 electronAPI 跳过。
+    writeStoredPlayerMode(playerMode);
+    // Electron 下让 main 把窗口收成紧凑形态 / 还原；浏览器 dev 无 electronAPI 跳过。
     window.electronAPI?.reportPlayerMode(playerMode);
+
+    // SearchPanel 的挂载条件只有 player.searchOpen（与 mode 无关）—— 进 lite
+    // 时若搜索面板还开着，overlay 会盖在极简界面上。顺手关掉。
+    // 有意不把 player 放进依赖：setSearchOpen 是 useState setter，引用终身
+    // 稳定，加进去只会让这个 effect 每次 render 都重订阅 mousemove。见下方
+    // 依赖数组处的 eslint-disable。
+    if (playerMode === 'lite') player.setSearchOpen(false);
 
     // 切回 theater 时 .th-cover 是全新挂载的 div —— 它的 background-image 只在
     // 换歌时由 presentCover 命令式写入 ref.current，mode 切换不会重放。
@@ -182,6 +230,7 @@ export default function App() {
       document.documentElement.removeEventListener('mouseleave', onLeave);
       api.setWindowButtonsVisible(true);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerMode, bgLayerRef, coverBackdropRef]);
   // Cmd+Shift+M（避开 macOS Cmd+M 最小化）。setPlayerMode 是稳定引用，
   // effect 内直接调，不把 handler 加进依赖。
@@ -197,6 +246,97 @@ export default function App() {
   }, []);
   const handleTogglePlayerMode = () =>
     setPlayerMode((m) => (m === 'mini' ? 'theater' : 'mini'));
+
+  // 桌面歌词浮窗（§7.2）：这里算「当前行/下一行/行内进度」推给 main，
+  // main 转发到浮窗窗口。浮窗不碰 <audio>，所以切浮窗不影响播放。
+  const desktopLyrics = useDesktopLyrics({
+    lines: lyrics.lyrics,
+    currentTime: player.currentTime,
+    playing: player.playing,
+    title: player.track?.title,
+    artist: player.track?.artist,
+  });
+  const toggleDesktopLyrics = desktopLyrics.toggle;
+  // ⌘⇧D 开/关桌面歌词（与 Titlebar 按钮、Tray 勾选同一套状态）。
+  // ⌘⇧L 归 lite 模式（§6.3）、⌘⇧M 归 mini，所以这里用 D(Desktop)。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        toggleDesktopLyrics();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleDesktopLyrics]);
+  // lite ↔ theater 定向切换（快捷键 / 设置 / ⛶ 键都走它）。设置节要的是
+  // 任意目标态（完整 / 迷你 / 极简三选一），所以额外暴露 changePlayerMode。
+  const goTheater = () => setPlayerMode('theater');
+  // SettingsModal 是 z-index:1000 的全屏浮层且不会自动关闭 —— 只改 playerMode
+  // 的话用户在设置页里看不出任何变化，「即时生效」就无从观察。选极简/迷你时
+  // 主动关掉它（回 theater 不关：theater 恰恰是设置页背后的那个完整界面）。
+  const changePlayerMode = (m: PlayerMode) => {
+    setPlayerMode(m);
+    if (m !== 'theater') setSettingsOpen(false);
+  };
+
+  // lite 模式键盘（specs/lite-mode §2）：
+  //   ⌘⇧L  进/出 lite · Esc 回 theater · Space 播放/暂停
+  // 界面刻意只留三类元素（歌名 / ◀▶ / ✨），播放/暂停与"怎么出去"就落在这
+  // 几个键上 + 一个 hover 显形的 ⛶ 键上。
+  //
+  // Esc / Space 在有浮层（搜索 / 库 / NL / 设置 / reco key / 登录态报错）打开时
+  // 一律让位 —— 那些浮层各自有 ESC 处理，叠加会让一次 Esc 关两层。
+  // 登录态两个浮层容易漏：AuthErrorPanel / NeteaseCookieModal 在 lite 下照样
+  // 无条件渲染（它们只由 auth 决定，与 playerMode 无关）。
+  const overlayOpen =
+    player.searchOpen ||
+    likedOpen ||
+    nlOpen ||
+    settingsOpen ||
+    reco.recoKeyOpen ||
+    !!auth.authError ||
+    auth.showCookieFallback;
+  // handlePlayPause 不是 useCallback（每次 render 新引用），而 App 会跟着进度
+  // 每秒重渲染数次 —— 用 ref 兜住，键盘 effect 才能只订阅一次。
+  const playPauseRef = useRef(player.handlePlayPause);
+  playPauseRef.current = player.handlePlayPause;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setPlayerMode((m) => (m === 'lite' ? 'theater' : 'lite'));
+        return;
+      }
+      if (playerMode !== 'lite' || overlayOpen) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPlayerMode('theater');
+        return;
+      }
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      // 焦点在输入框 / 按钮里时空格另有归属，不是播放/暂停：
+      //   输入框 —— 空格是打字；
+      //   按钮   —— 浏览器在 keyup 阶段才由空格生成 click（激活该按钮），
+      //     这里若 preventDefault 就把它吃掉了，键盘用户只能改用 Enter。
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          el.tagName === 'BUTTON' ||
+          el.getAttribute('role') === 'button' ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      playPauseRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [playerMode, overlayOpen]);
   const reloadLikedCount = async () => {
     // 先用缓存秒出首帧（避免 ❤ 按钮从 0 闪到 N），后台拉到后用真值覆盖。
     const cached = readCachedLibrary();
@@ -307,7 +447,10 @@ export default function App() {
   return (
     // search-open adds a class the CSS uses to freeze the cover animations
     // behind the search overlay's backdrop-filter (avoids flicker).
-    <div className={`app ${playerMode === 'mini' ? 'mini-mode' : 'theater-mode'}${player.searchOpen ? ' search-open' : ''}`}>
+    <div className={`app ${playerMode === 'mini' ? 'mini-mode' : playerMode === 'lite' ? 'lite-mode' : 'theater-mode'}${player.searchOpen ? ' search-open' : ''}`}>
+      {/* lite 模式整屏只有三类元素 —— titlebar 不渲染（搜索 / 设置 / 库
+          这些入口 lite 下都够不着，切回 theater 再用；⌘⇧L 与 ⛶ 键仍可切回）。*/}
+      {playerMode !== 'lite' && (
       <Titlebar
         provider={player.provider}
         onSwitchProvider={player.switchToProvider}
@@ -342,13 +485,27 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         playerMode={playerMode}
         onTogglePlayerMode={handleTogglePlayerMode}
+        desktopLyricsOn={desktopLyrics.enabled}
+        onToggleDesktopLyrics={toggleDesktopLyrics}
       />
+      )}
 
       {/* Full-window blurred cover layer — the backdrop the glass cards blur.
           background-image is set by useCoverArt via bgLayerRef. */}
       <div className="bg-layer" ref={player.bgLayerRef} aria-hidden="true" />
 
-      {playerMode === 'mini' ? (
+      {playerMode === 'lite' ? (
+        <LiteView
+          track={player.track}
+          loading={player.loading}
+          recoConfigured={reco.recoStatus?.configured ?? false}
+          recoRunning={reco.recoRunning}
+          onPrev={player.handlePrev}
+          onSkip={player.handleSkip}
+          onReco={() => void reco.handleReco()}
+          onExit={goTheater}
+        />
+      ) : playerMode === 'mini' ? (
         <MiniPlayer
           track={player.track}
           playing={player.playing}
@@ -383,6 +540,12 @@ export default function App() {
         lyrics={lyrics.lyrics}
         lyricsSynced={lyrics.synced}
         lyricsSource={lyrics.source}
+        lyricsMergedFrom={lyrics.mergedFrom}
+        lyricsAdded={lyrics.added}
+        lyricsLoading={lyrics.loading}
+        lyricsExportState={lyricsExport}
+        onExportLyrics={handleExportLyrics}
+        onRetryLyrics={lyrics.retryByName}
         recoConfigured={reco.recoStatus?.configured ?? false}
         recoLibrarySize={reco.recoStatus?.librarySize ?? 0}
         recoRunning={reco.recoRunning}
@@ -422,6 +585,9 @@ export default function App() {
       {player.searchOpen && (
         <SearchPanel
           onPlay={player.playSearch}
+          // WPS 已连 → Spotify 源能走 SDK 全曲流，那些没有 preview_url 的
+          // Spotify 行仍可播；否则它们必须置灰（点了只会卡在 00:00）。
+          wpsReady={wps.wpsReady}
           onClose={() => player.setSearchOpen(false)}
           onOpenNL={() => {
             player.setSearchOpen(false);
@@ -430,7 +596,11 @@ export default function App() {
         />
       )}
 
-      {reco.recoRunning && (
+      {/* lite 下不走全屏 RecoLoading：它是 z-index:150 + inset:0 的整屏星云，
+          会把 lite 的三元素整个盖掉 —— 而点 ✨ 正是 lite 最主要的动作。
+          loading 态交回 LiteView 自己的 ✨（disabled + aria-busy + 转圈），
+          否则那段分支在生产环境永远不可达。见 spec §6 偏离 5。 */}
+      {reco.recoRunning && playerMode !== 'lite' && (
         <RecoLoading librarySize={reco.recoStatus?.librarySize ?? 0} />
       )}
 
@@ -480,7 +650,17 @@ export default function App() {
         />
       )}
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          playerMode={playerMode}
+          onChangePlayerMode={changePlayerMode}
+          audioFx={player.audioFx}
+          onEqEnabled={player.setEqEnabled}
+          onEqBandGain={player.setEqBandGain}
+          onApplyEqPreset={player.applyEqPreset}
+        />
+      )}
 
       {auth.authError && (
         <AuthErrorPanel

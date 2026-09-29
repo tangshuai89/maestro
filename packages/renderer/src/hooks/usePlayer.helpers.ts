@@ -13,7 +13,7 @@
  */
 
 import type { Track, MusicProvider, UnifiedSearchItem } from '../api';
-import { pickPlayableTrack } from '../api';
+import { isPlayableEntry, pickPlayableTrack } from '../api';
 
 /**
  * 跨平台降级的优先级（镜像 server 的 PLAY_PRIORITY）：某首歌的当前源播放
@@ -145,7 +145,10 @@ export function parsePlayableQueue(
           mediaMid: spotifySrc.mediaMid,
         }
       : pickPlayableTrack(it);
-    if (t) {
+    // isPlayableEntry 与 SearchPanel 的行可点性共用同一把尺子：bestSource
+    // 指向的源必须真的能出声（Spotify 无 preview_url 且 WPS 未连 → 不能）。
+    // 少了这一步，Spotify 独占条目会被塞进队列，播放时静默卡在 00:00。
+    if (t && isPlayableEntry(it, wpsReady)) {
       tracks.push(t);
       unifiedItems.push(it);
     }

@@ -17,6 +17,7 @@ const SUBSCRIBABLE_CHANNELS = new Set([
   'qq-login-result',
   'netease-login-result',
   'tray:command',
+  'desktop-lyrics:changed',
   'spotify:oauth-protocol',
   'console-message', // forwarded to main for debugging
 ]);
@@ -54,6 +55,42 @@ export interface PlaybackState {
   title?: string;
   artist?: string;
 }
+
+/** 桌面歌词浮窗的开关/锁定态（NEXT-ITERATION §7.2）。 */
+export interface DesktopLyricsStatus {
+  enabled: boolean;
+  locked: boolean;
+}
+
+/** 主窗口推给浮窗的播放快照 —— 只含展示需要的三件事。 */
+export interface DesktopLyricsState {
+  playing: boolean;
+  current: string | null;
+  next: string | null;
+  /** 当前行内进度 0..1 */
+  progress: number;
+  title?: string;
+  artist?: string;
+}
+
+/** 浮窗可改的样式（字号/配色/描边）。位置尺寸由窗口自己拖，main 记录。 */
+export interface DesktopLyricsStylePrefs {
+  fontScale: number;
+  stroke: boolean;
+  palette: 'light' | 'dark' | 'cyan' | 'amber';
+}
+
+/** main 广播给浮窗的完整偏好（开关态 + 样式）。 */
+export interface DesktopLyricsPrefsPayload extends DesktopLyricsStylePrefs {
+  enabled: boolean;
+  locked: boolean;
+}
+
+/** 浮窗设置面板的动作。 */
+export type DesktopLyricsControl =
+  | { action: 'close' }
+  | { action: 'lock'; locked: boolean }
+  | { action: 'prefs'; prefs: Partial<DesktopLyricsStylePrefs> };
 
 const electronAPI = {
   platform: process.platform,
@@ -133,10 +170,11 @@ const electronAPI = {
     ipcRenderer.send('player:state', state),
 
   /**
-   * Report player mode ('theater' | 'mini') so main can shrink the window
-   * to a floating mini bar and restore it back. Fire-and-forget.
+   * Report the playback view ('theater' | 'mini' | 'lite') so main can
+   * shrink the window to its compact shape (mini bar / lite box) and
+   * restore it back. Fire-and-forget.
    */
-  reportPlayerMode: (mode: 'theater' | 'mini'): void =>
+  reportPlayerMode: (mode: 'theater' | 'mini' | 'lite'): void =>
     ipcRenderer.send('player:mode', mode),
 
   /**
@@ -145,6 +183,48 @@ const electronAPI = {
    */
   setWindowButtonsVisible: (visible: boolean): void =>
     ipcRenderer.send('window-buttons:visibility', visible),
+
+  /**
+   * 桌面歌词浮窗（§7.2）。主窗口用前四个（推状态 / 开关 / 读态 / 订阅变化），
+   * 浮窗窗口用后面三个（收状态与 prefs / 回报动作与 hover）—— 两端共用同一个
+   * preload，所以这里是一组而不是两个 API。
+   */
+  desktopLyrics: {
+    /** 主窗口 → main：推当前行。renderer 侧自己做去抖，这里不做节流。 */
+    pushState: (state: DesktopLyricsState): void =>
+      ipcRenderer.send('desktop-lyrics:state', state),
+    /** 主窗口 → main：开关浮窗（Titlebar 按钮 / ⌘⇧L / Tray 回显都走这里）。 */
+    setEnabled: (enabled: boolean): void =>
+      ipcRenderer.send('desktop-lyrics:set-enabled', enabled),
+    /** 主窗口 → main：首帧读一次当前开关态，避免按钮图标闪错状态。 */
+    getStatus: (): Promise<DesktopLyricsStatus> =>
+      ipcRenderer.invoke('desktop-lyrics:status'),
+    /** main → 主窗口：Tray / 浮窗面板改了开关或锁定态。 */
+    onChanged: (cb: (status: DesktopLyricsStatus) => void): (() => void) => {
+      const handler = (_e: unknown, status: DesktopLyricsStatus): void => cb(status);
+      ipcRenderer.on('desktop-lyrics:changed', handler);
+      return () => ipcRenderer.removeListener('desktop-lyrics:changed', handler);
+    },
+    /** main → 浮窗：播放快照（开窗后补发首帧，之后增量）。 */
+    onState: (cb: (state: DesktopLyricsState) => void): (() => void) => {
+      const handler = (_e: unknown, state: DesktopLyricsState): void => cb(state);
+      ipcRenderer.on('desktop-lyrics:state', handler);
+      return () => ipcRenderer.removeListener('desktop-lyrics:state', handler);
+    },
+    /** main → 浮窗：样式偏好的权威值（main 是唯一事实来源）。 */
+    onPrefs: (cb: (prefs: DesktopLyricsPrefsPayload) => void): (() => void) => {
+      const handler = (_e: unknown, prefs: unknown): void =>
+        cb(prefs as DesktopLyricsPrefsPayload);
+      ipcRenderer.on('desktop-lyrics:overlay:prefs', handler);
+      return () => ipcRenderer.removeListener('desktop-lyrics:overlay:prefs', handler);
+    },
+    /** 浮窗 → main：关闭 / 锁定 / 改样式。 */
+    control: (msg: DesktopLyricsControl): void =>
+      ipcRenderer.send('desktop-lyrics:overlay:control', msg),
+    /** 浮窗 → main：鼠标移入移出（锁定态下据此临时解除点击穿透）。 */
+    hover: (inside: boolean): void =>
+      ipcRenderer.send('desktop-lyrics:overlay:hover', { inside }),
+  },
 
   /** Tell main we're in Electron so the renderer can branch its behaviour. */
   isElectron: true as const,

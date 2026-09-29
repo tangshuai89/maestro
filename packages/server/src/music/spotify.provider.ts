@@ -732,6 +732,13 @@ export class SpotifyMusicProvider {
    * 跟 VIP 锁等价处理。selectBestSource 避开后由完整曲流平台（QQ/网易云）
    * 先播；它们锁了再退回 30s 预览（Deezer）。Premium 用户走 WPS 路径不会触达
    * 这里，vipLocked 标什么都跟它无关。
+   *
+   * 但"没有 preview_url"比"只给 30s"严重一档：`getStreamPath` 会直接抛
+   * `spotify_no_preview`（HTTP 502），`<audio>` 拿不到任何音频。2024-11 起
+   * Spotify 对多数应用停发 preview_url，**整个平台的搜索结果都可能落在这一
+   * 档**——必须额外标 `noPreview`，否则统一搜索里 Spotify 独占的那一行看起来
+   * 可播、点下去却永远停在 00:00（用户报障：搜「浓缩蓝鲸」→ ALL 里裘德那首的
+   * Spotify 行 "Jude Chiu" 点了没反应）。
    */
   private toTrack(t: SpotifyTrack): Track {
     return {
@@ -745,6 +752,7 @@ export class SpotifyMusicProvider {
       duration: Math.round((t.duration_ms ?? 0) / 1000),
       liked: false,
       vipLocked: true,
+      noPreview: !t.preview_url,
     };
   }
 }

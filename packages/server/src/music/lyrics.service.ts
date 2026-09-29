@@ -3,7 +3,7 @@
  *
  * 从 music.service.ts 拆出，集中管理：
  *   - getLyrics：单平台抓歌词（带 TTL 缓存）
- *   - getLyricsAggregated：主源 → 其余 source → lyrics.ovh 兜底
+ *   - getLyricsAggregated：多源并行拉取 → LRC 合并去重 → lyrics.ovh 兜底
  *   - getLyricsAvailability：搜索结果行的「词」指示（只查平台源，不打 ovh）
  *
  * 留 MusicService：
@@ -16,7 +16,12 @@
  */
 
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { type LyricLine } from '../common/lyrics';
+import {
+  type LyricLine,
+  type LyricSourceBundle,
+  isSyncedLyrics,
+  mergeLyricSources,
+} from '../common/lyrics';
 import { type Session } from '../common/session';
 import { type MusicProvider } from '../common/provider';
 import { QqMusicProvider } from './qq.provider';
@@ -31,16 +36,23 @@ const LYRICS_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
 const LYRICS_CACHE_TTL_MS = 10 * 60 * 1000;
 const LYRICS_CACHE_MAX = 2_000;
 
-/** 有任何一行 time>0 才算 synced——lyrics.ovh / Deezer 纯文本歌词全部
- *  返回非 synced。 */
-function isSynced(lines: LyricLine[]): boolean {
-  return lines.some((l) => l.time > 0);
-}
+
+/** 参与合并的来源标识——平台源或 lyrics.ovh 第三方兜底。 */
+export type LyricsSourceId = MusicProvider | 'lyricsovh';
 
 export interface LyricsAggregatedResult {
   lines: LyricLine[] | null;
   synced: boolean;
-  source: MusicProvider | 'lyricsovh' | null;
+  /** 主来源（优先级最高的贡献者）——向后兼容的旧字段，语义不变。 */
+  source: LyricsSourceId | null;
+  /** 实际贡献了行的来源（优先级降序）。length > 1 = 发生了多源合并。 */
+  mergedFrom: LyricsSourceId[];
+  /** 低优先级源补进来的行数（并集增量）。 */
+  added: number;
+  /** 文本重复被去重丢弃的行数。 */
+  dropped: number;
+  /** 时间轴对不齐、被整源放弃的来源。 */
+  rejected: LyricsSourceId[];
 }
 
 @Injectable()
@@ -117,8 +129,54 @@ export class LyricsService {
   }
 
   /**
-   * 多源歌词聚合：主平台 → 其余 source（按 LYRICS_SOURCE_PRIORITY 顺序）
-   * → lyrics.ovh 兜底。第一个命中即返回，并标注来源与是否带时间戳（synced）。
+   * 候选源（按优先级排序）：主平台 trackId 优先，其后按
+   * LYRICS_SOURCE_PRIORITY 排 extras（同一首歌在其他平台的等价曲目）。
+   * 平台去重——同一个 (platform, trackId) 只出现一次。
+   */
+  private buildCandidates(
+    provider: MusicProvider,
+    trackId: string,
+    extras: Array<{ platform: MusicProvider; trackId: string }>,
+  ): Array<{ platform: MusicProvider; trackId: string; priority: number }> {
+    const out: Array<{
+      platform: MusicProvider;
+      trackId: string;
+      priority: number;
+    }> = [];
+    const seen = new Set<string>();
+    const push = (
+      platform: MusicProvider,
+      id: string,
+      priority: number,
+    ): void => {
+      if (!id) return;
+      const key = `${platform}:${id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ platform, trackId: id, priority });
+    };
+    push(provider, trackId, 0);
+    for (const p of LYRICS_SOURCE_PRIORITY) {
+      for (const e of extras) {
+        if (e.platform === p) push(e.platform, e.trackId, out.length);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 多源歌词聚合（NEXT-ITERATION §4）。
+   *
+   * 默认 `merge` 模式：**并行**拉所有候选源 → 交给 mergeLyricSources 做
+   * LRC 合并去重（并集 + 按时间容差去重 + 错位源整源丢弃）→ 平台全落空
+   * 才走 lyrics.ovh 第三方兜底（纯文本）。
+   *
+   * `merge: false` 走旧的 first-hit-wins 快路径（第一个命中即返回，
+   * 不打其余源），保留给「只想知道有没有词」的轻量场景。
+   *
+   * 为什么 ovh 不参与合并：lyrics.ovh 返回的是纯文本（无时间戳），
+   * 落不进时间轴；且为一首歌轰第三方只应在平台全落空时才发生
+   * （与 getLyricsAvailability 的合规口径一致）。
    */
   async getLyricsAggregated(
     session: Session,
@@ -127,25 +185,64 @@ export class LyricsService {
     extras: Array<{ platform: MusicProvider; trackId: string }>,
     title: string,
     artist: string,
+    opts?: { merge?: boolean },
   ): Promise<LyricsAggregatedResult> {
-    const tried = new Set<string>();
-    const attempts: Array<{ platform: MusicProvider; trackId: string }> = [];
-    if (trackId) attempts.push({ platform: provider, trackId });
-    for (const p of LYRICS_SOURCE_PRIORITY) {
-      for (const e of extras) {
-        if (e.platform === p && e.trackId) attempts.push(e);
+    const candidates = this.buildCandidates(provider, trackId, extras);
+    if (candidates.length === 0) {
+      return this.emptyResult();
+    }
+
+    if (opts?.merge === false) {
+      for (const c of candidates) {
+        const lines = await this.getLyrics(session, c.platform, c.trackId);
+        if (lines && lines.length > 0) {
+          return {
+            lines,
+            synced: isSyncedLyrics(lines),
+            source: c.platform,
+            mergedFrom: [c.platform],
+            added: 0,
+            dropped: 0,
+            rejected: [],
+          };
+        }
+      }
+    } else {
+      // 并行拉取：合并要看到所有源才能算并集，串行会白等 N 个 RTT。
+      // getLyrics 内部已 catch（未登录 / 网络错 → null）且带 TTL 缓存 +
+      // in-flight 合并，allSettled 只是再加一层保险。
+      const settled = await Promise.allSettled(
+        candidates.map((c) =>
+          this.getLyrics(session, c.platform, c.trackId),
+        ),
+      );
+      const bundles: LyricSourceBundle[] = [];
+      settled.forEach((r, i) => {
+        if (r.status !== 'fulfilled') return;
+        const lines = r.value;
+        if (!lines || lines.length === 0) return;
+        bundles.push({
+          source: candidates[i].platform,
+          priority: candidates[i].priority,
+          lines,
+        });
+      });
+      const merged = mergeLyricSources(bundles);
+      if (merged && merged.lines.length > 0) {
+        const mergedFrom = merged.sources as LyricsSourceId[];
+        return {
+          lines: merged.lines,
+          synced: merged.synced,
+          source: mergedFrom[0] ?? provider,
+          mergedFrom,
+          added: merged.added,
+          dropped: merged.dropped,
+          rejected: merged.rejected as LyricsSourceId[],
+        };
       }
     }
-    for (const a of attempts) {
-      const key = `${a.platform}:${a.trackId}`;
-      if (tried.has(key)) continue;
-      tried.add(key);
-      const lines = await this.getLyrics(session, a.platform, a.trackId);
-      if (lines && lines.length > 0) {
-        return { lines, synced: isSynced(lines), source: a.platform };
-      }
-    }
-    // 第三方兜底（纯文本，无时间戳）
+
+    // 平台全落空 → 第三方兜底（纯文本，无时间戳）
     if (title && artist) {
       const ovhKey = `ovh:${artist}|${title}`;
       const cached = this.lyricsCache.get(ovhKey);
@@ -158,10 +255,18 @@ export class LyricsService {
         this.pruneLyricsCache();
       }
       if (lines && lines.length > 0) {
-        return { lines, synced: false, source: 'lyricsovh' };
+        return {
+          lines,
+          synced: false,
+          source: 'lyricsovh',
+          mergedFrom: ['lyricsovh'],
+          added: 0,
+          dropped: 0,
+          rejected: [],
+        };
       }
     }
-    return { lines: null, synced: false, source: null };
+    return this.emptyResult();
   }
 
   /**
@@ -189,6 +294,18 @@ export class LyricsService {
   }
 
   // ── helpers ───────────────────────────────────────────────────────
+
+  private emptyResult(): LyricsAggregatedResult {
+    return {
+      lines: null,
+      synced: false,
+      source: null,
+      mergedFrom: [],
+      added: 0,
+      dropped: 0,
+      rejected: [],
+    };
+  }
 
   private requireProviderSession(
     session: Session,

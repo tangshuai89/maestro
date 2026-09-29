@@ -57,21 +57,54 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 ### 0.1 一次性环境准备（1–2 小时）
 
-- [ ] **买 Apple Developer Account**（[developer.apple.com](https://developer.apple.com/programs/enroll/)，
-      $99/年），批准后装 Developer ID Application Certificate 到 Mac Keychain
-- [ ] **pip 装 EVS 客户端**：`pip3 install --upgrade castlabs-evs`
-- [ ] **注册 EVS 账户**：`python3 -m castlabs_evs.account signup`（e-mail 收验证码，
+- [x] **装 EVS 客户端** —— ⚠️ **本节原写法是错的，已实测修正**：裸
+      `pip3 install castlabs-evs` 会撞 PEP 668（homebrew python3.14 外部管理环境），
+      且 `python3 -m castlabs_evs...` **根本不存在该入口**。实际可用的是 venv +
+      两个 CLI：
+      ```bash
+      python3 -m venv ~/.castlabs-evs-venv
+      ~/.castlabs-evs-venv/bin/pip install --upgrade castlabs-evs   # → 1.3.2 ✅ 已装
+      ```
+      装完 `bin/` 下是 `evs-account`（账户）/ `evs-vmp`（签名），**没有** `castlabs-evs` 这个命令
+- [ ] **买 Apple Developer Account**：[developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/)
+      $99/年，1–3 天批。现状核查 2026-09-28：`security find-identity -v -p codesigning`
+      = **0 valid identities**，证书尚未装
+- [ ] **注册 EVS 账户**：`~/.castlabs-evs-venv/bin/evs-account signup`（e-mail 收验证码，
       Org 随便填个人；账号**永久免费**，签 streaming signature 不收费）
 - [ ] **EVS 客户端**登录后自动缓存 access token 到 `~/.castlabs-evs/`；
-      `EVS_NO_ASK=1` 跳过交互（CI / 自动化友好）
+      `EVS_NO_ASK=1` / `--no-ask` 跳过交互（CI / 自动化友好）
+- [ ] 凭据到位后手动验一次签名链路：`~/.castlabs-evs-venv/bin/evs-vmp sign-pkg dist/mac-arm64/Maestro.app`
+- [ ] **换网络验 CDM 能下载**（第二个隐藏前置，2026-09-28 实测发现）：本机
+      `node_modules/electron` 是 `43.2.0+wvcus`（版本对），但
+      `dist/Electron.app` 里 **找不到任何 Widevine CDM**（`find -iname '*widevine*'`
+      零命中）——castLabs fork 不内置 CDM，Electron 在运行时从
+      `redirector.gvt1.com` 下载。本机 iOA 拦该 CDN 会拿到 567B HTML 拦截页
+      → EME 探测拿不到 CDM。**这条不解决，EVS 签完也还是播不响**：
+      签 VMP（解决 license 500）和拿到 CDM（解决 EME）是两个独立的坎
 
 ### 0.2 集成 build → sign → notarize（半天）
 
-- [ ] **`packages/electron/afterPack-vmp.cjs`** 已就位（PR #39），在 codesign **之前**
-      调 `castlabs_evs.vmp sign-pkg dist/mac-{x64,arm64}/Maestro.app`——
-      macOS VMP 签名必须在 codesign **之前**（vmp-resign.py 也在 dist 里可手签）；
-      Windows 必须在 codesign **之后**。**逻辑已就绪**，缺的是 EVS 凭据
-- [ ] 验证 `build.electronDist` 仍指本地 `node_modules/electron/dist`（v43 Widevine CDM）
+- [x] **`packages/electron/afterPack-vmp.cjs`** 在 codesign **之前**签 VMP
+      （macOS 在前；Windows 在后）。**逻辑已就位** —— 2026-09-28 修了里面的真 bug：
+      原代码调 `python3 -m castlabs_evs.vmp sign-pkg`，**该入口不存在**
+      （castlabs-evs 只有 `evs-vmp` / `evs-account` 两个 CLI），意味着不带
+      `SKIP_VMP=1` 的 `npm run pack` 必然抛 `No module named castlabs_evs`。
+      现改为解析可执行文件路径（`EVS_VMP_BIN` → `~/.castlabs-evs-venv/bin/evs-vmp`
+      → `~/.local/bin` → brew 常见位置），找不到时抛带安装命令的可读错误。
+      **剩余：EVS 凭据**
+- [x] 验证 `build.electronDist` 仍指本地 `node_modules/electron/dist`
+      —— 实际是 `43.2.0+wvcus`（castLabs fork，版本对）✅
+      ⚠️ 但**该 dist 里没有内置 Widevine CDM**（见 0.1 最后一条），需运行时下载
+- [x] **打包白屏修复**（2026-09-28，跨 P0/P1/P2/P3 的地基 bug）：
+      `vite.config.ts` 没设 `base`，prod 走 `mainWindow.loadFile()` =
+      `file://`，而 vite 默认 base='/' 会把产物入口写成 `src="/assets/main-*.js"`
+      ——绝对路径在 `file://` 下解析到**文件系统根** → index.html 和
+      lyrics.html（桌面歌词浮窗）**一起白屏**。`npm run dev` 走
+      `loadURL(http://127.0.0.1:5173)` 所以永远测不出来，只有 pack 产物才命中
+      ——而打包冒烟一直卡在 EVS 凭据上从没真跑过。现已加 `base: './'`，
+      并加回归测试 `renderer/src/test/build-base.test.mjs`（断言 config 里
+      有 `base:'./'` + dist 产物引用是相对路径且文件存在）。**W1 装 dmg 后
+      第一件事就是确认不白屏**。
 - [ ] 验证 `build.afterPack` 钩子链：VMP sign → codesign → notarize → dmg
 - [ ] 逃生阀 `SKIP_VMP=1 npm run pack` 保留（无 Apple Dev / 无 EVS 凭据时验打包管线）
 - [ ] **CI 化**（可选）：把 EVS 凭据放 GitHub Actions secret，每次 release tag 自动
@@ -94,7 +127,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 ### 0.5 风险 + 兜底
 
-- **EVS 凭据失效**（每月 token 过期）：`castlabs_evs.account refresh` 续期；CI 里
+- **EVS 凭据失效**（每月 token 过期）：`evs-account refresh` 续期；CI 里
   `EVS_NO_ASK=1` + secret 注入
 - **Apple Dev 申请被拒**（罕见，多数 1-3 天批）：用 Apple ID 个人账号也行（功能受限，
   团队签名 / TestFlight 不行，但本地 dev 用 Developer ID 自签够用）
@@ -134,12 +167,12 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
     `parsePlayableQueue` 在 WPS 激活时强制用 Spotify 源（PR #53）
   - ✅ EME 探测：connect 前 `requestMediaKeySystemAccess('com.widevine.alpha')` 验可用
   - ✅ 打包 VMP 钩子：`packages/electron/afterPack-vmp.cjs` 在 codesign 前
-    调 `castlabs_evs.vmp sign-pkg`（含 `SKIP_VMP=1` 逃生阀），`build.electronDist`
+    调 `evs-vmp sign-pkg`（含 `SKIP_VMP=1` 逃生阀），`build.electronDist`
     指本地 castLabs dist（PR #39）
 - **仍剩**：
   - [ ] **task 16**：`npm run pack` 端到端冒烟出 macOS dmg（packaging spec 16）——
     需要 `npm install`（环境曾缺 7zip-bin 传递依赖，应已随 PR #39 lock 重生成恢复）
-  - [ ] **本机一次性**：`pip install castlabs-evs` + `python3 -m castlabs_evs.account signup`
+  - [ ] **本机一次性**：`pip install castlabs-evs`（venv）+ `evs-account signup`
     跑通 VMP 签名（无 EVS 账号也可用 `SKIP_VMP=1 npm run pack` 跳签名，仅验打包管线）
   - [ ] **Premium 手动验收**：装 dmg → 登录 Premium → 播完整曲目 + Spotify 桌面端可见
     "maestro-xxxx" 设备 + transport 生效 + token 1h 重连不掉播
@@ -206,18 +239,30 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 ---
 
-## 4. 歌词体验 — **基础体验已用，多源聚合还没做**
+## 4. 歌词体验 — ✅ **应用层全落地**（本轮：多源合并 + share + 无歌词引导）
 
-- **当前**：单源歌词（QQ 优先，回退到 [lyrics.ovh](https://lyrics.ovh) 公开 API），synced 滚动
+- **当前**：**多源并行拉取 → LRC 合并去重 → lyrics.ovh 兜底**，synced 滚动。
+  合并逻辑在 `packages/server/src/common/lyrics.ts::mergeLyricSources`（纯函数，
+  白盒测试覆盖 13 项），服务侧并行 fetch（不是 first-hit-wins）。
 - **已完成**：
   - [x] 跨平台搜索结果行右侧显示 lyrics 可用性指示
   - [x] 复制整段歌词 vs 单行（toast 反馈）
-- **仍剩**：
-  - [ ] 多源歌词聚合：先 QQ → NetEase → 第三方 → LRC 合并去重
-  - [ ] 词句点击 share（生成带 cover 的图分享到本地）
-  - [ ] "无歌词" 时引导用户从网易云提交（链过去）
+  - [x] **多源歌词聚合**：QQ / NetEase / Deezer 并行拉 → 按优先级并集 → 400ms
+        容差去重；整体偏移用「共同词 delta 众数」对齐；错位源（>3s = 不同
+        录音）整源丢弃；纯文本源（lyrics.ovh / Deezer 无时间戳）只在平台全
+        落空时兜底。响应新增 `mergedFrom` / `added` / `dropped` / `rejected`，
+        TheaterView 显示 `MERGED · QQ+NETEASE (+n)` 徽章。`?merge=0` 保留旧
+        first-hit-wins 快路径。
+  - [x] **词句点击 share**：`lyricsShare.ts` 接线完成——点任一歌词行 → 以**那一行
+        为中心**取 40 行窗口（`sliceLyricsWindow`，长歌点第 80 行图里也有第 80 行）+
+        图上加粗高亮 + 左侧竖条；也保留「导出歌词图」整段按钮。状态机
+        `idle → working → done/error → 2.4s 回落` 做 in-place 反馈，不引 Toast 基建。
+  - [x] **"无歌词" 引导**：`↻ 换个源找歌词`（server `/music/lyrics/search` 早就有了，
+        一直缺 UI）+ `去网易云提交歌词 ↗`（链网易云搜索页，带歌名歌手，用户确认是同首
+        后从歌词页提交）。有歌词时两个按钮常驻在歌词流下方。
 - **风险**：第三方 lyrics API 合规（GDPR 之类），先不碰
-- **估时**：2–3 天
+- **遗留**：**canvas 绘制路径没自动化测试**（需真实 DOM + createImageBitmap），
+  纯逻辑（窗口选择 / 文件名）已 9 项覆盖；实景导出图待手工验一次。
 
 ---
 
@@ -269,7 +314,28 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 - **依赖**：与 #5 Settings modal 合并实现。
 - **估时**：+0.5～1 天（叠加在 #5 之上）
 
-### 6.3 Lite 播放模式（normal / lite 切换）
+### 6.3 Lite 播放模式（normal / lite 切换）— 🟡 **代码完成，验收未过（specs/lite-mode，2026-09-28）**
+
+> **审查结论（2026-09-28 全量 review + 修复）**：17 个已勾任务**都真实实现了**
+> （无"勾了没做"），「lite 只做展示层裁剪、不复制播放逻辑」这条风险守住
+> （`LiteView` 零 `useState`/零 `<audio>`，`<audio>` 在 App 常驻不重建）。
+> 审查发现的洞**已全部修掉**：
+> 1. 🔴→✅ **lite 下点 ✨ 被全屏 `RecoLoading` 接管**（`z-index:150` + `inset:0`）——
+>    「lite 只留三类元素」在功能主路径上失效，`LiteView` 自己的 `recoRunning`
+>    分支还变成生产不可达死代码。修法：渲染条件加 `playerMode !== 'lite'`，
+>    loading 交回 `LiteView` 内联 spinner；决策记进 `spec.md` §6 偏离 5
+> 2. 🟡→✅ `overlayOpen` 漏 `auth.authError` / `showCookieFallback` → lite 下按一次
+>    Esc 关两层，已补
+> 3. 🟡→✅ Space 让位条件补 `BUTTON` / `role="button"`（空格 click 是 keyup 阶段
+>    合成的，keydown 的 `preventDefault` 会吃掉）；从 Settings 切到**任何紧凑态**
+>    自动关设置页（mini 下同样是 `z-index:1000` 全屏遮罩，同构问题一起修）
+> 4. ⚪→✅ `LiteView.test.tsx` 的"只渲染三类元素"原是自证式断言（数组件自己打的
+>    `data-lite-el`，且带 3 条空断言）。改成「可交互元素恰好 4 个」的**可证伪**
+>    契约（已做变异验证：注入一个多余按钮 → 测试变红）
+> 5. ⚪→✅ 无 DeepSeek key 时 ✨ 加 `is-unset` 虚线态（原只进了 `title` 属性，
+>    视觉上毫无差别）；⛶ 退出键 `pointer-events` 随显隐切
+> ⏳ **待手测**：`specs/lite-mode/tasks.md` P5-5b（480×300 收窗 / 回 theater 还原
+>    bounds / mini ⇄ lite 不丢存档 / ✨ 真跑 DeepSeek / 切换不中断音频）
 
 - **目标**：新增极简播放模式。当前完整界面定为 `normal`；`lite` 模式播放器只显示：
   **歌名 + 上一首/下一首 + 一个「✨ 智能推荐」icon**（点击调 DeepSeek 推荐）。
@@ -279,10 +345,24 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
   - ✨ icon → 调 `specs/reco-deepseek` 已有的 `POST /api/reco/run`，把推荐直接续进当前队列
   - （可选）窗口缩到小尺寸时建议/自动切 lite
 - **验收**：
-  - [ ] Settings 或快捷键切 normal↔lite，即时生效且记住偏好
-  - [ ] lite 下界面仅剩 歌名 + 左右切歌 + ✨ 三类可视元素
+  - [x] Settings 或快捷键切 normal↔lite，即时生效且记住偏好
+        （Settings「① 播放模式」三选一 + `⌘⇧L` + lite 内 `⛶`；键 `player-mode`）
+  - [x] lite 下界面仅剩 歌名 + 左右切歌 + ✨ 三类可视元素
+        （`LiteView.test.tsx` 白盒断言 `[data-lite-el]` 恰好 title/nav/reco 三个）
   - [ ] 点 ✨ → 调 DeepSeek 推荐 → 新歌续入队列可播（无 key 时走 reco 既有友好提示）
-  - [ ] normal↔lite 来回切，当前歌 / 队列 / 进度不丢
+        ⚠️ 2026-09-28 降级：自动化只验到「点了会调 `/reco/run` + 无 key 降级」，
+        **真跑 DeepSeek 出歌并可播**属 `specs/lite-mode/tasks.md` P5-5b，未做
+        （要真 key + 出网，agent 小队做不了）
+  - [x] normal↔lite 来回切，当前歌 / 队列 / 进度不丢
+        （`<audio>` 常驻 + 只换条件渲染分支，无额外状态同步代码）
+- **落地补充（超出原范围）**：
+  - 模式从 2 态扩成 3 态：`theater`（= 本节的 `normal`）| `mini` | `lite`，
+    `PlayerMode` 类型与读写搬进 `lib/storage.ts`（顺手进备份集）
+  - Electron `player:mode` 的紧凑态从"只有 mini"泛化成 mini(600×104) /
+    lite(480×300) 两种尺寸，mini ⇄ lite 互切不再覆盖存档的 theater bounds
+  - lite 的键盘补齐：`Esc` 回 theater、`Space` 播放/暂停（浮层/输入框打开时让位）
+- **未做**：原「（可选）窗口缩到小尺寸时建议/自动切 lite」——自动切模式会在
+  用户拖窗口时误触发，等 lite 手测反馈再定。详见 `specs/lite-mode/spec.md` §1/§6。
 - **风险**：lite 只做**展示层裁剪**，复用现有 `usePlayer` 状态，别复制一套播放逻辑。
 - **估时**：1.5～2 天
 
@@ -360,7 +440,22 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 > （音效/桌面歌词/桌面集成）。
 > 本章前三项补基本功，7.4 深化 AI 护城河。详细分析只在 Notion 维护（个人重要，本地不留副本）→ https://app.notion.com/p/musicbox-2026-07-39c9be628711800b86f1daff4e05ad6b
 
-### 7.1 均衡器 EQ + 交叉淡入淡出 + ReplayGain 音量均衡 — **未开始**
+### 7.1 均衡器 EQ + 交叉淡入淡出 + ReplayGain 音量均衡 — 🟡 **EQ 已落地，crossfade 待做，ReplayGain 明确不做**
+
+> 2026-09-29：spec `specs/audio-fx/`。范围从「EQ + crossfade + ReplayGain」
+> **收敛成 EQ + crossfade**。
+> - ✅ **EQ 已落地**：10 段 peaking（31Hz–16kHz，Q=1）+ 8 预置 + 总开关，存本地，
+>   Settings「② 音频」节。链构建/参数推送抽成纯函数 `lib/eqChain.ts`（可脱离 React
+>   测连接顺序与"用 setTargetAtTime 而非 .value="这类写错不报错的细节）。
+> - ⏳ **crossfade 待做**（C 组）：关键难点是 `<audio>` 的 `src` 由 React 绑定，
+>   双元素方案要把 src 改成命令式管理——**这会动到 P1/P2/P3 都依赖的"src 绑定"
+>   不变量**，必须独立一轮 + 自己的回归测试，不适合顺手做。
+> - ❌ **ReplayGain 明确不做**（spec §5 给了三条理由）：`loudness`/`replayGain`/
+>   `gain_db` 在 server types / renderer api / common 里**零命中**（没元数据）；
+>   AnalyserNode 拿到的是"已经播过的那几秒"而不是整轨响度（算法不成立）；
+>   动态增益与"记住我的音量"直接冲突。要做得先给 4 个 provider 接 loudness 字段。
+> - ⚠️ **适用范围**：Spotify WPS 路径由 SDK 自己解码输出，**EQ 与 crossfade 都不生效**
+>   （WPS 现在因 license 500 根本播不了，所以这条边界无法实景验证）。UI 上已写明。
 
 - **目标**：补齐洛雪 / foobar2000 / MusicBee 都有的音效与音量能力。
 - **现状 / 复用点**：`usePlayer` 已在首次播放时惰性建了 **Web Audio graph**——EQ、淡入淡出、
@@ -370,13 +465,17 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
   - 切歌交叉淡入淡出（crossfade，双 GainNode / 两个 audio 元素对接），时长可配；暂停/停止淡出防爆音
   - ReplayGain / 响度归一：优先用平台返回的响度元数据、否则 AnalyserNode 估算，统一到目标 LUFS
 - **验收**：
-  - [ ] EQ 开关 + 预设/自定义即时生效、记住偏好
-  - [ ] 交叉淡入可开关，切歌无卡顿、无爆音
-  - [ ] 跨平台连播时主观音量一致（响度归一生效）
-- **风险**：HTML `<audio>` 真 gapless 较难，优先做 crossfade（更可控）；ReplayGain 精确值要解码分析，先用元数据/近似。
+  - [x] EQ 开关 + 8 预置 + 10 滑块即时生效、记住偏好（跨页面重开仍在，进备份集）
+  - [x] 开关关闭 = 各频段 ramp 到 0 dB（**不是真 disconnect 旁路**：那会在出声时
+        咔哒；10 段 peaking @ 0dB 幅频平坦、相位偏移 <1°，听感无差别），曲线保留
+  - [ ] 交叉淡入可开关，切歌无卡顿、无爆音（C 组）
+  - [ ] ~~跨平台连播时主观音量一致（响度归一生效）~~ —— **本轮不做**，见 spec §5
+- **风险**：HTML `<audio>` 真 gapless 较难，优先做 crossfade（更可控）；ReplayGain
+  精确值要解码分析 —— 但没有 loudness 元数据时"元数据优先 / Analyser 近似"两条路
+  都不成立，所以是**不做**而不是"先用近似"。
 - **估时**：2–3 天
 
-### 7.2 桌面歌词浮窗 — **未开始**
+### 7.2 桌面歌词浮窗 — **已落地，待手测**（2026-09-28）
 
 - **目标**：中文用户高频刚需（网易云/QQ/洛雪都有），你目前只有内嵌 synced 歌词。
 - **现状 / 复用点**：已有 synced 歌词数据（QQ 优先 + lyrics.ovh 回退）与播放进度。桌面浮窗 =
@@ -392,6 +491,48 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 - **风险**：多显示器 / 全屏应用之上的置顶差异；mac 需处理 `visibleOnAllWorkspaces` + `setIgnoreMouseEvents`。
 - **依赖**：与 6.4 Tray、7.3 热键同做入口最顺。
 - **估时**：2 天
+- **审查结论（2026-09-28 全量 review）**：14 个已勾任务都真实实现，IPC 7 个通道
+  逐个核对全对齐，复用 `useLyrics` 的 lyrics（**不重复请求**），颜色门禁 0 硬编码。
+  - 🔴→✅ **锁定后没有任何解锁出口**（齿轮被 `{!prefs.locked && ...}` + scss
+    `display:none` 双藏，设置面板打不开，而 `locked` 持久化到
+    `userData/desktop-lyrics.json` → 退出重开照样锁死，只能 Cmd+Q）。修法：Tray 加
+    「桌面歌词 · 锁定位置」勾选项（常驻入口，renderer 侧刻意不放——锁定时收不到
+    鼠标事件），并用 `ipc-contract.test.ts` 守住这条不变量
+  - 🟡→✅ **抢主窗口焦点**：`live.show()` → `showInactive()`；`OverlayWindowLike`
+    接口里把 `show()` 直接删掉，让将来想用它在**类型上**就被挡住
+  - 🟡→✅ **纯 resize 不落盘**（Electron 的 `moved` 只在拖动时发，resize 不发 →
+    拉大的尺寸退出即丢）：`on()` 类型加 `'resized'`，与 `moved` 共用同一个 debounce
+    落盘（`onWindowMoved` 改名 `onWindowGeometryChanged`，名字不再说谎）
+  - 🟡→✅ **多显示器还原 bounds 不校验**：注入点 `clampToVisibleDisplay`，判据是
+    矩形与某块屏 `workArea` **相交**（贴边只露一半也算看得见）；位置失效**只丢
+    x/y，宽高保留**（用户拉过的宽度不该白拉）；`screen` 未 ready 时 try/catch 退回
+    原行为，查不到就不丢浮窗
+  - 🟡→✅ **overlay IPC 无 sender 校验**：`isOverlaySender()` 比 `webContents`
+    引用，浮窗专属的两个通道首行 `if (!fromOverlay(event.sender)) return`
+  - ⚪→✅ `getStatus()` 补 `.catch`（原来是 unhandled rejection）；浮窗加**歌名行**
+    （`state.title/artist` 一直在契约里推但没人读，现按歌词一半字号 + 45% 透明渲染）
+  - ⚪→✅ 浮窗**不再引 Google Fonts**（每次开窗一次外网请求 + 离线静默失败 +
+    字体闪烁；中文歌词用系统苹方本来就比 Noto Sans SC 对味）。主窗口 `index.html`
+    的外链是存量，本轮不动
+  - ⚪ 遗留（低优先）：`OverlayWindowLike.setBounds` 是死接口（全仓无人调用）；
+    `resizable: true` 在 Win/Linux 上因为 frameless 无 `-webkit-app-resize` 拖不动
+    ——spec §1 已排除 Win/Linux，**D15 手测清单里要写明「resize 恢复只在 mac 验」**
+- **落地记录（2026-09-28）**：spec `specs/desktop-lyrics/`。独立透明置顶
+  `BrowserWindow`（`screen-saver` 档置顶 + `visibleOnAllWorkspaces`），第二个 HTML
+  入口 `lyrics.html`（产物只有 4kB JS / 8kB CSS，不拖主 bundle）。
+  - **播放状态单向流**：主窗口 `useDesktopLyrics` 算「当前行/下一行/行内进度」
+    → main `DesktopLyricsController` 缓存转发 → 浮窗纯展示。浮窗**不碰 `<audio>`、
+    不请求后端**，与 TheaterView 共用 `lib/lyrics.ts` 的 `activeLineWindow`，
+    两边不会错行。
+  - **偏好以 main 为唯一事实来源**：`userData/desktop-lyrics.json`
+    （开关/锁定/字号/配色/描边/位置尺寸），浮窗改完经 IPC 回写，重启恢复。
+  - **锁定 = 点击穿透**：`setIgnoreMouseEvents(true, {forward:true})` + 鼠标移入
+    临时放行（洛雪同款交互）；字号 3 档 / 4 组配色 / 描边开关在浮窗 ⚙ 面板里调。
+  - **入口三处**：Titlebar `词` 按钮、`⌘⇧D`（`⌘⇧L` 已被 lite 占用）、Tray 勾选项；
+    三者同源互相同步。Tray 已含「桌面歌词」勾选项。
+  - 自动化：main 侧 3 个测试文件（prefs / window-options / controller）+ 浮窗组件
+    10 例 + `lib/lyrics` 17 例，全绿；typecheck / lint / 颜色门禁 / 双端 build 通过。
+  - **未做**：全局热键（`globalShortcut`）留给 #7.3；逐字卡拉OK 未做。
 
 ### 7.3 媒体键 + 全局热键 + 系统「正在播放」（并入 6.4 Tray）— **部分（仅 Tray）**
 
@@ -451,11 +592,11 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 | 周 | 内容 |
 | --- | --- |
-| **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ `pip install castlabs-evs` + 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
+| **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ 装 EVS 客户端 + 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
 | **W1** | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播） |
 | **W2** | ✅ #5 Settings + #6.2 渠道优先级（PR #88 已合）。下期不再排 |
-| **W3** | #6.3 Lite 模式（normal/lite 切换 + ✨ 入口接 reco-deepseek） + **7.4 NL 歌单先写 `specs/nl-playlist/spec.md`** |
-| **W4** | #4 歌词体验收尾（多源聚合 + share）+ 7.1 EQ / 7.2 桌面歌词（基本功打磨，优先级低于 W2/W3） |
+| **W3** | ✅ #6.3 Lite 模式已交付（`specs/lite-mode`，三态 + ✨ 入口接 reco-deepseek）+ 7.4 NL 歌单 spec 已先行 |
+| **W4** | ✅ 多源聚合 + #4 share + 6.3 Lite + 7.2 桌面歌词 + 7.1 EQ。剩：7.1 crossfade（C 组，src 绑定要改造，建议独立一轮） |
 | **W5** | 7.4 NL 歌单落地 + 7.3 媒体键/全局热键收尾 + bug bash + 发版 |
 
 > **本轮（已发）**：

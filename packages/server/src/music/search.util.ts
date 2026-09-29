@@ -291,8 +291,37 @@ function platformRank(v: VersionEntry): number {
  *          于是"盲选"的折叠行显示 1:20 的片段）；
  *       ③ 平台优先级兜底，保证确定性。
  */
+/**
+ * 这个版本里有没有「一定能出声」的源。
+ *
+ * Spotify 自 2024-11 对多数应用停发 preview_url，这类源在渲染端会被
+ * `isPlayableEntry` 判成不可播（除非 Premium 的 WPS 全曲通道已连）。
+ */
+function versionHasPlayableSource(v: VersionEntry): boolean {
+  return v.sources.some((s) => !s.noPreview);
+}
+
+/**
+ * 选主版本（= `versions[0]` = 折叠态点下去播的那一条）。
+ *
+ * **可播性排在最前**（2026-09-29 修）：此前排序是「共识数 → 时长 → 渠道优先级」，
+ * 时长压过了渠道优先级，于是「Spotify 285s（无预览，点下去没声音）」会赢过
+ * 「网易云 277s（有声）」。而 renderer 的 `handleRowClick` 取的正是
+ * `versions[0]`，`isPlayableEntry` 随后把它拦掉 → **点主行静默无反应**
+ * （2026-09-29 用户报障：搜「浓缩蓝鲸」ALL 点裘德那版播不了）。
+ *
+ * 判据用「该 version 里有没有一定能出声的源」而不是「所有源都能出声」：
+ * 一个 version 里混了 netease(有声) + spotify(无预览) 时，bestSource 按渠道
+ * 优先级本就落在 netease，这个 version 是好的，不该被降权。
+ *
+ * 只在「某一版完全点不出声」时改变结果：全部有可播源时，下面三层排序逐字不变，
+ * Phase 3 那条「主版本取最长而非最短（防盲选片段）」的口径不会被回退。
+ */
 function pickCanonicalVersion(versions: VersionEntry[]): VersionEntry {
   return [...versions].sort((a, b) => {
+    const playableA = versionHasPlayableSource(a) ? 1 : 0;
+    const playableB = versionHasPlayableSource(b) ? 1 : 0;
+    if (playableA !== playableB) return playableB - playableA;
     if (b.sources.length !== a.sources.length) return b.sources.length - a.sources.length;
     if (b.duration !== a.duration) return b.duration - a.duration;
     return platformRank(a) - platformRank(b);
@@ -331,6 +360,9 @@ function toVersionEntry(
     vipLocked: track.vipLocked,
     // 付费分类从 provider.search 透传。SourceChip 据此加 [P]/[NP] 标签。
     vipCategory: track.vipCategory,
+    // "这条源根本没有音频"（Spotify 无 preview_url）。这里只透传事实，
+    // 可播与否由渲染端结合 wpsReady 判（见 SourceInfo.noPreview 注释）。
+    noPreview: track.noPreview,
   }));
   const main =
     priority.map((p) =>

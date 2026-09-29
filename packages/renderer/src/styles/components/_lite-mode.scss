@@ -1,0 +1,221 @@
+@use '../abstracts' as *;
+
+// ─────────────────────────────────────────────────────────────────
+// Lite 模式 —— 极简整屏（歌名 + ◀▶ + ✨）。
+// spec：specs/lite-mode/spec.md
+// token 门禁：本文件预算 0 —— 只许 var(--token) / color-mix(var…)，
+// 不写 #hex/rgb()/hsl() 字面量（scan-hardcoded-colors --gate）。
+// ─────────────────────────────────────────────────────────────────
+
+// 与 .theater-mode / .mini-mode 同手法：清掉 Bento 的 padding/gap 与胶片颗粒。
+// 背景走主题令牌（--bg-base）而不是 .theater-mode 的 #02020a —— 那个深空黑是
+// 剧场星云背景的底色，套到纯文字的 lite 上会与 light 主题打架。
+.app.lite-mode {
+  padding: 0;
+  gap: 0;
+}
+.app.lite-mode::before {
+  display: none; // 胶片颗粒在极简模式下是噪声
+}
+// 封面晕染保留并抬亮 —— 极简反而更该让人感知"在放什么"。
+.app.lite-mode .bg-layer {
+  display: block;
+  opacity: 0.5;
+}
+
+// ── 整屏 ────────────────────────────────────────────────────────
+.lite-view {
+  position: fixed;
+  inset: 0;
+  z-index: z('lite-view');
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // 没有 titlebar，整屏当拖拽区（macOS 窗口必须能拖）。
+  -webkit-app-region: drag;
+}
+
+.lite-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: min(420px, calc(100% - 48px));
+  text-align: center;
+  animation: lite-stage-in 0.4s var(--ease-out);
+}
+
+@keyframes lite-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ── 歌名块（title + 歌手副行，同一个 data-lite-el）────────────────
+.lite-title-block {
+  min-width: 0;
+  max-width: 100%;
+}
+.lite-title {
+  margin: 0;
+  font-size: clamp(20px, 4.5vw, 34px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  @include truncate;
+}
+.lite-artist {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  @include truncate;
+}
+
+// ── 上一首 / 下一首 ─────────────────────────────────────────────
+.lite-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+.lite-btn {
+  @include flex-center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: var(--glass-fill);
+  color: var(--text-primary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 100ms var(--ease-spring);
+}
+.lite-btn:hover:not(:disabled) {
+  background: var(--glass-fill-strong);
+  border-color: var(--glass-stroke);
+}
+.lite-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.lite-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+// ── ✨ 智能推荐 ──────────────────────────────────────────────────
+.lite-reco {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-ui);
+  padding: 8px var(--space-4-ui);
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(
+    in oklab,
+    var(--accent-live) 30%,
+    transparent
+  );
+  background: color-mix(in oklab, var(--accent-live) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.lite-reco:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent-live) 18%, transparent);
+  border-color: color-mix(in oklab, var(--accent-live) 55%, transparent);
+  box-shadow: 0 0 18px color-mix(in oklab, var(--accent-live) 35%, transparent);
+}
+.lite-reco:disabled {
+  cursor: default;
+}
+// 未配 DeepSeek key：功能上完全可点（点了去弹 key 框），所以不能禁用，
+// 只能用最轻的描边+弱字色暗示"还没配好"。推荐在飞时不叠这个态。
+.lite-reco.is-unset {
+  border-style: dashed;
+  border-color: var(--glass-stroke);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.lite-reco.is-unset .lite-reco-label {
+  color: var(--text-dim);
+}
+.lite-reco.is-unset:hover:not(:disabled) {
+  border-color: var(--glass-stroke);
+  background: color-mix(in oklab, var(--accent-live) 8%, transparent);
+  box-shadow: none;
+}
+
+// 推荐请求在飞：图标转圈，和 .mini-spinner / .th-core-spinner 同一手法。
+.lite-reco.is-running svg {
+  animation: lite-spin 0.9s linear infinite;
+}
+.lite-reco-label {
+  color: var(--text-secondary);
+}
+@keyframes lite-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ── 退出键：常驻 DOM、默认透明（hover / 键盘 focus 显形）──────────
+// 见 spec §6 偏离 2 —— 纯键盘 ⌘⇧L 退出对鼠标用户不可达。
+.lite-exit {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  @include flex-center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  opacity: 0;
+  // pointer-events 跟着显隐一起切 —— 480×300 里 28×28 的隐形热区占比不小，
+  // 常驻可点迟早会挡住将来放到右上角的元素。:focus-visible 走键盘 Tab，
+  // 那条路径上按钮本体已经拿到焦点，pointer-events 无关紧要，照常显形。
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.lite-view:hover .lite-exit,
+.lite-exit:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.lite-exit:hover {
+  background: var(--glass-fill);
+  border-color: var(--glass-stroke);
+  color: var(--text-primary);
+}
+
+// ── 动效降级 ────────────────────────────────────────────────────
+@media (prefers-reduced-motion: reduce) {
+  .lite-stage {
+    animation: none;
+  }
+  .lite-reco.is-running svg {
+    animation: none;
+  }
+}
