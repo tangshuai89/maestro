@@ -331,6 +331,9 @@ function toVersionEntry(
     vipLocked: track.vipLocked,
     // 付费分类从 provider.search 透传。SourceChip 据此加 [P]/[NP] 标签。
     vipCategory: track.vipCategory,
+    // "这条源根本没有音频"（Spotify 无 preview_url）。这里只透传事实，
+    // 可播与否由渲染端结合 wpsReady 判（见 SourceInfo.noPreview 注释）。
+    noPreview: track.noPreview,
   }));
   const main =
     priority.map((p) =>
