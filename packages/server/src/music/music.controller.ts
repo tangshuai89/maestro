@@ -658,6 +658,17 @@ export class MusicController {
   }
 
   /**
+   * 只取 host，用于诊断日志。URL 里的签名参数不能进日志（含临时凭据）。
+   */
+  private static hostOf(url: string): string {
+    try {
+      return new URL(url).host;
+    } catch {
+      return '<invalid-url>';
+    }
+  }
+
+  /**
    * Fetch an upstream audio URL and pipe the bytes back to the client,
    * forwarding Range headers (so seeking works) and adding CORS headers
    * (so the Web Audio analyser can read the samples). Shared by all
@@ -701,11 +712,32 @@ export class MusicController {
     const upstream = await fetch(url, { headers });
     // 200 (full) and 206 (partial) are both success for media.
     if ((!upstream.ok && upstream.status !== 206) || !upstream.body) {
+      // ⚠️ 这里原本只发 502、不打任何日志 —— 上游 CDN 被拦 / 403 / 签名过期
+      // 时，renderer 侧只看到 `<audio>` 的 code=4（MEDIA_ERR_SRC_NOT_SUPPORTED），
+      // 而"到底是上游挂了还是本地坏了"完全无从判断（2026-09-29 卡了两小时）。
+      // 打出 host + status + content-type：content-type 是 text/html 基本可判定
+      // 为中间设备（iOA / 运营商）返回了拦截页，而不是音频 CDN 的正常响应。
+      this.logger.warn(
+        `proxyAudio: upstream failed provider=${provider ?? '?'} ` +
+          `status=${upstream.status} ` +
+          `content-type=${upstream.headers.get('content-type') ?? 'n/a'} ` +
+          `host=${MusicController.hostOf(url)}`,
+      );
       res.status(502).json({
         error: 'audio_upstream_failed',
         status: upstream.status,
       });
       return;
+    }
+    // 非 2xx 但仍带 body 的边界（部分 CDN 对非法签名回 200 + HTML 拦截页）：
+    // 直接把前几十字节的类型特征打出来，便于一眼分辨"拿到的是不是音频"。
+    const upstreamType = upstream.headers.get('content-type') ?? '';
+    if (!upstreamType.startsWith('audio/') && !upstreamType.includes('octet-stream')) {
+      this.logger.warn(
+        `proxyAudio: upstream returned non-audio content-type ` +
+          `provider=${provider ?? '?'} type=${upstreamType || 'n/a'} ` +
+          `host=${MusicController.hostOf(url)} —— 疑似被中间设备拦截`,
+      );
     }
 
     // CORS: this is the header that unblocks the Web Audio analyser
