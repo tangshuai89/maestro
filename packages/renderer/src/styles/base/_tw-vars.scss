@@ -1,0 +1,85 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Tailwind `--tw-*` 变量兜底（2026-09-29）
+//
+// 为什么需要这个文件：项目**刻意不引 Tailwind Preflight**（`base/base.scss`
+// 开头有注释说明——Preflight 的 reset 会覆盖 AETHER 的 button / input / a
+// 默认样式，4 档 theater visual baseline 全飘红）。但 Preflight 还负责另一件
+// 容易被忽略的事：**给所有元素初始化 `--tw-*` 变量**。
+//
+// 缺了它们，CSS 规范下下面这类声明是 invalid at computed-value time，
+// **整条作废且不报错**（不是回退、不是降级，是声明直接消失）：
+//
+//     transform: translate(var(--tw-translate-x), var(--tw-translate-y)) ...
+//     backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) ...
+//     box-shadow: ... var(--tw-ring-offset-width) ...
+//
+// 2026-09-29 实测症状：
+//   1. shadcn `DialogContent` 的 `translate-x-[-50%]` 失效 → NL 歌单 modal
+//      从屏幕中线往右铺开、右半截出屏、「生成」按钮被裁掉。看起来像"布局
+//      歪了"，实际是一个 CSS 变量没定义。
+//   2. 同批扫描发现 22 个 `var(--tw-*)` 无 fallback 且从未初始化 ——
+//      `.backdrop-filter`（Dialog 遮罩 / Select / Popover 的毛玻璃）、
+//      `.filter`、`.focus:ring-2`、`.shadow-*` 全部静默失效。
+//
+// 所以这里**照抄 Tailwind v3 Preflight 的变量清单**：只抄变量、不抄任何
+// reset 声明，值与 Tailwind 原生完全一致 → 行为也就完全一致。
+//
+// 两条注意事项：
+//  1. filter 族的初值是**空**（`--tw-blur: ;`）—— 这是 Tailwind 的原设计：
+//     `.blur-sm` 这类修饰类会覆盖它；只写 `.filter` 而不配修饰符时本就无效。
+//  2. 新增依赖其它 `--tw-*` 的 utility 时，请一并在此补初值。
+//     `build-base.test.mjs` 第 4 项会自动扫产物、断言不存在
+//     「引用了却未初始化」的 --tw-* 变量。
+//
+// 颜色门禁：本文件含 Tailwind 自带的三个色值，它们是**第三方库的机械抄写**
+// 而非 AETHER 设计令牌的复制品，换成 var(--token) 反而会改变 Tailwind 行为，
+// 故已在 `scripts/token-adoption-budget.json` 的 `exempt` 里登记原因。
+*,
+::before,
+::after {
+  // -- 间距 / 边框 --
+  --tw-border-spacing-x: 0;
+  --tw-border-spacing-y: 0;
+  --tw-border-slice-width: 0;
+  --tw-border-width-x: 0;
+  --tw-border-width-y: 0;
+  --tw-ring-inset: ;
+  --tw-ring-offset-width: 0px;
+  --tw-ring-offset-color: #fff;
+  --tw-ring-color: rgb(59 130 246 / 0.5);
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+  // -- 阴影 --
+  --tw-shadow: 0 0 #0000;
+  --tw-shadow-colored: 0 0 #0000;
+  --tw-shadow-color: #0000; // shadow-colored 变体着色用（Tailwind v3.2+）
+  // -- 变换（拖动 / 旋转 / 缩放 / 斜切）--
+  --tw-translate-x: 0;
+  --tw-translate-y: 0;
+  --tw-rotate: 0;
+  --tw-skew-x: 0;
+  --tw-skew-y: 0;
+  --tw-scale-x: 1;
+  --tw-scale-y: 1;
+  // -- filter 族：初值空（Tailwind 原设计，见上方注意事项 1）--
+  --tw-blur: ;
+  --tw-brightness: ;
+  --tw-contrast: ;
+  --tw-drop-shadow: ;
+  --tw-grayscale: ;
+  --tw-hue-rotate: ;
+  --tw-invert: ;
+  --tw-saturate: ;
+  --tw-sepia: ;
+  --tw-slice: ;
+  // -- backdrop-filter 族 --
+  --tw-backdrop-blur: ;
+  --tw-backdrop-brightness: ;
+  --tw-backdrop-contrast: ;
+  --tw-backdrop-grayscale: ;
+  --tw-backdrop-hue-rotate: ;
+  --tw-backdrop-invert: ;
+  --tw-backdrop-opacity: ;
+  --tw-backdrop-saturate: ;
+  --tw-backdrop-sepia: ;
+}

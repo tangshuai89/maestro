@@ -97,6 +97,49 @@ function main() {
     );
   });
 
+  // ── 4. 产物里不允许存在「引用了却从未初始化」的 --tw-* 变量 ──────────
+  // 这条比枚举变量更 robust：将来有人新增一个依赖 --tw-* 的 utility
+  // （`backdrop-blur-*` / `grayscale` / `ring-inset` …）却忘了在 _base.scss
+  // 的兜底块里补初值，这条测试会自动红。
+  //
+  // 背景：项目刻意不引 Tailwind Preflight（reset 会覆盖 AETHER 样式），而
+  // Preflight 同时负责初始化全部 --tw-* 变量。缺了它们，CSS 规范下
+  // `transform: translate(var(--tw-x), ...)` / `backdrop-filter: var(--tw-y)`
+  // 这类声明是 invalid at computed-value time —— **整条作废，且不报错**。
+  // 2026-09-29 实测：shadcn Dialog 居中偏移失效（modal 铺出屏幕）、
+  // Dialog 遮罩 / Select / Popover 的毛玻璃全部不生效。
+  check('4. 产物 CSS：无「无 fallback 且未初始化」的 --tw-* 变量', () => {
+    const assetsDir = resolve(pkgRoot, 'dist', 'assets');
+    if (!existsSync(assetsDir)) {
+      console.log('   （跳过：dist 未构建）');
+      return;
+    }
+    const problems = [];
+    for (const f of readdirSync(assetsDir)) {
+      if (!f.endsWith('.css')) continue;
+      const css = readFileSync(resolve(assetsDir, f), 'utf8');
+      // 被 var() 引用且没有 fallback 的变量
+      const noFallback = new Set(
+        [...css.matchAll(/var\((--tw-[a-z0-9-]+)([,)]?)/g)]
+          .filter((m) => m[2] !== ',')
+          .map((m) => m[1]),
+      );
+      // 产物里出现「--tw-x: <值>」即视为已初始化
+      const inited = new Set(
+        [...css.matchAll(/(--tw-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
+      );
+      for (const v of noFallback) {
+        if (!inited.has(v)) problems.push(`${f}: ${v}`);
+      }
+    }
+    assert.strictEqual(
+      problems.length,
+      0,
+      '以下 --tw-* 变量被引用但从未初始化，相关 utility 会静默失效：\n     ' +
+        problems.join('\n     '),
+    );
+  });
+
   console.log(`\n${failed === 0 ? '🎉' : '⚠️ '} build-base.test: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

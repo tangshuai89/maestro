@@ -16,6 +16,10 @@
 @use 'base/themes';
 @use 'base/reset';
 @use 'base/base';
+// Tailwind --tw-* 变量兜底：必须排在 base/base（@tailwind utilities）之后，
+// 这样 `*{}` 的变量初值落在 utilities 之后，类选择器仍能按特异性覆盖它。
+// 详见该文件头部注释。
+@use 'base/tw-vars';
 
 // Components
 @use 'components/app-shell';
