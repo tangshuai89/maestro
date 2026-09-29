@@ -272,6 +272,93 @@ check('11c. buildUnifiedItems：主版本按跨平台源数选，不够长的单
 });
 
 // ── 11d. Phase 3：偏离主版本时长 >50% 的孤立 cluster 不再混进 versions ──
+// ── 11e–11h（2026-09-29 审查新增）：主版本的「点得响」优先 ──────────
+// ── 11e. 主版本必须"点得响"：全 noPreview 的版本不能当 versions[0] ──
+// 2026-09-29 用户报障：搜「浓缩蓝鲸」ALL 点裘德那版播不了。
+// 根因：pickCanonicalVersion 原排序「共识数 → 时长 → 渠道优先级」，时长压过
+// 渠道优先级 → 无预览的 Spotify 285s 赢过有声的网易云 277s；而
+// handleRowClick 取的正是 versions[0]，isPlayableEntry 随后拦掉它
+// → 点主行静默无反应。
+check('11e. 主版本取「能出声」的那条，不被更长的无预览版本压过', () => {
+  const entries = [
+    // artist 刻意相同：这样 normalizeKey 就分在同一 group，不用跨脚本合并桥，
+    // 本用例只验「主版本选谁」，不把合并能力混进来（另见 11i 端到端）。
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277, album: '浓缩蓝鲸' }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 285, album: 'Blue Whale', noPreview: true }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同 versionType + 时长差 8s → 1 个 item');
+  assert.strictEqual(items[0].versions.length, 2, '时长差 8s > 3s 容差 → 2 个 version');
+  assert.strictEqual(
+    items[0].versions[0].bestSource,
+    'netease',
+    'versions[0] 必须是有声的网易云那条（点主行才播得响）',
+  );
+  assert.strictEqual(items[0].bestSource, 'netease', 'item 级 bestSource 随之落到网易云');
+  assert.strictEqual(
+    items[0].versions[1].bestSource,
+    'spotify',
+    '无预览的那条仍在 versions 里（用户展开仍可选 / 有 Premium 时可用）',
+  );
+});
+
+check('11f. 对照：有预览的更长版本仍可赢（Phase 3 取最长防片段的口径不回退）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277 }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 285 }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(
+    items[0].versions[0].bestSource,
+    'spotify',
+    '两边都能出声 → 走原口径（共识平票取更长），不应被可播性改写',
+  );
+});
+
+check('11g. 两边都无预览 → 原口径（可播性不介入，按最长）', () => {
+  const entries = [
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277, noPreview: true }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 285, noPreview: true }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items[0].versions[0].duration, 285, '都没声可出，只能按原口径取最长');
+});
+
+check('11h. version 内混了 netease(有声) + spotify(无预览) → 该 version 不降权', () => {
+  // 同一时长 cluster 内的两个平台源，bestSource 按渠道优先级落在 netease，
+  // 这个 version 点下去是响的，不该被"含 noPreview"误伤。
+  const entries = [
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277 }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 277, noPreview: true }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries);
+  assert.strictEqual(items.length, 1, '同时长 → 同一 cluster');
+  assert.strictEqual(items[0].versions.length, 1);
+  assert.strictEqual(items[0].bestSource, 'netease');
+  assert.strictEqual(items[0].sources.length, 2, '两个平台源都在（noPreview 只透传事实）');
+});
+
+check('11i. 端到端：裘德 ↔ Jude Chiu 跨脚本合并后，主版本仍是有声那条', () => {
+  // 复刻 2026-09-29 报障的完整形态：Spotify 用英文艺名（Jude Chiu 拼音桥不上，
+  // 靠 artistAlias 策展表才合得上），album 不同 + 时长差 8s。
+  const entries = [
+    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277, album: '浓缩蓝鲸' }) },
+    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: 'Jude Chiu', duration: 285, album: 'Blue Whale', noPreview: true }) },
+  ];
+  const items = buildUnifiedItems(new Map(), entries, undefined, { crossScriptMerge: true });
+  assert.strictEqual(items.length, 1, '跨脚本合并后应只有 1 条');
+  assert.strictEqual(
+    items[0].versions[0].bestSource,
+    'netease',
+    '点主行（= versions[0]）必须播得响，否则用户点一下毫无反应',
+  );
+  assert.strictEqual(
+    items[0].versions[0].sources[0].noPreview,
+    undefined,
+    '网易云那条不该带 noPreview',
+  );
+});
+
 check('11d. buildUnifiedItems：片段/剪辑版（时长 -50% 以上）拆成独立 item', () => {
   const entries = [
     // 4:47 三平台共识 = 正式版本
