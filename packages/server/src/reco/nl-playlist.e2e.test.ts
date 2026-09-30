@@ -4,6 +4,8 @@
  * 覆盖：
  *   1. parse-intent 400（text 空 / 非字符串 / >500 字）
  *   2. parse-intent 428（没设 DeepSeek key）
+ *   2b. 回归：process.env 被清空（server 重启）时 key 仍从 storage 取
+ *       —— 之前 controller 自读 env 导致 NL 歌单恒 401
  *   3. parse-intent 502（上游返回非 JSON —— raw 必须带回去给 debug）
  *   4. parse-intent 502（上游 5xx）/ 429（rate limit，透传 retryAfter）
  *   5. parse-intent happy path（stub 上游返回合法 <json> → NLIntent 校验通过，
@@ -41,11 +43,31 @@ type Upstream = { status: number; body?: string; headers?: Record<string, string
 let upstream: Upstream = { status: 200, body: '' };
 let configured = true;
 let lastMessages: Array<{ role: string; content: string }> = [];
+/** controller 实际发出去的那把 key —— 回归 401 时要断言它来自 storage。 */
+let lastKey = '';
 
-/** 模拟 RecoService.callDeepSeekForParse —— 只保留 controller 依赖的两个面。 */
+/** 模拟 RecoService —— 只保留 controller 依赖的几个面。
+ *  `requireApiKey` 复刻真服务的语义：**不读 process.env**，只认 storage
+ *  （真服务里是 getApiKey() 的 env 优先 + storage 兜底）。2026-09-30 的 401
+ *  就是 controller 绕过它自己读 env 造成的，见 case 2b。 */
 const fakeReco = {
   isConfigured: () => configured,
-  callDeepSeekForParse: async (_key: string, messages: any[]) => {
+  requireApiKey: () => {
+    if (!configured) {
+      const { HttpException, HttpStatus } = require('@nestjs/common');
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.PRECONDITION_REQUIRED,
+          error: 'deepseek_key_not_configured',
+          message: '请先在设置里填入 DeepSeek API key',
+        },
+        HttpStatus.PRECONDITION_REQUIRED,
+      );
+    }
+    return 'sk-from-storage-only-0123456789';
+  },
+  callDeepSeekForParse: async (key: string, messages: any[]) => {
+    lastKey = key;
     lastMessages = messages;
     if (upstream.status === 429) {
       const { HttpException, HttpStatus } = require('@nestjs/common');
@@ -107,10 +129,41 @@ async function main() {
   configured = false;
   await assert.rejects(
     () => ctl.parseIntent({ text: '夜跑电子乐' } as any, req, res),
-    (e: any) => statusOf(e) === 428 && errorOf(e) === 'deepseek_key_not_configured',
+    (e: any) =>
+      statusOf(e) === 428 &&
+      errorOf(e) === 'deepseek_key_not_configured' &&
+      e.response.message === '请先在设置里填入 DeepSeek API key',
   );
   configured = saved;
-  console.log('  ✓ 428: deepseek_key_not_configured');
+  console.log('  ✓ 428: deepseek_key_not_configured + 中文文案');
+}
+
+// ── 2b. 回归：key 必须来自 requireApiKey（= storage），不是 process.env ──
+// 2026-09-30 的 bug 本体。server 重启后 process.env.DEEPSEEK_API_KEY 被清空，
+// 而 key 是设置页写进 storage 的；controller 当时直接读 env → 发空 Bearer →
+// DeepSeek 401 → 502 deepseek_401。/reco/run 走 getApiKey() 兜底所以照常能跑，
+// 症状表现为「推荐能出歌单，只有 NL 歌单 401」。
+{
+  const savedEnv = process.env.DEEPSEEK_API_KEY;
+  const savedConfigured = configured;
+  delete process.env.DEEPSEEK_API_KEY;   // ← 模拟 server 重启
+  configured = true;                    // ← storage 里有 key（isConfigured 放行）
+  upstream = {
+    status: 200,
+    body: '<json>{"mood":"夜跑","genres":["house"],"tempo":"fast",' +
+      '"language":"any","target_count":10,"rationale":"x"}</json>',
+  };
+  const r = await ctl.parseIntent({ text: '夜跑电子乐' } as any, req, res);
+  assert.ok(r.intent, 'env 为空时也必须能跑通（不能抛 401/502）');
+  assert.strictEqual(
+    lastKey,
+    'sk-from-storage-only-0123456789',
+    '发出去的 key 必须来自 requireApiKey()，不能是 process.env 里的空值',
+  );
+  if (savedEnv === undefined) delete process.env.DEEPSEEK_API_KEY;
+  else process.env.DEEPSEEK_API_KEY = savedEnv;
+  configured = savedConfigured;
+  console.log('  ✓ 回归: env 空（server 重启）时 key 仍从 storage 取，不空 Bearer');
 }
 
 // ── 3. parse-intent 502：上游非 JSON（raw 必须带回）──────────

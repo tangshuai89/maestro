@@ -181,6 +181,50 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
   console.log('✅ 11. setApiKey: 写 storage + process.env，返回 tail');
 }
 
+// ── 11b. requireApiKey：env 空时回退 storage（2026-09-30 回归）────
+// key 是设置页写进 storage 的，process.env 只在 setApiKey() 的当次进程里有。
+// server 一重启 env 就空 —— NL 歌单曾因此恒发空 Bearer → DeepSeek 401。
+{
+  const stored: Record<string, unknown> = {};
+  const realStorage = {
+    get: (k: string) => stored[k],
+    set: (k: string, v: unknown) => { stored[k] = v; },
+  };
+  const svc3 = new RecoService(fakeConfig, realStorage, fakeSessionService, fakeMusic);
+  const saved = process.env.DEEPSEEK_API_KEY;
+
+  // a) env 空 + storage 有 key → 拿 storage 的（重启后的真实状态）
+  svc3.setApiKey('sk-restart-fallback-0123456789');
+  delete process.env.DEEPSEEK_API_KEY;
+  assert.strictEqual(
+    svc3.requireApiKey(),
+    'sk-restart-fallback-0123456789',
+    'env 空时应回退 storage（否则 NL 歌单发空 Bearer → 401）',
+  );
+  assert.strictEqual(svc3.isConfigured(), true, '回退后 isConfigured 也应为 true');
+
+  // b) env 有值 → env 优先（容器部署路径不受影响）
+  process.env.DEEPSEEK_API_KEY = 'sk-from-env-0123456789';
+  assert.strictEqual(svc3.requireApiKey(), 'sk-from-env-0123456789', 'env 优先');
+
+  // c) 两边都没有 → 428 + 中文文案（不能是机器码）
+  delete process.env.DEEPSEEK_API_KEY;
+  const emptyStorage = { get: () => undefined, set: () => {} };
+  const svc4 = new RecoService(fakeConfig, emptyStorage, fakeSessionService, fakeMusic);
+  assert.throws(
+    () => svc4.requireApiKey(),
+    (e: any) =>
+      (e?.status ?? e?.response?.statusCode) === 428 &&
+      e?.response?.error === 'deepseek_key_not_configured' &&
+      e?.response?.message === '请先在设置里填入 DeepSeek API key',
+    '无 key 应抛 428 且带中文文案',
+  );
+
+  if (saved === undefined) delete process.env.DEEPSEEK_API_KEY;
+  else process.env.DEEPSEEK_API_KEY = saved;
+  console.log('✅ 11b. requireApiKey: env→storage 回退 / env 优先 / 无 key 428+文案');
+}
+
 // ── 12. status: 未 import 库 → librarySize=0 ────────────
 {
   const status = svc.status({} as any);
@@ -247,6 +291,54 @@ function uItem(id: string, title: string, artist: string) {
 
 // fillPlatforms 是 async；ts-node(commonjs) 不允许顶层 await，包进 IIFE。
 void (async () => {
+  // ── 11c. callDeepSeekForParse：上游 401/403 → 中文文案（不是 deepseek_401）──
+  // （从 11b 挪进来是因为这文件前半段是同步顶层，ts-node(commonjs) 不许顶层 await）
+  {
+    const realFetch = global.fetch;
+    const stub = (status: number) => {
+      global.fetch = (async () => ({
+        ok: false,
+        status,
+        headers: { get: () => null },
+        text: async () => '{"error":{"message":"Authentication Fails"}}',
+        json: async () => ({}),
+      })) as unknown as typeof fetch;
+    };
+    const svc5 = new RecoService(
+      fakeConfig,
+      { get: () => undefined, set: () => {} },
+      fakeSessionService,
+      fakeMusic,
+    );
+    for (const status of [401, 403]) {
+      stub(status);
+      await assert.rejects(
+        () =>
+          svc5.callDeepSeekForParse('sk-bad-key-0123456789', [
+            { role: 'user', content: 'x' },
+          ]),
+        (e: any) =>
+          (e?.status ?? e?.response?.statusCode) === 502 &&
+          e?.response?.error === 'deepseek_auth_failed' &&
+          e?.response?.message ===
+            'DeepSeek API key 已失效或无权限，请到设置里更新',
+        `${status} 应抛 502 deepseek_auth_failed + 中文文案（不能是机器码 deepseek_${status}）`,
+      );
+    }
+    // 其它 4xx 仍走原兜底机器码，别被新分支吞掉
+    stub(400);
+    await assert.rejects(
+      () =>
+        svc5.callDeepSeekForParse('sk-x-0123456789', [
+          { role: 'user', content: 'x' },
+        ]),
+      (e: any) => e?.response === 'deepseek_400',
+      '非 401/403 的 4xx 仍应是 deepseek_400',
+    );
+    global.fetch = realFetch;
+    console.log('✅ 11c. DeepSeek 401/403 → deepseek_auth_failed + 中文文案');
+  }
+
   // ── 14. fillPlatforms 匹配校验：跳过不匹配首条，取真正命中的（#1）──
   {
     (fakeMusic as any).searchUnified = async (_s: any, q: string) => {
