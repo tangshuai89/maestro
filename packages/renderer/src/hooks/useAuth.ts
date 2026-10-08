@@ -171,8 +171,10 @@ export function useAuth(
             // 只认 expired:true。「从没登录过」服务端会给 loggedIn:false
             // 但不带 expired —— 那种情况不该在这里弹重登录。
             if (fresh.expired === true) {
+              // mark_expired 而非 fail：此刻没有登录尝试在跑，fail 会被
+              // attemptId 门控静默丢弃（见 reducer 的 mark_expired 注释）。
               dispatch({
-                type: 'fail',
+                type: 'mark_expired',
                 error: {
                   code: 'AUTH_EXPIRED',
                   message: fresh.message ?? '登录已过期，请重新登录',
@@ -628,7 +630,7 @@ export function useAuth(
      */
     markExpired: (p: MusicProvider, message?: string) =>
       dispatch({
-        type: 'fail',
+        type: 'mark_expired',
         error: {
           code: 'AUTH_EXPIRED',
           message: message ?? '登录已过期，请重新登录',

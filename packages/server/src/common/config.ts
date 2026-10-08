@@ -11,14 +11,34 @@ import * as fs from 'fs';
 export class ConfigService {
   readonly port = Number(process.env.PORT ?? 3200);
 
-  readonly rendererOrigins = (process.env.RENDERER_ORIGINS ??
-    'http://localhost:5173,http://localhost:3000')
+  /**
+   * 允许的 renderer origin（CORS allowlist）。
+   *
+   * ⚠️ 必须**同时**包含 5173 和 dev 端口探测的结果：renderer 撞到 5173 被占
+   * 时会自动改用别的端口（见 packages/renderer/scripts/dev-port.mjs），
+   * 这里若只认死端口，换端口后所有 /music /auth 请求都会被 CORS 拒掉，
+   * 症状是"页面能开但什么都是 undefined"。
+   */
+  readonly rendererOrigins = (
+    process.env.RENDERER_ORIGINS ??
+    [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:3000',
+      // dev 端口自动避让后的实际端口，一并放行（5173-5199）
+      ...Array.from({ length: 27 }, (_, i) => `http://localhost:${5173 + i}`),
+      ...Array.from({ length: 27 }, (_, i) => `http://127.0.0.1:${5173 + i}`),
+    ].join(',')
+  )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
   readonly rendererBase =
-    process.env.RENDERER_BASE ?? 'http://localhost:5173';
+    process.env.RENDERER_BASE ??
+    (process.env.RENDERER_PORT
+      ? `http://127.0.0.1:${process.env.RENDERER_PORT}`
+      : 'http://127.0.0.1:5173');
 
   readonly sessionSecret =
     process.env.SESSION_SECRET ?? 'dev-only-secret-change-me';

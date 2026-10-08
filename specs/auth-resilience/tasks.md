@@ -125,6 +125,20 @@
       这两条路径靠 `api.test.mjs` 的契约测试 + 端到端 curl 兜住，
       组件级测试列为 Phase 12 基建项
 
+## Phase 10 追加：首次上线的两个问题（2026-10-08 14:39）
+
+- [x] 10.1 定位「后端日志全通、前端无反应」：reducer 的 `fail` 有
+      `isCurrentAttempt` 门控，过期检测传的 attemptId 匹配不上 → **静默丢弃**
+- [x] 10.2 新增 `mark_expired` action（不门控 attemptId，幂等），`useAuth` 的
+      `stale-probe` 与 `markExpired` 都改用它
+- [x] 10.3 reducer.test.mjs 加 15/16/17 三条，其中 15 条显式断言**旧写法会被
+      丢弃**，把这个坑钉死
+- [x] 10.4 dev 端口硬编码 5173 → 脚手架级避让 - `packages/renderer/scripts/dev-port.mjs`（新）+ `vite.config.ts` 收口 - `packages/electron/src/dev-port.ts`（新）+ `main.ts` 两处 loadURL 收口 - `packages/server/src/common/config.ts` CORS allowlist 放行 5173–5199
+      （**最易漏**：不改则换端口后所有 /music /auth 被 CORS 拒）
+- [x] 10.5 实测：5173 被占 → vite 与 electron 两侧算出**同一个** 5176；
+      `RENDERER_PORT=6000` 严格照用
+- [ ] 10.6 补 `dev-port` 的单测（lsof 不可用时的降级 / MAX_TRIES 边界）
+
 ### Phase 3 — 验证与收尾
 
 - [x] 3.1 端到端：用**失效 cookie** 起 server - `curl '/auth/status?provider=qq&validate=1'` → `AUTH_EXPIRED` - `curl '/auth/status?provider=qq'`（不带 validate）→ 仍是 `loggedIn:true`（回归护栏）- `curl '/music/stream/qq/004Gq0xE1YC8xp'` → `401 + AUTH_EXPIRED`

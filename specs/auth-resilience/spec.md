@@ -336,3 +336,57 @@ getStreamPath(免费歌)         → body.error=AUTH_EXPIRED
 
 → 免费歌与 VIP 歌响应**逐字段完全相同** ⇒ 单靠 GetVkey 响应**无法**区分
 「登录态失效」与「内容受限」，这正是选择探针歌判据而非错误码判据的原因。
+
+## Phase 10 追加：首次上线的两个问题（2026-10-08 14:39 实机复现）
+
+修完之后真机跑，后台日志链路全通（`validate` 调用 → 探针判死 → 抛
+`AUTH_EXPIRED`），但**前端毫无反应**。两个问题，都不是当初 spec 能预见的。
+
+### 问题 1：`fail` 被 `isCurrentAttempt` 静默丢弃
+
+**根因** —— 过期检测复用了 `fail` action，而 `fail` 有
+`isCurrentAttempt()` 门控（`auth/reducer.ts`）。那是给「用户刚点了登录、
+这次尝试失败了」设计的：只有 attemptId 匹配当前尝试才生效。过期检测是
+**事后**发现的（启动重校验 / 播放失败兜底），此刻 `phase` 已是
+`authenticated`，`currentAttempt` 返回的是**上次登录**的 attempt id，
+而我们传的是 `'stale-probe'` / `'play-failure-probe'` —— 永远匹配不上，
+`return state` 静默丢弃，UI 什么都不会发生。
+
+**修法** —— 新增专用 action `mark_expired`：
+
+- 不做 attemptId 门控：它不是一次登录尝试的失败，是对**既有登录态**的判定翻转
+- 幂等：`useAuth`（启动探测）和 `usePlayer`（播放兜底）可能各触发一次
+- 同样翻 `loggedIn:false` / `user:null` / `phase:'failed'`，让 `AuthErrorPanel` 正常渲染
+
+`useAuth` 的 `stale-probe` 与 `markExpired` 都从 `fail` 改为 `mark_expired`。
+
+**教训** —— 「登录态失效」和「登录尝试失败」是两种不同的状态转移，混用
+attemptId 门控会静默吞掉前者。reducer.test.mjs 加了 3 条（15/16/17），
+其中 15 条**显式断言了旧写法会被丢弃**，把这个坑钉死。
+
+### 问题 2：dev 端口硬编码 5173
+
+本机同时跑着另一个 5173 前端时，vite 会**静默**换到 5175，而
+`packages/electron/src/main.ts` 的 `loadURL` 写死 5173 → 窗口打开的是
+**隔壁项目**，而 `/music` `/auth` 又经 vite 代理转到本项目 3200 ——
+页面能渲染、登录态却莫名其妙，几乎无法从现象反推。
+
+**修法** —— 脚手架级端口避让，三处硬编码全部收口：
+
+| 位置                                              | 改法                                                        |
+| ------------------------------------------------- | ----------------------------------------------------------- |
+| `packages/renderer/scripts/dev-port.mjs` **(新)** | 探测逻辑（lsof 同步探测，vite config 是同步求值没法 await） |
+| `vite.config.ts`                                  | `port: resolveDevPort()`，冲突时打印醒目提示                |
+| `packages/electron/src/dev-port.ts` **(新)**      | 同一套规则的 TS 实现，供 electron main 用                   |
+| `packages/electron/src/main.ts`                   | `loadURL(devRendererUrl())`；歌词浮窗同样收口               |
+| `packages/server/src/common/config.ts`            | **CORS allowlist 放行 5173–5199**                           |
+
+最后一条最容易漏：只改 vite 和 electron 的话，换端口后 server 的 CORS 会把
+所有 `/music` / `/auth` 请求拒掉，症状是「页面能开但什么都是 undefined」。
+
+规则：`RENDERER_PORT` 显式指定则严格照用（占用即报错，不静默改）；
+否则 5173 空闲就用，被占则向上找并**两边都打印实际端口**。
+实测两侧算出同一个端口（5176），`RENDERER_PORT=6000` 也严格生效。
+
+⚠️ 两份探测逻辑**必须保持一致** —— 各自算一次，一旦漂移就是
+「vite 在 A、electron 去 B」的玄学问题。已在两侧注释里互相标注。
