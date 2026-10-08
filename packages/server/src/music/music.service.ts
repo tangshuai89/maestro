@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { MusicProvider, MUSIC_PROVIDERS } from '../common/provider';
 import { StorageService } from '../common/storage';
 import { ProviderSession, Session, SessionService } from '../common/session';
@@ -40,11 +35,15 @@ import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
 import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
-import {
-  LyricsService,
-  type LyricsAggregatedResult,
-} from './lyrics.service';
+import { LyricsService, type LyricsAggregatedResult } from './lyrics.service';
 import { SourceHealthService } from './source-health.service';
+import type {
+  AlbumSource,
+  AlbumTrack,
+  AlbumProvider,
+  UnifiedAlbumSearchResult,
+} from './album-types';
+import { buildUnifiedAlbums } from './album.util';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
@@ -126,9 +125,7 @@ export interface FanOutEntry {
 
 /** Some providers (Deezer) work without any auth — they don't need a
  * ProviderSession. We treat them as "always available". */
-const ANONYMOUS_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
-  'deezer',
-]);
+const ANONYMOUS_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>(['deezer']);
 
 /**
  * No-op SourceHealthService stub：给不走 NestJS 容器的直接 `new MusicService()`
@@ -272,9 +269,7 @@ export class MusicService {
     );
     // 跨平台匹配回调：队列消费 like 任务时，先去其余已登录平台搜等价曲目
     // 并落地本地 liked/fanOut，返回新目标供队列同步远端（严格 duration gate）。
-    this.likeSync.registerDiscoverResolver((task) =>
-      this.resolveEquivalents(task),
-    );
+    this.likeSync.registerDiscoverResolver((task) => this.resolveEquivalents(task));
     // 后台预热 kuromoji 日文形态素词典（跨脚本艺人音译佐证用）。fire-and-forget：
     // 加载 ~15 个词典分片需几百 ms，趁启动到用户第一次切歌之间完成；没就绪时
     // artistTransliterationMatch 优雅降级到纯拼音/假名路线，不阻塞、不抛。
@@ -300,9 +295,7 @@ export class MusicService {
     };
     const fanOut: Record<string, FanOutEntry[]> = {};
 
-    const persisted = this.storage.get<Record<string, unknown>>(
-      this.stateKey(session.id),
-    );
+    const persisted = this.storage.get<Record<string, unknown>>(this.stateKey(session.id));
     if (persisted) {
       // 兼容老格式：持久化里直接是 {qq: {queue, liked, ...}, netease: ..., deezer: ...}
       // 新格式：在 providers 之外多一层 fanOut 字段。
@@ -316,14 +309,8 @@ export class MusicService {
         // 一律 coerce 成 Set / 数组，避免 `.has is not a function`。
         providers[key] = {
           queue: Array.isArray(s.queue) ? (s.queue as Track[]) : [],
-          liked: new Set(
-            Array.isArray(s.liked) ? (s.liked as unknown as string[]) : [],
-          ),
-          disliked: new Set(
-            Array.isArray(s.disliked)
-              ? (s.disliked as unknown as string[])
-              : [],
-          ),
+          liked: new Set(Array.isArray(s.liked) ? (s.liked as unknown as string[]) : []),
+          disliked: new Set(Array.isArray(s.disliked) ? (s.disliked as unknown as string[]) : []),
         };
       }
       // fanOut 是新加的，老持久化文件没这个字段是正常的。
@@ -347,8 +334,7 @@ export class MusicService {
               const e = item as FanOutEntry;
               entries.push({
                 platform: e.platform,
-                trackId:
-                  typeof e.trackId === 'string' ? e.trackId : undefined,
+                trackId: typeof e.trackId === 'string' ? e.trackId : undefined,
               });
             }
           }
@@ -368,9 +354,7 @@ export class MusicService {
     //  2) LRU 上限：超过 FANOUT_MAX 就按插入顺序淘汰最早的
     // （unified track 是按"被心动"的顺序写入的，对应 Object 插入顺序）
     for (const [mergedId, entries] of Object.entries(fanOut)) {
-      const stillLiked = entries.some(
-        (e) => providers[e.platform].liked.size > 0,
-      );
+      const stillLiked = entries.some((e) => providers[e.platform].liked.size > 0);
       // 粗粒度判断：只要该平台有任意 liked 就算 mergedId 仍可能有效。
       // 实际"哪首歌在哪个平台 liked"是精确匹配；这里做廉价启发式，
       // 误删概率低（删了用户重新 heart 即可）。
@@ -474,9 +458,10 @@ export class MusicService {
         // The hdnea=… signature isn't strictly required to be honoured
         // for the 30s clip — the server-side redirect path was an
         // over-engineered workaround that turned out to break autoplay.
-        const audioUrl = provider === 'deezer' && t.audioUrl && t.audioUrl.startsWith('http')
-          ? t.audioUrl
-          : this.streamPath(t);
+        const audioUrl =
+          provider === 'deezer' && t.audioUrl && t.audioUrl.startsWith('http')
+            ? t.audioUrl
+            : this.streamPath(t);
         return {
           ...t,
           audioUrl,
@@ -537,12 +522,7 @@ export class MusicService {
   ): Promise<string> {
     const ps = this.requireProviderSession(session, provider);
     if (provider === 'qq') {
-      return this.qq.getStreamPath(
-        ps!,
-        trackId,
-        opts?.mediaMid,
-        opts?.quality ?? 'standard',
-      );
+      return this.qq.getStreamPath(ps!, trackId, opts?.mediaMid, opts?.quality ?? 'standard');
     }
     if (provider === 'netease') {
       return this.netease.getStreamPath(ps!, trackId, opts?.quality ?? 'standard');
@@ -575,9 +555,7 @@ export class MusicService {
     // 查找。Deezer 不参与（匿名+不可写红心），缺省排序里也通常排在末位。
     const userPriority = this.readChannelPriority(session);
     const priority = userPriority.filter((p) => p !== 'deezer');
-    const candidates = priority.filter(
-      (p) => p !== seedProvider && this.canSyncLike(session, p),
-    );
+    const candidates = priority.filter((p) => p !== seedProvider && this.canSyncLike(session, p));
     if (!candidates.length) return null;
 
     const found = await Promise.all(
@@ -620,11 +598,7 @@ export class MusicService {
    * 但真正播放（getStreamUrl）需要登录态。返回的 audioUrl 统一是后端
    * 代理相对路径，前端拿不到 raw URL。
    */
-  async searchTracks(
-    session: Session,
-    provider: MusicProvider,
-    keyword: string,
-  ): Promise<Track[]> {
+  async searchTracks(session: Session, provider: MusicProvider, keyword: string): Promise<Track[]> {
     const kw = keyword.trim();
     if (!kw) return [];
 
@@ -766,10 +740,7 @@ export class MusicService {
    * 缓存层：getTrackFavCount / getTrackLikeCount 内部已经走 30s/1h cache；
    * 同 provider 重入（不同 trackId）并发上限 4，与 runPlatformSearch 同模式。
    */
-  fillLikeCountsForItems(
-    session: Session,
-    items: UnifiedSearchItem[],
-  ): void {
+  fillLikeCountsForItems(session: Session, items: UnifiedSearchItem[]): void {
     // 拍快照：构建 (platform, trackId) 拉取任务列表，去重
     const tasks: Array<{
       itemIdx: number;
@@ -797,14 +768,8 @@ export class MusicService {
           batch.map(async (t) => {
             const r =
               t.platform === 'qq'
-                ? await this.qq.getTrackFavCount(
-                    session.providers.qq ?? {},
-                    t.trackId,
-                  )
-                : await this.netease.getTrackLikeCount(
-                    session.providers.netease ?? {},
-                    t.trackId,
-                  );
+                ? await this.qq.getTrackFavCount(session.providers.qq ?? {}, t.trackId)
+                : await this.netease.getTrackLikeCount(session.providers.netease ?? {}, t.trackId);
             return { t, r };
           }),
         );
@@ -815,9 +780,7 @@ export class MusicService {
           const it = items[t.itemIdx];
           if (!it) continue;
           // 写回 source.likeCount（按 trackId 匹配，可能已被 UI 替换过 source）
-          const src = it.sources.find(
-            (s) => s.platform === t.platform && s.trackId === t.trackId,
-          );
+          const src = it.sources.find((s) => s.platform === t.platform && s.trackId === t.trackId);
           if (src) src.likeCount = { ...lr, source: t.platform };
           // 重算 crossPlatformLikeTotal
           recomputeCrossPlatformLikeTotal(it);
@@ -826,9 +789,7 @@ export class MusicService {
     };
     // fire-and-forget；整体 2s 超时，超时后未完成的留 undefined
     void withTimeout(run, 2000).catch((err) => {
-      this.logger.warn(
-        `fillLikeCountsForItems error: ${(err as Error).message}`,
-      );
+      this.logger.warn(`fillLikeCountsForItems error: ${(err as Error).message}`);
     });
   }
 
@@ -856,31 +817,18 @@ export class MusicService {
    * "哪些歌手风格相近"可靠。**fail-soft**：未登录/网络失败/超时一律返回空数组
    * ——候选池少一个来源，不能把整次推荐打挂。
    */
-  async findRelatedArtists(
-    session: Session,
-    artist: string,
-    count = 6,
-  ): Promise<string[]> {
+  async findRelatedArtists(session: Session, artist: string, count = 6): Promise<string[]> {
     const name = (artist ?? '').trim();
     if (!name) return [];
     return withTimeout(
-      () =>
-        this.deezer.fetchRelatedArtists(
-          session.providers.deezer ?? {},
-          name,
-          count,
-        ),
+      () => this.deezer.fetchRelatedArtists(session.providers.deezer ?? {}, name, count),
       RECO_NEIGHBOR_TIMEOUT_MS,
       () =>
-        this.logger.warn(
-          `related artists "${name}" timed out (>${RECO_NEIGHBOR_TIMEOUT_MS}ms)`,
-        ),
+        this.logger.warn(`related artists "${name}" timed out (>${RECO_NEIGHBOR_TIMEOUT_MS}ms)`),
     ).then(
       (res) => res ?? [],
       (err: unknown) => {
-        this.logger.warn(
-          `related artists "${name}" failed: ${(err as Error)?.message ?? 'error'}`,
-        );
+        this.logger.warn(`related artists "${name}" failed: ${(err as Error)?.message ?? 'error'}`);
         return [];
       },
     );
@@ -896,26 +844,19 @@ export class MusicService {
    * 注意：这里**不写** music session state（不像 refillQueue），只在内存里返回
    * 候选，避免污染播放队列。
    */
-  async fetchRecoRadioCandidates(
-    session: Session,
-    perProvider = 8,
-  ): Promise<RadioCandidate[]> {
+  async fetchRecoRadioCandidates(session: Session, perProvider = 8): Promise<RadioCandidate[]> {
     const tasks: Array<Promise<RadioCandidate[]>> = [];
 
     const qqPs = session.providers.qq;
     if (qqPs && this.qq.isConfigured(qqPs)) {
       tasks.push(
-        this.radioCandidates('qq', () =>
-          this.qq.fetchRadioBatch(qqPs, undefined, perProvider),
-        ),
+        this.radioCandidates('qq', () => this.qq.fetchRadioBatch(qqPs, undefined, perProvider)),
       );
     }
     const nePs = session.providers.netease;
     if (nePs && this.netease.isConfigured(nePs)) {
       tasks.push(
-        this.radioCandidates('netease', () =>
-          this.netease.fetchRadioBatch(nePs, perProvider),
-        ),
+        this.radioCandidates('netease', () => this.netease.fetchRadioBatch(nePs, perProvider)),
       );
     }
     // Deezer 匿名可用，永远算一个来源。
@@ -938,19 +879,12 @@ export class MusicService {
     provider: MusicProvider,
     fn: () => Promise<Track[]>,
   ): Promise<RadioCandidate[]> {
-    const tracks = await withTimeout(
-      fn,
-      RECO_RADIO_TIMEOUT_MS,
-      () =>
-        this.logger.warn(
-          `reco radio "${provider}" timed out (>${RECO_RADIO_TIMEOUT_MS}ms)`,
-        ),
+    const tracks = await withTimeout(fn, RECO_RADIO_TIMEOUT_MS, () =>
+      this.logger.warn(`reco radio "${provider}" timed out (>${RECO_RADIO_TIMEOUT_MS}ms)`),
     ).then(
       (res) => res ?? [],
       (err: unknown) => {
-        this.logger.warn(
-          `reco radio "${provider}" failed: ${(err as Error)?.message ?? 'error'}`,
-        );
+        this.logger.warn(`reco radio "${provider}" failed: ${(err as Error)?.message ?? 'error'}`);
         return [] as Track[];
       },
     );
@@ -965,7 +899,7 @@ export class MusicService {
   }
 
   /** 查单个平台，带 5 秒超时。失败返回空 track + error。
- *  §5 「源连接健康」：每次请求结果记录到 SourceHealthService（成功 / 失败）。 */
+   *  §5 「源连接健康」：每次请求结果记录到 SourceHealthService（成功 / 失败）。 */
   private async searchOneProvider(
     session: Session,
     provider: MusicProvider,
@@ -1023,11 +957,7 @@ export class MusicService {
         const ps = this.requireProviderSession(session, 'spotify');
         tracks = await this.spotify.search(ps!, keyword, 30);
       } else {
-        tracks = await this.deezer.search(
-          session.providers.deezer ?? {},
-          keyword,
-          30,
-        );
+        tracks = await this.deezer.search(session.providers.deezer ?? {}, keyword, 30);
       }
       // 统一搜索结果里 sources[].url 要带可播放的代理路径——provider.search()
       // 返回的 track.audioUrl 可能是空（QQ/网易云 URL 短期过期，播放时由
@@ -1047,6 +977,216 @@ export class MusicService {
         error: (err as Error).message,
       };
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // 专辑（spec: specs/album-search）
+  // ══════════════════════════════════════════════════════════════
+
+  /** provider 实例 → 专辑能力。方法缺失 = 该平台在专辑搜索里缺席
+   *  （不是错误）。Spotify 整条线因缺 OAuth token 未实现，见 spec 阻塞项 B2。 */
+  private albumProviderOf(provider: MusicProvider): AlbumProvider | null {
+    switch (provider) {
+      case 'qq':
+        return this.qq;
+      case 'netease':
+        return this.netease;
+      case 'deezer':
+        return this.deezer;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * 跨平台专辑搜索。
+   *
+   * 与 `searchUnified` 完全同构：4 平台并行、每平台 5s 超时、单平台失败
+   * fail-soft（记进 `errors` 而不让整次搜索 500）、分页在合并+排序之后。
+   *
+   * 区别：**没有实现 `searchAlbums` 的平台算「缺席」而不是「失败」**，
+   * 不会进 `errors` —— 前端不该为"这个平台没做专辑"弹错误条。
+   */
+  async searchAlbumsUnified(
+    session: Session,
+    keyword: string,
+    page = 1,
+    pageSize = 20,
+  ): Promise<UnifiedAlbumSearchResult> {
+    const kw = keyword.trim();
+    if (!kw || kw.length > 100) {
+      throw new BadRequestException('q 参数无效：1-100 字符');
+    }
+    // page/pageSize 来自 query string，可能是 "abc"/"-1"/"999"。不防御性 cast
+    // 直接传给 slice 会产生 NaN slice / 负 length 数组。写法对齐 searchUnified。
+    const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    const effectivePageSize = Number.isFinite(pageSize)
+      ? Math.min(50, Math.max(1, Math.floor(pageSize)))
+      : 20;
+
+    const tasks = MUSIC_PROVIDERS.filter((p) => {
+      const ap = this.albumProviderOf(p);
+      return !!ap && typeof ap.searchAlbums === 'function';
+    }).map((p) => this.searchAlbumsOneProvider(session, p, kw));
+
+    const settled = await Promise.all(tasks);
+
+    const all: AlbumSource[] = [];
+    const errors: Partial<Record<MusicProvider, string>> = {};
+    for (const r of settled) {
+      if (r.error) errors[r.platform] = r.error;
+      all.push(...r.albums);
+    }
+
+    // 合并 + 相关性排序。**排序必须在分页之前** —— 否则弱相关的平台独占专辑
+    // 会被挤出第一页（与 unified-search/tasks.md:18 是同一个问题）。
+    const merged = buildUnifiedAlbums(all, { query: kw });
+    const start = (safePage - 1) * effectivePageSize;
+    return {
+      q: kw,
+      total: merged.length,
+      page: safePage,
+      pageSize: effectivePageSize,
+      items: merged.slice(start, start + effectivePageSize),
+      ...(Object.keys(errors).length ? { errors } : {}),
+    };
+  }
+
+  /** 单平台专辑搜索 + 5s 超时 + fail-soft。**契约：本方法绝不 throw。** */
+  private async searchAlbumsOneProvider(
+    session: Session,
+    provider: MusicProvider,
+    keyword: string,
+  ): Promise<{
+    platform: MusicProvider;
+    albums: AlbumSource[];
+    error?: string;
+  }> {
+    const ap = this.albumProviderOf(provider);
+    if (!ap || typeof ap.searchAlbums !== 'function') {
+      return { platform: provider, albums: [] };
+    }
+    const searchAlbums = ap.searchAlbums.bind(ap) as (
+      ps: ProviderSession,
+      kw: string,
+      n: number,
+    ) => Promise<AlbumSource[]>;
+    const run = async (): Promise<AlbumSource[] | null> => {
+      // 网易云专辑搜索走 apiCall（与单曲 search 同一条鉴权路径），未登录要
+      // 在外面拦掉 —— 否则 apiCall 会带着 `MUSIC_U=undefined` 打出莫名其妙的
+      // 网关错误，而不是明确的「未登录」。
+      let ps: ProviderSession;
+      if (provider === 'netease') {
+        const required = this.requireProviderSession(session, 'netease');
+        if (!required) throw new NotFoundException('Not logged in to netease');
+        ps = required;
+      } else {
+        ps = (session.providers[provider] ?? {}) as ProviderSession;
+      }
+      return searchAlbums(ps, keyword, 30);
+    };
+
+    try {
+      const res = await withTimeout(run, UNIFIED_SEARCH_TIMEOUT_MS, () =>
+        this.logger.warn(
+          `album search "${keyword}" on ${provider} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+        ),
+      );
+      if (res === null) {
+        this.health.record(provider, false);
+        return { platform: provider, albums: [], error: 'timeout' };
+      }
+      this.health.record(provider, true);
+      return { platform: provider, albums: res };
+    } catch (err) {
+      // ⚠️ 绝不能让单平台的 reject 冒泡到 Promise.all —— 一个平台挂了就把
+      // 整个专辑搜索打成 500（与 searchOneProvider 同一个坑）。
+      this.health.record(provider, false);
+      const msg = (err as Error)?.message ?? 'error';
+      this.logger.warn(`album search "${keyword}" on ${provider} failed: ${msg}`);
+      return { platform: provider, albums: [], error: msg };
+    }
+  }
+
+  /**
+   * 拉单平台专辑曲目（**不跨平台合并** —— 专辑本身就是平台边界，
+   * 一张专辑只属于一个平台）。
+   *
+   * 平台没实现 `getAlbumTracks` → 抛 400 并给明确原因，让 UI 能提示
+   * 「该平台暂不支持专辑详情」而不是静默失败。当前只有 QQ / Deezer 实现了
+   * （网易云被 -462 反爬挡住、Spotify 缺 token，见 spec 阻塞项 B1/B2）。
+   */
+  async getAlbumTracksForProvider(
+    session: Session,
+    provider: MusicProvider,
+    albumId: string,
+  ): Promise<AlbumTrack[]> {
+    const ap = this.albumProviderOf(provider);
+    if (!ap || typeof ap.getAlbumTracks !== 'function') {
+      throw new BadRequestException(`album detail not supported on ${provider}`);
+    }
+    if (!albumId) {
+      throw new BadRequestException('albumId 不能为空');
+    }
+    const getAlbumTracks = ap.getAlbumTracks.bind(ap) as (
+      ps: ProviderSession,
+      id: string,
+    ) => Promise<AlbumTrack[]>;
+    const ps = (session.providers[provider] ?? {}) as ProviderSession;
+    const tracks = await withTimeout<AlbumTrack[]>(
+      () => getAlbumTracks(ps, albumId),
+      UNIFIED_SEARCH_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `album tracks ${provider}/${albumId} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+        ),
+    );
+    if (tracks === null) {
+      throw new BadRequestException(
+        `album tracks ${provider} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+      );
+    }
+    // 排序：可得即用、缺失保序。**全部都有 trackNumber 才排序**；只要有一个
+    // 缺（比如 Deezer 全缺）就整体保持平台返回序 —— 重排会破坏 Deezer 上的
+    // 真实编曲顺序（见 spec「曲序字段横向对比」）。
+    const sortable =
+      tracks.length > 0 &&
+      tracks.every((t) => typeof t.trackNumber === 'number' && t.trackNumber > 0);
+    if (sortable) {
+      tracks.sort(
+        (a, b) =>
+          (a.discNumber ?? 1) - (b.discNumber ?? 1) || (a.trackNumber ?? 0) - (b.trackNumber ?? 0),
+      );
+    }
+    return tracks.map((t) => this.toPlayableTrack(t));
+  }
+
+  /**
+   * 拉专辑曲目并跨平台合并成 `UnifiedSearchItem[]`。
+   *
+   * 返回**已合并**的结果，renderer 不再自己合并 —— 否则等于把
+   * `buildUnifiedItems` 的跨脚本合并逻辑复制一份到前端，违反 CLAUDE.md
+   * 「跨包归一工具禁止两端各写一份」。
+   *
+   * `crossScriptMerge: true` —— 专辑内曲目同质性高（同一张专辑曲名风格一致），
+   * 跨脚本误并风险远低于全目录搜索，≤30s 时长门能兜住。前提是专辑内确实有
+   * 跨脚本曲名（如 Evan Yo 的中英混排）才有实际收益。
+   */
+  async getAlbumTracksUnified(
+    session: Session,
+    provider: MusicProvider,
+    albumId: string,
+  ): Promise<UnifiedSearchItem[]> {
+    const tracks = await this.getAlbumTracksForProvider(session, provider, albumId);
+    // 与 searchUnified 同款调用：先 dedupTracks 出主记录 Map，再把原始
+    // entries 交给 buildUnifiedItems 做分组/多版本折叠。渠道优先级同样读
+    // 用户在 Settings 里改的持久化序，不写死 PLAY_PRIORITY。
+    const priority = this.readChannelPriority(session);
+    // AlbumTrack extends Track，结构上就是 RawSearchEntry 的 track 位。
+    const entries = tracks.map((t) => ({ track: t, platform: t.provider }));
+    return buildUnifiedItems(dedupTracks(entries), entries, priority, {
+      crossScriptMerge: true,
+    });
   }
 
   /**
@@ -1084,9 +1224,7 @@ export class MusicService {
 
   /** 后端代理相对路径；QQ 带上 media_mid 以便播放时选高音质。 */
   private streamPath(track: Track): string {
-    const base = `/music/stream/${track.provider}/${encodeURIComponent(
-      track.id,
-    )}`;
+    const base = `/music/stream/${track.provider}/${encodeURIComponent(track.id)}`;
     return track.provider === 'qq' && track.mediaMid
       ? `${base}?mm=${encodeURIComponent(track.mediaMid)}`
       : base;
@@ -1105,9 +1243,7 @@ export class MusicService {
     return {
       ...track,
       audioUrl:
-        track.provider === 'deezer' &&
-        track.audioUrl &&
-        track.audioUrl.startsWith('http')
+        track.provider === 'deezer' && track.audioUrl && track.audioUrl.startsWith('http')
           ? track.audioUrl
           : this.streamPath(track),
     };
@@ -1138,9 +1274,7 @@ export class MusicService {
         // 踩 = 私人 FM「不喜欢」→ 走 fmTrash（垃圾桶），不是取消红心。
         await this.netease.fmTrash(ps, trackId);
       } catch (err) {
-        this.logger.warn(
-          `netease trash sync failed: ${(err as Error).message}`,
-        );
+        this.logger.warn(`netease trash sync failed: ${(err as Error).message}`);
       }
     }
     return { success: true };
@@ -1178,8 +1312,7 @@ export class MusicService {
       for (const entry of toUnlike) {
         if (!this.isLikeable(entry.platform)) continue;
         const trackId =
-          entry.trackId ??
-          sources.find((s) => s.platform === entry.platform)?.trackId;
+          entry.trackId ?? sources.find((s) => s.platform === entry.platform)?.trackId;
         if (!trackId) continue;
         this.writeLike(session, state, entry.platform, trackId, false);
         targets.push({ platform: entry.platform, trackId });
@@ -1210,19 +1343,14 @@ export class MusicService {
         try {
           await this.netease.fmTrash(ps, trackId);
         } catch (err) {
-          this.logger.warn(
-            `netease fmTrash failed: ${(err as Error).message}`,
-          );
+          this.logger.warn(`netease fmTrash failed: ${(err as Error).message}`);
         }
       }
     }
     return { success: true };
   }
 
-  async getLikedTracks(
-    session: Session,
-    provider: MusicProvider,
-  ): Promise<Track[]> {
+  async getLikedTracks(session: Session, provider: MusicProvider): Promise<Track[]> {
     const state = this.loadState(session);
     const psState = state.providers[provider];
     // 简化：返回 liked 集合里的占位记录，真实元数据需要按需拉
@@ -1392,15 +1520,9 @@ export class MusicService {
       // 还有 8s hard timeout，但用户点 ❤ 不该等 8s；网络抖一下就 5s 抛错
       // 让上层按 retry 走，比静默挂住好。
       const res = await withTimeout(
-        () =>
-          liked
-            ? this.spotify.like(ps, trackId)
-            : this.spotify.unlike(ps, trackId),
+        () => (liked ? this.spotify.like(ps, trackId) : this.spotify.unlike(ps, trackId)),
         5_000,
-        () =>
-          this.logger.warn(
-            `spotify ${liked ? 'like' : 'unlike'} ${trackId} timed out (>5s)`,
-          ),
+        () => this.logger.warn(`spotify ${liked ? 'like' : 'unlike'} ${trackId} timed out (>5s)`),
       );
       if (!res) {
         throw new Error(`spotify ${liked ? 'like' : 'unlike'} timed out`);
@@ -1438,15 +1560,12 @@ export class MusicService {
     if (liked && discover && !targets.length) {
       const state = this.loadState(session);
       const canonicalId = this.canonicalMergedId(state, mergedId, targets);
-      const fanned = new Set(
-        (state.fanOut[canonicalId] ?? []).map((e) => e.platform),
+      const fanned = new Set((state.fanOut[canonicalId] ?? []).map((e) => e.platform));
+      const allLikeableCovered = (['qq', 'netease', 'spotify'] as MusicProvider[]).every(
+        (p) => !this.canSyncLike(session, p) || fanned.has(p),
       );
-      const allLikeableCovered = (['qq', 'netease', 'spotify'] as MusicProvider[])
-        .every((p) => !this.canSyncLike(session, p) || fanned.has(p));
       if (allLikeableCovered) {
-        this.logger.debug?.(
-          `like-sync skip enqueue ${mergedId} — fanOut 已全覆盖 likeable 平台`,
-        );
+        this.logger.debug?.(`like-sync skip enqueue ${mergedId} — fanOut 已全覆盖 likeable 平台`);
         return;
       }
     }
@@ -1485,11 +1604,9 @@ export class MusicService {
     // **重新 loadState**，避免搜索那几秒内别处的写被这份旧 state 覆盖（lost update）。
     const preState = this.loadState(task.session);
     const alreadyFanned = new Set(
-      (
-        preState.fanOut[
-          this.canonicalMergedId(preState, task.mergedId, task.targets)
-        ] ?? []
-      ).map((e) => e.platform),
+      (preState.fanOut[this.canonicalMergedId(preState, task.mergedId, task.targets)] ?? []).map(
+        (e) => e.platform,
+      ),
     );
     const covered = new Set<MusicProvider>([
       ...meta.have,
@@ -1520,9 +1637,7 @@ export class MusicService {
         return t ? { platform: p, track: t } : null;
       }),
     );
-    const matches = found.filter(
-      (m): m is { platform: MusicProvider; track: Track } => Boolean(m),
-    );
+    const matches = found.filter((m): m is { platform: MusicProvider; track: Track } => Boolean(m));
     if (!matches.length) {
       this.logger.log(
         `resolveEquivalents "${meta.title}": no match on any of [${candidates.join(', ')}]`,
@@ -1625,11 +1740,7 @@ export class MusicService {
       stored.items.find((it) => {
         const tt = this.normalizeKey(it.title, '');
         const ta = this.normalizeKey(it.artist, '');
-        if (
-          !tt ||
-          !wantTitleKey ||
-          (!tt.includes(wantTitleKey) && !wantTitleKey.includes(tt))
-        )
+        if (!tt || !wantTitleKey || (!tt.includes(wantTitleKey) && !wantTitleKey.includes(tt)))
           return false;
         // 艺人跨脚本这里也走**音译佐证**（与 artistLooseMatch 同口径），不再
         // 裸 isCrossScript——否则会把补进来的 source 挂到同名不同艺人的库条目上。
@@ -1666,10 +1777,7 @@ export class MusicService {
     // 忽略了之前可能已经有但都没被选 bestSource 的源；现在 selectBestSource
     // 遍历**全 sources**（new + old）。
     if (!item.bestSource) {
-      item.bestSource = selectBestSource(
-        item.sources,
-        this.readChannelPriority(session),
-      );
+      item.bestSource = selectBestSource(item.sources, this.readChannelPriority(session));
     }
     this.storage.set(this.libraryKey(session.id), stored);
     // T10 (consistency-fixes G5)：mutation 后 libraryCache.delete。
@@ -1694,9 +1802,7 @@ export class MusicService {
    * 返回删除 / 修改的 item 数。
    */
   clearLibraryForProvider(session: Session, p: MusicProvider): number {
-    const stored = this.storage.get<{ items: UnifiedSearchItem[] }>(
-      this.libraryKey(session.id),
-    );
+    const stored = this.storage.get<{ items: UnifiedSearchItem[] }>(this.libraryKey(session.id));
     if (!stored?.items?.length) return 0;
     const priority = this.readChannelPriority(session);
     const before = stored.items.length;
@@ -1713,10 +1819,7 @@ export class MusicService {
         item.likedPlatforms = item.likedPlatforms.filter((lp) => lp !== p);
       }
       // 重新选 bestSource（含 items 级 fallback：合并各 version 的 sources）
-      const allSources = [
-        ...item.sources,
-        ...(item.versions ?? []).flatMap((v) => v.sources),
-      ];
+      const allSources = [...item.sources, ...(item.versions ?? []).flatMap((v) => v.sources)];
       // 去重（同 platform 多 trackId 不常见，但 patchLibraryWithSources 路径会
       // 留下重复 — 用 map 保证 selectBestSource 看到唯一的 platform）
       const uniq = new Map<MusicProvider, SourceInfo>();
@@ -1724,9 +1827,7 @@ export class MusicService {
       item.bestSource = selectBestSource([...uniq.values()], priority);
       const dropped = beforeSources - item.sources.length;
       if (dropped > 0) touched++;
-      const hasAny =
-        item.sources.length > 0 ||
-        (item.likedPlatforms?.length ?? 0) > 0;
+      const hasAny = item.sources.length > 0 || (item.likedPlatforms?.length ?? 0) > 0;
       if (hasAny) kept.push(item);
     }
     stored.items = kept;
@@ -1735,9 +1836,7 @@ export class MusicService {
     this.libraryCache.delete(session.id);
     this.invalidateLikedCache(session, p);
     this.likeSync.purgeForProvider(session.id, p);
-    this.logger.log(
-      `library cleared for ${p}: ${touched} items touched, ${removed} items removed`,
-    );
+    this.logger.log(`library cleared for ${p}: ${touched} items touched, ${removed} items removed`);
     return removed;
   }
 
@@ -1788,15 +1887,12 @@ export class MusicService {
     });
   }
 
-  private async runHealLibraryItem(
-    session: Session,
-    item: UnifiedSearchItem,
-  ): Promise<void> {
+  private async runHealLibraryItem(session: Session, item: UnifiedSearchItem): Promise<void> {
     const have = new Set(item.sources.map((s) => s.platform));
     // Deezer 匿名无收藏，skip；其余 likeable 平台逐一搜。
-    const candidates: MusicProvider[] = (
-      ['qq', 'netease', 'spotify'] as MusicProvider[]
-    ).filter((p) => !have.has(p) && this.canSyncLike(session, p));
+    const candidates: MusicProvider[] = (['qq', 'netease', 'spotify'] as MusicProvider[]).filter(
+      (p) => !have.has(p) && this.canSyncLike(session, p),
+    );
     if (!candidates.length) return;
     const meta: LikeMeta = {
       title: item.title,
@@ -1813,9 +1909,7 @@ export class MusicService {
       }
     }
     if (!matches.length) {
-      this.logger.debug?.(
-        `healLibrary: no matches for "${item.title} - ${item.artist}"`,
-      );
+      this.logger.debug?.(`healLibrary: no matches for "${item.title} - ${item.artist}"`);
       return;
     }
     // 走 patchLibraryWithSources（已存在的增量合并路径，会按 normalizeKey 找
@@ -1833,10 +1927,7 @@ export class MusicService {
       platform: m.provider,
       trackId: m.id,
     }));
-    state.fanOut[item.id] = this.mergeFanOutEntries(
-      state.fanOut[item.id] ?? [],
-      fresh,
-    );
+    state.fanOut[item.id] = this.mergeFanOutEntries(state.fanOut[item.id] ?? [], fresh);
     // T2 (consistency-fixes B5)：fanOut-only 写点补 providers.liked。
     // 否则下次 reconcileLiked 远端返回不含这些 trackId → 把它们从 fanOut
     // 抹掉 → 角标闪现又消失（spec B5 healLibraryItem / mergeSiblingLibraryLikes
@@ -1879,9 +1970,7 @@ export class MusicService {
     const cacheKey = `${session.id}|${platform}|${kw}|${durationBucket}`;
     const cached = this.equivSearchCache.get(cacheKey);
     if (cached) {
-      const ttl = cached.clean
-        ? EQUIV_MATCH_CACHE_TTL_MS
-        : EQUIV_FAIL_CACHE_TTL_MS;
+      const ttl = cached.clean ? EQUIV_MATCH_CACHE_TTL_MS : EQUIV_FAIL_CACHE_TTL_MS;
       if (Date.now() - cached.at < ttl) return cached.track;
     }
     // In-flight coalescing：同 key 已有未完成请求 → 共享同一 Promise，避免
@@ -1970,10 +2059,7 @@ export class MusicService {
       await warmupJa();
       const romajiTitle = romanizeJa(cleanedTitle);
       const romajiArtist = romanizeJa(cleanedArtist);
-      if (
-        romajiTitle &&
-        romajiTitle !== this.normalizeKey(cleanedTitle, '')
-      ) {
+      if (romajiTitle && romajiTitle !== this.normalizeKey(cleanedTitle, '')) {
         // title-romaji + 原文 artist：Spotify 艺人名若是日文原文（星野源）
         // 能直接召回；若是英文（Gen Hoshino）则走下方 title-romaji-only 的
         // 宽召回 + tier 艺人桥。
@@ -2014,12 +2100,11 @@ export class MusicService {
         }
         // 把 top 3 候选挂在 tried 上：no-match 时一眼能看出"Spotify 实际返回了什么",
         // 区分"歌曲不在该平台"vs"匹配规则漏过"。诊断比"kw→count"信息密度高得多。
-        const samples = tracks.slice(0, 3).map(
-          (t) => `"${t.title} - ${t.artist}" dur=${t.duration}`,
-        );
+        const samples = tracks
+          .slice(0, 3)
+          .map((t) => `"${t.title} - ${t.artist}" dur=${t.duration}`);
         tried.push(
-          `${v.tag}=${v.kw}→${tracks.length}` +
-            (samples.length ? ` [${samples.join(', ')}]` : ''),
+          `${v.tag}=${v.kw}→${tracks.length}` + (samples.length ? ` [${samples.join(', ')}]` : ''),
         );
         if (tracks.length === 0) continue;
         const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag);
@@ -2048,9 +2133,7 @@ export class MusicService {
       // 任一变体超时/失败（timedOut）→ 不确定缺席，只短 TTL 缓存。
       return { track: null, clean: !timedOut };
     } catch (err) {
-      this.logger.warn(
-        `searchEquivalent ${platform} "${kw}" failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`searchEquivalent ${platform} "${kw}" failed: ${(err as Error).message}`);
       // 失败 ≠ 缺席：网络抖动 / 平台抽风时这首可能其实存在。clean=false →
       // 只短 TTL 缓存，别把「搜索失败」当「没有这首歌」记 1 小时。
       return { track: null, clean: false };
@@ -2088,13 +2171,10 @@ export class MusicService {
       }
       return Promise.resolve([]); // deezer 匿名无收藏，不参与
     };
-    return withTimeout(
-      search,
-      UNIFIED_SEARCH_TIMEOUT_MS,
-      () =>
-        this.logger.warn(
-          `equivalent search "${kw}" on ${platform} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
-        ),
+    return withTimeout(search, UNIFIED_SEARCH_TIMEOUT_MS, () =>
+      this.logger.warn(
+        `equivalent search "${kw}" on ${platform} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+      ),
     ); // 超时 → null（不阻塞其他平台 / 后续变体）
   }
 
@@ -2175,7 +2255,8 @@ export class MusicService {
       if (
         Math.min(tt.length, wantTitleKey.length) < 3 &&
         Math.max(tt.length, wantTitleKey.length) > 3
-      ) continue;
+      )
+        continue;
       if (!ta || !wantArtistKey) continue; // reject empty-artist bypass
       // 跨脚本艺人走**音译佐证**（artistLooseMatch），不再裸 isCrossScript——
       // 否则 title 只要双向 includes（QQ 常带译名后缀），CJK 艺人就会 cross-script
@@ -2213,14 +2294,8 @@ export class MusicService {
       // → 改用 ±3s 严格，不让 30s 把 live 拉进 studio ❤ 的 fan-out 圈。
       // versionTagStrict：' - Live' 无括号尾缀也算 LIVE（2026-08-14）。
       const candVersion = this.versionTagStrict(t.title);
-      if (
-        this.durationMismatchVersionSafe(
-          wantVersion,
-          candVersion,
-          meta.duration,
-          t.duration,
-        )
-      ) continue;
+      if (this.durationMismatchVersionSafe(wantVersion, candVersion, meta.duration, t.duration))
+        continue;
       this.logger.log(
         `searchEquivalent ${platform} title-exact match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -2326,23 +2401,17 @@ export class MusicService {
         // versionTagStrict 识别无括号尾缀（'告别的时代 - Live'）——否则
         // lenient 30s 会把 studio seed 的 live 版也 star 上（2026-08-14）。
         const candVersion = this.versionTagStrict(t.title);
-        if (
-          this.durationMismatchVersionSafe(
-            wantVersion,
-            candVersion,
-            meta.duration,
-            t.duration,
-          )
-        ) continue;
+        if (this.durationMismatchVersionSafe(wantVersion, candVersion, meta.duration, t.duration))
+          continue;
         this.logger.log(
           `searchEquivalent ${platform} relaxed title match [${tag}]: ` +
             `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
             ` (cleanTitle cand="${candTitleNormClean}" want="${wantTitleNormClean}"` +
             ` dur=${meta.duration}≈${t.duration}, lenient)`,
-);
-         return t;
-       }
-     }
+        );
+        return t;
+      }
+    }
 
     // 第五遍-b：Spotify-style「title + co-author suffix」识别。修
     // 「PLACEBO (安慰剂) - 米津玄師 / 野田洋次郎」↔「PLACEBO ＋ 野田洋次郎 -
@@ -2375,10 +2444,7 @@ export class MusicService {
         if (candBase.length > wantBase.length && candBase.startsWith(wantBase)) {
           base = wantBase;
           extra = candBase.slice(wantBase.length);
-        } else if (
-          wantBase.length > candBase.length &&
-          wantBase.startsWith(candBase)
-        ) {
+        } else if (wantBase.length > candBase.length && wantBase.startsWith(candBase)) {
           base = candBase;
           extra = wantBase.slice(candBase.length);
         }
@@ -2400,10 +2466,7 @@ export class MusicService {
         // 而翻唱的 extra（如「林宥嘉」）不等于 cand 的「KiraCola」。
         // 加一道「extra 字面命中 cand 自己艺人整串」的检查，若 extra 真是
         // cand 的别名/罗马化整串 → 放行（PLACEBO 场景）；否则仍按翻唱拒。
-        const extraIsExactCandArtist = artistTransliterationMatch(
-          extraNorm,
-          t.artist,
-        );
+        const extraIsExactCandArtist = artistTransliterationMatch(extraNorm, t.artist);
         if (!extraIsExactCandArtist) continue;
         // 艺人语义复查：标题里说「+ 协作者」不等于本体艺人相同——PLACEBO
         // 仍是「米津玄師 + 野田洋次郎」对「Kenshi Yonezu + Yojiro Noda」，两
@@ -2429,7 +2492,8 @@ export class MusicService {
     for (const t of filtered) {
       const tt = this.normalizeKey(t.title, '');
       if (!tt) continue;
-      const lenDiff = Math.abs(tt.length - wantTitleKey.length) / Math.max(tt.length, wantTitleKey.length);
+      const lenDiff =
+        Math.abs(tt.length - wantTitleKey.length) / Math.max(tt.length, wantTitleKey.length);
       if (lenDiff > FUZZY_TITLE_LENGTH_GATE) continue;
       const score = jaroWinkler(tt, wantTitleKey);
       if (score < FUZZY_TITLE_JW_THRESHOLD) continue;
@@ -2471,7 +2535,7 @@ export class MusicService {
    *    "Hideaki Tokunaga"（名前颠倒）匹配不上。传原始串让 artistTransliterationMatch
    *    能提取假名括号读音。includes 仍用 normalizeKey 后比较（一致口径）。
    *
-   * 2026-08-03 多艺人兜底：collab 场景（QQ 给「米津玄師 (よねづ けんし) / 
+   * 2026-08-03 多艺人兜底：collab 场景（QQ 给「米津玄師 (よねづ けんし) /
    *    野田洋次郎」，Spotify 给「Kenshi Yonezu / Yojiro Noda」），单艺人
    *    blob 不在别名表/罗马化命中。拆 /／,&; 后做配对别名/罗马化匹配，命中
    *    多数（ceil(n/2)）即过。仍然只信任别名表 + kuromoji + romanize 三条
@@ -2517,11 +2581,10 @@ export class MusicService {
     return artistTransliterationMatch(rawA, rawB);
   }
 
-  
   /**
    * 「给定的 rawArtist 是不是某 artist 字段（可能多艺人）里的某位艺人的
    * 别名/罗马化」。用于 Tier 5b：判断 cand 标题末尾追加的 co-author 段是否
-   * 真匹配某侧艺人。配对走与 artistLooseMatch 相同的别名 + kuromoji + 
+   * 真匹配某侧艺人。配对走与 artistLooseMatch 相同的别名 + kuromoji +
    * romanize 三条桥，但不要求双方都 ≥2 人（单艺人对单段 extra 也行）。
    */
   private artistAppearsInField(rawArtist: string, field: string): boolean {
@@ -2566,14 +2629,8 @@ export class MusicService {
     candDuration: number,
   ): boolean {
     const sameV = seedVersion === candVersion;
-    const tol = sameV
-      ? DIFFERENT_VERSION_DURATION_TOLERANCE_SEC
-      : VERSION_DURATION_TOLERANCE_SEC;
-    return (
-      seedDuration > 0 &&
-      candDuration > 0 &&
-      Math.abs(candDuration - seedDuration) > tol
-    );
+    const tol = sameV ? DIFFERENT_VERSION_DURATION_TOLERANCE_SEC : VERSION_DURATION_TOLERANCE_SEC;
+    return seedDuration > 0 && candDuration > 0 && Math.abs(candDuration - seedDuration) > tol;
   }
 
   /**
@@ -2605,7 +2662,8 @@ export class MusicService {
     if (!m) return null;
     const w = m[1].toLowerCase().replace(/\.$/, '');
     if (w.startsWith('live')) return 'LIVE';
-    if (w.startsWith('acoustic') || w === 'unplugged' || w === '不插电' || w === '原声') return 'ACOUSTIC';
+    if (w.startsWith('acoustic') || w === 'unplugged' || w === '不插电' || w === '原声')
+      return 'ACOUSTIC';
     if (w.startsWith('remix')) return 'REMIX';
     if (w.startsWith('inst')) return 'INSTRUMENTAL';
     if (w === 'karaoke' || w === '卡拉ok') return 'KARAOKE';
@@ -2622,10 +2680,7 @@ export class MusicService {
    *  找回用户已经在听但跨平台搜不到的歌，避免让用户手动按"重新搜索"。
    *  仍然比"任意两首同歌"严格（remix 普遍 ≥30s，不在范围内）。
    */
-  private durationMismatchLenient(
-    seedDuration: number,
-    candDuration: number,
-  ): boolean {
+  private durationMismatchLenient(seedDuration: number, candDuration: number): boolean {
     return (
       seedDuration > 0 &&
       candDuration > 0 &&
@@ -2640,8 +2695,7 @@ export class MusicService {
   private isCrossScript(a: string, b: string): boolean {
     // \u6c49\u5b57 + \u5e73\u5047\u540d + \u7247\u5047\u540d \u90fd\u7b97\u300cCJK \u4fa7\u300d\u2014\u2014\u300c\u3082\u3063\u3068\u300d(\u5047\u540d) vs "Motto"(\u62c9\u4e01)
     // \u4e5f\u662f\u8de8\u811a\u672c\uff08aiko \u3082\u3063\u3068 \u2194 Motto \u573a\u666f\uff09\uff0c\u53ea\u770b\u6c49\u5b57\u4f1a\u628a\u5047\u540d\u6f0f\u6389\u3002
-    const hasCjk = (s: string) =>
-      /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(s);
+    const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(s);
     const hasLatin = (s: string) => /[a-z]/.test(s);
     const aCjk = hasCjk(a);
     const bCjk = hasCjk(b);
@@ -2656,10 +2710,7 @@ export class MusicService {
    * 每 session 每平台的「已红心 trackId 集合」缓存，避免每次切歌都拉整份
    * 收藏列表（QQ 1000+ 首）。TTL 内直接查集合。
    */
-  private readonly likedCache = new Map<
-    string,
-    { set: Set<string>; at: number }
-  >();
+  private readonly likedCache = new Map<string, { set: Set<string>; at: number }>();
   private static readonly LIKED_CACHE_TTL_MS = 5 * 60 * 1000;
 
   private likedCacheKey(session: Session, provider: MusicProvider): string {
@@ -2702,11 +2753,7 @@ export class MusicService {
   /** 用一份已拉到的红心列表整体填充缓存。importLiked 拉全量收藏时顺手复用，
    *  避免紧接着的切歌 detect 又把 QQ 1000+ 首重拉一遍（importLiked 与 detect
    *  之前是各拉各的，互不复用）。 */
-  private primeLikedCache(
-    session: Session,
-    provider: MusicProvider,
-    trackIds: string[],
-  ): void {
+  private primeLikedCache(session: Session, provider: MusicProvider, trackIds: string[]): void {
     this.likedCache.set(this.likedCacheKey(session, provider), {
       set: new Set(trackIds),
       at: Date.now(),
@@ -2773,8 +2820,7 @@ export class MusicService {
     const next = this.computeReconciledLiked(session, provider, remote, local.size);
     if (!next) return null;
 
-    const unchanged =
-      next.size === local.size && [...next].every((id) => local.has(id));
+    const unchanged = next.size === local.size && [...next].every((id) => local.has(id));
     // 即使无变化也回写缓存：cache 可能是陈旧的 raw remote，下次 detect
     // 读到会误判 in-flight like 为失配。直接 set cache 保证反映 reconciled next。
     this.likedCache.set(this.likedCacheKey(session, provider), {
@@ -2800,9 +2846,7 @@ export class MusicService {
       set: new Set(next),
       at: Date.now(),
     });
-    this.logger.log(
-      `reconciled ${provider} liked: local ${local.size} → ${next.size}`,
-    );
+    this.logger.log(`reconciled ${provider} liked: local ${local.size} → ${next.size}`);
     return next;
   }
 
@@ -2857,9 +2901,7 @@ export class MusicService {
       // set 已经是 Set<string> 了（来自 fetchLikedMidSet 或上面手工构造）
       set = fetchResult;
     } catch (err) {
-      this.logger.warn(
-        `getLikedSet(${provider}) failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`getLikedSet(${provider}) failed: ${(err as Error).message}`);
     }
     if (!set) return new Set<string>();
     // T2 (consistency-fixes B1)：先对账，再把 **reconciled** 集合缓存 + 返回。
@@ -2895,11 +2937,7 @@ export class MusicService {
     if (state.fanOut[mergedId]) return mergedId;
     const wanted = new Set(sources.map((s) => `${s.platform}:${s.trackId}`));
     for (const [key, entries] of Object.entries(state.fanOut)) {
-      if (
-        entries.some(
-          (e) => e.trackId && wanted.has(`${e.platform}:${e.trackId}`),
-        )
-      ) {
+      if (entries.some((e) => e.trackId && wanted.has(`${e.platform}:${e.trackId}`))) {
         return key;
       }
     }
@@ -2908,10 +2946,7 @@ export class MusicService {
 
   /** 把新的 (platform, repId) 合并进 fanOut 条目列表：按平台去重，新 trackId
    *  补全老格式缺省的条目；只留 likeable 平台。 */
-  private mergeFanOutEntries(
-    prev: FanOutEntry[],
-    next: FanOutEntry[],
-  ): FanOutEntry[] {
+  private mergeFanOutEntries(prev: FanOutEntry[], next: FanOutEntry[]): FanOutEntry[] {
     const byPlatform = new Map<MusicProvider, FanOutEntry>();
     for (const e of [...prev, ...next]) {
       if (!this.isLikeable(e.platform)) continue;
@@ -3016,10 +3051,7 @@ export class MusicService {
       // （平台超时缺席 / 变体聚类不同），但那首歌在该平台仍是红心的——直接覆盖
       // 会把它从记录里抹掉、角标少算。合并保留旧平台（dislikeMerged 已 delete
       // 整条记录，所以这里不会复活被取消的红心）。只留 likeable 平台。
-      const merged = this.mergeFanOutEntries(
-        state.fanOut[canonicalId] ?? [],
-        fresh,
-      );
+      const merged = this.mergeFanOutEntries(state.fanOut[canonicalId] ?? [], fresh);
       state.fanOut[canonicalId] = merged;
       this.saveState(session, state);
 
@@ -3047,33 +3079,20 @@ export class MusicService {
     // fannedOutTo 是**中间态**（如只有 qq，netease 还没落账）。前端必须
     // 据此**继续轮询**，绝不能把两个相同中间值当稳定（否则 Spotify 搜索
     // 悬挂时角标永远停在 1，discover 落定后也没人再刷新——本次 bug 的根）。
-    const settled = await this.likeSync.waitForSettled(
-      session.id,
-      canonicalId,
-      6000,
-    );
+    const settled = await this.likeSync.waitForSettled(session.id, canonicalId, 6000);
     const stateAfterWait = this.loadState(session);
     // T4 (consistency-fixes)：waitForSettled 期间 discover 跑了 resolveEquivalents，
     // 可能写了别处的 fanOut；用最新 state 重算。如果 canonicalId 漂移
     // （resolveEquivalents 把 mergedId 归一到另一 key），用新 key 而不是
     // 入口处的旧 key——否则 mergeSiblingLibraryLikes 写到旧 key，新 key
     // 下的记录拿不到这次补的平台，角标漏算。
-    const canonicalIdAfterWait = this.canonicalMergedId(
-      stateAfterWait,
-      mergedId,
-      sources,
-    );
+    const canonicalIdAfterWait = this.canonicalMergedId(stateAfterWait, mergedId, sources);
     // 同曲不同版本（时长差 >±3s → mergeLibrary 拆成独立 item / 独立 fanOut
     // 记录）的兄弟库条目：把它们已红心的 source 平台并入当前记录，让 ❤ 角标
     // 按「歌」算而不是按「版本」算。canonicalMergedId 只按 (platform, trackId)
     // 桥——兄弟版本 trackId 不同，桥不到，不加这步角标就漏（用户播放 258s
     // 版本时看不到 275s 版本已补上的 qq/spotify）。
-    this.mergeSiblingLibraryLikes(
-      stateAfterWait,
-      session,
-      canonicalIdAfterWait,
-      meta,
-    );
+    this.mergeSiblingLibraryLikes(stateAfterWait, session, canonicalIdAfterWait, meta);
     this.saveState(session, stateAfterWait);
     const record = stateAfterWait.fanOut[canonicalIdAfterWait] ?? [];
     return {
@@ -3104,9 +3123,7 @@ export class MusicService {
     meta: LikeMeta | undefined,
   ): void {
     if (!meta?.title || !meta.artist) return;
-    const stored = this.storage.get<{ items: UnifiedSearchItem[] }>(
-      this.libraryKey(session.id),
-    );
+    const stored = this.storage.get<{ items: UnifiedSearchItem[] }>(this.libraryKey(session.id));
     if (!stored?.items?.length) return;
     const wantKey = this.normalizeKey(meta.title, meta.artist);
     const record = state.fanOut[canonicalId] ?? [];
@@ -3115,9 +3132,7 @@ export class MusicService {
       if (this.normalizeKey(it.title, it.artist) !== wantKey) continue;
       for (const s of it.sources) {
         if (!s.trackId || !this.isLikeable(s.platform)) continue;
-        if (
-          record.some((e) => e.platform === s.platform && e.trackId === s.trackId)
-        ) {
+        if (record.some((e) => e.platform === s.platform && e.trackId === s.trackId)) {
           continue;
         }
         extra.push({ platform: s.platform, trackId: s.trackId });
@@ -3212,69 +3227,63 @@ export class MusicService {
     // 多个 fanOutLike 并发执行会让后写的覆盖前写的（lost update）。
     // 锁 promise-chain 序列化所有写路径，按到达顺序执行。
     return this.withStateLock(session.id, async () => {
-    const state = this.loadState(session);
-    // mergedId 漂移归一（#6）：若同一首歌已挂在老 key 下，复用老 key——
-    // 保证“同一首歌只有一条 fan-out 记录”，unlike/踩能找到完整平台列表。
-    const canonicalId = this.canonicalMergedId(state, mergedId, sources);
-    /** 本次要推入同步队列的远端目标（每平台一首）。 */
-    const targets: Array<{ platform: MusicProvider; trackId: string }> = [];
+      const state = this.loadState(session);
+      // mergedId 漂移归一（#6）：若同一首歌已挂在老 key 下，复用老 key——
+      // 保证“同一首歌只有一条 fan-out 记录”，unlike/踩能找到完整平台列表。
+      const canonicalId = this.canonicalMergedId(state, mergedId, sources);
+      /** 本次要推入同步队列的远端目标（每平台一首）。 */
+      const targets: Array<{ platform: MusicProvider; trackId: string }> = [];
 
-    if (liked) {
-      // **每个平台只收藏一首**：统一搜索会把同名的一堆变体塞进同一 item 的
-      // sources（无时长门槛），遍历全部会把十几个变体全收藏。按平台取第一首。
-      const fresh: FanOutEntry[] = [];
-      const byPlatform = this.groupByPlatform(sources);
-      for (const [platform, trackIds] of byPlatform) {
-        // Deezer 匿名无收藏概念 → 不记账、不计角标、不入队。
-        if (!this.isLikeable(platform)) continue;
-        const trackId = trackIds[0];
-        fresh.push({ platform, trackId });
-        // writeLike（T2 收口）：setLike + 同步 likedCache，杜绝 cache
-        // 与 state.liked 双真值源分裂（detect 读到旧缓存把新 ❤ 抹掉）。
-        this.writeLike(session, state, platform, trackId, true);
-        targets.push({ platform, trackId });
+      if (liked) {
+        // **每个平台只收藏一首**：统一搜索会把同名的一堆变体塞进同一 item 的
+        // sources（无时长门槛），遍历全部会把十几个变体全收藏。按平台取第一首。
+        const fresh: FanOutEntry[] = [];
+        const byPlatform = this.groupByPlatform(sources);
+        for (const [platform, trackIds] of byPlatform) {
+          // Deezer 匿名无收藏概念 → 不记账、不计角标、不入队。
+          if (!this.isLikeable(platform)) continue;
+          const trackId = trackIds[0];
+          fresh.push({ platform, trackId });
+          // writeLike（T2 收口）：setLike + 同步 likedCache，杜绝 cache
+          // 与 state.liked 双真值源分裂（detect 读到旧缓存把新 ❤ 抹掉）。
+          this.writeLike(session, state, platform, trackId, true);
+          targets.push({ platform, trackId });
+        }
+        // 与已有记录合并：这次 sources 里没列的旧平台也保留——避免“老
+        // fan-out 记录被覆盖”丢状态；历史污染的 deezer 在合并时被过滤。
+        state.fanOut[canonicalId] = this.mergeFanOutEntries(state.fanOut[canonicalId] ?? [], fresh);
+      } else {
+        // 取消心动：按之前 fanOut 记录的平台列表 unlike（幂等）。定位 trackId
+        // 优先用记录里存的代表 trackId（漂移后本次 sources 可能缺某平台），
+        // 没有再兜底用本次 sources 里同平台的第一首。
+        const toUnlike = state.fanOut[canonicalId] ?? [];
+        for (const entry of toUnlike) {
+          if (!this.isLikeable(entry.platform)) continue; // 跳过历史 deezer 记录
+          const trackId =
+            entry.trackId ?? sources.find((s) => s.platform === entry.platform)?.trackId;
+          if (!trackId) continue;
+          // writeLike（T2 收口）：unlike 方向也同步 likedCache，否则 detect
+          // 下一轮拉到旧缓存（含已取消的 trackId）→ 误判 liked → 红心复活。
+          this.writeLike(session, state, entry.platform, trackId, false);
+          targets.push({ platform: entry.platform, trackId });
+        }
+        delete state.fanOut[canonicalId];
       }
-      // 与已有记录合并：这次 sources 里没列的旧平台也保留——避免“老
-      // fan-out 记录被覆盖”丢状态；历史污染的 deezer 在合并时被过滤。
-      state.fanOut[canonicalId] = this.mergeFanOutEntries(
-        state.fanOut[canonicalId] ?? [],
-        fresh,
+
+      this.saveState(session, state);
+      // 远端写走同步队列：合并去重、每平台一首、失败重试，不阻塞本次响应。
+      // discover：收藏方向时，顺带去「搜索结果里没有、但用户已登录」的平台
+      // 跨平台匹配补齐（后台，严格 ±3s）。取消方向不匹配（只按 fanOut 记录 unlike）。
+      this.enqueueLikeSync(
+        session,
+        canonicalId,
+        liked,
+        targets,
+        liked ? this.buildDiscover(meta, [...this.groupByPlatform(sources).keys()]) : undefined,
       );
-    } else {
-      // 取消心动：按之前 fanOut 记录的平台列表 unlike（幂等）。定位 trackId
-      // 优先用记录里存的代表 trackId（漂移后本次 sources 可能缺某平台），
-      // 没有再兜底用本次 sources 里同平台的第一首。
-      const toUnlike = state.fanOut[canonicalId] ?? [];
-      for (const entry of toUnlike) {
-        if (!this.isLikeable(entry.platform)) continue; // 跳过历史 deezer 记录
-        const trackId =
-          entry.trackId ??
-          sources.find((s) => s.platform === entry.platform)?.trackId;
-        if (!trackId) continue;
-        // writeLike（T2 收口）：unlike 方向也同步 likedCache，否则 detect
-        // 下一轮拉到旧缓存（含已取消的 trackId）→ 误判 liked → 红心复活。
-        this.writeLike(session, state, entry.platform, trackId, false);
-        targets.push({ platform: entry.platform, trackId });
-      }
-      delete state.fanOut[canonicalId];
-    }
-
-    this.saveState(session, state);
-    // 远端写走同步队列：合并去重、每平台一首、失败重试，不阻塞本次响应。
-    // discover：收藏方向时，顺带去「搜索结果里没有、但用户已登录」的平台
-    // 跨平台匹配补齐（后台，严格 ±3s）。取消方向不匹配（只按 fanOut 记录 unlike）。
-    this.enqueueLikeSync(
-      session,
-      canonicalId,
-      liked,
-      targets,
-      liked ? this.buildDiscover(meta, [...this.groupByPlatform(sources).keys()]) : undefined,
-    );
-    // 返回"全集"——liked=true 时就是当前 fan-out 列表；liked=false 时空数组
-    const fannedOutTo = liked
-      ? (state.fanOut[canonicalId] ?? []).map((e) => e.platform)
-      : [];
-    return { success: true, liked, fannedOutTo };
+      // 返回"全集"——liked=true 时就是当前 fan-out 列表；liked=false 时空数组
+      const fannedOutTo = liked ? (state.fanOut[canonicalId] ?? []).map((e) => e.platform) : [];
+      return { success: true, liked, fannedOutTo };
     }); // withStateLock
   }
 
@@ -3320,15 +3329,16 @@ export class MusicService {
     // in-flight Promise，避免 fanOut 清空与拉远端的并发执行（两次同时清
     // + 两次同时写 storage 会让中间态暴露给 detect）。
     const inflight = this.importInFlight.get(session.id);
-    if (inflight) return inflight as Promise<{
-      items: UnifiedSearchItem[];
-      sources: Array<{
-        provider: MusicProvider;
-        count: number;
-        error?: string;
+    if (inflight)
+      return inflight as Promise<{
+        items: UnifiedSearchItem[];
+        sources: Array<{
+          provider: MusicProvider;
+          count: number;
+          error?: string;
+        }>;
+        importedAt: number;
       }>;
-      importedAt: number;
-    }>;
     const p = this._importLikedImpl(session);
     this.importInFlight.set(session.id, p);
     p.catch(() => undefined).finally(() => {
@@ -3377,13 +3387,15 @@ export class MusicService {
         });
         allTracks.push(...tracks.tracks);
         if (tracks.tracks.length > 0) {
-          this.primeLikedCache(session, 'netease', tracks.tracks.map((t) => t.id));
+          this.primeLikedCache(
+            session,
+            'netease',
+            tracks.tracks.map((t) => t.id),
+          );
         }
       }
     } catch (err) {
-      this.logger.warn(
-        `netease fetchLiked failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`netease fetchLiked failed: ${(err as Error).message}`);
       sourceResults.push({
         provider: 'netease',
         count: 0,
@@ -3404,10 +3416,7 @@ export class MusicService {
       } else {
         // 上限 2000（fetchLiked 内部按 1000/页分页）—— 覆盖绝大多数用户的
         // 收藏规模；1093 首的用户不会被 1000 截断。
-        const tracks = await this.fetchLikedWithTimeout(
-          () => this.qq.fetchLiked(ps, 2000),
-          'qq',
-        );
+        const tracks = await this.fetchLikedWithTimeout(() => this.qq.fetchLiked(ps, 2000), 'qq');
         sourceResults.push({
           provider: 'qq',
           count: tracks.tracks.length,
@@ -3415,7 +3424,11 @@ export class MusicService {
         });
         allTracks.push(...tracks.tracks);
         if (tracks.tracks.length > 0) {
-          this.primeLikedCache(session, 'qq', tracks.tracks.map((t) => t.id));
+          this.primeLikedCache(
+            session,
+            'qq',
+            tracks.tracks.map((t) => t.id),
+          );
         }
       }
     } catch (err) {
@@ -3449,13 +3462,15 @@ export class MusicService {
         });
         allTracks.push(...tracks.tracks);
         if (tracks.tracks.length > 0) {
-          this.primeLikedCache(session, 'spotify', tracks.tracks.map((t) => t.id));
+          this.primeLikedCache(
+            session,
+            'spotify',
+            tracks.tracks.map((t) => t.id),
+          );
         }
       }
     } catch (err) {
-      this.logger.warn(
-        `spotify fetchLiked failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`spotify fetchLiked failed: ${(err as Error).message}`);
       sourceResults.push({
         provider: 'spotify',
         count: 0,
@@ -3473,9 +3488,7 @@ export class MusicService {
     // 合并去重（走 MatchService.mergeLibrary → 内部复用 buildUnifiedItems）。
     // 先把每首 track 的 audioUrl 归一成后端代理路径（fetchLiked 返回的是空），
     // 否则 sources[].url 为空、红心列表点击时前端拿不到可播放的 <audio src>。
-    const items = this.match.mergeLibrary(
-      allTracks.map((t) => this.toPlayableTrack(t)),
-    );
+    const items = this.match.mergeLibrary(allTracks.map((t) => this.toPlayableTrack(t)));
     // Cross-script merge: "横顔" (QQ kanji) + "Yokogao" (Spotify romaji)
     // → 相同的 normalizeKey(artist) + cross-script title + same duration →
     // one entry with all three platform sources.
@@ -3547,13 +3560,10 @@ export class MusicService {
     fn: () => Promise<Track[]>,
     provider: MusicProvider,
   ): Promise<{ tracks: Track[]; error?: string }> {
-    const result = await withTimeout(
-      fn,
-      IMPORT_FETCH_TIMEOUT_MS,
-      () =>
-        this.logger.warn(
-          `${provider} fetchLiked timed out (>${IMPORT_FETCH_TIMEOUT_MS}ms); treating as absent`,
-        ),
+    const result = await withTimeout(fn, IMPORT_FETCH_TIMEOUT_MS, () =>
+      this.logger.warn(
+        `${provider} fetchLiked timed out (>${IMPORT_FETCH_TIMEOUT_MS}ms); treating as absent`,
+      ),
     );
     if (result === null) {
       // withTimeout 解析为 null = 超时。底层 promise 仍可能在 background settle，
@@ -3762,10 +3772,7 @@ export class MusicService {
    * 写 cache；失败不写 cache（保持原行为），inflight key 永远 finally
    * 删除，不泄漏。
    */
-  private readonly inflightSearchEquivalent = new Map<
-    string,
-    Promise<Track | null>
-  >();
+  private readonly inflightSearchEquivalent = new Map<string, Promise<Track | null>>();
 
   private pruneEquivSearchCache(): void {
     if (this.equivSearchCache.size <= EQUIV_SEARCH_CACHE_MAX_PER_SESSION) {
@@ -3793,7 +3800,13 @@ export class MusicService {
     opts?: { merge?: boolean },
   ): Promise<LyricsAggregatedResult> {
     return this.lyricsService.getLyricsAggregated(
-      session, provider, trackId, extras, title, artist, opts,
+      session,
+      provider,
+      trackId,
+      extras,
+      title,
+      artist,
+      opts,
     );
   }
 
@@ -3872,10 +3885,7 @@ export class MusicService {
 
   /** When the provider is unavailable, return a minimal placeholder so the UI
    * doesn't appear broken. */
-  private placeholder(
-    provider: MusicProvider,
-    reason: string,
-  ): Track {
+  private placeholder(provider: MusicProvider, reason: string): Track {
     return {
       id: `placeholder-${Date.now()}`,
       provider,

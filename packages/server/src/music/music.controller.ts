@@ -18,11 +18,7 @@ import { MusicService, type LikeMeta } from './music.service';
 import { QqMusicProvider } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { LyricsService } from './lyrics.service';
-import {
-  normalizeProvider,
-  MusicProvider,
-  MUSIC_PROVIDERS,
-} from '../common/provider';
+import { normalizeProvider, MusicProvider, MUSIC_PROVIDERS } from '../common/provider';
 import { SessionService } from '../common/session';
 import { DeezerMusicProvider } from './deezer.provider';
 import { QqQuality } from './qq.provider';
@@ -40,10 +36,7 @@ function parseMeta(m: unknown): LikeMeta | undefined {
   if (typeof o.title !== 'string' || typeof o.artist !== 'string') {
     return undefined;
   }
-  const duration =
-    typeof o.duration === 'number' && Number.isFinite(o.duration)
-      ? o.duration
-      : 0;
+  const duration = typeof o.duration === 'number' && Number.isFinite(o.duration) ? o.duration : 0;
   return { title: o.title, artist: o.artist, duration };
 }
 
@@ -144,6 +137,60 @@ export class MusicController {
   }
 
   /**
+   * 搜专辑（spec: specs/album-search）。
+   *
+   * 与 `/music/search`（单曲）**刻意分开**：那条路径的契约已被
+   * unified-search 的 21 项测试锁死，扩 `type` 参数会污染它。
+   *
+   * 失败语义：单平台失败记进 `errors` 字段并仍返 200（部分结果 > 全盘失败）；
+   * 没实现专辑能力的平台（如 Spotify）算「缺席」，不进 `errors`。
+   */
+  @Get('albums/search')
+  async searchAlbums(
+    @Query('q') q: string,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    return this.musicService.searchAlbumsUnified(
+      session,
+      q ?? '',
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 20,
+    );
+  }
+
+  /**
+   * 拉一张专辑的曲目（**已跨平台合并**，renderer 直接喂队列渲染）。
+   *
+   * 返回 `UnifiedSearchItem[]` 而不是原始 `Track[]`：renderer 的队列播放器
+   * 本来就吃 UnifiedSearchItem（含 versions[] / bestSource），返原始 track
+   * 会逼前端再实现一遍合并，等于把 buildUnifiedItems 的逻辑复制一份到前端。
+   *
+   * `:provider` 目前只有 qq / deezer 有效（各自只有一张专辑时才是"合并"，
+   * 但统一走这条路让 UI 不用分叉）。网易云被 -462 反爬挡住、Spotify 缺 token
+   * → 这两个平台返 400 `album detail not supported on <p>`（见 spec 阻塞项
+   * B1/B2），UI 据此给明确提示而不是静默失败。
+   */
+  @Get('albums/:provider/:albumId/tracks')
+  async albumTracks(
+    @Param('provider') provider: string,
+    @Param('albumId') albumId: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const items = await this.musicService.getAlbumTracksUnified(
+      session,
+      normalizeProvider(provider),
+      albumId,
+    );
+    return { items };
+  }
+
+  /**
    * List the Deezer editorial charts we expose to the UI. The renderer
    * fetches this once on first Deezer session to populate the preset
    * picker.
@@ -212,21 +259,14 @@ export class MusicController {
     const session = this.sessionService.resolve(req, res);
     // 持久化（逗号分隔字符串）。readChannelPriority 会拆 + 过滤未知 provider；
     // 这里我们已经清洗过，所以原样 join 即可。
-    this.sessionService.setPref(
-      session,
-      'channelPriority',
-      cleaned.join(','),
-    );
+    this.sessionService.setPref(session, 'channelPriority', cleaned.join(','));
     return { ok: true as const, priority: cleaned };
   }
 
   /** 当前用户的渠道优先级（缺省回退 PLAY_PRIORITY）。renderer Settings 启动时
    *  拉一次，UI 用 fallback 兜底首帧。 */
   @Get('channel-priority')
-  getChannelPriority(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  getChannelPriority(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     return {
       priority: this.musicService.readChannelPriority(session),
@@ -236,10 +276,7 @@ export class MusicController {
 
   /** 重置到 PLAY_PRIORITY（删除 pref key，让 readChannelPriority 自然回退）。 */
   @Delete('channel-priority')
-  resetChannelPriority(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  resetChannelPriority(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     delete session.prefs!['channelPriority'];
     // session 引用与 SessionService 内部 blob 共享 → mutate 后 persist() 落盘
@@ -267,7 +304,8 @@ export class MusicController {
    */
   @Post('like/merged')
   async likeMerged(
-    @Body() body: {
+    @Body()
+    body: {
       mergedId?: string;
       sources?: Array<{ platform: string; trackId: string }>;
       liked?: boolean;
@@ -321,7 +359,8 @@ export class MusicController {
    */
   @Post('like/detect')
   async likeDetect(
-    @Body() body: {
+    @Body()
+    body: {
       mergedId?: string;
       sources?: Array<{ platform: string; trackId: string }>;
       meta?: unknown;
@@ -392,7 +431,8 @@ export class MusicController {
    */
   @Post('dislike/merged')
   async dislikeMerged(
-    @Body() body: {
+    @Body()
+    body: {
       mergedId?: string;
       sources?: Array<{ platform: string; trackId: string }>;
     },
@@ -432,11 +472,7 @@ export class MusicController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    return this.musicService.markDisliked(
-      session,
-      normalizeProvider(provider),
-      trackId,
-    );
+    return this.musicService.markDisliked(session, normalizeProvider(provider), trackId);
   }
 
   @Get('liked')
@@ -446,10 +482,7 @@ export class MusicController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    return this.musicService.getLikedTracks(
-      session,
-      normalizeProvider(provider),
-    );
+    return this.musicService.getLikedTracks(session, normalizeProvider(provider));
   }
 
   /**
@@ -467,16 +500,10 @@ export class MusicController {
   ) {
     const session = this.sessionService.resolve(req, res);
     if (body?.platform === 'qq') {
-      return this.qq.getTrackFavCount(
-        session.providers.qq ?? {},
-        body.trackId,
-      );
+      return this.qq.getTrackFavCount(session.providers.qq ?? {}, body.trackId);
     }
     if (body?.platform === 'netease') {
-      return this.netease.getTrackLikeCount(
-        session.providers.netease ?? {},
-        body.trackId,
-      );
+      return this.netease.getTrackLikeCount(session.providers.netease ?? {}, body.trackId);
     }
     return null;
   }
@@ -487,20 +514,14 @@ export class MusicController {
    * API 调用），结果在 body 里返回（调用方无需再 GET /library）。
    */
   @Post('library/import')
-  async importLibrary(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async importLibrary(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     return this.musicService.importLiked(session);
   }
 
   /** 读最近一次 import 的库（无则 404）。 */
   @Get('library')
-  async getLibrary(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async getLibrary(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     const lib = this.musicService.getLibrary(session);
     if (!lib) {
@@ -522,9 +543,7 @@ export class MusicController {
   ) {
     const p = normalizeProvider(provider);
     if (p === 'deezer') {
-      throw new BadRequestException(
-        'deezer 是匿名音源，没有用户库贡献',
-      );
+      throw new BadRequestException('deezer 是匿名音源，没有用户库贡献');
     }
     const session = this.sessionService.resolve(req, res);
     const removed = this.musicService.clearLibraryForProvider(session, p);
@@ -533,10 +552,7 @@ export class MusicController {
 
   /** §5 Settings「库管理」：一键清空整库（所有平台的 liked 贡献）。 */
   @Delete('library')
-  async clearAllLibraries(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async clearAllLibraries(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     this.musicService.clearAllLibraries(session);
     return { ok: true as const };
@@ -592,15 +608,11 @@ export class MusicController {
       return { source: null };
     }
     const session = this.sessionService.resolve(req, res);
-    const source = await this.musicService.findPlayableEquivalent(
-      session,
-      seedProvider,
-      {
-        title: title ?? '',
-        artist: artist ?? '',
-        duration: Number.isFinite(dur) ? dur : 0,
-      },
-    );
+    const source = await this.musicService.findPlayableEquivalent(session, seedProvider, {
+      title: title ?? '',
+      artist: artist ?? '',
+      duration: Number.isFinite(dur) ? dur : 0,
+    });
     return { source };
   }
 
@@ -634,9 +646,7 @@ export class MusicController {
         );
         headers.Referer = 'https://open.spotify.com/';
       } else {
-        const quality = (['standard', 'high', 'lossless'] as const).includes(
-          q as QqQuality,
-        )
+        const quality = (['standard', 'high', 'lossless'] as const).includes(q as QqQuality)
           ? (q as QqQuality)
           : 'standard';
         upstream = await this.musicService.getStreamUrl(
@@ -645,8 +655,7 @@ export class MusicController {
           decodeURIComponent(trackId),
           { mediaMid: mm, quality },
         );
-        headers.Referer =
-          provider === 'qq' ? 'https://y.qq.com/' : 'https://music.163.com/';
+        headers.Referer = provider === 'qq' ? 'https://y.qq.com/' : 'https://music.163.com/';
       }
       await this.proxyAudio(upstream, headers, req, res, provider);
     } catch (err) {
@@ -691,9 +700,9 @@ export class MusicController {
       if (isDev) {
         this.logger.warn(
           `proxyAudio: dev-bypass non-allowlisted host (provider=${provider ?? '?'}) ` +
-          `url=${url}\n` +
-          `  → 上游又出新 CDN 节点。请同步 ALLOWED_STREAM_HOSTS_EXACT 或 ` +
-          `ALLOWED_STREAM_HOSTS_SUFFIX (packages/server/src/music/music.controller.ts)`,
+            `url=${url}\n` +
+            `  → 上游又出新 CDN 节点。请同步 ALLOWED_STREAM_HOSTS_EXACT 或 ` +
+            `ALLOWED_STREAM_HOSTS_SUFFIX (packages/server/src/music/music.controller.ts)`,
         );
       } else {
         this.logger.warn(`proxyAudio: rejecting non-allowlisted host for url=${url}`);
@@ -743,10 +752,7 @@ export class MusicController {
     // CORS: this is the header that unblocks the Web Audio analyser
     // for the visualizer (the renderer sets crossOrigin="anonymous").
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader(
-      'Content-Type',
-      upstream.headers.get('content-type') ?? 'audio/mpeg',
-    );
+    res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'audio/mpeg');
     res.setHeader('Accept-Ranges', 'bytes');
     const cl = upstream.headers.get('content-length');
     if (cl) res.setHeader('Content-Length', cl);
@@ -802,15 +808,15 @@ export class MusicController {
    * CDN, append its host here.
    */
   private static readonly ALLOWED_COVER_HOSTS = new Set([
-    'y.gtimg.cn',                       // QQ 音乐
-    'p1.music.126.net',                 // 网易云音乐
+    'y.gtimg.cn', // QQ 音乐
+    'p1.music.126.net', // 网易云音乐
     'p2.music.126.net',
     'p3.music.126.net',
     'p4.music.126.net',
-    'e-cdns-images.dzcdn.net',          // Deezer
+    'e-cdns-images.dzcdn.net', // Deezer
     'cdn-images.dzcdn.net',
-    'i.scdn.co',                        // Spotify（专辑封面 CDN）
-    'mosaic.scdn.co',                   // Spotify（歌单拼图封面）
+    'i.scdn.co', // Spotify（专辑封面 CDN）
+    'mosaic.scdn.co', // Spotify（歌单拼图封面）
   ]);
 
   /**
@@ -823,21 +829,21 @@ export class MusicController {
    * 防御，能挡掉「重定向到内网 / metadata.io / localhost:9200」类小坑。
    */
   private static readonly ALLOWED_STREAM_HOSTS_EXACT = new Set([
-    'ws.stream.qqmusic.qq.com',         // QQ 音频主 CDN（老节点）
-    'dl.stream.qqmusic.qq.com',         // QQ 音频备用 CDN（少数歌曲）
-    'aqqmusic.tc.qq.com',               // QQ 音频新 CDN（2026+ 主节点；GetVkey sip[0] 现在返回这个）
-    'p.scdn.co',                        // Spotify 30s preview CDN
-    'preview.dzcdn.net',                // Deezer preview 直链
-    'm7.music.126.net',                 // 网易云音频 CDN（部分 song）
+    'ws.stream.qqmusic.qq.com', // QQ 音频主 CDN（老节点）
+    'dl.stream.qqmusic.qq.com', // QQ 音频备用 CDN（少数歌曲）
+    'aqqmusic.tc.qq.com', // QQ 音频新 CDN（2026+ 主节点；GetVkey sip[0] 现在返回这个）
+    'p.scdn.co', // Spotify 30s preview CDN
+    'preview.dzcdn.net', // Deezer preview 直链
+    'm7.music.126.net', // 网易云音频 CDN（部分 song）
     'm8.music.126.net',
   ]);
   /** Audio stream CDN 允许列表——suffix 通配（Deezer 轮询的 preview CDN）。 */
   private static readonly ALLOWED_STREAM_HOSTS_SUFFIX: readonly string[] = [
-    '.stream.qqmusic.qq.com',           // 未来 QQ 新增 stream 子域
-    '.tc.qq.com',                       // QQ 所有 *.tc.qq.com 新 CDN（a/b/c.../xqqmusic.tc.qq.com 等）
-    '.music.126.net',                   // 网易云所有 m*.music.126.net
-    '.scdn.co',                         // Spotify 所有 *.*.scdn.co 子域
-    '.dzcdn.net',                       // Deezer 所有 *.{cdn,preview}.dzcdn.net
+    '.stream.qqmusic.qq.com', // 未来 QQ 新增 stream 子域
+    '.tc.qq.com', // QQ 所有 *.tc.qq.com 新 CDN（a/b/c.../xqqmusic.tc.qq.com 等）
+    '.music.126.net', // 网易云所有 m*.music.126.net
+    '.scdn.co', // Spotify 所有 *.*.scdn.co 子域
+    '.dzcdn.net', // Deezer 所有 *.{cdn,preview}.dzcdn.net
   ];
 
   /**
@@ -873,10 +879,7 @@ export class MusicController {
 
   @SkipInternalToken()
   @Get('cover-proxy')
-  async coverProxy(
-    @Query('url') url: string | undefined,
-    @Res() res: Response,
-  ): Promise<void> {
+  async coverProxy(@Query('url') url: string | undefined, @Res() res: Response): Promise<void> {
     if (!url) {
       res.status(400).json({ error: 'missing_url' });
       return;
@@ -915,10 +918,7 @@ export class MusicController {
         return;
       }
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader(
-        'Content-Type',
-        upstream.headers.get('content-type') ?? 'image/jpeg',
-      );
+      res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'image/jpeg');
       if (upstream.headers.get('content-length')) {
         res.setHeader('Content-Length', upstream.headers.get('content-length')!);
       }
@@ -932,9 +932,7 @@ export class MusicController {
       );
       // 同 proxyAudio：CDN 偶尔 reset 像素大图时 body 会抛 → 不挂进程
       coverReadable.on('error', (err) => {
-        this.logger.debug(
-          `coverProxy upstream stream error: ${err.message}`,
-        );
+        this.logger.debug(`coverProxy upstream stream error: ${err.message}`);
         if (!res.writableEnded) res.end();
       });
       res.on('close', () => {
@@ -1050,10 +1048,6 @@ export class MusicController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    return this.lyricsService.getLyricsAvailability(
-      session,
-      parseSourcesParam(sources),
-    );
+    return this.lyricsService.getLyricsAvailability(session, parseSourcesParam(sources));
   }
-
 }

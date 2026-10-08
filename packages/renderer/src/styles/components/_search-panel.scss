@@ -581,3 +581,164 @@
   display: inline-flex;
   align-items: center;
 }
+
+// ══════════════════════════════════════════════════════════════
+// 专辑维度（spec: specs/album-search，tasks 4.1-4.7）
+//
+// 全部颜色走 var(--token)，与仓库 token 门禁
+// （scripts/scan-hardcoded-colors.mjs --gate）一致：这里不出现任何字面色值。
+// ══════════════════════════════════════════════════════════════
+
+/* 歌曲/专辑 tab 切换 */
+.sp-hud-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--glass-stroke);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--white) 3%, transparent);
+}
+
+.sp-tab {
+  height: 26px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-main) 55%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sp-tab:hover { color: var(--text-main); }
+
+.sp-tab.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+/* 专辑行：比歌曲行封面大一点（专辑封面是视觉主体），并留出右侧 caret 位 */
+.sp-row--album { cursor: pointer; }
+.sp-row--album .sp-cover { border-radius: var(--radius-sm); }
+
+.sp-album-caret {
+  flex: 0 0 auto;
+  width: 20px;
+  text-align: center;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--text-main) 45%, transparent);
+  transition: color 0.15s ease;
+}
+
+.sp-row--album:hover .sp-album-caret { color: var(--text-main); }
+
+/* 平台 chip：专辑卡片上没有播放源信息，用轻量字母 chip 代替 SourceChip */
+.sp-album-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--white) 8%, transparent);
+  color: color-mix(in srgb, var(--text-main) 75%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 「版本分歧」角标：同名专辑各平台曲目数不一致 → 未跨平台合并 */
+.sp-album-variant {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-bg);
+  color: var(--error-fg);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* 展开后的曲目容器 */
+.sp-album-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2-ui) 0 var(--space-3) var(--space-4-ui);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  margin-left: 20px;
+}
+
+/* 曲目区的操作条（播放全部 + 不可播提示） */
+.sp-album-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--space-1) 0 var(--space-2-ui);
+}
+
+.sp-album-playall {
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sp-album-playall:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: var(--accent);
+}
+
+.sp-album-playall:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 加载中 / 空 / 失败的行内提示 */
+.sp-album-hint {
+  padding: var(--space-1) var(--space-2-ui);
+  color: color-mix(in srgb, var(--text-main) 50%, transparent);
+  font-size: 12px;
+}
+
+.sp-album-hint--err { color: var(--error-fg); }
+
+/* 部分平台失败的非阻塞提示条 */
+.sp-album-warn {
+  margin-bottom: var(--space-2-ui);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-bg);
+  color: var(--error-fg-soft);
+  font-size: 11px;
+}
+
+/* 「加载更多专辑」按钮 */
+.sp-load-more {
+  align-self: center;
+  margin: var(--space-4-ui) auto;
+  height: 32px;
+  padding: 0 20px;
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--white) 5%, transparent);
+  color: color-mix(in srgb, var(--text-main) 70%, transparent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sp-load-more:hover:not(:disabled) { color: var(--text-main); }
+.sp-load-more:disabled { opacity: 0.4; cursor: not-allowed; }

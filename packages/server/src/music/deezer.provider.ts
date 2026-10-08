@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadGatewayException } from '@nestjs/common';
 import { Track } from './types';
+import type { AlbumSource, AlbumTrack } from './album-types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
 
@@ -32,6 +33,31 @@ interface DeezerTrack {
     cover_medium?: string;
     cover_xl?: string;
   };
+}
+
+/** Deezer 专辑搜索条目（`/search/album`）。 */
+interface DeezerAlbum {
+  id: number;
+  title: string;
+  cover_xl?: string;
+  cover_big?: string;
+  cover_medium?: string;
+  cover_small?: string;
+  /** 曲目数 */
+  nb_tracks?: number;
+  /** "2003-07-28" */
+  release_date?: string;
+  record_type?: string;
+  /** ⚠️ 常见罗马音（实测「叶惠美」→ "Jue Wang"），跨平台合并要靠 artistAlias 桥接 */
+  artist?: { id: number; name: string };
+}
+
+interface DeezerAlbumDetail {
+  id: number;
+  title: string;
+  nb_tracks?: number;
+  cover_xl?: string;
+  tracks?: { data?: DeezerTrack[] };
 }
 
 interface DeezerChartResponse {
@@ -71,8 +97,8 @@ const DEEZER_EDITORIALS: Record<number, { name: string; region?: string }> = {
 
 /** Preset name -> Deezer editorial id (curated genre chart). */
 const DEEZER_EDITORIALS_PRESET: Record<string, number> = {
-  all: 132,        // 'International Pop' as a sensible default
-  asia: 16,        // Asian Music (J/K/C-Pop)
+  all: 132, // 'International Pop' as a sensible default
+  asia: 16, // Asian Music (J/K/C-Pop)
   pop: 132,
   rap: 116,
   rock: 152,
@@ -129,11 +155,7 @@ export class DeezerMusicProvider {
    *
    * Endpoint: GET https://api.deezer.com/search?q={keyword}&limit={count}
    */
-  async search(
-    _session: ProviderSession,
-    keyword: string,
-    count = 20,
-  ): Promise<Track[]> {
+  async search(_session: ProviderSession, keyword: string, count = 20): Promise<Track[]> {
     const url = new URL(`${DeezerMusicProvider.API}/search`);
     url.searchParams.set('q', keyword);
     url.searchParams.set('limit', String(Math.min(count, 50)));
@@ -148,6 +170,109 @@ export class DeezerMusicProvider {
     const data = json.data ?? [];
     this.logger.log(`Deezer search "${keyword}" → ${data.length} 首`);
     return data.map((t) => this.toTrack(t));
+  }
+
+  /**
+   * 搜专辑。`GET /search/album?q=&limit=` —— 公开匿名 API。
+   *
+   * ⚠️ 限流（2026-09-30 实测）：连续压测会从正常掉到 0 结果，一度 TLS 断连
+   * （ECONNRESET），~40s 冷却后恢复。所以**"返回空"不能直接当成"没搜到"**，
+   * 上层要能区分限流与真空 —— 限流时抛错让 service 标 error，否则用户看到
+   * 「暂无结果」正是 specs/unified-search/tasks.md:19 踩过的坑。
+   *
+   * limit 无 50 上限（实测 25/50/100 均通过），但这里仍 clamp 到 count，
+   * 避免单次拉太多被限得更狠。
+   */
+  async searchAlbums(
+    _session: ProviderSession,
+    keyword: string,
+    count = 20,
+  ): Promise<AlbumSource[]> {
+    const url = new URL(`${DeezerMusicProvider.API}/search/album`);
+    url.searchParams.set('q', keyword);
+    url.searchParams.set('limit', String(Math.max(1, Math.min(count, 50))));
+
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
+    });
+    if (!res.ok) {
+      throw new BadGatewayException(`deezer album search failed: ${res.status}`);
+    }
+    const json = (await res.json()) as {
+      data?: DeezerAlbum[];
+      total?: number;
+      error?: { message?: string; type?: string };
+    };
+    // Deezer 用 200 + {error:{...}} 表达业务错误（限流就是 error.code=4）。
+    if (json.error) {
+      // 限流/风控用 200+{error} 表达，属于上游故障 → 502，交 service 层
+      // fail-soft 记进 errors（绝不能变成 500 把整次搜索带崩）。
+      throw new BadGatewayException(
+        `deezer album search error: ${json.error.type ?? ''} ${json.error.message ?? ''}`.trim(),
+      );
+    }
+    const data = json.data ?? [];
+    this.logger.log(`Deezer searchAlbums "${keyword}" → ${data.length} 张`);
+    return data
+      .filter((a): a is typeof a & { id: number } => typeof a.id === 'number')
+      .map((a, i) => ({
+        platform: 'deezer' as const,
+        albumId: String(a.id),
+        title: a.title ?? '未知专辑',
+        artist: a.artist?.name ?? '未知艺人',
+        coverUrl: a.cover_xl ?? a.cover_big ?? a.cover_medium ?? '',
+        trackCount: a.nb_tracks ?? 0,
+        year: Number.parseInt((a.release_date ?? '').slice(0, 4), 10) || 0,
+        rank: i,
+      }));
+  }
+
+  /**
+   * 拉专辑曲目。`GET /album/{id}` → `tracks.data[]`。
+   *
+   * ⚠️ Deezer **不给 trackNumber / discNumber**（2026-09-30 实测），所以返回的
+   * `trackNumber` 恒为 undefined，上层按「可得即用、缺失保序」处理 —— 不要为了
+   * 跟 QQ 对齐去重排，那是 Deezer 上的真实编曲顺序。
+   */
+  async getAlbumTracks(_session: ProviderSession, albumId: string): Promise<AlbumTrack[]> {
+    const url = `${DeezerMusicProvider.API}/album/${encodeURIComponent(albumId)}`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
+    });
+    if (!res.ok) {
+      // 404 = 专辑 id 无效；其余（5xx / 限流）= 上游故障 → 502
+      if (res.status === 404) {
+        throw new NotFoundException(`Deezer album not found: ${albumId}`);
+      }
+      throw new BadGatewayException(`deezer album tracks failed: ${res.status}`);
+    }
+    const json = (await res.json()) as DeezerAlbumDetail & {
+      error?: { message?: string };
+    };
+    if (json.error) {
+      // Deezer 用 **HTTP 200 + {error:{type:'DataException',message:'no data',code:800}}**
+      // 表达"查无此专辑"（实测 2026-09-30），不是 404。所以必须看 body 里的
+      // error.message 才知道是 404 还是上游故障。
+      const msg = json.error.message ?? 'unknown';
+      if (/no data/i.test(msg)) {
+        throw new NotFoundException(`Deezer album not found: ${albumId}`);
+      }
+      // 其余 error（Deezer 限流也走 200+error）= 上游故障 → 502
+      throw new BadGatewayException(`deezer album tracks error: ${msg}`);
+    }
+    const list = json.tracks?.data ?? [];
+    this.logger.log(`Deezer getAlbumTracks "${albumId}" → ${list.length} 首`);
+    return list.map((t): AlbumTrack => {
+      const base = this.toTrack(t);
+      return {
+        ...base,
+        // 曲目所属专辑的封面：/album/{id} 顶层有 cover_xl，条目内的
+        // t.album 可能为空（实测），所以用顶层兜。
+        coverUrl: base.coverUrl || json.cover_xl || '',
+        trackNumber: undefined,
+        discNumber: undefined,
+      };
+    });
   }
 
   async fetchRadioBatch(
@@ -189,13 +314,8 @@ export class DeezerMusicProvider {
     const artistId = searched.data?.[0]?.id;
     if (!artistId) return [];
 
-    const relatedUrl = new URL(
-      `${DeezerMusicProvider.API}/artist/${artistId}/related`,
-    );
-    relatedUrl.searchParams.set(
-      'limit',
-      String(Math.max(1, Math.min(count * 2, 50))),
-    );
+    const relatedUrl = new URL(`${DeezerMusicProvider.API}/artist/${artistId}/related`);
+    relatedUrl.searchParams.set('limit', String(Math.max(1, Math.min(count * 2, 50))));
     const relRes = await fetch(relatedUrl.toString(), { headers });
     if (!relRes.ok) {
       throw new Error(`deezer related artists failed: ${relRes.status}`);
@@ -214,10 +334,7 @@ export class DeezerMusicProvider {
    * (e.g. editorial/16 = Asian Music, editorial/132 = International Pop).
    * These are Deezer's curated rankings, not the user's chart endpoint.
    */
-  private async fetchEditorialCharts(
-    editorialId: number,
-    count: number,
-  ): Promise<Track[]> {
+  private async fetchEditorialCharts(editorialId: number, count: number): Promise<Track[]> {
     const url = `${DeezerMusicProvider.API}/editorial/${editorialId}/charts?limit=${count}`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
@@ -238,16 +355,10 @@ export class DeezerMusicProvider {
    * Deezer 的 preview URL 已经在 fetchRadioBatch 里给出，但有时效。
    * 这里重新拉一次保证 URL 是新鲜的（防止队列里靠后的歌 preview 过期）。
    */
-  async getStreamPath(
-    _session: ProviderSession,
-    trackId: string,
-  ): Promise<string> {
-    const res = await fetch(
-      `${DeezerMusicProvider.API}/track/${trackId}`,
-      {
-        headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
-      },
-    );
+  async getStreamPath(_session: ProviderSession, trackId: string): Promise<string> {
+    const res = await fetch(`${DeezerMusicProvider.API}/track/${trackId}`, {
+      headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
+    });
     if (!res.ok) {
       throw new Error(`deezer track fetch failed: ${res.status}`);
     }
@@ -324,9 +435,7 @@ export class DeezerMusicProvider {
       }
       return null;
     } catch (err) {
-      this.logger.warn(
-        `deezer lyrics fetch failed for ${trackId}: ${(err as Error).message}`,
-      );
+      this.logger.warn(`deezer lyrics fetch failed for ${trackId}: ${(err as Error).message}`);
       return null;
     }
   }

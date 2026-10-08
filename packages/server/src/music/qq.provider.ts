@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  BadGatewayException,
+} from '@nestjs/common';
 import { Track } from './types';
 import type { VipCategory } from './types';
 import { ProviderSession } from '../common/session';
@@ -6,6 +12,7 @@ import { type LyricLine, parseLrc } from '../common/lyrics';
 import { randomBytes } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
 import { withTimeout } from '../common/timeout';
+import type { AlbumSource, AlbumTrack } from './album-types';
 
 /** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
 export type QqQuality = 'standard' | 'high' | 'lossless';
@@ -94,6 +101,55 @@ interface SearchResponse {
   };
 }
 
+/** QQ 专辑搜索响应（`client_search_cp&t=8`）。
+ *  schema 与单曲完全不同：返回 albumMID 而非 songmid，封面是 R180。
+ *  实测（2026-09-30 匿名）6/6 `code=0`，字段齐全。见 specs/album-search 附录。 */
+interface AlbumSearchResponse {
+  code: number;
+  data?: {
+    album?: {
+      list?: Array<{
+        albumID?: number;
+        albumMID?: string;
+        albumName?: string;
+        albumPic?: string;
+        /** "2003-07-31" —— 直接可取年份，无需再 parse */
+        publicTime?: string;
+        singerID?: number;
+        singerMID?: string;
+        singerName?: string;
+        song_count?: number;
+      }>;
+    };
+  };
+}
+
+/** QQ 专辑曲目响应（`fcg_v8_album_info_cp.fcg?albummid=`）。
+ *  裸 albummid 即可，实测不需要 guid / 签名（2026-09-30 匿名 6/6）。 */
+interface AlbumInfoResponse {
+  code: number;
+  data?: {
+    cur_song_num?: number;
+    list?: Array<{
+      songid?: number;
+      songmid?: string;
+      /** 取高音质流用（可能 ≠ songmid），与单曲 search 一致 */
+      strMediaMid?: string;
+      songname?: string;
+      songorig?: string;
+      albumname?: string;
+      albummid?: string;
+      singer?: { id: number; mid: string; name: string }[];
+      interval?: number;
+      /** 碟号（1-based） */
+      belongCD?: number;
+      /** 碟内序号（0-based） */
+      cdIdx?: number;
+      pay?: QqPay;
+    }>;
+  };
+}
+
 /** QQ 搜索/收藏夹响应里的 `pay` 子对象：所有可能的付费标记。
  *  任何一项命中 = 需要购买/会员才能完整播放，详见 spec/paid-album-detection。
  *  字段语义（任一为 1 / > 0 即触发 vipLocked）：
@@ -141,10 +197,7 @@ export interface QqPay {
  * 抽成模块顶层函数是为了单测直接 import 验证，不必走 QqMusicProvider
  * 实例化（避免触发 logger / 真实 QQ 网络）。
  */
-export function detectQqVipLocked(
-  pay: QqPay | undefined,
-  qqVip: boolean | undefined,
-): boolean {
+export function detectQqVipLocked(pay: QqPay | undefined, qqVip: boolean | undefined): boolean {
   if (!pay) return false;
   const flagged =
     pay.pay_album === 1 ||
@@ -156,7 +209,6 @@ export function detectQqVipLocked(
     (pay.pay_play ?? pay.payplay) === 1;
   return flagged && qqVip !== true;
 }
-
 
 /**
  * QQ search 响应里的付费分类 —— 比 detectQqVipLocked 二元更细。判定顺序
@@ -232,17 +284,11 @@ export class QqMusicProvider {
    *
    * 硬上限 maxTracks（默认 1000，与 NetEase 对齐）。
    */
-  async fetchLiked(
-    session: ProviderSession,
-    maxTracks = 1000,
-  ): Promise<Track[]> {
+  async fetchLiked(session: ProviderSession, maxTracks = 1000): Promise<Track[]> {
     if (!this.isConfigured(session)) return [];
 
     const cookie = session.qqCookie ?? '';
-    const euin =
-      session.qqCookies?.euin ??
-      /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ??
-      '';
+    const euin = session.qqCookies?.euin ?? /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ?? '';
 
     interface CgiGetDissSong {
       mid?: string;
@@ -307,9 +353,7 @@ export class QqMusicProvider {
         throw new BadRequestException('not_logged_in');
       }
       if (reqCode !== 0) {
-        throw new BadRequestException(
-          `QQ CgiGetDiss failed: code=${reqCode}`,
-        );
+        throw new BadRequestException(`QQ CgiGetDiss failed: code=${reqCode}`);
       }
       const songlist = j.req_0?.data?.songlist ?? [];
       if (songlist.length === 0) break;
@@ -407,9 +451,7 @@ export class QqMusicProvider {
     const json = JSON.stringify(reqData);
     const sign = zzcSign(json);
     const body = encryptRequest(reqData);
-    const url =
-      `https://u6.y.qq.com/cgi-bin/musics.fcg?_=${tsMs}` +
-      `&encoding=ag-1&sign=${sign}`;
+    const url = `https://u6.y.qq.com/cgi-bin/musics.fcg?_=${tsMs}` + `&encoding=ag-1&sign=${sign}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -433,10 +475,7 @@ export class QqMusicProvider {
    * 把 songmid 解析成数字 songId（加密写接口要 songId，而我们播放队列里
    * 存的是 songmid）。走 musicu 的 song_detail 模块。失败返回 null。
    */
-  async resolveSongId(
-    session: ProviderSession,
-    songmid: string,
-  ): Promise<number | null> {
+  async resolveSongId(session: ProviderSession, songmid: string): Promise<number | null> {
     const body = {
       comm: { ct: 24, cv: 0 },
       req_0: {
@@ -464,9 +503,7 @@ export class QqMusicProvider {
       };
       return j.req_0?.data?.track_info?.id ?? null;
     } catch (err) {
-      this.logger.warn(
-        `QQ resolveSongId failed for ${songmid}: ${(err as Error).message}`,
-      );
+      this.logger.warn(`QQ resolveSongId failed for ${songmid}: ${(err as Error).message}`);
       return null;
     }
   }
@@ -530,9 +567,7 @@ export class QqMusicProvider {
         if (typeof count !== 'number') return null;
         return { count, display: display ?? count.toLocaleString() };
       } catch (err) {
-        this.logger.warn(
-          `QQ getTrackFavCount failed for ${songmid}: ${(err as Error).message}`,
-        );
+        this.logger.warn(`QQ getTrackFavCount failed for ${songmid}: ${(err as Error).message}`);
         return null;
       }
     }, 5000) as Promise<{ count: number; display: string } | null>;
@@ -543,20 +578,12 @@ export class QqMusicProvider {
    * @param songmid 播放队列里的 QQ trackId（songmid）
    * @param tsMs    时间戳（签名 URL 用；由调用方传入，便于测试/复现）
    */
-  async like(
-    session: ProviderSession,
-    songmid: string,
-    tsMs: number,
-  ): Promise<boolean> {
+  async like(session: ProviderSession, songmid: string, tsMs: number): Promise<boolean> {
     return this.setFav(session, songmid, true, tsMs);
   }
 
   /** 从「我喜欢」移除一首歌（DelSonglist）。 */
-  async unlike(
-    session: ProviderSession,
-    songmid: string,
-    tsMs: number,
-  ): Promise<boolean> {
+  async unlike(session: ProviderSession, songmid: string, tsMs: number): Promise<boolean> {
     return this.setFav(session, songmid, false, tsMs);
   }
 
@@ -580,9 +607,7 @@ export class QqMusicProvider {
     );
     const ok = req?.code === 0;
     if (!ok) {
-      this.logger.warn(
-        `QQ setFav(${fav}) ${songmid} → req code=${req?.code ?? 'n/a'}`,
-      );
+      this.logger.warn(`QQ setFav(${fav}) ${songmid} → req code=${req?.code ?? 'n/a'}`);
     }
     return ok;
   }
@@ -636,11 +661,7 @@ export class QqMusicProvider {
    * 点播放走 getStreamPath 出全曲流。搜索本身不强制登录态，但带上 cookie
    * 无害（会影响个性化结果）。
    */
-  async search(
-    session: ProviderSession,
-    keyword: string,
-    count = 20,
-  ): Promise<Track[]> {
+  async search(session: ProviderSession, keyword: string, count = 20): Promise<Track[]> {
     const url = new URL('https://c.y.qq.com/soso/fcgi-bin/client_search_cp');
     url.searchParams.set('w', keyword);
     url.searchParams.set('p', '1');
@@ -689,15 +710,126 @@ export class QqMusicProvider {
   }
 
   /**
+   * 搜专辑。`client_search_cp` + `t=8`（单曲是 `t=0`）。
+   *
+   * 与单曲 search 的关键差异：返回的是 `albumMID` 而非 `songmid`，封面是
+   * R180（单曲用的是 R800），没有 `pay` 块（付费判定在专辑详情里逐曲做）。
+   * 实测 2026-09-30 匿名 6/6 `code=0`，无需登录态。
+   */
+  async searchAlbums(
+    session: ProviderSession,
+    keyword: string,
+    count = 20,
+  ): Promise<AlbumSource[]> {
+    const url = new URL('https://c.y.qq.com/soso/fcgi-bin/client_search_cp');
+    url.searchParams.set('w', keyword);
+    url.searchParams.set('p', '1');
+    url.searchParams.set('n', String(count));
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('cr', '1');
+    url.searchParams.set('t', '8'); // 8 = 专辑
+    url.searchParams.set('flag_qc', '0');
+    url.searchParams.set('new_json', '1');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Referer: 'https://y.qq.com/',
+        Cookie: session.qqCookie ?? '',
+      },
+    });
+    const json = (await res.json()) as AlbumSearchResponse;
+    if (json.code !== 0) {
+      throw new BadRequestException(`QQ album search failed: code=${json.code}`);
+    }
+    const list = json.data?.album?.list ?? [];
+    this.logger.log(`QQ searchAlbums "${keyword}" → ${list.length} 张`);
+    return (
+      list
+        // albumMID 缺失 = 这条没法用（详情端点要靠它），直接丢掉而不是给个空 id。
+        .filter((a): a is typeof a & { albumMID: string } => !!a.albumMID)
+        .map((a, i) => ({
+          platform: 'qq' as const,
+          albumId: a.albumMID,
+          title: a.albumName ?? '未知专辑',
+          artist: a.singerName ?? '未知艺人',
+          coverUrl: a.albumPic ?? '',
+          trackCount: a.song_count ?? 0,
+          // "2003-07-31" → 2003。解析失败当未知(0)，不猜。
+          year: Number.parseInt((a.publicTime ?? '').slice(0, 4), 10) || 0,
+          rank: i,
+        }))
+    );
+  }
+
+  /**
+   * 拉专辑曲目。`fcg_v8_album_info_cp.fcg?albummid=xxx` —— **裸 albummid 即可**，
+   * 不需要 guid / p_skey 签名（spec 原先把这里标为高风险，实测已排除）。
+   *
+   * 曲序：QQ 不给直接的 trackNumber，用 `belongCD`(碟号) + `cdIdx`(碟内序号，
+   * 0-based) 组装成 `discNumber` / `trackNumber`。
+   */
+  async getAlbumTracks(session: ProviderSession, albumId: string): Promise<AlbumTrack[]> {
+    const url = new URL('https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg');
+    url.searchParams.set('albummid', albumId);
+    url.searchParams.set('format', 'json');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Referer: 'https://y.qq.com/',
+        Cookie: session.qqCookie ?? '',
+      },
+    });
+    const json = (await res.json()) as AlbumInfoResponse;
+    if (json.code !== 0) {
+      // code=1101 = 专辑不存在（albummid 无效）→ 404，不是 400。客户端要能
+      // 区分「你点的专辑没了」和「你请求写错了」。
+      if (json.code === 1101) {
+        throw new NotFoundException(`QQ album not found: ${albumId}`);
+      }
+      throw new BadGatewayException(`QQ album tracks failed: code=${json.code}`);
+    }
+    const list = json.data?.list ?? [];
+    this.logger.log(`QQ getAlbumTracks "${albumId}" → ${list.length} 首`);
+    return list
+      .filter((s): s is typeof s & { songmid: string } => !!s.songmid)
+      .map((s): AlbumTrack => {
+        const disc = s.belongCD && s.belongCD > 0 ? s.belongCD : 0;
+        // cdIdx 是 0-based，转成 1-based 曲序；碟内序号缺失时留 undefined
+        // 而不是填 0 —— 填 0 会让它排到专辑第一首前面。
+        const idx = typeof s.cdIdx === 'number' && s.cdIdx >= 0 ? s.cdIdx + 1 : undefined;
+        return {
+          id: s.songmid,
+          provider: 'qq' as const,
+          title: s.songname ?? s.songorig ?? '未知歌曲',
+          artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
+          album: s.albumname ?? '',
+          coverUrl: s.albummid
+            ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${s.albummid}.jpg`
+            : '',
+          audioUrl: '', // 播放时由 getStreamPath 动态获取
+          duration: s.interval ?? 0,
+          liked: false,
+          mediaMid: s.strMediaMid ?? '',
+          // 复用与单曲 search 同一套付费判定，不要在专辑路径另写一份。
+          vipLocked: detectQqVipLocked(s.pay, session.qqVip),
+          vipCategory: detectQqVipCategory(s.pay),
+          trackNumber: idx,
+          discNumber: disc || undefined,
+        };
+      });
+  }
+
+  /**
    * 取歌曲的播放 URL。QQ 的播放 URL 几分钟就过期，所以**必须**在用户
    * 即将播放时实时拉，不缓存。返回相对路径 /music/stream/qq/{mid}，
    * 让前端统一走后端代理，前端永远拿不到 raw URL。
    */
   /** 音质档位 → GetVkey filename 的前缀 / 扩展名。standard 用默认 m4a。 */
-  private static readonly QUALITY: Record<
-    QqQuality,
-    { prefix: string; ext: string } | null
-  > = {
+  private static readonly QUALITY: Record<QqQuality, { prefix: string; ext: string } | null> = {
     standard: null, // 默认 C400 m4a，不传 filename
     high: { prefix: 'M800', ext: '.mp3' }, // 320 kbps
     lossless: { prefix: 'F000', ext: '.flac' }, // flac 无损
@@ -711,17 +843,14 @@ export class QqMusicProvider {
   ): Promise<string> {
     // 高音质需要 media_mid 拼 filename；没有就退回默认 m4a。
     const spec = QqMusicProvider.QUALITY[quality];
-    const filename =
-      spec && mediaMid ? [`${spec.prefix}${mediaMid}${spec.ext}`] : undefined;
+    const filename = spec && mediaMid ? [`${spec.prefix}${mediaMid}${spec.ext}`] : undefined;
 
     let vkey = await this.fetchVkey(session, [songmid], filename);
     let info = vkey?.data?.midurlinfo?.[0];
 
     // 请求了高音质但没权限/该音质不存在（purl 空）→ 回退默认音质再试一次。
     if (!info?.purl && filename) {
-      this.logger.warn(
-        `QQ ${quality} 无 purl(errtype=${info?.errtype})，回退默认音质：${songmid}`,
-      );
+      this.logger.warn(`QQ ${quality} 无 purl(errtype=${info?.errtype})，回退默认音质：${songmid}`);
       vkey = await this.fetchVkey(session, [songmid]);
       info = vkey?.data?.midurlinfo?.[0];
     }
@@ -774,9 +903,7 @@ export class QqMusicProvider {
       if (!info) return undefined;
       return Boolean(info.purl);
     } catch (err) {
-      this.logger.warn(
-        `qqVip probe failed: ${(err as Error).message}（按未知处理，下次搜索重试）`,
-      );
+      this.logger.warn(`qqVip probe failed: ${(err as Error).message}（按未知处理，下次搜索重试）`);
       return undefined;
     }
   }
@@ -857,13 +984,8 @@ export class QqMusicProvider {
    * Returns null when the song has no lyrics or the request fails — the
    * controller/service treats null as "暂无歌词".
    */
-  async getLyrics(
-    session: ProviderSession,
-    songmid: string,
-  ): Promise<LyricLine[] | null> {
-    const url = new URL(
-      'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg',
-    );
+  async getLyrics(session: ProviderSession, songmid: string): Promise<LyricLine[] | null> {
+    const url = new URL('https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg');
     url.searchParams.set('songmid', songmid);
     url.searchParams.set('format', 'json');
     url.searchParams.set('nobase64', '1');
