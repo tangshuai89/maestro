@@ -17,11 +17,16 @@ import { formatDuration, clampText } from '../../lib/format';
 type VersionType = 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
 function versionTypeBadge(type: VersionType): string {
   switch (type) {
-    case 'live':         return '[LIVE]';
-    case 'acoustic':     return '[ACOUSTIC]';
-    case 'remix':        return '[REMIX]';
-    case 'instrumental': return '[INSTRUMENTAL]';
-    case 'studio':       return '';
+    case 'live':
+      return '[LIVE]';
+    case 'acoustic':
+      return '[ACOUSTIC]';
+    case 'remix':
+      return '[REMIX]';
+    case 'instrumental':
+      return '[INSTRUMENTAL]';
+    case 'studio':
+      return '';
   }
 }
 import SourceChip from './SourceChip';
@@ -68,12 +73,7 @@ const PLATFORM_BADGE: Record<MusicProvider, { letter: string; color: string }> =
   spotify: { letter: 'S', color: '#3DFFA2' },
 };
 
-export default function SearchPanel({
-  onPlay,
-  onClose,
-  onOpenNL,
-  wpsReady = false,
-}: Props) {
+export default function SearchPanel({ onPlay, onClose, onOpenNL, wpsReady = false }: Props) {
   const [q, setQ] = useState('');
   const [items, setItems] = useState<UnifiedSearchItem[]>([]);
   const [page, setPage] = useState(1);
@@ -146,9 +146,7 @@ export default function SearchPanel({
       try {
         let resultCount = 0;
         if (mode === 'all') {
-          const res = await searchUnified(
-            keyword, nextPage, PAGE_SIZE, controller.signal,
-          );
+          const res = await searchUnified(keyword, nextPage, PAGE_SIZE, controller.signal);
           if (controller.signal.aborted) return;
           setItems((prev) => {
             if (!append) return res.items;
@@ -160,7 +158,10 @@ export default function SearchPanel({
           setHasMore(res.page * res.pageSize < res.total);
           resultCount = res.items.length;
         } else {
-          if (append) { setLoadingMore(false); return; }
+          if (append) {
+            setLoadingMore(false);
+            return;
+          }
           const fetched = await searchOne(mode, keyword, controller.signal);
           if (controller.signal.aborted) return;
           setItems(fetched);
@@ -173,9 +174,15 @@ export default function SearchPanel({
         }
       } catch (e) {
         if (controller.signal.aborted) return;
-        if (!append) { setError((e as Error).message); setItems([]); }
+        if (!append) {
+          setError((e as Error).message);
+          setItems([]);
+        }
       } finally {
-        if (!controller.signal.aborted) { setLoading(false); setLoadingMore(false); }
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [],
@@ -187,15 +194,22 @@ export default function SearchPanel({
     if (!kw) {
       abortRef.current?.abort();
       if (emptyTimerRef.current) clearTimeout(emptyTimerRef.current);
-      setItems([]); setPage(1); setHasMore(false);
-      setLoading(false); setLoadingMore(false);
-      setError(null); setEmptyTimedOut(false); setSearched(false);
+      setItems([]);
+      setPage(1);
+      setHasMore(false);
+      setLoading(false);
+      setLoadingMore(false);
+      setError(null);
+      setEmptyTimedOut(false);
+      setSearched(false);
       return;
     }
     debounceRef.current = setTimeout(() => {
       void runSearch(kw, 1, false, sourceMode);
     }, DEBOUNCE_MS);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [q, sourceMode, runSearch]);
 
   const handleSourceChange = useCallback(
@@ -234,17 +248,23 @@ export default function SearchPanel({
           if (!controller.signal.aborted) {
             setLyricsAvail((prev) => ({ ...prev, [item.id]: available }));
           }
-        } catch { /* 探测失败不写入 */ }
+        } catch {
+          /* 探测失败不写入 */
+        }
       }
     };
     for (let i = 0; i < LYRICS_PROBE_CONCURRENCY; i++) void worker();
-    return () => { controller.abort(); };
+    return () => {
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
   // ESC 关闭
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -352,8 +372,17 @@ export default function SearchPanel({
 
         {/* search-bar（960×56 @ y=112） */}
         <div className="sp-search-bar">
-          <svg className="sp-search-icon" viewBox="0 0 24 24" width="20" height="20"
-            fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="sp-search-icon"
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
           </svg>
@@ -384,19 +413,13 @@ export default function SearchPanel({
 
         {/* result-count（y=196） */}
         {searched && items.length > 0 && (
-          <div className="sp-result-count">
-            RESULTS // {items.length} MATCHES
-          </div>
+          <div className="sp-result-count">RESULTS // {items.length} MATCHES</div>
         )}
 
         {/* result-list（960×620 @ y=226） */}
         <div className="sp-results" ref={scrollerRef} onScroll={handleScroll}>
-          {!searched && !loading && (
-            <div className="sp-empty">输入歌名 / 歌手，回车搜</div>
-          )}
-          {searched && !loading && items.length === 0 && (
-            <div className="sp-empty">暂无结果</div>
-          )}
+          {!searched && !loading && <div className="sp-empty">输入歌名 / 歌手，回车搜</div>}
+          {searched && !loading && items.length === 0 && <div className="sp-empty">暂无结果</div>}
           {loading && emptyTimedOut && items.length === 0 && (
             <div className="sp-empty">暂无结果</div>
           )}
@@ -435,7 +458,9 @@ export default function SearchPanel({
                       <img className="sp-cover" src={it.coverUrl} alt="" />
                     ) : (
                       <span className="sp-cover sp-cover-ph">
-                        <span className="sp-cover-note" aria-hidden="true">♪</span>
+                        <span className="sp-cover-note" aria-hidden="true">
+                          ♪
+                        </span>
                       </span>
                     )}
                     {mainPlayable && (
@@ -474,7 +499,9 @@ export default function SearchPanel({
                     ))}
                   </div>
                   {lyricsAvail[it.id] && (
-                    <span className="sp-lyrics-badge" title="有歌词" aria-label="有歌词">词</span>
+                    <span className="sp-lyrics-badge" title="有歌词" aria-label="有歌词">
+                      词
+                    </span>
                   )}
                   {!mainPlayable && (
                     <span className="sp-no-rights">
@@ -487,11 +514,7 @@ export default function SearchPanel({
                       className={`sp-ver-toggle${isExpanded ? ' is-open' : ''}`}
                       aria-label={isExpanded ? '收起版本' : '展开版本'}
                       aria-expanded={isExpanded}
-                      title={
-                        isExpanded
-                          ? '收起录音版本'
-                          : `展开 ${it.versions.length} 个录音版本`
-                      }
+                      title={isExpanded ? '收起录音版本' : `展开 ${it.versions.length} 个录音版本`}
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleExpanded(it.id);
@@ -564,7 +587,13 @@ export default function SearchPanel({
                           ))}
                         </div>
                         {playable ? (
-                          <svg className="sp-play-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                          <svg
+                            className="sp-play-icon"
+                            viewBox="0 0 24 24"
+                            width="16"
+                            height="16"
+                            fill="currentColor"
+                          >
                             <path d="M8 5v14l11-7z" />
                           </svg>
                         ) : (

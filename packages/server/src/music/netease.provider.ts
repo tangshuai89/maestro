@@ -141,16 +141,13 @@ export interface NeteasePrivilege {
  *
  * 与 QQ 同款抽成模块顶层函数，便于单测 import 直接验证。
  */
-export function detectNeteaseVipLocked(
-  p: NeteasePrivilege | undefined,
-): boolean {
+export function detectNeteaseVipLocked(p: NeteasePrivilege | undefined): boolean {
   if (!p) return false;
   // 付费内容（数字专辑/付费单曲）→ 绿胶/VIP 也得买，不能放完整曲
   if (typeof p.fee === 'number' && p.fee > 0) return true;
   // 老逻辑：pl > 0 视为可播
   return !(typeof p.pl === 'number' && p.pl > 0);
 }
-
 
 /**
  * 网易云 search 响应里的付费分类。比 detectNeteaseVipLocked 二元更细，给
@@ -162,19 +159,16 @@ export function detectNeteaseVipLocked(
  *
  * 2026-09 实测：cloudsearch/pc schema 把 fee 移到 song 顶层，privilege 字段
  * 是 null —— 所以这里从 song.fee 直接读（不要只看 privilege.fee）。 */
-export function detectNeteaseVipCategory(
-  s: { fee?: number; privilege?: NeteasePrivilege },
-): VipCategory | undefined {
+export function detectNeteaseVipCategory(s: {
+  fee?: number;
+  privilege?: NeteasePrivilege;
+}): VipCategory | undefined {
   // 数字专辑（必须购买，黑胶 VIP 也解锁不了）
   if (s.fee === 1) return 'paid-album';
   // 付费单曲（fee=4 或 fee=8）
   if (s.fee === 4 || s.fee === 8) return 'paid-track';
   // privilege.pl ≤ 0 + 无 fee 兜底（cloudsearch/pc schema privilege=null 的退化路径）
-  if (
-    s.privilege &&
-    typeof s.privilege.pl === 'number' &&
-    s.privilege.pl <= 0
-  ) {
+  if (s.privilege && typeof s.privilege.pl === 'number' && s.privilege.pl <= 0) {
     return 'vip-only';
   }
   return undefined;
@@ -189,10 +183,7 @@ export class NeteaseMusicProvider {
   }
 
   /** 取一批私人 FM 歌曲。 */
-  async fetchRadioBatch(
-    session: ProviderSession,
-    count = 3,
-  ): Promise<Track[]> {
+  async fetchRadioBatch(session: ProviderSession, count = 3): Promise<Track[]> {
     const data = await this.apiCall<RadioResponse>(
       session,
       'https://music.163.com/api/radio/get',
@@ -237,10 +228,7 @@ export class NeteaseMusicProvider {
    *  - 找不到"我喜欢的音乐"歌单 → 返回空数组
    *  - 任一 HTTP 错误 → 包成 BadRequestException 让上层 catch
    */
-  async fetchLiked(
-    session: ProviderSession,
-    maxTracks = 1000,
-  ): Promise<Track[]> {
+  async fetchLiked(session: ProviderSession, maxTracks = 1000): Promise<Track[]> {
     if (!this.isConfigured(session)) return [];
 
     // 1. 当前用户 uid
@@ -263,16 +251,11 @@ export class NeteaseMusicProvider {
         specialType?: number;
         creator?: { userId?: number };
       }>;
-    }>(
-      session,
-      'https://music.163.com/api/user/playlist',
-      { uid: String(uid), limit: '50' },
-    );
+    }>(session, 'https://music.163.com/api/user/playlist', { uid: String(uid), limit: '50' });
     const fav = (playlists.playlist ?? []).find(
       (p) =>
         // specialType=5 是"我喜欢的音乐"在网易云里的魔法值
-        p.specialType === 5 ||
-        (p.name === '我喜欢的音乐' && p.creator?.userId === uid),
+        p.specialType === 5 || (p.name === '我喜欢的音乐' && p.creator?.userId === uid),
     );
     if (!fav) {
       this.logger.warn('netease fetchLiked: no "我喜欢的音乐" playlist found');
@@ -290,11 +273,7 @@ export class NeteaseMusicProvider {
           dt?: number;
         }>;
       };
-    }>(
-      session,
-      'https://music.163.com/api/v6/playlist/detail',
-      { id: String(fav.id), n: '1000' },
-    );
+    }>(session, 'https://music.163.com/api/v6/playlist/detail', { id: String(fav.id), n: '1000' });
     const tracks = (detail.playlist?.tracks ?? []).slice(0, maxTracks);
     return tracks.map((t) => ({
       id: String(t.id),
@@ -334,10 +313,7 @@ export class NeteaseMusicProvider {
     songId: string,
   ): Promise<{ count: number; display: string } | null> {
     return withTimeout(async () => {
-      const url =
-        'https://music.163.com/api/song/detail?ids=[' +
-        encodeURIComponent(songId) +
-        ']';
+      const url = 'https://music.163.com/api/song/detail?ids=[' + encodeURIComponent(songId) + ']';
       try {
         const res = await fetch(url, {
           headers: {
@@ -369,11 +345,7 @@ export class NeteaseMusicProvider {
     }, 5000) as Promise<{ count: number; display: string } | null>;
   }
 
-  async search(
-    session: ProviderSession,
-    keyword: string,
-    count = 30,
-  ): Promise<Track[]> {
+  async search(session: ProviderSession, keyword: string, count = 30): Promise<Track[]> {
     const data = await this.apiCall<NeteaseSearchResponse>(
       session,
       'https://music.163.com/api/cloudsearch/pc',
@@ -390,9 +362,7 @@ export class NeteaseMusicProvider {
     // 结果"会误以为歌不存在）。
     if (data.code !== 200) {
       const msg = data.msg ?? data.message ?? '';
-      throw new BadRequestException(
-        `网易云搜索失败: code=${data.code}${msg ? ` ${msg}` : ''}`,
-      );
+      throw new BadRequestException(`网易云搜索失败: code=${data.code}${msg ? ` ${msg}` : ''}`);
     }
     const songs = data.result?.songs ?? [];
     this.logger.log(`netease search "${keyword}" → ${songs.length} 首`);
@@ -416,9 +386,7 @@ export class NeteaseMusicProvider {
         audioUrl: '', // 由 getStreamPath 在播放时动态获取
         duration: Math.round((durationMs ?? 0) / 1000),
         liked: false,
-        vipLocked: s.privilege
-          ? detectNeteaseVipLocked(s.privilege)
-          : !isVip,
+        vipLocked: s.privilege ? detectNeteaseVipLocked(s.privilege) : !isVip,
         // 付费分类（数字专辑/付费单曲/VIP 独占），比 vipLocked 二元更细。
         // cloudsearch/pc 实际把 fee 放到 song 顶层、privilege 是 null，所以
         // 这里从 song.fee 直接读，不要只看 privilege.fee。
@@ -437,9 +405,7 @@ export class NeteaseMusicProvider {
     let item = await this.fetchSongUrl(session, songId, level);
     // 该音质无权限/不存在（url 空）→ 回退标准音质再试一次。
     if (!item?.url && level !== 'standard') {
-      this.logger.warn(
-        `netease ${level} 无 url，回退标准音质：${songId}`,
-      );
+      this.logger.warn(`netease ${level} 无 url，回退标准音质：${songId}`);
       item = await this.fetchSongUrl(session, songId, 'standard');
     }
     if (!item?.url) {
@@ -460,9 +426,7 @@ export class NeteaseMusicProvider {
     // 早抛 BadRequestException，避免无效请求打远端。
     const numericId = parseInt(songId, 10);
     if (!Number.isFinite(numericId)) {
-      throw new BadRequestException(
-        `netease songId 必须可解析为数字，实际: ${songId}`,
-      );
+      throw new BadRequestException(`netease songId 必须可解析为数字，实际: ${songId}`);
     }
     const data = await this.apiCall<SongUrlResponse>(
       session,
@@ -588,9 +552,7 @@ export class NeteaseMusicProvider {
       status = res.status;
       text = await res.text();
     } catch (err) {
-      throw new BadRequestException(
-        `网易云请求失败: ${(err as Error).message}`,
-      );
+      throw new BadRequestException(`网易云请求失败: ${(err as Error).message}`);
     }
 
     try {
@@ -623,10 +585,7 @@ export class NeteaseMusicProvider {
    *   - The API call fails for any reason (the controller catches
    *     and the UI shows "暂无歌词").
    */
-  async getLyrics(
-    session: ProviderSession,
-    songId: string,
-  ): Promise<LyricLine[] | null> {
+  async getLyrics(session: ProviderSession, songId: string): Promise<LyricLine[] | null> {
     interface LyricResponse {
       lyric?: string;
       tlyric?: string;

@@ -20,7 +20,10 @@
 // http://localhost:3200 and let the user deal with it.
 function resolveApiOrigin(): string {
   // In Electron, prefer the sidecar URL that main process pushed via preload.
-  if (typeof window !== 'undefined' && (window as { electronAPI?: { apiBase?: string } }).electronAPI?.apiBase) {
+  if (
+    typeof window !== 'undefined' &&
+    (window as { electronAPI?: { apiBase?: string } }).electronAPI?.apiBase
+  ) {
     return (window as { electronAPI: { apiBase: string } }).electronAPI.apiBase;
   }
   if (import.meta.env.DEV) return '';
@@ -159,10 +162,7 @@ function maestroToken(): string {
  *  GETs still get the token because the guard runs on all methods; this
  *  is intentional — some GETs mutate (e.g. /auth/spotify/redeem,
  *  /auth/logout) and we want one uniform header. */
-export function fetchWithToken(
-  url: string,
-  init: RequestInit = {},
-): Promise<Response> {
+export function fetchWithToken(url: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers ?? {});
   const tok = maestroToken();
   if (tok) headers.set('X-Maestro-Token', tok);
@@ -197,15 +197,17 @@ async function json<T>(res: Response): Promise<T> {
     } catch {
       /* body wasn't JSON — keep code=AUTH_UNKNOWN, message=raw text */
     }
-    throw new AuthError(code, msg || `${res.status} ${res.statusText}`, res.status, text.slice(0, 400));
+    throw new AuthError(
+      code,
+      msg || `${res.status} ${res.statusText}`,
+      res.status,
+      text.slice(0, 400),
+    );
   }
   return res.json() as Promise<T>;
 }
 
-export async function fetchNextTrack(
-  provider: MusicProvider,
-  preset?: string,
-): Promise<Track> {
+export async function fetchNextTrack(provider: MusicProvider, preset?: string): Promise<Track> {
   const qs = preset ? `&preset=${encodeURIComponent(preset)}` : '';
   return json<Track>(
     await fetchWithToken(`${API_BASE}/music/next?provider=${provider}${qs}`, {
@@ -347,24 +349,21 @@ export async function patchPlaylist(
   body: { name?: string; append?: UnifiedSearchItem[]; remove?: string[] },
 ): Promise<Playlist> {
   return json(
-    await fetchWithToken(
-      `${API_BASE}/library/playlists/${encodeURIComponent(id)}`,
-      {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    ),
+    await fetchWithToken(`${API_BASE}/library/playlists/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   );
 }
 
 export async function deletePlaylist(id: string): Promise<{ ok: true }> {
   return json(
-    await fetchWithToken(
-      `${API_BASE}/library/playlists/${encodeURIComponent(id)}`,
-      { method: 'DELETE', credentials: 'include' },
-    ),
+    await fetchWithToken(`${API_BASE}/library/playlists/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
   );
 }
 
@@ -451,9 +450,7 @@ export async function getLiked(provider: MusicProvider): Promise<Track[]> {
   );
 }
 
-export async function getAuthStatus(
-  provider: MusicProvider,
-): Promise<AuthStatus> {
+export async function getAuthStatus(provider: MusicProvider): Promise<AuthStatus> {
   return json<AuthStatus>(
     await fetchWithToken(`${API_BASE}/auth/status?provider=${provider}`, {
       credentials: 'include',
@@ -468,9 +465,7 @@ export interface AuthStatusExtended extends AuthStatus {
   lastValidatedAt: number | null;
 }
 
-export async function getAuthStatusExtended(
-  provider: MusicProvider,
-): Promise<AuthStatusExtended> {
+export async function getAuthStatusExtended(provider: MusicProvider): Promise<AuthStatusExtended> {
   return json<AuthStatusExtended>(
     await fetchWithToken(`${API_BASE}/auth/status?provider=${provider}&extended=1`, {
       credentials: 'include',
@@ -592,9 +587,7 @@ export async function getSpotifyMe(): Promise<{
 }
 
 /** 设置 Spotify OAuth client_id（用户在 Spotify Developer 后台创建应用拿到的）。 */
-export async function setSpotifyClientId(
-  clientId: string,
-): Promise<{ ok: true; tail: string }> {
+export async function setSpotifyClientId(clientId: string): Promise<{ ok: true; tail: string }> {
   return json(
     await fetchWithToken(`${API_BASE}/auth/spotify/client-id`, {
       method: 'POST',
@@ -625,10 +618,7 @@ export async function loginQqCookie(
 }
 
 /** 按关键词搜索(歌手 / 歌名)。当前仅 QQ 支持。 */
-export async function searchTracks(
-  provider: MusicProvider,
-  q: string,
-): Promise<Track[]> {
+export async function searchTracks(provider: MusicProvider, q: string): Promise<Track[]> {
   const res = await json<{ items: Track[] }>(
     await fetchWithToken(
       `${API_BASE}/music/search?provider=${provider}&q=${encodeURIComponent(q)}`,
@@ -896,8 +886,7 @@ export type UnplayableReason = 'no-copyright' | 'spotify-no-preview' | 'no-sourc
 /** 这条为什么不可播的人类可读原因（与 isSourcePlayable 同一条流水线）。 */
 const UNPLAYABLE_TEXT: Record<UnplayableReason, string> = {
   'no-copyright': '所有平台都无版权',
-  'spotify-no-preview':
-    '只有 Spotify 源且无 30s 预览：需切到 Spotify 音源用 Premium 全曲播放',
+  'spotify-no-preview': '只有 Spotify 源且无 30s 预览：需切到 Spotify 音源用 Premium 全曲播放',
   'no-source': '当前没有可播的音源',
 };
 
@@ -944,9 +933,7 @@ export function unplayableText(
   return reason === null ? null : UNPLAYABLE_TEXT[reason];
 }
 
-export function pickPlayableTrack(
-  item: UnifiedSearchItem,
-): Track | null {
+export function pickPlayableTrack(item: UnifiedSearchItem): Track | null {
   if (!item.bestSource) return null;
   const src = item.sources.find((s) => s.platform === item.bestSource);
   if (!src) return null;
@@ -1027,9 +1014,7 @@ export interface RecoRunResult {
 }
 
 export async function fetchRecoStatus(): Promise<RecoStatus> {
-  return json(
-    await fetchWithToken(`${API_BASE}/reco/status`, { credentials: 'include' }),
-  );
+  return json(await fetchWithToken(`${API_BASE}/reco/status`, { credentials: 'include' }));
 }
 
 export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
@@ -1044,13 +1029,7 @@ export async function runReco(req: RecoRequest = {}): Promise<RecoRunResult> {
 }
 
 /** 行为信号类型（与服务端 `reco/signals.ts` 对齐）。 */
-export type RecoSignalType =
-  | 'play'
-  | 'complete'
-  | 'skip'
-  | 'like'
-  | 'dislike'
-  | 'seed';
+export type RecoSignalType = 'play' | 'complete' | 'skip' | 'like' | 'dislike' | 'seed';
 
 /**
  * 上报一次播放行为信号（播放/完播/跳过/红心/踩）。
@@ -1156,10 +1135,10 @@ export async function clearProviderLibrary(
   provider: MusicProvider,
 ): Promise<{ ok: true; removed: number }> {
   return json(
-    await fetchWithToken(
-      `${API_BASE}/music/library/${encodeURIComponent(provider)}/clear`,
-      { method: 'POST', credentials: 'include' },
-    ),
+    await fetchWithToken(`${API_BASE}/music/library/${encodeURIComponent(provider)}/clear`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
   );
 }
 
@@ -1175,9 +1154,7 @@ export async function clearAllLibraries(): Promise<{ ok: true }> {
 
 /** §5 Settings「平台账号」：批量拉 4 个平台的登录态 + lastValidatedAt。失败平台
  *  默认 loggedIn=false + user=null + lastValidatedAt=null，不抛错。 */
-export async function fetchAuthStatusAll(): Promise<
-  Record<MusicProvider, AuthStatusExtended>
-> {
+export async function fetchAuthStatusAll(): Promise<Record<MusicProvider, AuthStatusExtended>> {
   const providers: MusicProvider[] = ['qq', 'netease', 'deezer', 'spotify'];
   const out = {} as Record<MusicProvider, AuthStatusExtended>;
   await Promise.all(
@@ -1245,10 +1222,9 @@ export async function startNeteaseQr(): Promise<NeteaseQrStart> {
 /** 真·扫码登录第二步：轮询扫码状态，803 时服务端已入 session。 */
 export async function checkNeteaseQr(key: string): Promise<NeteaseQrCheck> {
   return json<NeteaseQrCheck>(
-    await fetchWithToken(
-      `${API_BASE}/auth/netease/qr/check?key=${encodeURIComponent(key)}`,
-      { credentials: 'include' },
-    ),
+    await fetchWithToken(`${API_BASE}/auth/netease/qr/check?key=${encodeURIComponent(key)}`, {
+      credentials: 'include',
+    }),
   );
 }
 
@@ -1295,9 +1271,7 @@ export interface LyricsResult {
   dropped: number;
 }
 
-function sourcesParam(
-  sources: Array<{ platform: MusicProvider; trackId: string }>,
-): string {
+function sourcesParam(sources: Array<{ platform: MusicProvider; trackId: string }>): string {
   return sources.map((s) => `${s.platform}:${s.trackId}`).join(',');
 }
 
@@ -1377,10 +1351,9 @@ export async function fetchLyricsByName(
   if (!title || !artist) return null;
   const params = new URLSearchParams({ title, artist });
   if (duration > 0) params.set('duration', String(duration));
-  const res = await fetchWithToken(
-    `${API_BASE}/music/lyrics/search?${params.toString()}`,
-    { credentials: 'include' },
-  );
+  const res = await fetchWithToken(`${API_BASE}/music/lyrics/search?${params.toString()}`, {
+    credentials: 'include',
+  });
   if (!res.ok) return null;
   const data = (await res.json()) as {
     lyrics: LyricLine[] | null;
@@ -1406,9 +1379,7 @@ export async function fetchLyricsByName(
 export async function getStateSnapshot(): Promise<{
   stateJson: Record<string, unknown>;
 }> {
-  return json(
-    await fetchWithToken(`${API_BASE}/storage/state`, { credentials: 'include' }),
-  );
+  return json(await fetchWithToken(`${API_BASE}/storage/state`, { credentials: 'include' }));
 }
 
 /** 把解密出来的 state.json 合并进服务端（additive，不覆盖已有红心/登录态）。 */
@@ -1440,11 +1411,8 @@ export async function getBackupInfo(): Promise<{
   backupDir: string;
   backupCount: number;
 }> {
-  return json(
-    await fetchWithToken(`${API_BASE}/storage/info`, { credentials: 'include' }),
-  );
+  return json(await fetchWithToken(`${API_BASE}/storage/info`, { credentials: 'include' }));
 }
-
 
 /** 跨平台 ❤ 累加重算（client 镜像 — server/src/music/search.util.ts:recomputeCrossPlatformLikeTotal）。
  *  fire-and-forget 拉完 likeCount 后调一次，更新 item.crossPlatformLikeTotal。 */

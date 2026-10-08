@@ -92,10 +92,16 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
-.sp-chip-all:hover { background: color-mix(in srgb, var(--white) 10%, transparent); color: var(--text-main); }
+.sp-chip-all:hover {
+  background: color-mix(in srgb, var(--white) 10%, transparent);
+  color: var(--text-main);
+}
 .sp-chip-all.is-active {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
@@ -115,10 +121,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
-.sp-badge:hover { background: color-mix(in srgb, var(--white) 10%, transparent); color: var(--text-main); }
+.sp-badge:hover {
+  background: color-mix(in srgb, var(--white) 10%, transparent);
+  color: var(--text-main);
+}
 .sp-badge.is-active {
   background: var(--badge);
   border-color: var(--badge);
@@ -144,7 +156,9 @@
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease;
-  &:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  &:hover {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
 }
 
 .sp-search-bar {
@@ -183,7 +197,9 @@
   font-size: 16px;
   font-weight: 400;
   outline: none;
-  &::placeholder { color: color-mix(in srgb, var(--text-main) 30%, transparent); }
+  &::placeholder {
+    color: color-mix(in srgb, var(--text-main) 30%, transparent);
+  }
 }
 
 .sp-spinner {
@@ -196,7 +212,11 @@
   flex-shrink: 0;
 }
 
-@keyframes sp-spin { to { transform: rotate(360deg); } }
+@keyframes sp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 .sp-close {
   width: 32px;
@@ -208,10 +228,15 @@
   line-height: 1;
   cursor: pointer;
   border-radius: 8px;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
-.sp-close:hover { color: var(--text-main); background: var(--glass-fill-strong); }
+.sp-close:hover {
+  color: var(--text-main);
+  background: var(--glass-fill-strong);
+}
 
 // ── result-count（y=196，Tag/Stat 风格） ─────────────────────────
 
@@ -239,9 +264,16 @@
   flex-direction: column;
   gap: 4px;
   // 自定义滚动条
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--white) 10%, transparent); border-radius: 2px; }
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--white) 10%, transparent);
+    border-radius: 2px;
+  }
 }
 
 .sp-empty {
@@ -279,7 +311,9 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .sp-row:hover:not(.sp-row--disabled) {
@@ -366,7 +400,7 @@
 }
 
 .sp-row--sub .sp-row-title {
-  font-size: 13px;  /* main 是 14px，sub 略小 */
+  font-size: 13px; /* main 是 14px，sub 略小 */
 }
 
 /* sub-row 左侧的版本指示点（对齐 lib-subrow-dot） */
@@ -419,7 +453,11 @@
 }
 
 .sp-cover-ph {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-purple) 20%, transparent), color-mix(in srgb, var(--accent) 15%, transparent));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-purple) 20%, transparent),
+    color-mix(in srgb, var(--accent) 15%, transparent)
+  );
 }
 
 .sp-cover-note {
@@ -472,7 +510,9 @@
   transition: opacity 0.15s ease;
 }
 
-.sp-row:hover:not(.sp-row--disabled) .sp-play-icon { opacity: 1; }
+.sp-row:hover:not(.sp-row--disabled) .sp-play-icon {
+  opacity: 1;
+}
 
 .sp-no-rights {
   color: color-mix(in srgb, var(--text-main) 30%, transparent);
@@ -496,7 +536,7 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: var(--glass-fill);  // 默认（fallback / 无 brand 时）玻璃底
+  background: var(--glass-fill); // 默认（fallback / 无 brand 时）玻璃底
   color: color-mix(in srgb, var(--text-main) 50%, transparent);
   line-height: 1;
   white-space: nowrap;

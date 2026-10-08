@@ -56,7 +56,14 @@ const SAMPLE: UnifiedSearchItem[] = [
     duration: 269,
     bestSource: 'qq',
     versionType: 'studio',
-    versions: [{ id: 'ver-1', duration: 269, sources: [{ platform: 'qq', trackId: '1', hasCopyright: true, url: '/qq/1' }], bestSource: 'qq' }],
+    versions: [
+      {
+        id: 'ver-1',
+        duration: 269,
+        sources: [{ platform: 'qq', trackId: '1', hasCopyright: true, url: '/qq/1' }],
+        bestSource: 'qq',
+      },
+    ],
     sources: [{ platform: 'qq', trackId: '1', hasCopyright: true, url: '/qq/1' }],
   },
   {
@@ -68,7 +75,14 @@ const SAMPLE: UnifiedSearchItem[] = [
     duration: 0,
     bestSource: null,
     versionType: 'studio',
-    versions: [{ id: 'ver-2', duration: 0, sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }], bestSource: null }],
+    versions: [
+      {
+        id: 'ver-2',
+        duration: 0,
+        sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }],
+        bestSource: null,
+      },
+    ],
     sources: [{ platform: 'qq', trackId: '2', hasCopyright: false, url: '/qq/2' }],
   },
 ];
@@ -76,11 +90,12 @@ const SAMPLE: UnifiedSearchItem[] = [
 /** 同名同 type、3 个不同 duration cluster → 1 item + 3 versions。
  *  每个 version 带自己的原始元数据（server buildUnifiedItems 填充）：
  *  用户展开后要看到"盲选 / 盲选 (Live) / 盲选 (伴奏)"这种真实歌名，而不是 v2/v3。 */
-const src = (
-  platform: 'qq' | 'netease',
-  trackId: string,
-  hasCopyright: boolean,
-) => ({ platform, trackId, hasCopyright, url: `/${platform}/${trackId}` });
+const src = (platform: 'qq' | 'netease', trackId: string, hasCopyright: boolean) => ({
+  platform,
+  trackId,
+  hasCopyright,
+  url: `/${platform}/${trackId}`,
+});
 
 const MULTI: UnifiedSearchItem[] = [
   {
@@ -226,7 +241,14 @@ describe('SearchPanel', () => {
       bestSource: 'spotify',
       versionType: 'studio',
       sources: [
-        { platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/sp/1', vipLocked: true, noPreview: true },
+        {
+          platform: 'spotify',
+          trackId: 'sp1',
+          hasCopyright: true,
+          url: '/sp/1',
+          vipLocked: true,
+          noPreview: true,
+        },
       ],
       versions: [
         {
@@ -234,7 +256,14 @@ describe('SearchPanel', () => {
           duration: 277,
           bestSource: 'spotify',
           sources: [
-            { platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/sp/1', vipLocked: true, noPreview: true },
+            {
+              platform: 'spotify',
+              trackId: 'sp1',
+              hasCopyright: true,
+              url: '/sp/1',
+              vipLocked: true,
+              noPreview: true,
+            },
           ],
         },
       ],
@@ -243,7 +272,10 @@ describe('SearchPanel', () => {
 
   it('Spotify 独占 + 无 preview（WPS 未连）→ row 置灰、点击不播', async () => {
     mockSearchUnified.mockResolvedValue({
-      items: SPOTIFY_NO_PREVIEW, page: 1, pageSize: 20, total: 1,
+      items: SPOTIFY_NO_PREVIEW,
+      page: 1,
+      pageSize: 20,
+      total: 1,
     });
     const onPlay = vi.fn();
     render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
@@ -290,7 +322,10 @@ describe('SearchPanel', () => {
 
   it('QQ 源无版权 → 角标/tooltip 说「无版权」，不误报成 Spotify 无预览', async () => {
     mockSearchUnified.mockResolvedValue({
-      items: QQ_NO_COPYRIGHT, page: 1, pageSize: 20, total: 1,
+      items: QQ_NO_COPYRIGHT,
+      page: 1,
+      pageSize: 20,
+      total: 1,
     });
     const onPlay = vi.fn();
     render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
@@ -314,7 +349,10 @@ describe('SearchPanel', () => {
 
   it('Spotify 独占 + 无 preview 但 WPS 已连 → row 可播', async () => {
     mockSearchUnified.mockResolvedValue({
-      items: SPOTIFY_NO_PREVIEW, page: 1, pageSize: 20, total: 1,
+      items: SPOTIFY_NO_PREVIEW,
+      page: 1,
+      pageSize: 20,
+      total: 1,
     });
     const onPlay = vi.fn();
     render(<SearchPanel onPlay={onPlay} onClose={() => {}} wpsReady />);
@@ -349,11 +387,7 @@ describe('SearchPanel', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(mockSearchOne).toHaveBeenCalledWith(
-      'qq',
-      '晴天',
-      expect.anything(),
-    );
+    expect(mockSearchOne).toHaveBeenCalledWith('qq', '晴天', expect.anything());
   });
 
   it('按 ESC 调 onClose', async () => {
@@ -409,9 +443,7 @@ describe('SearchPanel', () => {
     expect(toggle.textContent).toContain('3 个版本');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     // 主行不再有行尾播放三角（Bug #7 根因）
-    expect(
-      document.querySelector('.sp-row:not(.sp-row--sub) .sp-play-icon'),
-    ).toBeNull();
+    expect(document.querySelector('.sp-row:not(.sp-row--sub) .sp-play-icon')).toBeNull();
 
     await userEvent.click(toggle);
 

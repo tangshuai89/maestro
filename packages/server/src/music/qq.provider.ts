@@ -141,10 +141,7 @@ export interface QqPay {
  * 抽成模块顶层函数是为了单测直接 import 验证，不必走 QqMusicProvider
  * 实例化（避免触发 logger / 真实 QQ 网络）。
  */
-export function detectQqVipLocked(
-  pay: QqPay | undefined,
-  qqVip: boolean | undefined,
-): boolean {
+export function detectQqVipLocked(pay: QqPay | undefined, qqVip: boolean | undefined): boolean {
   if (!pay) return false;
   const flagged =
     pay.pay_album === 1 ||
@@ -156,7 +153,6 @@ export function detectQqVipLocked(
     (pay.pay_play ?? pay.payplay) === 1;
   return flagged && qqVip !== true;
 }
-
 
 /**
  * QQ search 响应里的付费分类 —— 比 detectQqVipLocked 二元更细。判定顺序
@@ -232,17 +228,11 @@ export class QqMusicProvider {
    *
    * 硬上限 maxTracks（默认 1000，与 NetEase 对齐）。
    */
-  async fetchLiked(
-    session: ProviderSession,
-    maxTracks = 1000,
-  ): Promise<Track[]> {
+  async fetchLiked(session: ProviderSession, maxTracks = 1000): Promise<Track[]> {
     if (!this.isConfigured(session)) return [];
 
     const cookie = session.qqCookie ?? '';
-    const euin =
-      session.qqCookies?.euin ??
-      /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ??
-      '';
+    const euin = session.qqCookies?.euin ?? /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ?? '';
 
     interface CgiGetDissSong {
       mid?: string;
@@ -307,9 +297,7 @@ export class QqMusicProvider {
         throw new BadRequestException('not_logged_in');
       }
       if (reqCode !== 0) {
-        throw new BadRequestException(
-          `QQ CgiGetDiss failed: code=${reqCode}`,
-        );
+        throw new BadRequestException(`QQ CgiGetDiss failed: code=${reqCode}`);
       }
       const songlist = j.req_0?.data?.songlist ?? [];
       if (songlist.length === 0) break;
@@ -407,9 +395,7 @@ export class QqMusicProvider {
     const json = JSON.stringify(reqData);
     const sign = zzcSign(json);
     const body = encryptRequest(reqData);
-    const url =
-      `https://u6.y.qq.com/cgi-bin/musics.fcg?_=${tsMs}` +
-      `&encoding=ag-1&sign=${sign}`;
+    const url = `https://u6.y.qq.com/cgi-bin/musics.fcg?_=${tsMs}` + `&encoding=ag-1&sign=${sign}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -433,10 +419,7 @@ export class QqMusicProvider {
    * 把 songmid 解析成数字 songId（加密写接口要 songId，而我们播放队列里
    * 存的是 songmid）。走 musicu 的 song_detail 模块。失败返回 null。
    */
-  async resolveSongId(
-    session: ProviderSession,
-    songmid: string,
-  ): Promise<number | null> {
+  async resolveSongId(session: ProviderSession, songmid: string): Promise<number | null> {
     const body = {
       comm: { ct: 24, cv: 0 },
       req_0: {
@@ -464,9 +447,7 @@ export class QqMusicProvider {
       };
       return j.req_0?.data?.track_info?.id ?? null;
     } catch (err) {
-      this.logger.warn(
-        `QQ resolveSongId failed for ${songmid}: ${(err as Error).message}`,
-      );
+      this.logger.warn(`QQ resolveSongId failed for ${songmid}: ${(err as Error).message}`);
       return null;
     }
   }
@@ -530,9 +511,7 @@ export class QqMusicProvider {
         if (typeof count !== 'number') return null;
         return { count, display: display ?? count.toLocaleString() };
       } catch (err) {
-        this.logger.warn(
-          `QQ getTrackFavCount failed for ${songmid}: ${(err as Error).message}`,
-        );
+        this.logger.warn(`QQ getTrackFavCount failed for ${songmid}: ${(err as Error).message}`);
         return null;
       }
     }, 5000) as Promise<{ count: number; display: string } | null>;
@@ -543,20 +522,12 @@ export class QqMusicProvider {
    * @param songmid 播放队列里的 QQ trackId（songmid）
    * @param tsMs    时间戳（签名 URL 用；由调用方传入，便于测试/复现）
    */
-  async like(
-    session: ProviderSession,
-    songmid: string,
-    tsMs: number,
-  ): Promise<boolean> {
+  async like(session: ProviderSession, songmid: string, tsMs: number): Promise<boolean> {
     return this.setFav(session, songmid, true, tsMs);
   }
 
   /** 从「我喜欢」移除一首歌（DelSonglist）。 */
-  async unlike(
-    session: ProviderSession,
-    songmid: string,
-    tsMs: number,
-  ): Promise<boolean> {
+  async unlike(session: ProviderSession, songmid: string, tsMs: number): Promise<boolean> {
     return this.setFav(session, songmid, false, tsMs);
   }
 
@@ -580,9 +551,7 @@ export class QqMusicProvider {
     );
     const ok = req?.code === 0;
     if (!ok) {
-      this.logger.warn(
-        `QQ setFav(${fav}) ${songmid} → req code=${req?.code ?? 'n/a'}`,
-      );
+      this.logger.warn(`QQ setFav(${fav}) ${songmid} → req code=${req?.code ?? 'n/a'}`);
     }
     return ok;
   }
@@ -636,11 +605,7 @@ export class QqMusicProvider {
    * 点播放走 getStreamPath 出全曲流。搜索本身不强制登录态，但带上 cookie
    * 无害（会影响个性化结果）。
    */
-  async search(
-    session: ProviderSession,
-    keyword: string,
-    count = 20,
-  ): Promise<Track[]> {
+  async search(session: ProviderSession, keyword: string, count = 20): Promise<Track[]> {
     const url = new URL('https://c.y.qq.com/soso/fcgi-bin/client_search_cp');
     url.searchParams.set('w', keyword);
     url.searchParams.set('p', '1');
@@ -694,10 +659,7 @@ export class QqMusicProvider {
    * 让前端统一走后端代理，前端永远拿不到 raw URL。
    */
   /** 音质档位 → GetVkey filename 的前缀 / 扩展名。standard 用默认 m4a。 */
-  private static readonly QUALITY: Record<
-    QqQuality,
-    { prefix: string; ext: string } | null
-  > = {
+  private static readonly QUALITY: Record<QqQuality, { prefix: string; ext: string } | null> = {
     standard: null, // 默认 C400 m4a，不传 filename
     high: { prefix: 'M800', ext: '.mp3' }, // 320 kbps
     lossless: { prefix: 'F000', ext: '.flac' }, // flac 无损
@@ -711,17 +673,14 @@ export class QqMusicProvider {
   ): Promise<string> {
     // 高音质需要 media_mid 拼 filename；没有就退回默认 m4a。
     const spec = QqMusicProvider.QUALITY[quality];
-    const filename =
-      spec && mediaMid ? [`${spec.prefix}${mediaMid}${spec.ext}`] : undefined;
+    const filename = spec && mediaMid ? [`${spec.prefix}${mediaMid}${spec.ext}`] : undefined;
 
     let vkey = await this.fetchVkey(session, [songmid], filename);
     let info = vkey?.data?.midurlinfo?.[0];
 
     // 请求了高音质但没权限/该音质不存在（purl 空）→ 回退默认音质再试一次。
     if (!info?.purl && filename) {
-      this.logger.warn(
-        `QQ ${quality} 无 purl(errtype=${info?.errtype})，回退默认音质：${songmid}`,
-      );
+      this.logger.warn(`QQ ${quality} 无 purl(errtype=${info?.errtype})，回退默认音质：${songmid}`);
       vkey = await this.fetchVkey(session, [songmid]);
       info = vkey?.data?.midurlinfo?.[0];
     }
@@ -774,9 +733,7 @@ export class QqMusicProvider {
       if (!info) return undefined;
       return Boolean(info.purl);
     } catch (err) {
-      this.logger.warn(
-        `qqVip probe failed: ${(err as Error).message}（按未知处理，下次搜索重试）`,
-      );
+      this.logger.warn(`qqVip probe failed: ${(err as Error).message}（按未知处理，下次搜索重试）`);
       return undefined;
     }
   }
@@ -857,13 +814,8 @@ export class QqMusicProvider {
    * Returns null when the song has no lyrics or the request fails — the
    * controller/service treats null as "暂无歌词".
    */
-  async getLyrics(
-    session: ProviderSession,
-    songmid: string,
-  ): Promise<LyricLine[] | null> {
-    const url = new URL(
-      'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg',
-    );
+  async getLyrics(session: ProviderSession, songmid: string): Promise<LyricLine[] | null> {
+    const url = new URL('https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg');
     url.searchParams.set('songmid', songmid);
     url.searchParams.set('format', 'json');
     url.searchParams.set('nobase64', '1');

@@ -71,8 +71,8 @@ const DEEZER_EDITORIALS: Record<number, { name: string; region?: string }> = {
 
 /** Preset name -> Deezer editorial id (curated genre chart). */
 const DEEZER_EDITORIALS_PRESET: Record<string, number> = {
-  all: 132,        // 'International Pop' as a sensible default
-  asia: 16,        // Asian Music (J/K/C-Pop)
+  all: 132, // 'International Pop' as a sensible default
+  asia: 16, // Asian Music (J/K/C-Pop)
   pop: 132,
   rap: 116,
   rock: 152,
@@ -129,11 +129,7 @@ export class DeezerMusicProvider {
    *
    * Endpoint: GET https://api.deezer.com/search?q={keyword}&limit={count}
    */
-  async search(
-    _session: ProviderSession,
-    keyword: string,
-    count = 20,
-  ): Promise<Track[]> {
+  async search(_session: ProviderSession, keyword: string, count = 20): Promise<Track[]> {
     const url = new URL(`${DeezerMusicProvider.API}/search`);
     url.searchParams.set('q', keyword);
     url.searchParams.set('limit', String(Math.min(count, 50)));
@@ -189,13 +185,8 @@ export class DeezerMusicProvider {
     const artistId = searched.data?.[0]?.id;
     if (!artistId) return [];
 
-    const relatedUrl = new URL(
-      `${DeezerMusicProvider.API}/artist/${artistId}/related`,
-    );
-    relatedUrl.searchParams.set(
-      'limit',
-      String(Math.max(1, Math.min(count * 2, 50))),
-    );
+    const relatedUrl = new URL(`${DeezerMusicProvider.API}/artist/${artistId}/related`);
+    relatedUrl.searchParams.set('limit', String(Math.max(1, Math.min(count * 2, 50))));
     const relRes = await fetch(relatedUrl.toString(), { headers });
     if (!relRes.ok) {
       throw new Error(`deezer related artists failed: ${relRes.status}`);
@@ -214,10 +205,7 @@ export class DeezerMusicProvider {
    * (e.g. editorial/16 = Asian Music, editorial/132 = International Pop).
    * These are Deezer's curated rankings, not the user's chart endpoint.
    */
-  private async fetchEditorialCharts(
-    editorialId: number,
-    count: number,
-  ): Promise<Track[]> {
+  private async fetchEditorialCharts(editorialId: number, count: number): Promise<Track[]> {
     const url = `${DeezerMusicProvider.API}/editorial/${editorialId}/charts?limit=${count}`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
@@ -238,16 +226,10 @@ export class DeezerMusicProvider {
    * Deezer 的 preview URL 已经在 fetchRadioBatch 里给出，但有时效。
    * 这里重新拉一次保证 URL 是新鲜的（防止队列里靠后的歌 preview 过期）。
    */
-  async getStreamPath(
-    _session: ProviderSession,
-    trackId: string,
-  ): Promise<string> {
-    const res = await fetch(
-      `${DeezerMusicProvider.API}/track/${trackId}`,
-      {
-        headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
-      },
-    );
+  async getStreamPath(_session: ProviderSession, trackId: string): Promise<string> {
+    const res = await fetch(`${DeezerMusicProvider.API}/track/${trackId}`, {
+      headers: { 'User-Agent': 'Maestro/1.0 (Deezer anonymous)' },
+    });
     if (!res.ok) {
       throw new Error(`deezer track fetch failed: ${res.status}`);
     }
@@ -324,9 +306,7 @@ export class DeezerMusicProvider {
       }
       return null;
     } catch (err) {
-      this.logger.warn(
-        `deezer lyrics fetch failed for ${trackId}: ${(err as Error).message}`,
-      );
+      this.logger.warn(`deezer lyrics fetch failed for ${trackId}: ${(err as Error).message}`);
       return null;
     }
   }
