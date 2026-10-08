@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { UnifiedSearchItem } from '../../api';
+import type { UnifiedSearchItem, UnifiedAlbum, AlbumSource } from '../../api';
 
 // ── mock api 模块 ──────────────────────────────────────────────
 // vi.hoisted 保证 vi.mock 工厂闭包能拿到 mock 引用
@@ -26,11 +26,15 @@ const apiMocks = vi.hoisted(() => ({
   searchUnified: vi.fn(),
   searchOne: vi.fn(),
   fetchLyricsAvailability: vi.fn(),
+  searchAlbums: vi.fn(),
+  fetchAlbumTracks: vi.fn(),
 }));
 const {
   searchUnified: mockSearchUnified,
   searchOne: mockSearchOne,
   fetchLyricsAvailability: mockFetchLyricsAvailability,
+  searchAlbums: mockSearchAlbums,
+  fetchAlbumTracks: mockFetchAlbumTracks,
 } = apiMocks;
 
 vi.mock('../../api', async () => {
@@ -41,6 +45,8 @@ vi.mock('../../api', async () => {
     searchUnified: apiMocks.searchUnified,
     searchOne: apiMocks.searchOne,
     fetchLyricsAvailability: apiMocks.fetchLyricsAvailability,
+    searchAlbums: apiMocks.searchAlbums,
+    fetchAlbumTracks: apiMocks.fetchAlbumTracks,
   };
 });
 
@@ -148,6 +154,8 @@ describe('SearchPanel', () => {
     mockSearchUnified.mockReset();
     mockSearchOne.mockReset();
     mockFetchLyricsAvailability.mockReset();
+    mockSearchAlbums.mockReset();
+    mockFetchAlbumTracks.mockReset();
     // 默认 searchUnified 返回一条结果
     mockSearchUnified.mockResolvedValue({
       items: SAMPLE,
@@ -157,6 +165,14 @@ describe('SearchPanel', () => {
     });
     mockSearchOne.mockResolvedValue(SAMPLE);
     mockFetchLyricsAvailability.mockResolvedValue(false);
+    mockSearchAlbums.mockResolvedValue({
+      q: '',
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      items: [],
+    });
+    mockFetchAlbumTracks.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -521,5 +537,341 @@ describe('SearchPanel', () => {
     await userEvent.click(overlay);
     expect(onPlay).toHaveBeenCalledTimes(1);
     expect(onPlay.mock.calls[0][1]).toBe(0);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// 专辑 tab（spec: specs/album-search，tasks 4.1-4.7 / 4.9）
+// ══════════════════════════════════════════════════════════════
+
+const albumSrc = (
+  platform: 'qq' | 'netease' | 'deezer' | 'spotify',
+  albumId: string,
+  extra: Partial<AlbumSource> = {},
+): AlbumSource => ({
+  platform,
+  albumId,
+  title: '叶惠美',
+  artist: '周杰伦',
+  coverUrl: '',
+  trackCount: 11,
+  year: 2003,
+  rank: 0,
+  ...extra,
+});
+
+const ALBUMS: UnifiedAlbum[] = [
+  {
+    id: 'merged-a',
+    title: '叶惠美',
+    artist: '周杰伦',
+    coverUrl: '',
+    trackCount: 11,
+    year: 2003,
+    sources: [albumSrc('qq', '000MkMni19ClKG')],
+  },
+  {
+    id: 'merged-b',
+    title: '叶惠美',
+    artist: '王珏子乔',
+    coverUrl: '',
+    trackCount: 18,
+    year: 2026,
+    variantMismatch: true,
+    sources: [albumSrc('netease', '372081313', { title: '叶惠美', artist: '王珏子乔' })],
+  },
+];
+
+const ALBUM_TRACKS: UnifiedSearchItem[] = [
+  {
+    id: 'qq:t1',
+    title: '以父之名',
+    artist: '周杰伦',
+    album: '叶惠美',
+    coverUrl: '',
+    duration: 342,
+    bestSource: 'qq',
+    versionType: 'studio',
+    sources: [src('qq', 'm1', true)],
+    versions: [
+      {
+        id: 'v1',
+        duration: 342,
+        sources: [src('qq', 'm1', true)],
+        bestSource: 'qq',
+        title: '以父之名',
+        artist: '周杰伦',
+        album: '叶惠美',
+        coverUrl: '',
+      },
+    ],
+  },
+  {
+    id: 'qq:t2',
+    title: '懦夫',
+    artist: '周杰伦',
+    album: '叶惠美',
+    coverUrl: '',
+    duration: 218,
+    bestSource: 'qq',
+    versionType: 'studio',
+    sources: [src('qq', 'm2', true)],
+    versions: [
+      {
+        id: 'v2',
+        duration: 218,
+        sources: [src('qq', 'm2', true)],
+        bestSource: 'qq',
+        title: '懦夫',
+        artist: '周杰伦',
+        album: '叶惠美',
+        coverUrl: '',
+      },
+    ],
+  },
+];
+
+/** 切到「专辑」tab 并输入关键词。 */
+async function gotoAlbumTab(q: string) {
+  await userEvent.click(screen.getByRole('tab', { name: '专辑' }));
+  await userEvent.type(screen.getByPlaceholderText(/搜索专辑名/), q);
+}
+
+describe('SearchPanel — 专辑 tab', () => {
+  beforeEach(() => {
+    mockSearchAlbums.mockResolvedValue({
+      q: '叶惠美',
+      total: ALBUMS.length,
+      page: 1,
+      pageSize: 20,
+      items: ALBUMS,
+    });
+    mockFetchAlbumTracks.mockResolvedValue(ALBUM_TRACKS);
+  });
+
+  it('默认在歌曲 tab：显示 source-toggle、不显示专辑计数', () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    expect(screen.getByRole('tab', { name: '歌曲' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: '专辑' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByLabelText('搜索 source')).toBeTruthy();
+  });
+
+  it('切到专辑 tab → 隐藏 source-toggle（单平台搜专辑无意义）', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('tab', { name: '专辑' }));
+    expect(screen.queryByLabelText('搜索 source')).toBeNull();
+    expect(screen.getByPlaceholderText(/搜索专辑名/)).toBeTruthy();
+  });
+
+  it('切 tab 不丢关键词（tasks 4.1 的核心契约）', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '叶惠美');
+    expect((screen.getByPlaceholderText(/搜索/) as HTMLInputElement).value).toBe('叶惠美');
+
+    await userEvent.click(screen.getByRole('tab', { name: '专辑' }));
+    const input = screen.getByPlaceholderText(/搜索专辑名/) as HTMLInputElement;
+    expect(input.value).toBe('叶惠美');
+
+    // 再切回歌曲，关键词仍在
+    await userEvent.click(screen.getByRole('tab', { name: '歌曲' }));
+    expect((screen.getByPlaceholderText(/搜索/) as HTMLInputElement).value).toBe('叶惠美');
+  });
+
+  it('专辑 tab：debounce 后调 searchAlbums 并渲染卡片', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await waitFor(() => expect(mockSearchAlbums).toHaveBeenCalled());
+    expect(mockSearchAlbums.mock.calls[0][0]).toBe('叶惠美');
+    // 专辑 tab 打字**不能**顺带触发歌曲搜索（两个 tab 共用 q）
+    expect(mockSearchUnified).not.toHaveBeenCalled();
+    // 「叶惠美」有两张专辑卡片同名 → getAllByText
+    expect((await screen.findAllByText('叶惠美')).length).toBeGreaterThan(0);
+    expect(screen.getByText(/11 首/)).toBeTruthy();
+  });
+
+  it('专辑 tab 渲染曲目数 + 年份（tasks 4.3）', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    expect(screen.getByText(/2003/)).toBeTruthy();
+  });
+
+  it('variantMismatch → 显示「版本分歧」角标（tasks 4.6）', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    const badge = screen.getByText('版本分歧');
+    expect(badge).toBeTruthy();
+    expect(badge.getAttribute('title')).toMatch(/再版|豪华版|翻唱/);
+    // 未分歧的那张不应有角标 → 角标数 = 1
+    expect(screen.getAllByText('版本分歧')).toHaveLength(1);
+  });
+
+  it('点专辑行 → 拉曲目并展开（tasks 4.4）', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+
+    await userEvent.click(screen.getAllByText('叶惠美')[0]);
+    await waitFor(() =>
+      expect(mockFetchAlbumTracks).toHaveBeenCalledWith('qq', '000MkMni19ClKG', expect.anything()),
+    );
+    expect(await screen.findByText('以父之名')).toBeTruthy();
+    expect(screen.getByText('懦夫')).toBeTruthy();
+  });
+
+  it('点曲目行 → 调 onPlay(items, index)（tasks 4.4）', async () => {
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    await userEvent.click(screen.getAllByText('叶惠美')[0]);
+    const row = await screen.findByText('以父之名');
+    await userEvent.click(row);
+    expect(onPlay).toHaveBeenCalledWith(ALBUM_TRACKS, 0);
+  });
+
+  it('「播放全部」→ 整张专辑入队，从第 1 首开始（tasks 3.7 / 4.5）', async () => {
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    await userEvent.click(screen.getAllByText('叶惠美')[0]);
+    await screen.findByText('以父之名');
+    await userEvent.click(screen.getByText(/播放全部/));
+    expect(onPlay).toHaveBeenCalledWith(ALBUM_TRACKS, 0);
+  });
+
+  it('再点同一专辑行 → 收起曲目', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    const title = screen.getAllByText('叶惠美')[0];
+    await userEvent.click(title);
+    await screen.findByText('以父之名');
+    await userEvent.click(title);
+    await waitFor(() => expect(screen.queryByText('以父之名')).toBeNull());
+  });
+
+  it('部分平台失败 → 非阻塞提示条，仍显示已有结果（tasks 4.7）', async () => {
+    mockSearchAlbums.mockResolvedValue({
+      q: '叶惠美',
+      total: 2,
+      page: 1,
+      pageSize: 20,
+      items: ALBUMS,
+      errors: { netease: 'Not logged in to netease' },
+    });
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/部分平台不可用/);
+    expect(screen.getByText(/网易云音乐/)).toBeTruthy();
+    // 已有结果仍然渲染
+    expect(screen.getByText(/11 首/)).toBeTruthy();
+  });
+
+  it('全平台失败（空 items + errors）→ 提示 + 暂无结果', async () => {
+    mockSearchAlbums.mockResolvedValue({
+      q: '叶惠美',
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      items: [],
+      errors: { qq: 'boom', deezer: 'limit' },
+    });
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    expect(await screen.findByText('暂无结果')).toBeTruthy();
+    expect(screen.getByText(/部分平台不可用/)).toBeTruthy();
+  });
+
+  it('searchAlbums 抛错 → 显示 .sp-error，不崩', async () => {
+    mockSearchAlbums.mockRejectedValue(new Error('network down'));
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    expect(await screen.findByText('network down')).toBeTruthy();
+  });
+
+  it('拉曲目失败 → 卡片内提示「曲目加载失败」，不影响其它卡片（tasks 4.7）', async () => {
+    mockFetchAlbumTracks.mockRejectedValue(new Error('album detail not supported on netease'));
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    await userEvent.click(screen.getAllByText('叶惠美')[0]);
+    expect(await screen.findByText(/曲目加载失败/)).toBeTruthy();
+    // 其它卡片仍可交互
+    expect(screen.getByText(/18 首/)).toBeTruthy();
+  });
+
+  it('专辑 tab 下空关键词 → 不发请求，显示占位', async () => {
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole('tab', { name: '专辑' }));
+    await screen.findByText('输入专辑名，回车搜');
+    expect(mockSearchAlbums).not.toHaveBeenCalled();
+  });
+
+  it('「加载更多专辑」按钮按 total/pageSize 正确出现并翻页（回归护栏）', async () => {
+    // 第 1 页满 20 条、total=21 → hasMore 必须为 true。
+    // 这条专门锁一个已经真出过的 bug：setHasMore 没被调用，hasMore 恒 false，
+    // 「加载更多」按钮永远不渲染。
+    const page1 = Array.from({ length: 20 }, (_, i) => ({
+      ...ALBUMS[0],
+      id: `a${i}`,
+      title: `专辑${i}`,
+    }));
+    mockSearchAlbums.mockResolvedValue({
+      q: 'x',
+      total: 21,
+      page: 1,
+      pageSize: 20,
+      items: page1,
+    });
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('x');
+    const btn = await screen.findByText('加载更多专辑');
+    expect(btn).toBeTruthy();
+
+    // 翻页
+    mockSearchAlbums.mockResolvedValue({
+      q: 'x',
+      total: 21,
+      page: 2,
+      pageSize: 20,
+      items: [{ ...ALBUMS[0], id: 'last', title: '最后一页' }],
+    });
+    await userEvent.click(btn);
+    await waitFor(() =>
+      expect(mockSearchAlbums).toHaveBeenCalledWith('x', 2, 20, expect.anything()),
+    );
+    expect(await screen.findByText('最后一页')).toBeTruthy();
+  });
+
+  it('最后一页 → 「加载更多」按钮消失', async () => {
+    mockSearchAlbums.mockResolvedValue({
+      q: '叶惠美',
+      total: 2,
+      page: 1,
+      pageSize: 20,
+      items: ALBUMS,
+    });
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await gotoAlbumTab('叶惠美');
+    await screen.findByText(/11 首/);
+    expect(screen.queryByText('加载更多专辑')).toBeNull();
+  });
+
+  it('切 tab 会 abort 歌曲 tab 的在途请求（tasks 4.1/4.2）', async () => {
+    // 挂起不 resolve —— 只有"在途"的请求才有 abort 意义
+    let captured: AbortSignal | undefined;
+    mockSearchUnified.mockImplementation((_q: string, _p: number, _s: number, sig: AbortSignal) => {
+      captured = sig;
+      return new Promise(() => {});
+    });
+    render(<SearchPanel onPlay={vi.fn()} onClose={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText(/搜索/), '叶惠美');
+    await waitFor(() => expect(captured).toBeDefined());
+    expect(captured!.aborted).toBe(false);
+    await userEvent.click(screen.getByRole('tab', { name: '专辑' }));
+    expect(captured!.aborted).toBe(true);
   });
 });

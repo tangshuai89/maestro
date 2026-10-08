@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  BadGatewayException,
+} from '@nestjs/common';
 import { Track } from './types';
 import type { VipCategory } from './types';
 import { ProviderSession } from '../common/session';
@@ -6,6 +12,7 @@ import { type LyricLine, parseLrc } from '../common/lyrics';
 import { randomBytes } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
 import { withTimeout } from '../common/timeout';
+import type { AlbumSource, AlbumTrack } from './album-types';
 
 /** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
 export type QqQuality = 'standard' | 'high' | 'lossless';
@@ -91,6 +98,55 @@ interface SearchResponse {
         pay?: QqPay;
       }>;
     };
+  };
+}
+
+/** QQ 专辑搜索响应（`client_search_cp&t=8`）。
+ *  schema 与单曲完全不同：返回 albumMID 而非 songmid，封面是 R180。
+ *  实测（2026-09-30 匿名）6/6 `code=0`，字段齐全。见 specs/album-search 附录。 */
+interface AlbumSearchResponse {
+  code: number;
+  data?: {
+    album?: {
+      list?: Array<{
+        albumID?: number;
+        albumMID?: string;
+        albumName?: string;
+        albumPic?: string;
+        /** "2003-07-31" —— 直接可取年份，无需再 parse */
+        publicTime?: string;
+        singerID?: number;
+        singerMID?: string;
+        singerName?: string;
+        song_count?: number;
+      }>;
+    };
+  };
+}
+
+/** QQ 专辑曲目响应（`fcg_v8_album_info_cp.fcg?albummid=`）。
+ *  裸 albummid 即可，实测不需要 guid / 签名（2026-09-30 匿名 6/6）。 */
+interface AlbumInfoResponse {
+  code: number;
+  data?: {
+    cur_song_num?: number;
+    list?: Array<{
+      songid?: number;
+      songmid?: string;
+      /** 取高音质流用（可能 ≠ songmid），与单曲 search 一致 */
+      strMediaMid?: string;
+      songname?: string;
+      songorig?: string;
+      albumname?: string;
+      albummid?: string;
+      singer?: { id: number; mid: string; name: string }[];
+      interval?: number;
+      /** 碟号（1-based） */
+      belongCD?: number;
+      /** 碟内序号（0-based） */
+      cdIdx?: number;
+      pay?: QqPay;
+    }>;
   };
 }
 
@@ -651,6 +707,120 @@ export class QqMusicProvider {
       // detectQqVipLocked 用同一份 pay 字段，逻辑基本同源但更细分。
       vipCategory: detectQqVipCategory(s.pay),
     }));
+  }
+
+  /**
+   * 搜专辑。`client_search_cp` + `t=8`（单曲是 `t=0`）。
+   *
+   * 与单曲 search 的关键差异：返回的是 `albumMID` 而非 `songmid`，封面是
+   * R180（单曲用的是 R800），没有 `pay` 块（付费判定在专辑详情里逐曲做）。
+   * 实测 2026-09-30 匿名 6/6 `code=0`，无需登录态。
+   */
+  async searchAlbums(
+    session: ProviderSession,
+    keyword: string,
+    count = 20,
+  ): Promise<AlbumSource[]> {
+    const url = new URL('https://c.y.qq.com/soso/fcgi-bin/client_search_cp');
+    url.searchParams.set('w', keyword);
+    url.searchParams.set('p', '1');
+    url.searchParams.set('n', String(count));
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('cr', '1');
+    url.searchParams.set('t', '8'); // 8 = 专辑
+    url.searchParams.set('flag_qc', '0');
+    url.searchParams.set('new_json', '1');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Referer: 'https://y.qq.com/',
+        Cookie: session.qqCookie ?? '',
+      },
+    });
+    const json = (await res.json()) as AlbumSearchResponse;
+    if (json.code !== 0) {
+      throw new BadRequestException(`QQ album search failed: code=${json.code}`);
+    }
+    const list = json.data?.album?.list ?? [];
+    this.logger.log(`QQ searchAlbums "${keyword}" → ${list.length} 张`);
+    return (
+      list
+        // albumMID 缺失 = 这条没法用（详情端点要靠它），直接丢掉而不是给个空 id。
+        .filter((a): a is typeof a & { albumMID: string } => !!a.albumMID)
+        .map((a, i) => ({
+          platform: 'qq' as const,
+          albumId: a.albumMID,
+          title: a.albumName ?? '未知专辑',
+          artist: a.singerName ?? '未知艺人',
+          coverUrl: a.albumPic ?? '',
+          trackCount: a.song_count ?? 0,
+          // "2003-07-31" → 2003。解析失败当未知(0)，不猜。
+          year: Number.parseInt((a.publicTime ?? '').slice(0, 4), 10) || 0,
+          rank: i,
+        }))
+    );
+  }
+
+  /**
+   * 拉专辑曲目。`fcg_v8_album_info_cp.fcg?albummid=xxx` —— **裸 albummid 即可**，
+   * 不需要 guid / p_skey 签名（spec 原先把这里标为高风险，实测已排除）。
+   *
+   * 曲序：QQ 不给直接的 trackNumber，用 `belongCD`(碟号) + `cdIdx`(碟内序号，
+   * 0-based) 组装成 `discNumber` / `trackNumber`。
+   */
+  async getAlbumTracks(session: ProviderSession, albumId: string): Promise<AlbumTrack[]> {
+    const url = new URL('https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg');
+    url.searchParams.set('albummid', albumId);
+    url.searchParams.set('format', 'json');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Referer: 'https://y.qq.com/',
+        Cookie: session.qqCookie ?? '',
+      },
+    });
+    const json = (await res.json()) as AlbumInfoResponse;
+    if (json.code !== 0) {
+      // code=1101 = 专辑不存在（albummid 无效）→ 404，不是 400。客户端要能
+      // 区分「你点的专辑没了」和「你请求写错了」。
+      if (json.code === 1101) {
+        throw new NotFoundException(`QQ album not found: ${albumId}`);
+      }
+      throw new BadGatewayException(`QQ album tracks failed: code=${json.code}`);
+    }
+    const list = json.data?.list ?? [];
+    this.logger.log(`QQ getAlbumTracks "${albumId}" → ${list.length} 首`);
+    return list
+      .filter((s): s is typeof s & { songmid: string } => !!s.songmid)
+      .map((s): AlbumTrack => {
+        const disc = s.belongCD && s.belongCD > 0 ? s.belongCD : 0;
+        // cdIdx 是 0-based，转成 1-based 曲序；碟内序号缺失时留 undefined
+        // 而不是填 0 —— 填 0 会让它排到专辑第一首前面。
+        const idx = typeof s.cdIdx === 'number' && s.cdIdx >= 0 ? s.cdIdx + 1 : undefined;
+        return {
+          id: s.songmid,
+          provider: 'qq' as const,
+          title: s.songname ?? s.songorig ?? '未知歌曲',
+          artist: s.singer?.map((x) => x.name).join(' / ') ?? '未知艺人',
+          album: s.albumname ?? '',
+          coverUrl: s.albummid
+            ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${s.albummid}.jpg`
+            : '',
+          audioUrl: '', // 播放时由 getStreamPath 动态获取
+          duration: s.interval ?? 0,
+          liked: false,
+          mediaMid: s.strMediaMid ?? '',
+          // 复用与单曲 search 同一套付费判定，不要在专辑路径另写一份。
+          vipLocked: detectQqVipLocked(s.pay, session.qqVip),
+          vipCategory: detectQqVipCategory(s.pay),
+          trackNumber: idx,
+          discNumber: disc || undefined,
+        };
+      });
   }
 
   /**

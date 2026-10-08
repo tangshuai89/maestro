@@ -37,6 +37,13 @@ import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
 import { LyricsService, type LyricsAggregatedResult } from './lyrics.service';
 import { SourceHealthService } from './source-health.service';
+import type {
+  AlbumSource,
+  AlbumTrack,
+  AlbumProvider,
+  UnifiedAlbumSearchResult,
+} from './album-types';
+import { buildUnifiedAlbums } from './album.util';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
@@ -970,6 +977,216 @@ export class MusicService {
         error: (err as Error).message,
       };
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // 专辑（spec: specs/album-search）
+  // ══════════════════════════════════════════════════════════════
+
+  /** provider 实例 → 专辑能力。方法缺失 = 该平台在专辑搜索里缺席
+   *  （不是错误）。Spotify 整条线因缺 OAuth token 未实现，见 spec 阻塞项 B2。 */
+  private albumProviderOf(provider: MusicProvider): AlbumProvider | null {
+    switch (provider) {
+      case 'qq':
+        return this.qq;
+      case 'netease':
+        return this.netease;
+      case 'deezer':
+        return this.deezer;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * 跨平台专辑搜索。
+   *
+   * 与 `searchUnified` 完全同构：4 平台并行、每平台 5s 超时、单平台失败
+   * fail-soft（记进 `errors` 而不让整次搜索 500）、分页在合并+排序之后。
+   *
+   * 区别：**没有实现 `searchAlbums` 的平台算「缺席」而不是「失败」**，
+   * 不会进 `errors` —— 前端不该为"这个平台没做专辑"弹错误条。
+   */
+  async searchAlbumsUnified(
+    session: Session,
+    keyword: string,
+    page = 1,
+    pageSize = 20,
+  ): Promise<UnifiedAlbumSearchResult> {
+    const kw = keyword.trim();
+    if (!kw || kw.length > 100) {
+      throw new BadRequestException('q 参数无效：1-100 字符');
+    }
+    // page/pageSize 来自 query string，可能是 "abc"/"-1"/"999"。不防御性 cast
+    // 直接传给 slice 会产生 NaN slice / 负 length 数组。写法对齐 searchUnified。
+    const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    const effectivePageSize = Number.isFinite(pageSize)
+      ? Math.min(50, Math.max(1, Math.floor(pageSize)))
+      : 20;
+
+    const tasks = MUSIC_PROVIDERS.filter((p) => {
+      const ap = this.albumProviderOf(p);
+      return !!ap && typeof ap.searchAlbums === 'function';
+    }).map((p) => this.searchAlbumsOneProvider(session, p, kw));
+
+    const settled = await Promise.all(tasks);
+
+    const all: AlbumSource[] = [];
+    const errors: Partial<Record<MusicProvider, string>> = {};
+    for (const r of settled) {
+      if (r.error) errors[r.platform] = r.error;
+      all.push(...r.albums);
+    }
+
+    // 合并 + 相关性排序。**排序必须在分页之前** —— 否则弱相关的平台独占专辑
+    // 会被挤出第一页（与 unified-search/tasks.md:18 是同一个问题）。
+    const merged = buildUnifiedAlbums(all, { query: kw });
+    const start = (safePage - 1) * effectivePageSize;
+    return {
+      q: kw,
+      total: merged.length,
+      page: safePage,
+      pageSize: effectivePageSize,
+      items: merged.slice(start, start + effectivePageSize),
+      ...(Object.keys(errors).length ? { errors } : {}),
+    };
+  }
+
+  /** 单平台专辑搜索 + 5s 超时 + fail-soft。**契约：本方法绝不 throw。** */
+  private async searchAlbumsOneProvider(
+    session: Session,
+    provider: MusicProvider,
+    keyword: string,
+  ): Promise<{
+    platform: MusicProvider;
+    albums: AlbumSource[];
+    error?: string;
+  }> {
+    const ap = this.albumProviderOf(provider);
+    if (!ap || typeof ap.searchAlbums !== 'function') {
+      return { platform: provider, albums: [] };
+    }
+    const searchAlbums = ap.searchAlbums.bind(ap) as (
+      ps: ProviderSession,
+      kw: string,
+      n: number,
+    ) => Promise<AlbumSource[]>;
+    const run = async (): Promise<AlbumSource[] | null> => {
+      // 网易云专辑搜索走 apiCall（与单曲 search 同一条鉴权路径），未登录要
+      // 在外面拦掉 —— 否则 apiCall 会带着 `MUSIC_U=undefined` 打出莫名其妙的
+      // 网关错误，而不是明确的「未登录」。
+      let ps: ProviderSession;
+      if (provider === 'netease') {
+        const required = this.requireProviderSession(session, 'netease');
+        if (!required) throw new NotFoundException('Not logged in to netease');
+        ps = required;
+      } else {
+        ps = (session.providers[provider] ?? {}) as ProviderSession;
+      }
+      return searchAlbums(ps, keyword, 30);
+    };
+
+    try {
+      const res = await withTimeout(run, UNIFIED_SEARCH_TIMEOUT_MS, () =>
+        this.logger.warn(
+          `album search "${keyword}" on ${provider} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+        ),
+      );
+      if (res === null) {
+        this.health.record(provider, false);
+        return { platform: provider, albums: [], error: 'timeout' };
+      }
+      this.health.record(provider, true);
+      return { platform: provider, albums: res };
+    } catch (err) {
+      // ⚠️ 绝不能让单平台的 reject 冒泡到 Promise.all —— 一个平台挂了就把
+      // 整个专辑搜索打成 500（与 searchOneProvider 同一个坑）。
+      this.health.record(provider, false);
+      const msg = (err as Error)?.message ?? 'error';
+      this.logger.warn(`album search "${keyword}" on ${provider} failed: ${msg}`);
+      return { platform: provider, albums: [], error: msg };
+    }
+  }
+
+  /**
+   * 拉单平台专辑曲目（**不跨平台合并** —— 专辑本身就是平台边界，
+   * 一张专辑只属于一个平台）。
+   *
+   * 平台没实现 `getAlbumTracks` → 抛 400 并给明确原因，让 UI 能提示
+   * 「该平台暂不支持专辑详情」而不是静默失败。当前只有 QQ / Deezer 实现了
+   * （网易云被 -462 反爬挡住、Spotify 缺 token，见 spec 阻塞项 B1/B2）。
+   */
+  async getAlbumTracksForProvider(
+    session: Session,
+    provider: MusicProvider,
+    albumId: string,
+  ): Promise<AlbumTrack[]> {
+    const ap = this.albumProviderOf(provider);
+    if (!ap || typeof ap.getAlbumTracks !== 'function') {
+      throw new BadRequestException(`album detail not supported on ${provider}`);
+    }
+    if (!albumId) {
+      throw new BadRequestException('albumId 不能为空');
+    }
+    const getAlbumTracks = ap.getAlbumTracks.bind(ap) as (
+      ps: ProviderSession,
+      id: string,
+    ) => Promise<AlbumTrack[]>;
+    const ps = (session.providers[provider] ?? {}) as ProviderSession;
+    const tracks = await withTimeout<AlbumTrack[]>(
+      () => getAlbumTracks(ps, albumId),
+      UNIFIED_SEARCH_TIMEOUT_MS,
+      () =>
+        this.logger.warn(
+          `album tracks ${provider}/${albumId} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+        ),
+    );
+    if (tracks === null) {
+      throw new BadRequestException(
+        `album tracks ${provider} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+      );
+    }
+    // 排序：可得即用、缺失保序。**全部都有 trackNumber 才排序**；只要有一个
+    // 缺（比如 Deezer 全缺）就整体保持平台返回序 —— 重排会破坏 Deezer 上的
+    // 真实编曲顺序（见 spec「曲序字段横向对比」）。
+    const sortable =
+      tracks.length > 0 &&
+      tracks.every((t) => typeof t.trackNumber === 'number' && t.trackNumber > 0);
+    if (sortable) {
+      tracks.sort(
+        (a, b) =>
+          (a.discNumber ?? 1) - (b.discNumber ?? 1) || (a.trackNumber ?? 0) - (b.trackNumber ?? 0),
+      );
+    }
+    return tracks.map((t) => this.toPlayableTrack(t));
+  }
+
+  /**
+   * 拉专辑曲目并跨平台合并成 `UnifiedSearchItem[]`。
+   *
+   * 返回**已合并**的结果，renderer 不再自己合并 —— 否则等于把
+   * `buildUnifiedItems` 的跨脚本合并逻辑复制一份到前端，违反 CLAUDE.md
+   * 「跨包归一工具禁止两端各写一份」。
+   *
+   * `crossScriptMerge: true` —— 专辑内曲目同质性高（同一张专辑曲名风格一致），
+   * 跨脚本误并风险远低于全目录搜索，≤30s 时长门能兜住。前提是专辑内确实有
+   * 跨脚本曲名（如 Evan Yo 的中英混排）才有实际收益。
+   */
+  async getAlbumTracksUnified(
+    session: Session,
+    provider: MusicProvider,
+    albumId: string,
+  ): Promise<UnifiedSearchItem[]> {
+    const tracks = await this.getAlbumTracksForProvider(session, provider, albumId);
+    // 与 searchUnified 同款调用：先 dedupTracks 出主记录 Map，再把原始
+    // entries 交给 buildUnifiedItems 做分组/多版本折叠。渠道优先级同样读
+    // 用户在 Settings 里改的持久化序，不写死 PLAY_PRIORITY。
+    const priority = this.readChannelPriority(session);
+    // AlbumTrack extends Track，结构上就是 RawSearchEntry 的 track 位。
+    const entries = tracks.map((t) => ({ track: t, platform: t.provider }));
+    return buildUnifiedItems(dedupTracks(entries), entries, priority, {
+      crossScriptMerge: true,
+    });
   }
 
   /**

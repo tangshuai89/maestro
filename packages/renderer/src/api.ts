@@ -756,6 +756,93 @@ export async function searchUnified(
   );
 }
 
+// ── 专辑搜索（spec: specs/album-search） ───────────────────────
+
+/** 单个平台上的一个专辑（服务端 `AlbumSource` 的前端镜像）。 */
+export interface AlbumSource {
+  platform: MusicProvider;
+  albumId: string;
+  title: string;
+  artist: string;
+  coverUrl: string;
+  /** 曲目数。0 = 平台没给，不是"空专辑"。 */
+  trackCount: number;
+  /** 发行年份。0 = 未知。 */
+  year: number;
+  rank: number;
+}
+
+/** 跨平台合并后的专辑卡片（服务端 `UnifiedAlbum` 的前端镜像）。 */
+export interface UnifiedAlbum {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string;
+  trackCount: number;
+  year: number;
+  sources: AlbumSource[];
+  /**
+   * 各平台曲目数分歧 >50% → 未跨平台合并。UI 要打角标提示"这可能是不同版本"。
+   * 见 specs/album-search「跨平台合并」节。
+   */
+  variantMismatch?: boolean;
+}
+
+export interface UnifiedAlbumSearchResult {
+  q: string;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: UnifiedAlbum[];
+  /** 失败的平台。缺席（未实现/未登录）不在此列。 */
+  errors?: Partial<Record<MusicProvider, string>>;
+}
+
+/**
+ * 跨平台专辑搜索。契约与 `searchUnified` 一致：单平台失败仍返 200 +
+ * `errors` 字段，缺席的平台不算失败。
+ */
+export async function searchAlbums(
+  q: string,
+  page = 1,
+  pageSize = 20,
+  signal?: AbortSignal,
+): Promise<UnifiedAlbumSearchResult> {
+  const params = new URLSearchParams({
+    q,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  return json<UnifiedAlbumSearchResult>(
+    await fetchWithToken(`${API_BASE}/music/albums/search?${params.toString()}`, {
+      credentials: 'include',
+      signal,
+    }),
+  );
+}
+
+/**
+ * 拉一张专辑的曲目，**服务端已跨平台合并**成 `UnifiedSearchItem[]`
+ * （含 versions/bestSource）—— renderer 不再自己合并，否则等于把
+ * buildUnifiedItems 的逻辑复制一份到前端。
+ *
+ * 只有 qq / deezer 支持（网易云被 -462 反爬挡住、Spotify 缺 token，
+ * 见 specs/album-search 阻塞项 B1/B2），其余平台服务端返 400。
+ */
+export async function fetchAlbumTracks(
+  provider: MusicProvider,
+  albumId: string,
+  signal?: AbortSignal,
+): Promise<UnifiedSearchItem[]> {
+  const res = await json<{ items: UnifiedSearchItem[] }>(
+    await fetchWithToken(
+      `${API_BASE}/music/albums/${provider}/${encodeURIComponent(albumId)}/tracks`,
+      { credentials: 'include', signal },
+    ),
+  );
+  return res.items;
+}
+
 /**
  * 单平台搜索。返回的是服务端 Track[]，转成 UnifiedSearchItem[] 让 SearchPanel
  * 渲染管线不用分支。sources 仅含选中的那一个平台。

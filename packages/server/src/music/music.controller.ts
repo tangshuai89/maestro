@@ -137,6 +137,60 @@ export class MusicController {
   }
 
   /**
+   * 搜专辑（spec: specs/album-search）。
+   *
+   * 与 `/music/search`（单曲）**刻意分开**：那条路径的契约已被
+   * unified-search 的 21 项测试锁死，扩 `type` 参数会污染它。
+   *
+   * 失败语义：单平台失败记进 `errors` 字段并仍返 200（部分结果 > 全盘失败）；
+   * 没实现专辑能力的平台（如 Spotify）算「缺席」，不进 `errors`。
+   */
+  @Get('albums/search')
+  async searchAlbums(
+    @Query('q') q: string,
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    return this.musicService.searchAlbumsUnified(
+      session,
+      q ?? '',
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 20,
+    );
+  }
+
+  /**
+   * 拉一张专辑的曲目（**已跨平台合并**，renderer 直接喂队列渲染）。
+   *
+   * 返回 `UnifiedSearchItem[]` 而不是原始 `Track[]`：renderer 的队列播放器
+   * 本来就吃 UnifiedSearchItem（含 versions[] / bestSource），返原始 track
+   * 会逼前端再实现一遍合并，等于把 buildUnifiedItems 的逻辑复制一份到前端。
+   *
+   * `:provider` 目前只有 qq / deezer 有效（各自只有一张专辑时才是"合并"，
+   * 但统一走这条路让 UI 不用分叉）。网易云被 -462 反爬挡住、Spotify 缺 token
+   * → 这两个平台返 400 `album detail not supported on <p>`（见 spec 阻塞项
+   * B1/B2），UI 据此给明确提示而不是静默失败。
+   */
+  @Get('albums/:provider/:albumId/tracks')
+  async albumTracks(
+    @Param('provider') provider: string,
+    @Param('albumId') albumId: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const items = await this.musicService.getAlbumTracksUnified(
+      session,
+      normalizeProvider(provider),
+      albumId,
+    );
+    return { items };
+  }
+
+  /**
    * List the Deezer editorial charts we expose to the UI. The renderer
    * fetches this once on first Deezer session to populate the preset
    * picker.

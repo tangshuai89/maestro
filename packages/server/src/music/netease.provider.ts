@@ -5,6 +5,7 @@ import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
 import { QqQuality } from './qq.provider';
 import { withTimeout } from '../common/timeout';
+import type { AlbumSource } from './album-types';
 
 /**
  * 网易云音乐：私人 FM + 播放 URL + 红心。
@@ -104,7 +105,24 @@ interface NeteaseSearchResponse {
   /** 非 200（如 405 风控）时 result 缺失，msg/message 带原因。 */
   msg?: string;
   message?: string;
-  result?: { songs?: NeteaseSearchSong[] };
+  result?: { songs?: NeteaseSearchSong[]; albums?: NeteaseSearchAlbum[] };
+}
+
+/** 网易云专辑搜索条目（`cloudsearch/pc&type=10`）。
+ *
+ *  ⚠️ 关键坑：`artist`（单数）是**空字符串**，`artists`（复数数组）才有值。
+ *  取错会让所有专辑的 artist 都是 "" → 跨平台合并时全部塌成一坨。
+ *  2026-09-30 实测（type=10 匿名 6/6 code=200）。 */
+interface NeteaseSearchAlbum {
+  id: number;
+  name: string;
+  /** 曲目数 */
+  size?: number;
+  picUrl?: string;
+  /** 发行时间（ms epoch） */
+  publishTime?: number;
+  artist?: { name?: string };
+  artists?: { name?: string }[];
 }
 
 /** QQ 音质档位 → 网易云 level。standard→standard，high→exhigh(≈320)，
@@ -393,6 +411,64 @@ export class NeteaseMusicProvider {
         vipCategory: detectNeteaseVipCategory({ fee: s.fee, privilege: s.privilege }),
       };
     });
+  }
+
+  /**
+   * 搜专辑。`cloudsearch/pc` + `type=10`（单曲是 `type=1`）。
+   *
+   * 复用与 `search()` 完全相同的 `apiCall` 封装和鉴权姿态（走 apiCall 意味着
+   * 同样需要登录态，由 service 层 `requireProviderSession` 兜住）—— 不因为
+   * 专辑搜索就单独开一条匿名通道，避免同一平台两种鉴权口径。
+   *
+   * 2026-09-30 实测：匿名也能通（6/6），但保持与单曲一致更安全。
+   */
+  async searchAlbums(
+    session: ProviderSession,
+    keyword: string,
+    count = 20,
+  ): Promise<AlbumSource[]> {
+    const data = await this.apiCall<NeteaseSearchResponse>(
+      session,
+      'https://music.163.com/api/cloudsearch/pc',
+      {
+        s: keyword,
+        type: '10', // 10 = 专辑
+        offset: '0',
+        limit: String(count),
+        total: 'true',
+      },
+    );
+    // 与 search() 同一口径：非 200 是风控/登录失效，不是"没结果"。必须显式
+    // 抛错让 service 标 error，否则用户看到"暂无结果"会误判专辑不存在。
+    if (data.code !== 200) {
+      const msg = data.msg ?? data.message ?? '';
+      throw new BadRequestException(`网易云专辑搜索失败: code=${data.code}${msg ? ` ${msg}` : ''}`);
+    }
+    const albums = data.result?.albums ?? [];
+    this.logger.log(`netease searchAlbums "${keyword}" → ${albums.length} 张`);
+    return albums
+      .filter((a): a is typeof a & { id: number } => typeof a.id === 'number')
+      .map((a, i): AlbumSource => ({
+        platform: 'netease' as const,
+        albumId: String(a.id),
+        title: a.name ?? '未知专辑',
+        // 必须读 artists[]（复数）。artist.name 实测恒为 ""。
+        artist:
+          a.artists
+            ?.map((x) => x.name ?? '')
+            .filter(Boolean)
+            .join(' / ') ||
+          a.artist?.name ||
+          '未知艺人',
+        coverUrl: a.picUrl ? `${a.picUrl}?param=300y300` : '',
+        trackCount: a.size ?? 0,
+        // ms epoch → 年。0/负数 = 未知。
+        year:
+          typeof a.publishTime === 'number' && a.publishTime > 0
+            ? new Date(a.publishTime).getFullYear()
+            : 0,
+        rank: i,
+      }));
   }
 
   /** 取歌曲的真实播放 URL（有时效，即拉即用）。按音质档位选 level。 */
