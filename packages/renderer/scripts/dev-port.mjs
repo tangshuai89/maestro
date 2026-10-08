@@ -1,35 +1,39 @@
 /**
- * dev 端口探测（配套 vite.config.ts 的 server.port）。
+ * dev 端口的**单一事实来源**。
  *
- * ## 为什么需要
+ * ## 为什么是「vite 写、electron 读」而不是「两边各探测一次」
  *
- * vite 遇到端口占用会**静默**换到 5174/5175…（`strictPort: false`），
- * 而 `packages/electron/src/main.ts` 里 dev 模式的 `loadURL` 写死了
- * `http://127.0.0.1:5173`。本机同时跑着别的 5173 前端时，实际后果是：
- * 窗口打开的是**隔壁项目**，而 `/music` `/auth` 请求又经 vite 代理转到
- * 本项目的 3200 —— 页面能渲染、登录态却莫名其妙，几乎无法从现象反推原因。
+ * 第一版让 vite 和 electron 各自跑一遍 `lsof` 探测，逻辑写得一模一样 ——
+ * 结果实机直接黑屏（ERR_CONNECTION_REFUSED）：
  *
- * 所以做两件事：
- *  1. 启动前探测占用，给出**明确**的实际端口并打印醒目提示
- *  2. 支持 RENDERER_PORT 显式指定（此时严格照用，占用就报错而非静默改）
+ *   进程1 vite   启动探测：5173 空闲        → 决定监听 5173
+ *   进程2 electron 稍后探测：5173 已被 vite 占 → 决定连 5174
+ *   → electron 连了个根本没人监听的 5174
  *
- * 全部走 `node:child_process` 的**同步** API —— vite.config.ts 是同步求值，
- * 没法 await。探测只在 dev 启动时跑一次，开销可忽略。
+ * 两个进程探测的**时间点不同**，同端口在同一时刻的状态就不同，再一致的逻辑
+ * 也会漂移。这是设计错误，不是边界情况。
+ *
+ * 所以：**vite 是权威方**（它才是真正 listen 的那个），启动时把实际端口写进
+ * `.dev-port`，electron 读文件。electron 绝不自己猜。
+ *
+ * 写入是**原子**的（先写临时文件再 rename），避免 electron 读到写了一半的内容。
  */
-import { execFileSync as realExecFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, renameSync, writeFileSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_DEV_PORT = 5173;
 const MAX_TRIES = 50;
 
-/**
- * 实际执行器。测试会通过 `__setExecForTest` 替换掉它 —— 直接 monkey-patch
- * `node:child_process` 无效（ESM import 拿到的是不可变的绑定）。
- */
-let exec = realExecFileSync;
+const HERE = dirname(fileURLToPath(import.meta.url));
+/** 端口文件放在 renderer 包根（electron 与 vite 都能定位到）。 */
+export const DEV_PORT_FILE = join(HERE, '..', '.dev-port');
 
+let exec = execFileSync;
 /** 仅测试用：替换 lsof 执行器，传 null 还原。 */
 export function __setExecForTest(impl) {
-  exec = impl ?? realExecFileSync;
+  exec = impl ?? execFileSync;
 }
 
 /** 同步判断本机端口是否已被占用（lsof 不可用时返回 false，交给 vite 兜底）。 */
@@ -44,7 +48,7 @@ export function isPortTaken(port) {
     return text.includes(`:${port}(LISTEN)`) || text.includes(`:${port} `);
   } catch {
     // lsof 没装 / 权限不足：保守返回"未占用"，让 vite 自己去撞墙并给出
-    // 它自己的提示（总比误判成被占用、把用户推到去设 RENDERER_PORT 更糟）。
+    // 它自己的提示（总比误判成被占用、把用户逼去设 RENDERER_PORT 更糟）。
     return false;
   }
 }
@@ -57,7 +61,50 @@ export function pickFreePort(from, maxTries = MAX_TRIES) {
   return from; // 实在找不到就还回起点，交给 vite 报错
 }
 
-/** 同步别名：vite.config.ts 用这个（语义更清楚：返回"空闲"）。 */
+/** 同步别名：语义更清楚（返回"空闲"）。 */
 export function isDevPortFree(port) {
   return !isPortTaken(port);
+}
+
+/**
+ * 解析 vite 实际会用的端口，并**写进端口文件**。
+ *
+ * @param configured vite 传给 server.port 的值（可能是 `strictPort:false`
+ *        时的首选端口，不保证被采纳）
+ * @param actual     vite 实际监听的端口 —— 拿得到就用它，权威
+ */
+export function resolveAndPublishDevPort(configured, actual) {
+  const port =
+    typeof actual === 'number' && actual > 0
+      ? actual
+      : configured || pickFreePort(DEFAULT_DEV_PORT);
+  try {
+    // 原子写：先写临时文件再 rename，避免 electron 读到写了一半的内容
+    const tmp = `${DEV_PORT_FILE}.${process.pid}.tmp`;
+    writeFileSync(tmp, String(port), 'utf8');
+    renameSync(tmp, DEV_PORT_FILE);
+  } catch {
+    /* 写不进去不致命：electron 还有 RENDERER_PORT / 5173 兜底 */
+  }
+  return port;
+}
+
+/** 读端口文件（electron 用）。读不到返回 null。 */
+export function readPublishedDevPort() {
+  try {
+    if (!existsSync(DEV_PORT_FILE)) return null;
+    const n = Number(readFileSync(DEV_PORT_FILE, 'utf8').trim());
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 清掉端口文件（vite 退出时调，避免留下过期值）。 */
+export function clearPublishedDevPort() {
+  try {
+    if (existsSync(DEV_PORT_FILE)) unlinkSync(DEV_PORT_FILE);
+  } catch {
+    /* ignore */
+  }
 }
