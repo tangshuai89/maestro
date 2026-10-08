@@ -8,7 +8,7 @@ import { useReco } from './hooks/useReco';
 import { useTheme } from './hooks/useTheme';
 import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
-import type { LibraryImportResult } from './api';
+import type { LibraryImportResult, MusicProvider } from './api';
 import { readCachedLibrary } from './lib/likedCache';
 import {
   readStoredPlayerMode,
@@ -52,7 +52,10 @@ export default function App() {
   // 决定 Spotify Premium 是否应被当作有效全曲升级目标。
   const spotifyTierRef = useRef<string | undefined>(undefined);
 
-  const player = usePlayer(audioRef, wpsRef, spotifyTierRef);
+  // 播放彻底失败后判定"是不是登录过期"的回调（specs/auth-resilience Phase 10）。
+  // 用 ref 是因为 usePlayer 在 useAuth **之前**调用，直接传函数会撞 TDZ。
+  const onAuthExpiredRef = useRef<((p: MusicProvider) => void) | null>(null);
+  const player = usePlayer(audioRef, wpsRef, spotifyTierRef, onAuthExpiredRef);
   const lyrics = useLyrics(player.track, player.provider, player.currentSources);
 
   // ── 歌词分享图（导出 PNG 到本地下载目录）────────────────────────
@@ -98,6 +101,8 @@ export default function App() {
   );
   const auth = useAuth(player.provider, player.loadNextTrack, player.setError);
   spotifyTierRef.current = auth.auth.tier ?? undefined;
+  // auth 就绪后把回调写进 ref，usePlayer 的 onError 兜底会用它。
+  onAuthExpiredRef.current = (p: MusicProvider) => auth.markExpired(p);
   // 把 usePlayer 的 reactive queue 状态（queueIdx / queueUnifiedItems）
   // 透传给 useReco —— 推荐卡「正在播 + 接下来 2」从这里派生
   // （spec 2026-09-21「推荐卡跟随队列位置」）。

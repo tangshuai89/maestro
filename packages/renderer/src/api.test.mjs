@@ -626,5 +626,51 @@ reset();
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// 过期登录态检测（spec: specs/auth-resilience Phase 10 / tasks 2.1）
+// ══════════════════════════════════════════════════════════════
+{
+  const realFetch = globalThis.fetch;
+  const callWith = async (body) => {
+    fetchCalls.length = 0;
+    globalThis.fetch = async (url) => {
+      fetchCalls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(body),
+        json: async () => body,
+      };
+    };
+    return api.getAuthStatusValidated('qq');
+  };
+
+  // 1. URL 必须带 validate=1（否则又走回不验证的老路）
+  await callWith({ provider: 'qq', loggedIn: false, expired: true, error: 'AUTH_EXPIRED' });
+  const url = fetchCalls[0] || '';
+  expect('43. getAuthStatusValidated URL 带 validate=1',
+    url.includes('provider=qq') && url.includes('validate=1'));
+  expect('43b. 同时带 extended=1（复用 AuthStatusExtended）', url.includes('extended=1'));
+
+  // 2. 过期响应能透出 expired / error / message
+  const exp = await callWith({
+    provider: 'qq', loggedIn: false, expired: true,
+    error: 'AUTH_EXPIRED', message: 'QQ 登录已过期，请重新登录',
+  });
+  expect('44. 过期响应 expired=true', exp.expired === true);
+  expect('45. 过期响应 error=AUTH_EXPIRED', exp.error === 'AUTH_EXPIRED');
+  expect('46. 过期响应带 message', String(exp.message).includes('过期'));
+
+  // 3. 「从没登录过」：loggedIn:false 但**没有** expired —— 不能误弹重登录
+  const never = await callWith({ provider: 'qq', loggedIn: false, user: null });
+  expect('47. 从没登录过 → expired 不为 true（不误弹重登录）', never.expired !== true);
+
+  // 4. 有效登录态
+  const alive = await callWith({ provider: 'qq', loggedIn: true, user: { nickname: 'x' } });
+  expect('48. 有效登录态 loggedIn=true 且无 expired', alive.loggedIn === true && !alive.expired);
+
+  globalThis.fetch = realFetch;
+}
+
 console.log(`\n🎉 api.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

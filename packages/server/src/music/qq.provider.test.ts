@@ -821,6 +821,10 @@ async function main() {
   }
 
   // ── 19. getStreamPath: track 不存在 / 无 purl → throws ──────────
+  //
+  // ⚠️ 探针歌（004Gq0xE1YC8xp 晴天）必须**返正常 purl**：它代表"登录态还活着"。
+  // 若这里也返空 purl，探针会判死，getStreamPath 就会抛 AUTH_EXPIRED 而不是
+  // 本用例要的"无版权类"通用错误 —— 那样测的就不是这条路径了。
   {
     const restore = mockFetch(() => ({
       json: async () => ({
@@ -828,7 +832,10 @@ async function main() {
         req_0: {
           code: 0,
           data: {
-            midurlinfo: [{ songmid: 'nope', purl: '', errtype: 2 }],
+            midurlinfo: [
+              { songmid: 'nope', purl: '', errtype: 2 },
+              { songmid: '004Gq0xE1YC8xp', purl: 'PROBE_OK.m4a', vkey: 'VPROBE' },
+            ],
             sip: ['https://ws.stream.qqmusic.qq.com/'],
           },
         },
@@ -845,6 +852,79 @@ async function main() {
     }
     assert.ok(threw, '无 purl 应抛');
     console.log('✅ 19. getStreamPath 无 purl → 抛 QQ vkey missing purl');
+  }
+
+  // ── 19b. getStreamPath: 探针判死 → 抛 AUTH_EXPIRED（Phase 10 核心）──
+  {
+    // 目标歌无 purl（无版权/需付费），**且探针歌也无 purl**（登录态已死）
+    const restore = mockFetch(() => ({
+      json: async () => ({
+        code: 0,
+        req_0: {
+          code: 0,
+          data: {
+            midurlinfo: [
+              { songmid: 'x', purl: '', errtype: 2, vkey: '' },
+              { songmid: '004Gq0xE1YC8xp', purl: '', vkey: '' },
+            ],
+            sip: ['https://ws.stream.qqmusic.qq.com/'],
+          },
+        },
+      }),
+    }));
+    let body: any = null;
+    let msg = '';
+    try {
+      // 独立 cookie：探针按 cookie 哈希做缓存 key，共用 sess() 会命中
+      // 前面用例缓存的 alive 结果，测不到本条路径。
+      await prov.getStreamPath(
+        sess({ qqCookie: 'qm_keyst=expired-case-19b; euin=x' }),
+        'x',
+      );
+    } catch (e: any) {
+      body = e.getResponse ? e.getResponse() : null;
+      msg = e.message;
+    } finally {
+      restore();
+    }
+    assert.ok(body !== null, '应抛带 error 字段的异常');
+    assert.strictEqual(
+      body.error,
+      'AUTH_EXPIRED',
+      `body.error 必须是 AUTH_EXPIRED（renderer 靠它弹重登录），实际: ${JSON.stringify(body)}`,
+    );
+    assert.ok(/过期/.test(String(body.message)), 'message 应说明是过期');
+    console.log('✅ 19b. getStreamPath 探针判死 → AUTH_EXPIRED（带 error 字段，renderer 可识别）');
+  }
+
+  // ── 19c. getStreamPath: 探针异常 → 保守走通用错误，不误报过期 ──
+  {
+    // 探针请求直接抛错（网络故障）→ withTimeout 不 catch → 探针内部 try/catch
+    // 兜住并返回 network_error → alive:true → 维持通用错误
+    const restore = mockFetch(() => {
+      throw new Error('ECONNRESET');
+    });
+    let body: any = null;
+    let msg = '';
+    try {
+      await prov.getStreamPath(
+        sess({ qqCookie: 'qm_keyst=netfail-case-19c; euin=y' }),
+        'y',
+      );
+    } catch (e: any) {
+      body = e.getResponse ? e.getResponse() : null;
+      msg = e.message;
+    } finally {
+      restore();
+    }
+    // 关键断言只有一个：**不得**误报 AUTH_EXPIRED。
+    // 本用例让 fetch 对所有请求都抛错，所以外层取流请求自己也会抛
+    // （ECONNRESET 冒到上层是既有行为，不在 Phase 10 范围内）。
+    assert.ok(
+      !body || body.error !== 'AUTH_EXPIRED',
+      `探针网络故障时不得误报 AUTH_EXPIRED，实际: ${JSON.stringify(body)} ${msg}`,
+    );
+    console.log('✅ 19c. 探针网络故障 → 不误报 AUTH_EXPIRED（保守降级）');
   }
 
   // ── 20. getLyrics: LRC 解析（[mm:ss.xx] 时间戳） ────────────────

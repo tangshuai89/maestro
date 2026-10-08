@@ -11,7 +11,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { normalizeProvider } from '../common/provider';
+import { normalizeProvider, PROVIDER_LABELS } from '../common/provider';
 import { Request, Response } from 'express';
 import { QqAuthStrategy } from './qq.strategy';
 import { NeteaseAuthStrategy } from './netease-auth.strategy';
@@ -184,9 +184,10 @@ export class AuthController {
   // ── Status / Logout ──────────────────────────────────────────────────────
 
   @Get('status')
-  status(
+  async status(
     @Query('provider') provider: string,
     @Query('extended') extended: string | undefined,
+    @Query('validate') validate: string | undefined,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -230,6 +231,26 @@ export class AuthController {
     };
     if (extended === '1') {
       out['lastValidatedAt'] = this.sessionService.getLastValidatedAt(session, p);
+    }
+    // validate=1 → **真的**跑一次登录态探针（spec: specs/auth-resilience Phase 10）。
+    // 不传则保持纯结构判断、不发任何额外请求 —— 这是回归护栏，别去掉。
+    if (validate === '1') {
+      const probe = await this.musicService.probeSession(session, p);
+      if (!probe.alive) {
+        // 没凭据 = 从没登录过，不是"过期"。此时不标 expired，让上层按未登录处理
+        //（否则从没登录的用户一进 app 就被弹"重新登录"）。
+        if (probe.reason === 'no_cookie') {
+          out['loggedIn'] = false;
+          return out;
+        }
+        this.logger.warn(
+          `auth status validate: ${p} 登录态已失效（reason=${probe.reason}）`,
+        );
+        out['loggedIn'] = false;
+        out['expired'] = true;
+        out['error'] = 'AUTH_EXPIRED';
+        out['message'] = `${PROVIDER_LABELS[p] ?? p} 登录已过期，请重新登录`;
+      }
     }
     return out;
   }

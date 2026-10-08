@@ -18,6 +18,7 @@ import {
   getApiOrigin,
   recomputeCrossPlatformLikeTotal,
   reportRecoSignal,
+  getAuthStatusValidated,
 } from '../api';
 import type {
   Track,
@@ -104,6 +105,18 @@ export function usePlayer(
    * to decide whether Spotify is a valid full-track upgrade target.
    */
   spotifyTierRef?: RefObject<string | undefined>,
+  /**
+   * 播放彻底失败（重试 + 跨平台 fallback 都试过）后，用来判断"是不是登录过期了"
+   * 的回调（spec: specs/auth-resilience Phase 10）。
+   *
+   * 为什么需要它：`<audio src>` 拿不到服务端 401 的 body，只能看到
+   * `MediaError code=4`。所以必须**再问一次服务端**才知道是"登录过期请重登"
+   * 还是"这首歌没源，换个歌吧" —— 后者不该弹登录框。
+   *
+   * 用 ref 而不是直接 callback：App 里 usePlayer 在 useAuth **之前**调用，
+   * 直接传函数会撞上 TDZ。用 ref 由 App 在 auth 就绪后写入当前值。
+   */
+  onAuthExpiredRef?: RefObject<((provider: MusicProvider) => void) | null>,
 ) {
   const [provider, setProvider] = useState<MusicProvider | null>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -474,6 +487,38 @@ export function usePlayer(
    *     可退」的盲点。
    * 成功切源 → true（onError 不报错）；彻底无源 → false，交调用方报错。
    */
+
+  /**
+   * 播放彻底失败后的收尾（spec: specs/auth-resilience Phase 10）。
+   *
+   * 「重试 + 跨平台 fallback 都试过」之后仍失败，原因有多种，从 `<audio>` 的
+   * `MediaError code=4` 分不出来：
+   *   - 登录过期了（所有源都取不到流）
+   *   - 这首歌所有平台都没源 / 都受限
+   * 用户诉求是第一种要弹「重新登录」，第二种不该弹。
+   *
+   * 所以这里**再问一次服务端**（带 validate=1 的 status）。只在已失败后发，
+   * 正常播放路径零额外请求；服务端还有 10min session 级缓存。
+   */
+  const reportPlayFailure = useCallback(
+    (failedProvider: MusicProvider, code: string) => {
+      void (async () => {
+        try {
+          const st = await getAuthStatusValidated(failedProvider);
+          if (st.expired === true) {
+            onAuthExpiredRef?.current?.(failedProvider);
+            return;
+          }
+        } catch {
+          /* 探不通就按普通播放失败处理 —— 宁可少提示，不要卡住用户 */
+        }
+        setError(`音频加载失败（${code}），请尝试切歌`);
+      })();
+    },
+    [onAuthExpiredRef],
+  );
+
+
   const tryFallbackSource = useCallback(async (): Promise<boolean> => {
     const unified = currentUnifiedRef.current;
     const cur = trackRef.current;
@@ -1041,6 +1086,9 @@ async function fillLikeCountForCurrentTrack(
     const onError = () => {
       const err = audio.error;
       const code = err ? `code=${err.code}` : 'no-MediaError';
+      // 失败的是**当前正在放**的那个源的 provider —— 后面判定"是不是登录
+      // 过期"要拿它去问服务端。
+      const failedProvider = trackRef.current?.provider ?? provider ?? 'qq';
       console.error('[audio] error', code, audio.src);
       // 防御性"同源重试一次": CDN / Tailscale 代理瞬间抖动 / 上游 keep-alive
       // 超时引起的 transient MEDIA_ERR_NETWORK 不该立刻换源——换源会丢播放进度、
@@ -1077,7 +1125,7 @@ async function fillLikeCountForCurrentTrack(
               // 重试失败。重置 guard **并** 进 fallback——避免无限重试循环。
               retryAttemptedRef.current = false;
               void tryFallbackSource().then((ok) => {
-                if (!ok) setError(`音频加载失败（${code}），请尝试切歌`);
+                if (!ok) reportPlayFailure(failedProvider, code);
               });
             },
           );
@@ -1088,7 +1136,7 @@ async function fillLikeCountForCurrentTrack(
       // 无版权 / 真没源：先自动降级到同一首歌的其它平台源（含向服务端实时
       // 匹配），全都失败才把报错弹给用户。
       void tryFallbackSource().then((ok) => {
-        if (!ok) setError(`音频加载失败（${code}），请尝试切歌`);
+        if (!ok) reportPlayFailure(failedProvider, code);
       });
     };
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -1117,6 +1165,7 @@ async function fillLikeCountForCurrentTrack(
     wpsRef,
     tryFallbackSource,
     handleTrialDetected,
+    reportPlayFailure,
   ]);
 
   // Sync play/pause — but only call play() once the audio is actually ready
