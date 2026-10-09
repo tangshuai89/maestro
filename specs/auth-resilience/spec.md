@@ -418,5 +418,26 @@ attemptId 门控会静默吞掉前者。reducer.test.mjs 加了 3 条（15/16/17
 实测：占住 5173 后起完整 dev 栈 → 端口文件 `5174` = vite 实际监听 = electron 连接，
 0 个 `ERR_CONNECTION_REFUSED`，renderer 正常加载。
 
+### 问题 2 的收尾：默认端口 5173 → 5273
+
+避让机制只在"冲突时"救场，而**冲突本身是可以直接消除的**：5173 是 vite 的
+历史默认端口，本机同时跑别的 5173 前端几乎是常态。改用一段不常用的 `5273`
+后，常用路径压根不触发避让 —— 机制退化成纯粹的安全网，而不是每次都要靠它。
+
+改动面（`5173` 在本仓库的**全部**硬编码点）：
+
+| 位置                                             | 说明                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------- |
+| `packages/renderer/scripts/dev-port.mjs`         | `DEFAULT_DEV_PORT`                                         |
+| `packages/electron/src/dev-port.ts`              | `DEFAULT_DEV_PORT` + 兜底说明                              |
+| `packages/server/src/common/config.ts`           | CORS allowlist 改覆盖 `5273–5299`（抽成 `DEV_PORT_RANGE`） |
+| `packages/server/.env.example`                   | `RENDERER_BASE` / `RENDERER_ORIGINS`                       |
+| `README.md` / `README.zh-CN.md` / `README.ja.md` | 架构图 + 环境变量表                                        |
+
+实测：5273 起完整 dev 栈 → 端口文件 `5273` = vite 实际监听 = electron 加载，
+0 个 `ERR_CONNECTION_REFUSED`，**且未触发避让**；经 vite 代理的
+`/music/search`、`/auth/status`、`/reco/status` 均 200；
+CORS 预检对 `Origin: http://127.0.0.1:5273` 正确回 `Access-Control-Allow-Origin`。
+
 `dev-port.test` 12 条，其中 7-11 锁的就是这条发布/读取链路
 （actual 优先 configured、未发布返回 null、退出清理、纯数字原子写）。

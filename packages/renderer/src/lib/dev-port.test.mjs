@@ -22,54 +22,84 @@ import {
 } from '../../scripts/dev-port.mjs';
 
 let passed = 0;
-const ok = (n) => { passed++; console.log('✅ ' + n); };
+const ok = (n) => {
+  passed++;
+  console.log('✅ ' + n);
+};
 const withExec = (impl, fn) => {
   __setExecForTest(impl);
-  try { return fn(); } finally { __setExecForTest(null); }
+  try {
+    return fn();
+  } finally {
+    __setExecForTest(null);
+  }
 };
 
 try {
   // 1. 明确占用
-  withExec(() => 'node 1 2 0 0 TCP 127.0.0.1:5173 (LISTEN)\n', () => {
-    assert.strictEqual(isPortTaken(5173), true);
-    assert.strictEqual(isDevPortFree(5173), false);
-  });
+  withExec(
+    () => 'node 1 2 0 0 TCP 127.0.0.1:5273 (LISTEN)\n',
+    () => {
+      assert.strictEqual(isPortTaken(5273), true);
+      assert.strictEqual(isDevPortFree(5273), false);
+    },
+  );
   ok('1. 明确占用 → isPortTaken=true / isDevPortFree=false');
 
   // 2. 明确空闲
-  withExec(() => '', () => {
-    assert.strictEqual(isPortTaken(5173), false);
-    assert.strictEqual(isDevPortFree(5173), true);
-  });
+  withExec(
+    () => '',
+    () => {
+      assert.strictEqual(isPortTaken(5273), false);
+      assert.strictEqual(isDevPortFree(5273), true);
+    },
+  );
   ok('2. 空闲 → isPortTaken=false');
 
   // 3. lsof 不可用 → 降级为"未占用"，不把用户逼去设 RENDERER_PORT
-  withExec(() => { throw new Error('lsof: not found'); }, () => {
-    assert.strictEqual(isPortTaken(5173), false,
-      'lsof 不可用必须降级为未占用，让 vite 自己去撞墙给提示');
-  });
+  withExec(
+    () => {
+      throw new Error('lsof: not found');
+    },
+    () => {
+      assert.strictEqual(
+        isPortTaken(5273),
+        false,
+        'lsof 不可用必须降级为未占用，让 vite 自己去撞墙给提示',
+      );
+    },
+  );
   ok('3. lsof 不可用 → 降级为未占用（不误判成占用）');
 
   // 4. 输出里没有该端口 → 不算占用
-  withExec(() => 'node 1 2 0 0 TCP 127.0.0.1:5174 (LISTEN)\n', () => {
-    assert.strictEqual(isPortTaken(5173), false);
-  });
+  withExec(
+    () => 'node 1 2 0 0 TCP 127.0.0.1:5284 (LISTEN)\n',
+    () => {
+      assert.strictEqual(isPortTaken(5273), false);
+    },
+  );
   ok('4. 输出中无目标端口 → 不算占用');
 
   // 5. pickFreePort 跳过连续占用
-  const taken = new Set([5173, 5174, 5175]);
-  withExec((f, a) => {
-    const port = Number((a[1].match(/-iTCP:(\d+)/) || [])[1]);
-    return taken.has(port) ? 'node 1 2 0 0 TCP 127.0.0.1:' + port + ' (LISTEN)\n' : '';
-  }, () => {
-    assert.strictEqual(pickFreePort(5173), 5176, '应跳过 5173-5175 落到 5176');
-  });
+  const taken = new Set([5273, 5274, 5275]);
+  withExec(
+    (f, a) => {
+      const port = Number((a[1].match(/-iTCP:(\d+)/) || [])[1]);
+      return taken.has(port) ? 'node 1 2 0 0 TCP 127.0.0.1:' + port + ' (LISTEN)\n' : '';
+    },
+    () => {
+      assert.strictEqual(pickFreePort(5273), 5276, '应跳过 5273-5275 落到 5276');
+    },
+  );
   ok('5. pickFreePort 跳过连续占用端口');
 
   // 6. MAX_TRIES 用尽 → 还回起点，交给 vite 报错
-  withExec(() => 'node 1 2 0 0 TCP 127.0.0.1:1 (LISTEN)\n', () => {
-    assert.strictEqual(pickFreePort(9000, 9000, 5), 9000);
-  });
+  withExec(
+    () => 'node 1 2 0 0 TCP 127.0.0.1:1 (LISTEN)\n',
+    () => {
+      assert.strictEqual(pickFreePort(9000, 9000, 5), 9000);
+    },
+  );
   ok('6. MAX_TRIES 用尽 → 还回起点（交给 vite 报错）');
 
   // ══════════════════════════════════════════════════════
@@ -79,7 +109,7 @@ try {
   // 7. vite 报告的实际端口优先于配置的端口
   {
     clearPublishedDevPort();
-    // configured=5173（vite 首选）但 actual=5174（真正监听的）
+    // configured=5273（vite 首选）但 actual=5174（真正监听的）
     const published = resolveAndPublishDevPort(DEFAULT_DEV_PORT, 5174);
     assert.strictEqual(published, 5174, 'actual 必须覆盖 configured');
     assert.strictEqual(readPublishedDevPort(), 5174);
@@ -89,24 +119,30 @@ try {
   // 8. 拿不到 actual 时退回探测
   {
     clearPublishedDevPort();
-    withExec(() => '', () => {
-      // configured 5173、actual undefined、5173 空闲 → 都指向 5173
-      assert.strictEqual(resolveAndPublishDevPort(5173, undefined), 5173);
-    });
+    withExec(
+      () => '',
+      () => {
+        // configured 5273、actual undefined、5273 空闲 → 都指向 5273
+        assert.strictEqual(resolveAndPublishDevPort(5273, undefined), 5273);
+      },
+    );
     ok('8. 拿不到 actual 时退回 configured / 探测结果');
   }
 
   // 9. 没发布过时 electron 读到 null（而不是猜一个错端口）
   {
     clearPublishedDevPort();
-    assert.strictEqual(readPublishedDevPort(), null,
-      '没有端口文件必须返回 null，让 electron 走兜底 + 提示，而不是读到脏值');
+    assert.strictEqual(
+      readPublishedDevPort(),
+      null,
+      '没有端口文件必须返回 null，让 electron 走兜底 + 提示，而不是读到脏值',
+    );
     ok('9. 未发布 → readPublishedDevPort 返回 null');
   }
 
   // 10. clearPublishedDevPort 清干净（vite 退出后不留过期值）
   {
-    resolveAndPublishDevPort(5173, 5180);
+    resolveAndPublishDevPort(5273, 5280);
     assert.ok(existsSync(DEV_PORT_FILE), '前置：端口文件已写入');
     clearPublishedDevPort();
     assert.strictEqual(existsSync(DEV_PORT_FILE), false, '退出后端口文件必须清掉');
@@ -116,22 +152,26 @@ try {
   // 11. 端口文件内容是纯数字，原子写不留残缺
   {
     clearPublishedDevPort();
-    resolveAndPublishDevPort(5173, 5199);
+    resolveAndPublishDevPort(5273, 5299);
     const raw = readFileSync(DEV_PORT_FILE, 'utf8').trim();
-    assert.strictEqual(raw, '5199');
+    assert.strictEqual(raw, '5299');
     assert.ok(/^\d+$/.test(raw), '端口文件应是纯数字，避免读到写了一半的内容');
     clearPublishedDevPort();
     ok('11. 端口文件是纯数字（原子写，不会读到写了一半）');
   }
 
   // 12. 常量
-  assert.strictEqual(DEFAULT_DEV_PORT, 5173);
-  ok('12. DEFAULT_DEV_PORT = 5173');
+  assert.strictEqual(DEFAULT_DEV_PORT, 5273);
+  ok('12. DEFAULT_DEV_PORT = 5273');
 
   console.log('\n🎉 dev-port.test: ' + passed + ' passed');
 } catch (e) {
   console.error('\n❌ 失败:', e.message);
   process.exit(1);
 } finally {
-  try { clearPublishedDevPort(); } catch { /* ignore */ }
+  try {
+    clearPublishedDevPort();
+  } catch {
+    /* ignore */
+  }
 }

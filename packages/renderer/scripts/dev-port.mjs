@@ -23,7 +23,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync, unlinkSync } from 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const DEFAULT_DEV_PORT = 5173;
+export const DEFAULT_DEV_PORT = 5273;
 const MAX_TRIES = 50;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -84,7 +84,7 @@ export function resolveAndPublishDevPort(configured, actual) {
     writeFileSync(tmp, String(port), 'utf8');
     renameSync(tmp, DEV_PORT_FILE);
   } catch {
-    /* 写不进去不致命：electron 还有 RENDERER_PORT / 5173 兜底 */
+    /* 写不进去不致命：electron 还有 RENDERER_PORT / 5273 兜底 */
   }
   return port;
 }

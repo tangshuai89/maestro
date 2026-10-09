@@ -19,7 +19,7 @@
  * 优先级：
  *   1. `RENDERER_PORT` 环境变量（用户显式指定，最高优先）
  *   2. `.dev-port` 文件（vite 发布的实际端口）
- *   3. 5173 兜底（vite 没发布时的最后手段）
+ *   3. 5273 兜底（vite 没发布时的最后手段）
  *
  * 拿不到就退 3，并在日志里**明确提示**"没读到端口文件，窗口可能连不上" ——
  * 宁可让用户看到一句提示，不要静默连错端口。
@@ -27,7 +27,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'path';
 
-export const DEFAULT_DEV_PORT = 5173;
+export const DEFAULT_DEV_PORT = 5273;
 
 /** vite 发布端口文件的位置（packages/renderer/.dev-port）。 */
 function portFilePath(): string {

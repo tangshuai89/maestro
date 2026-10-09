@@ -137,7 +137,13 @@
       （**最易漏**：不改则换端口后所有 /music /auth 被 CORS 拒）
 - [x] 10.5 实测：5173 被占 → vite 与 electron 两侧算出**同一个** 5176；
       `RENDERER_PORT=6000` 严格照用
-- [ ] 10.6 补 `dev-port` 的单测（lsof 不可用时的降级 / MAX_TRIES 边界）
+- [x] 10.6 补 `dev-port` 的单测（12 条：lsof 降级 / MAX_TRIES 边界 /
+      端口发布读取链路 / 原子写 / 退出清理）
+- [x] 10.7 默认端口 5173 → **5273**（避让机制退化为安全网，常用路径不触发）。
+      改动面：两个 `DEFAULT_DEV_PORT` 常量 + server CORS allowlist 改覆盖
+      5273–5299 + `.env.example` + 三份 README
+- [x] 10.8 实测：5273 起完整 dev 栈，端口文件 = 实际监听 = electron 加载，
+      0 错误且未触发避让；三条代理路由均 200；CORS 预检正确放行
 
 ### Phase 3 — 验证与收尾
 
