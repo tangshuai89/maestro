@@ -312,15 +312,38 @@ export async function probeQqSession(cookie: string, uin: string): Promise<Sessi
 | `c.y.qq.com` 歌词                        | ✅ 正常                                                                                 |
 | `get_user_baseinfo_v2`                   | ✅ 返回 nickname（**无 cookie 也能返回**）                                              |
 
-**有效 cookie**：⏳ **仍待补**（任务 F0/F1，本轮未做）。
+**有效 cookie**（2026-10-09 F0 完成，`uin=81295659` 重新登录后）：
 
-⚠️ 因此「探针歌在有效态下能出 purl」这个前提**尚未实测**。本轮已用**失效**
-cookie 端到端验通（`probeSession` 判死 / 缓存命中 / `getStreamPath` 抛
-`AUTH_EXPIRED`），失效方向确定成立；**有效方向要等 F0 补上基线才算闭环**。
+| 接口                                     | 结果                                                          |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| GetVkey `004Gq0xE1YC8xp`（探针歌，免费） | **`purl` 有（len 218）**、`result=0`、`errtype=""`、`vkey` 有 |
+| GetVkey `003cSLOO35W3yP`                 | 同上，`purl` 有、`result=0`                                   |
 
-风险可控的原因：探针判错的最坏后果是"误报一次需要重新登录"，不影响数据、
-不丢曲库。真正需要担心的是反向（有效 cookie 被判死 → 用户被反复要求重登），
-这一点在 F0 完成前**没有实测保证** —— 上线前请务必先跑 F0。
+**失效 vs 有效对照**（这是 F0 的全部价值）：
+
+|                 | `purl`        | `vkey` | `result` | `errtype` |
+| --------------- | ------------- | ------ | -------- | --------- |
+| 失效 cookie     | 空            | 空     | `104003` | `""`      |
+| **有效 cookie** | **有（218）** | **有** | **`0`**  | `""`      |
+
+→ **探针歌判据成立**：有效态下探针歌能出 purl，失效态下出不来。两个方向都实测过。
+→ **反向风险排除**：有效 cookie 不会被误判为过期（这是上线前最担心的一点）。
+→ 附带发现：`result` 其实也能区分（`0` vs `104003`），所以当初"不依赖错误码"的
+谨慎**并非必需** —— 但探针歌判据仍然更稳健（`errtype` 为空、且 `result` 无文档，
+一旦 QQ 改语义，只有 purl 判据不会跟着坏）。保留原设计。
+
+**F0 端到端**（用有效 cookie 打真实 app 实例）：
+
+```
+status 不带 validate   -> loggedIn=true  expired=(无)
+status + validate=1    -> loggedIn=true  expired=(无)     ← 不会误报过期
+stream 取流            -> HTTP 200（正常出流，未误报 AUTH_EXPIRED）
+```
+
+`probeSession` 亦验：第一次 `alive=true reason=purl_present fetched=true`，
+第二次 `fetched=false`（缓存生效）。
+
+### 本轮实测补充（14:2x，Phase 10 落地后）
 
 ### 本轮实测补充（14:2x，Phase 10 落地后）
 
