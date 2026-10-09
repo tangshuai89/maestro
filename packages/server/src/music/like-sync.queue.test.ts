@@ -13,6 +13,24 @@
  *
  * 不依赖真实 provider；用 stub processor 模拟行为。
  *
+ * ## 为什么 sleep 被换成「假的」
+ *
+ * 旧实现让退避**真实发生**：7 次尝试之间要真等 ~64s（1+2+4+8+16+32 + jitter），
+ * 再用一个 90s 墙钟预算去轮询「drain 完了没」。两个问题：
+ *
+ *  1. **flaky**：全量测试并行 + 机器负载高时，setTimeout 回调被推迟，drain 在
+ *     90s 内跑不完 → `应有 7 次尝试` 失败（2026-10-08 连续三轮复现，单跑三轮全过）
+ *  2. **慢**：单跑这个文件要 ~3 分钟，而它断言的**只是 sleep 的毫秒数**
+ *     —— 那些值在 `sleepCalls` 里已经捕获了，真等 64s 毫无信息量
+ *
+ * 现在把 `sleep` 换成即时 resolve 的 stub：断言全保留（数值照旧从 sleepCalls 读），
+ * 耗时降到毫秒级，也不再有 flaky。生产代码零改动 —— 测试本来就在
+ * `(q as any).sleep = ...` 上打桩。
+ *
+ * 第 4 条（方向翻转）原先靠「200ms 后再 enqueue」与「≥1000ms 的首次退避」赛跑，
+ * 注释里自己写了「时序竞态…测试变 flaky」。现在改成**在 sleep 钩子里触发翻转** ——
+ * 确定性的，不再依赖任何墙钟。
+ *
  * 运行: npx ts-node src/music/like-sync.queue.test.ts
  */
 export {};
@@ -22,41 +40,51 @@ const assert = require('node:assert');
 const { LikeSyncQueue } = require('./like-sync.queue');
 const { BadRequestException } = require('@nestjs/common');
 
-/** 工具：跑一次 enqueue，poll 到队列彻底空闲后返 attempt 次数 / 总 sleep 时间。
- *  队列单飞 drain，attempt 之间会 sleep（指数退避最坏 ~64s）。这里设个 ~90s
- *  预算，安全覆盖完 MAX_ATTEMPTS=7 次。 */
+/** 假 sleep：立刻 resolve，但把请求的毫秒数记下来。
+ *
+ *  退避的**数值**由 sleepCalls 断言，**真实等待**没有任何断言价值，却要付 64s
+ *  的墙钟代价和一份 flaky（本文件头注释有详细说明）。
+ *
+ *  `onSleep` 让调用方在 sleep 发生的那个点插入动作 —— 第 4 条用它做确定性的
+ *  方向翻转，不再和墙钟赛跑。 */
+function fakeSleep(
+  sleepCalls: number[],
+  onSleep?: (ms: number, index: number) => void | Promise<void>,
+): (ms: number) => Promise<void> {
+  return async (ms: number) => {
+    sleepCalls.push(ms);
+    if (onSleep) await onSleep(ms, sleepCalls.length - 1);
+  };
+}
+
+/** 轮询到 drain 彻底结束。sleep 已是假的了，这里只需给事件循环几次机会。 */
+async function waitDrained(q: any, budgetMs = 5000): Promise<void> {
+  const start = Date.now();
+  while ((q as any).draining && Date.now() - start < budgetMs) {
+    await new Promise((r) => setTimeout(r, 1));
+  }
+  // 让最后一次 processor / sleep 回调彻底落地
+  await new Promise((r) => setImmediate(r));
+}
+
+/** 跑一次 enqueue，返回 attempt 次数与请求过的 sleep 毫秒序列。 */
 async function runWith(processor: () => Promise<void>) {
   const q = new LikeSyncQueue();
   let attempts = 0;
-  const wrappedProcessor = async (
-    _s: any,
-    _p: any,
-    _t: any,
-    _l: any,
-  ) => {
+  const wrappedProcessor = async (_s: any, _p: any, _t: any, _l: any) => {
     attempts++;
     await processor();
   };
   q.registerProcessor(wrappedProcessor);
   const sleepCalls: number[] = [];
-  // 用 monkey-patch 抓 sleep 调用
-  const originalSleep = (q as any).sleep.bind(q);
-  (q as any).sleep = (ms: number) => {
-    sleepCalls.push(ms);
-    return originalSleep(ms);
-  };
+  (q as any).sleep = fakeSleep(sleepCalls);
   await q.enqueue({
     session: { id: 's', providers: {} },
     mergedId: 'm',
     liked: true,
     targets: [{ platform: 'netease', trackId: 't' }],
   });
-  // 等 drain 完成：draining 翻 false 才算结束（active=null + 循环退出 + finally）。
-  // 预算 90s 覆盖最坏序列（6 次 sleep 累计 ~64s + jitter）。
-  const start = Date.now();
-  while ((q as any).draining && Date.now() - start < 90000) {
-    await new Promise((r) => setTimeout(r, 10));
-  }
+  await waitDrained(q);
   return { attempts, sleeps: sleepCalls };
 }
 
@@ -103,14 +131,17 @@ async function main() {
       distinct >= 5,
       `20 次 backoffMs(2) 至少应有 5 个不同值（实际 ${distinct}），jitter 必须存在`,
     );
-    console.log(
-      `✅ 3. jitter 存在（20 次 sample → ${distinct} 个不同值，落在 [4000, 5000) ms）`,
-    );
+    console.log(`✅ 3. jitter 存在（20 次 sample → ${distinct} 个不同值，落在 [4000, 5000) ms）`);
   }
 
   // ── 4. 方向翻转让位（狂点场景） ────────────────────────────────
-  // unlike 进 drain、processor 一直失败 → 中途用户又点 like → 当前 unlike
-  // 任务应被弃，不应再消耗剩余 ~30s 的退避 sleep。表现：attempt 远小于 7。
+  // unlike 进 drain、processor 一直失败 → 中途用户再点 like → 当前 unlike
+  // 任务应被弃，不应再消耗剩余退避 sleep。表现：attempt 远小于 7。
+  //
+  // 旧实现靠「enqueue 后等 200ms」与「首次退避 ≥1000ms」赛跑，注释里自己写了
+  // 「时序竞态…测试变 flaky」。现在改成**在 sleep 钩子里触发翻转**：sleep 被调用
+  // 那一刻就是「unlike 已经失败、正要进入下一次 attempt」的精确时刻，此时把 like
+  // 塞进 pending，下一轮循环开头的 hasDirectionReversed 必命中。零墙钟依赖。
   {
     const q = new LikeSyncQueue();
     const attemptsByDir = new Map<boolean, number>(); // liked → attempts
@@ -119,52 +150,39 @@ async function main() {
       throw new Error('transient');
     });
     const sleepCalls: number[] = [];
-    const originalSleep = (q as any).sleep.bind(q);
-    (q as any).sleep = (ms: number) => {
-      sleepCalls.push(ms);
-      return originalSleep(ms);
+    const enqueueLike = async () => {
+      await q.enqueue({
+        session: { id: 's', providers: {} },
+        mergedId: 'm',
+        liked: true,
+        targets: [{ platform: 'netease', trackId: '385781' }],
+      });
     };
-    // 先入队 unlike（让 drain 立即拾起）。
+    (q as any).sleep = fakeSleep(sleepCalls, async (_ms, i) => {
+      // 只在 unlike 的第一次退避时翻转方向（同 key、liked 相反）
+      if (i === 0) await enqueueLike();
+    });
     await q.enqueue({
       session: { id: 's', providers: {} },
       mergedId: 'm',
       liked: false,
       targets: [{ platform: 'netease', trackId: '385781' }],
     });
-    // 200ms 后入队 like（方向翻转）——远小于 unlike 第 1 次失败后的退避
-    // sleep（≥1000ms），保证 like 在 unlike 还在 sleep 时就落进 pending，
-    // 下次 attempt 循环开头 hasDirectionReversed 必命中。不能等太久（如 1200ms），
-    // 否则 jitter 让 sleep 落在 1000~1100ms 时 unlike 已进入下一次 attempt，
-    // 计数就多 1，测试变 flaky（本身逻辑没错，是时序竞态）。
-    await new Promise((r) => setTimeout(r, 200));
-    await q.enqueue({
-      session: { id: 's', providers: {} },
-      mergedId: 'm',
-      liked: true,
-      targets: [{ platform: 'netease', trackId: '385781' }],
-    });
-    // 等 drain 收敛（不像 task 2 那样会跑完 64s 退避 → 几秒内就该结束）。
-    const start = Date.now();
-    while ((q as any).draining && Date.now() - start < 5000) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    await waitDrained(q);
     const unlikeAttempts = attemptsByDir.get(false) ?? 0;
     const likeAttempts = attemptsByDir.get(true) ?? 0;
-    // 关键断言 1：unlike 提前让位——远没跑满 7 次（不死磕过时意图）。
-    // 用 ≤ 2 而非 === 1：容忍 enqueue 恰好卡在 attempt 边界的 ±1 时序抖动，
-    // 真正要验的是"没有死磕到底"，不是精确次数。
-    assert.ok(
-      unlikeAttempts <= 2,
-      `unlike 应在方向翻转后尽快让位、不跑满 7 次（实际 ${unlikeAttempts} 次）`,
+    // unlike 必须在翻转后的下一轮就放弃 —— 不死磕已过时的意图。
+    // 这里可以严格断言 === 1：翻转时机由 sleep 钩子保证，不再有时序抖动。
+    assert.strictEqual(
+      unlikeAttempts,
+      1,
+      `unlike 应在方向翻转后立即让位（实际 ${unlikeAttempts} 次）`,
     );
-    // 关键断言 2：翻转信号确实送达——如果 hasDirectionReversed 不工作，unlike
-    // 会一直跑到 7 次，like 永远轮不到。so like 至少跑了 1 次 = 让位生效。
-    assert.ok(
-      likeAttempts >= 1,
-      `翻转后 like 应被处理（实际 ${likeAttempts} 次）`,
-    );
+    // 翻转信号确实送达：若 hasDirectionReversed 不工作，unlike 会跑满 7 次、
+    // like 永远轮不到。
+    assert.ok(likeAttempts >= 1, `翻转后 like 应被处理（实际 ${likeAttempts} 次）`);
     console.log(
-      `✅ 4. 方向翻转让位（unlike=${unlikeAttempts} attempts 后让位，like=${likeAttempts} 次承接）`,
+      `✅ 4. 方向翻转让位（unlike=${unlikeAttempts} 次即让位，like=${likeAttempts} 次承接；零墙钟依赖）`,
     );
   }
 
