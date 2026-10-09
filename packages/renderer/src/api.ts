@@ -103,6 +103,19 @@ export interface AuthStatus {
   /** Spotify-only: cached product tier, null for non-spotify providers or
    * when tier is unknown. */
   tier?: 'premium' | 'free' | 'open' | null;
+  /**
+   * 登录态**已过期**（server 跑过 validate 探针且判定失效）。
+   *
+   * 与 `loggedIn:false` 分开是因为两者含义不同：
+   *  - `loggedIn:false` 且 `expired` 缺失 = 从没登录过 → 不该弹「重新登录」
+   *  - `loggedIn:false` 且 `expired:true`  = 登录过但过期了 → 该弹「重新登录」
+   *
+   * 仅在服务端收到 `validate=1` 时出现。见 specs/auth-resilience Phase 10。
+   */
+  expired?: boolean;
+  /** 过期时的机器可读错误码（当前只有 AUTH_EXPIRED）。 */
+  error?: string;
+  message?: string;
 }
 
 export interface NeteaseQrStart {
@@ -470,6 +483,28 @@ export async function getAuthStatusExtended(provider: MusicProvider): Promise<Au
     await fetchWithToken(`${API_BASE}/auth/status?provider=${provider}&extended=1`, {
       credentials: 'include',
     }),
+  );
+}
+
+/**
+ * 带登录态校验的 status（spec: specs/auth-resilience Phase 10）。
+ *
+ * `validate=1` 让服务端**真的**跑一次探针，而不是只检查 cookie 在不在。
+ * 这是唯一能区分「从没登录」和「登录已过期」的路径 —— 默认的 status 只看
+ * cookie 是否存在，一个早就失效的 cookie 也会被报成 loggedIn:true。
+ *
+ * 代价：会多打一次平台请求（服务端有 10min session 级缓存，不是每次都打）。
+ * 所以只在「确实需要判断」时调用（启动重校验 / 播放失败兜底），
+ * 不要放进常规轮询。
+ */
+export async function getAuthStatusValidated(
+  provider: MusicProvider,
+): Promise<AuthStatusExtended> {
+  return json<AuthStatusExtended>(
+    await fetchWithToken(
+      `${API_BASE}/auth/status?provider=${provider}&validate=1&extended=1`,
+      { credentials: 'include' },
+    ),
   );
 }
 

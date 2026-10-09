@@ -125,7 +125,7 @@ number of platform parity items — see [NEXT-ITERATION.md](./NEXT-ITERATION.md)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Renderer (React + Vite, :5173)                              │
+│  Renderer (React + Vite, :5273)                              │
 │   - Vite-dev proxies /api/*, /music/*, /auth/*, /reco/*      │
 │   - <audio> src = /music/stream/{provider}/{id}             │
 │   - Cover-art colour extraction, theming, source switcher    │
@@ -259,7 +259,7 @@ cp .env.example .env    # optional — every var has a sane dev default
 npm run dev
 # concurrently:
 #   nest start --watch   → server on :3200
-#   vite                 → renderer on :5173
+#   vite                 → renderer on :5273
 #   electron             → opens the window after 3s
 ```
 
@@ -290,8 +290,8 @@ defaults.
 | Var | Default | Notes |
 | --- | --- | --- |
 | `PORT` | `3200` | NestJS port |
-| `RENDERER_BASE` | `http://localhost:5173` | Post-login redirect base |
-| `RENDERER_ORIGINS` | `http://localhost:5173,http://localhost:3000` | CORS allow-list |
+| `RENDERER_BASE` | `http://localhost:5273` | Post-login redirect base |
+| `RENDERER_ORIGINS` | `http://localhost:5273,http://localhost:3000` | CORS allow-list |
 | `SESSION_SECRET` | dev placeholder | Cookie signing key — **set in prod** |
 | `SESSION_TTL_MS` | 30 days | Session lifetime |
 | `STORAGE_DIR` | `.storage` | Where `state.json` lives |

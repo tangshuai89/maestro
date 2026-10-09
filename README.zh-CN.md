@@ -114,7 +114,7 @@ DeepSeek 推荐、红心分发）均端到端可用。剩余主要是生产打�
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  渲染层 Renderer (React + Vite, :5173)                        │
+│  渲染层 Renderer (React + Vite, :5273)                        │
 │   - Vite-dev 把 /api/*, /music/*, /auth/*, /reco/* 代理到 :3200│
 │   - <audio> src = /music/stream/{provider}/{id}              │
 │   - 封面取色、主题、音源切换                                  │
@@ -241,7 +241,7 @@ cp .env.example .env    # 可选 —— 每个变量都有合理的开发默认�
 npm run dev
 # 并行运行：
 #   nest start --watch   → 服务端 :3200
-#   vite                 → 渲染层 :5173
+#   vite                 → 渲染层 :5273
 #   electron             → 3 秒后打开窗口
 ```
 
@@ -270,8 +270,8 @@ npm test -- --coverage  # c8 行覆盖率门槛（≥60%）
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PORT` | `3200` | NestJS 端口 |
-| `RENDERER_BASE` | `http://localhost:5173` | 登录后重定向基址 |
-| `RENDERER_ORIGINS` | `http://localhost:5173,http://localhost:3000` | CORS 白名单 |
+| `RENDERER_BASE` | `http://localhost:5273` | 登录后重定向基址 |
+| `RENDERER_ORIGINS` | `http://localhost:5273,http://localhost:3000` | CORS 白名单 |
 | `SESSION_SECRET` | 开发占位符 | Cookie 签名密钥 —— **生产必须设置** |
 | `SESSION_TTL_MS` | 30 天 | 会话有效期 |
 | `STORAGE_DIR` | `.storage` | `state.json` 存放位置 |

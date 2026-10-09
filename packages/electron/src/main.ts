@@ -13,6 +13,7 @@ import {
   screen,
 } from 'electron';
 import * as path from 'path';
+import { devRendererUrl } from './dev-port';
 import { spawn, ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
@@ -366,7 +367,7 @@ function createWindow(): void {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://127.0.0.1:5173');
+    mainWindow.loadURL(devRendererUrl());
     // Open DevTools so users can see renderer console errors (e.g. audio
     // loading failures, network issues with the Deezer preview URL).
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -1048,7 +1049,7 @@ app.whenReady().then(async () => {
     createWindow: (opts) => new BrowserWindow(opts) as unknown as OverlayWindowLike,
     loadTarget: (): OverlayLoadTarget =>
       isDev
-        ? { kind: 'url', url: 'http://127.0.0.1:5173/lyrics.html' }
+        ? { kind: 'url', url: devRendererUrl('/lyrics.html') }
         : {
             kind: 'file',
             file: path.join(process.resourcesPath, 'renderer', 'lyrics.html'),

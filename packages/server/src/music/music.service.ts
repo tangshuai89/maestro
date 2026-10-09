@@ -44,6 +44,7 @@ import type {
   UnifiedAlbumSearchResult,
 } from './album-types';
 import { buildUnifiedAlbums } from './album.util';
+import type { SessionProbeResult } from './qq-session-probe';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
  *  不阻塞其他平台。Spotify 偶发 504 较常见，所以这个时间不能太松。 */
@@ -982,6 +983,25 @@ export class MusicService {
   // ══════════════════════════════════════════════════════════════
   // 专辑（spec: specs/album-search）
   // ══════════════════════════════════════════════════════════════
+
+  /**
+   * 判定某平台的登录态是否仍可用（spec: specs/auth-resilience Phase 10）。
+   *
+   * 目前只有 QQ 实现了探针；其它平台返回 `alive:true, reason:'network_error'`
+   * （= 保守当作可用），因为 spec 明确「本轮只修 QQ」。netease / spotify 的
+   * 过期检测留在 Phase 11 —— 这里的形状已按 provider 参数化，届时加分支即可。
+   */
+  async probeSession(
+    session: Session,
+    provider: MusicProvider,
+  ): Promise<SessionProbeResult> {
+    if (provider === 'qq') {
+      const ps = (session.providers.qq ?? {}) as ProviderSession;
+      return this.qq.probeSession(ps);
+    }
+    // 未实现的平台：保守当作可用，避免误报过期打断正常使用
+    return { alive: true, reason: 'network_error', fetched: false };
+  }
 
   /** provider 实例 → 专辑能力。方法缺失 = 该平台在专辑搜索里缺席
    *  （不是错误）。Spotify 整条线因缺 OAuth token 未实现，见 spec 阻塞项 B2。 */

@@ -29,3 +29,6 @@ playwright-report/
 # figma-code-connect-inject.mjs 备份（避免污染 git status）
 figma-code-connect.json.bak
 figma-code-connect.json.bak2
+
+# dev 端口发布文件（vite 写、electron 读；每次 dev 重新生成）
+packages/renderer/.dev-port

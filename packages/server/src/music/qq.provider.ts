@@ -9,9 +9,14 @@ import { Track } from './types';
 import type { VipCategory } from './types';
 import { ProviderSession } from '../common/session';
 import { type LyricLine, parseLrc } from '../common/lyrics';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
 import { withTimeout } from '../common/timeout';
+import {
+  probeQqSessionUncached,
+  SessionProbeCache,
+  type SessionProbeResult,
+} from './qq-session-probe';
 import type { AlbumSource, AlbumTrack } from './album-types';
 
 /** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
@@ -237,6 +242,13 @@ export function detectQqVipCategory(pay: QqPay | undefined): VipCategory | undef
 @Injectable()
 export class QqMusicProvider {
   private readonly logger = new Logger(QqMusicProvider.name);
+
+  /**
+   * 登录态探针缓存（spec: specs/auth-resilience Phase 10）。
+   * 进程内、per-session key、TTL 10min —— 一次播放失败会走「同源重试 →
+   * 跨平台 fallback → 兜底探针」多条路径，没缓存就会对 QQ 连打好几发。
+   */
+  private readonly probeCache = new SessionProbeCache();
 
   /** 所有 QQ 请求统一 UA（与现有 search / fetchVkey / getLyrics 保持一致）。 */
   private static readonly UA =
@@ -835,6 +847,30 @@ export class QqMusicProvider {
     lossless: { prefix: 'F000', ext: '.flac' }, // flac 无损
   };
 
+  /**
+   * 判定 QQ 登录态是否仍可用（spec: specs/auth-resilience Phase 10）。
+   *
+   * 带 10min session 级缓存 + 同 key 并发单飞。没有 cookie/uin → 视为
+   * 「未登录」（alive:false / no_cookie），与「登录过但过期」区分开 ——
+   * 上层要据此决定是提示"重新登录"还是当作匿名用户。
+   */
+  async probeSession(session: ProviderSession): Promise<SessionProbeResult> {
+    const cookie = session.qqCookie ?? '';
+    const uin = session.qqUin ?? '';
+    if (!cookie || !uin) {
+      return { alive: false, reason: 'no_cookie', fetched: false };
+    }
+    // key 用 cookie 的哈希前 16 位 + uin：同一 session 稳定，换登录立即失效
+    const key = `${uin}:${createHash('sha256').update(cookie).digest('hex').slice(0, 16)}`;
+    const res = await this.probeCache.resolve(key, () =>
+      probeQqSessionUncached(cookie, uin),
+    );
+    this.logger.log(
+      `QQ session probe: alive=${res.alive} reason=${res.reason} cached=${!res.fetched}`,
+    );
+    return res;
+  }
+
   async getStreamPath(
     session: ProviderSession,
     songmid: string,
@@ -861,6 +897,20 @@ export class QqMusicProvider {
         `QQ GetVkey 无 purl: mid=${songmid}, errtype=${info?.errtype}, ` +
           `hasCookie=${Boolean(session.qqCookie)}, uin=${session.qqUin ?? '?'}`,
       );
+      // 拿不到流有三种可能：无版权 / 需付费 / **登录态已失效**。errtype 区分不了
+      // （实测失效 cookie 下 errtype 为空串），所以回落探针歌判据来分辨 ——
+      // 探针说登录也死了，那就是登录过期，必须让上层能提示「重新登录」，
+      // 否则用户只会看到"放不了"却不知道为什么（spec Phase 10 报障）。
+      const probe = await this.probeSession(session);
+      if (!probe.alive && probe.reason !== 'no_cookie') {
+        this.logger.warn(
+          `QQ 登录态已失效（探针 reason=${probe.reason}），抛 AUTH_EXPIRED：${songmid}`,
+        );
+        throw new BadRequestException({
+          error: 'AUTH_EXPIRED',
+          message: 'QQ 登录已过期，请重新登录',
+        });
+      }
       throw new BadRequestException(
         `QQ vkey missing purl for ${songmid}: errtype=${info?.errtype}（可能无版权/需会员/登录态失效）`,
       );

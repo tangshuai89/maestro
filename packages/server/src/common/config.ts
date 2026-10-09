@@ -11,14 +11,34 @@ import * as fs from 'fs';
 export class ConfigService {
   readonly port = Number(process.env.PORT ?? 3200);
 
-  readonly rendererOrigins = (process.env.RENDERER_ORIGINS ??
-    'http://localhost:5173,http://localhost:3000')
+  /**
+   * 允许的 renderer origin（CORS allowlist）。
+   *
+   * ⚠️ 必须**覆盖 dev 端口的整个避让区间**：renderer 撞到 5273 被占时会自动
+   * 顺延（见 packages/renderer/scripts/dev-port.mjs），这里若只认死端口，
+   * 换端口后所有 /music /auth 请求都会被 CORS 拒掉，症状是
+   * 「页面能开但什么都是 undefined」—— 比黑屏更难查。
+   *
+   * 顺延区间取 5273–5299（MAX_TRIES=50 的一半，够用且不无限膨胀）。
+   */
+  readonly rendererOrigins = (
+    process.env.RENDERER_ORIGINS ??
+    [
+      'http://localhost:3000',
+      // dev 端口自动避让后的实际端口，一并放行（5273-5299）
+      ...Array.from({ length: 27 }, (_, i) => `http://localhost:${5273 + i}`),
+      ...Array.from({ length: 27 }, (_, i) => `http://127.0.0.1:${5273 + i}`),
+    ].join(',')
+  )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
   readonly rendererBase =
-    process.env.RENDERER_BASE ?? 'http://localhost:5173';
+    process.env.RENDERER_BASE ??
+    (process.env.RENDERER_PORT
+      ? `http://127.0.0.1:${process.env.RENDERER_PORT}`
+      : 'http://127.0.0.1:5273');
 
   readonly sessionSecret =
     process.env.SESSION_SECRET ?? 'dev-only-secret-change-me';

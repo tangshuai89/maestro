@@ -659,6 +659,22 @@ export class MusicController {
       }
       await this.proxyAudio(upstream, headers, req, res, provider);
     } catch (err) {
+      // 登录态失效要和"这首歌取不到流"区分开（spec: specs/auth-resilience
+      // Phase 10）。之前一律压成 502 stream_unavailable，前端拿到的只是
+      // `<audio>` 的 MediaError code=4，用户永远看不到"请重新登录"。
+      //
+      // ⚠️ 注意：这个 401 的 body `<audio>` 读不到（它是给媒体元素用的 URL）。
+      // 真正让用户看到提示的是 renderer 的兜底探针
+      // （usePlayer.onError → GET /auth/status?...&validate=1）。
+      // 这里保留类型化状态码是为了：不认识 401 的旧客户端能分辨，
+      // 以及将来若加 pre-flight 就能直接用。
+      const body = (err as { getResponse?: () => unknown })?.getResponse?.() as
+        | { error?: string; message?: string }
+        | undefined;
+      if (body?.error === 'AUTH_EXPIRED') {
+        res.status(401).json({ error: 'AUTH_EXPIRED', message: body.message });
+        return;
+      }
       res.status(502).json({
         error: 'stream_unavailable',
         message: (err as Error).message,

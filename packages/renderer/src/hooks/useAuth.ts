@@ -3,6 +3,7 @@ import {
   cancelSpotifyAuth,
   getAuthStatus,
   getAuthStatusExtended,
+  getAuthStatusValidated,
   getSpotifyStatus,
   loginNeteaseCookie,
   loginQqCookie,
@@ -148,23 +149,35 @@ export function useAuth(
         }
       }
       dispatch({ type: 'set_status', loggedIn: status.loggedIn, user: status.user, tier });
-      // Stale credential check (server hint).
+      // 过期登录态检测（spec: specs/auth-resilience Phase 10）。
+      //
+      // ⚠️ 旧实现是**死代码**：它又调了一次 getAuthStatusExtended（同一个
+      // 只看 cookie 在不在的端点），fresh.loggedIn 恒为 true，那个 AUTH_EXPIRED
+      // 分支永远走不到。注释写的「server will re-validate as part of the same
+      // request」并不成立。
+      //
+      // 现在改成调 getAuthStatusValidated（带 validate=1，服务端真跑探针）。
+      // 另外去掉了 `lastValidatedAt != null` 的前置条件 —— 老 session /
+      // 从没写过校验时间的 session（lastValidatedAt 为 null）恰恰是最可能
+      // 过期的那批，不该被这个条件挡掉。
       if (status.loggedIn) {
         try {
           const ext = await getAuthStatusExtended(p);
-          if (
-            ext.lastValidatedAt != null &&
-            Date.now() - ext.lastValidatedAt > STALE_VALIDATION_MS
-          ) {
-            // Re-probe by re-issuing status; server will re-validate as
-            // part of the same request.
-            const fresh = await getAuthStatusExtended(p);
-            if (!fresh.loggedIn) {
+          const stale =
+            ext.lastValidatedAt == null ||
+            Date.now() - ext.lastValidatedAt > STALE_VALIDATION_MS;
+          if (stale) {
+            const fresh = await getAuthStatusValidated(p);
+            // 只认 expired:true。「从没登录过」服务端会给 loggedIn:false
+            // 但不带 expired —— 那种情况不该在这里弹重登录。
+            if (fresh.expired === true) {
+              // mark_expired 而非 fail：此刻没有登录尝试在跑，fail 会被
+              // attemptId 门控静默丢弃（见 reducer 的 mark_expired 注释）。
               dispatch({
-                type: 'fail',
+                type: 'mark_expired',
                 error: {
                   code: 'AUTH_EXPIRED',
-                  message: '会话已过期，请重新登录',
+                  message: fresh.message ?? '登录已过期，请重新登录',
                   provider: p,
                   attemptId: 'stale-probe',
                   at: Date.now(),
@@ -173,7 +186,7 @@ export function useAuth(
             }
           }
         } catch {
-          /* ignore — best-effort probe */
+          /* ignore — best-effort probe；探针失败不该把用户踢下线 */
         }
       }
     } catch (e) {
@@ -608,6 +621,24 @@ export function useAuth(
     handleRetry,
     handleDismissError: () => dispatch({ type: 'dismiss_error' }),
     resetAuth,
+    /**
+     * 外部（usePlayer）报告"某平台的登录态已失效"，直接进 AUTH_EXPIRED 错误态。
+     *
+     * 为什么需要它：`<audio>` 拿不到服务端 401 的 body，播放彻底失败后
+     * 只能自己去问服务端；问到「过期」之后需要一个进错误态的入口。
+     * （见 specs/auth-resilience Phase 10）
+     */
+    markExpired: (p: MusicProvider, message?: string) =>
+      dispatch({
+        type: 'mark_expired',
+        error: {
+          code: 'AUTH_EXPIRED',
+          message: message ?? '登录已过期，请重新登录',
+          provider: p,
+          attemptId: 'play-failure-probe',
+          at: Date.now(),
+        },
+      }),
     /** New: full reducer state for the AuthErrorPanel. */
     authError: state.error,
     authPhase: state.phase,

@@ -38,6 +38,19 @@ export type AuthAction =
   | { type: 'enter_validating' }
   | { type: 'succeed'; user: AuthState['user']; tier?: AuthState['tier'] }
   | { type: 'fail'; error: AuthError }
+  /**
+   * 登录态在**没有任何登录尝试进行中**的情况下被发现已过期
+   * （spec: specs/auth-resilience Phase 10）。
+   *
+   * 为什么不复用 `fail`：`fail` 会走 `isCurrentAttempt()` 门控，那是给
+   * 「用户刚点了登录、这次尝试失败了」设计的。过期检测是**事后**发现的
+   * （启动重校验 / 播放失败兜底），此刻 `phase` 是 `authenticated`，
+   * `currentAttempt` 返回的是上次登录的 attempt id —— 传 `stale-probe`
+   * 之类的 id 永远匹配不上，整个 fail 会被**静默丢弃**，用户什么都看不到。
+   *
+   * 这正是 2026-10-08 首次上线时前端无反应的原因。
+   */
+  | { type: 'mark_expired'; error: AuthError }
   | { type: 'cancel'; attemptId: string; reason: 'user' | 'timeout' }
   | { type: 'dismiss_error' };
 
@@ -120,6 +133,22 @@ export function reducer(state: AuthState, action: AuthAction): AuthState {
         loggedIn: false,
         user: null,
         phase: { kind: 'failed', attempt, error: action.error },
+        error: action.error,
+      };
+    }
+
+    case 'mark_expired': {
+      // 不做 attemptId 门控：这不是一次登录尝试的失败，而是对**既有登录态**
+      // 的判定翻转。重复到达也幂等（同样的 error 再写一遍）。
+      return {
+        ...state,
+        loggedIn: false,
+        user: null,
+        phase: {
+          kind: 'failed',
+          attempt: currentAttempt(state) ?? newAttempt(state.provider),
+          error: action.error,
+        },
         error: action.error,
       };
     }

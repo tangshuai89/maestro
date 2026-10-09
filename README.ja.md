@@ -125,7 +125,7 @@ Maestro は、この 4 つのプラットフォームを**あなた自身が所�
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  レンダラー (React + Vite, :5173)                             │
+│  レンダラー (React + Vite, :5273)                             │
 │   - Vite-dev が /api/*, /music/*, /auth/*, /reco/* を :3200  │
 │     にプロキシ                                                │
 │   - <audio> src = /music/stream/{provider}/{id}              │
@@ -258,7 +258,7 @@ cp .env.example .env    # 任意 —— 各変数に妥当な開発デフォル�
 npm run dev
 # 並行実行：
 #   nest start --watch   → サーバー :3200
-#   vite                 → レンダラー :5173
+#   vite                 → レンダラー :5273
 #   electron             → 3 秒後にウィンドウを開く
 ```
 
@@ -289,8 +289,8 @@ npm test -- --coverage  # c8 行カバレッジゲート（≥60%）
 | 変数 | デフォルト | 備考 |
 | --- | --- | --- |
 | `PORT` | `3200` | NestJS ポート |
-| `RENDERER_BASE` | `http://localhost:5173` | ログイン後のリダイレクト基点 |
-| `RENDERER_ORIGINS` | `http://localhost:5173,http://localhost:3000` | CORS 許可リスト |
+| `RENDERER_BASE` | `http://localhost:5273` | ログイン後のリダイレクト基点 |
+| `RENDERER_ORIGINS` | `http://localhost:5273,http://localhost:3000` | CORS 許可リスト |
 | `SESSION_SECRET` | 開発用プレースホルダ | Cookie 署名鍵 —— **本番では設定必須** |
 | `SESSION_TTL_MS` | 30 日 | セッション有効期間 |
 | `STORAGE_DIR` | `.storage` | `state.json` の保存先 |
