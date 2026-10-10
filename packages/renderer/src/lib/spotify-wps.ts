@@ -11,7 +11,7 @@
  *  - 仅 Premium 账户可用；Free 走 MusicService 现有 /music/stream/spotify/:id
  *    代理路径（30s mp3），不走这里。
  *  - 浏览器 vs Electron：WPS 要求 secure context（HTTPS / localhost），但
- *    renderer 跑在 Vite (:5173) 和 Electron 都是 secure context。
+ *    renderer 跑在 Vite (:5273) 和 Electron 都是 secure context。
  *  - SDK 在账户上"为这个 App 注册一个 Spotify Connect 设备"——只要音乐
  *    来自同一 Spotify 账号且设备 active，推流由 Spotify 服务器发起，WPS
  *    接收 WebSocket 字节。

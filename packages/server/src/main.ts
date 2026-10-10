@@ -29,7 +29,7 @@ async function bootstrap() {
 
   app.use(cookieParser(cfg.sessionSecret));
   // CORS: allow the X-Maestro-Token header on all routes that the
-  // renderer calls. allowlist is `cfg.rendererOrigins` (dev:5173, etc).
+  // renderer calls. allowlist is `cfg.rendererOrigins` (dev:5273, etc).
   // Without this, the browser would refuse the custom header at
   // preflight and the guard would 401 everything.
   app.enableCors({

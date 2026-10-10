@@ -109,10 +109,10 @@ try {
   // 7. vite 报告的实际端口优先于配置的端口
   {
     clearPublishedDevPort();
-    // configured=5273（vite 首选）但 actual=5174（真正监听的）
-    const published = resolveAndPublishDevPort(DEFAULT_DEV_PORT, 5174);
-    assert.strictEqual(published, 5174, 'actual 必须覆盖 configured');
-    assert.strictEqual(readPublishedDevPort(), 5174);
+    // configured=5273（vite 首选）但 actual=5274（真正监听的）
+    const published = resolveAndPublishDevPort(DEFAULT_DEV_PORT, 5274);
+    assert.strictEqual(published, 5274, 'actual 必须覆盖 configured');
+    assert.strictEqual(readPublishedDevPort(), 5274);
     ok('7. vite 报告的 actual 端口优先于 configured（端口文件 = 实际监听端口）');
   }
 
