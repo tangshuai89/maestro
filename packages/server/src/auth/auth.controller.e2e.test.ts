@@ -179,8 +179,24 @@ async function main() {
         typeof json.authorizeUrl === 'string' && typeof json.state === 'string',
         JSON.stringify(json),
       );
+      // 8c. redirect_uri must come from ConfigService.rendererBase, not an inlined
+      // default. 2026-09-29 review: dev port moved 5173 -> 5273 and config.ts
+      // followed, but the two inlined copies in this controller were missed — a
+      // mismatched redirect_uri (vs the Spotify dashboard) fails the whole OAuth.
+      {
+        const ru = new URL(String(json.authorizeUrl)).searchParams.get('redirect_uri');
+        expect(
+          '8c. redirect_uri must not fall back to the retired port 5173',
+          ru !== null && ru.indexOf('5173') === -1,
+          String(ru),
+        );
+        expect(
+          '8d. redirect_uri ends with /auth/spotify/callback',
+          String(ru).endsWith('/auth/spotify/callback'),
+          String(ru),
+        );
+      }
     }
-
     // ── 9. POST /auth/spotify/cancel → 201（无 in-flight flow）──────
     {
       const r = await call('POST', '/auth/spotify/cancel', {});

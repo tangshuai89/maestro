@@ -142,17 +142,42 @@ async function main() {
     }
   }
 
-  // ── 6. 探针判定有效 → 保持 loggedIn:true ──
+  // ── 6. 探针判定有效 → 保持 loggedIn:true，且写 lastValidatedAt ──
   {
     const musicService = app.get(require('../music/music.service').MusicService);
     const qq: any = musicService['qq'];
     const orig = qq.probeSession.bind(qq);
     qq.probeSession = async () => ({ alive: true, reason: 'purl_present', fetched: true });
-    const r = await call('GET', '/auth/status?provider=qq&validate=1');
+    const before = Date.now();
+    const r = await call('GET', '/auth/status?provider=qq&validate=1&extended=1');
     const j = r.json as any;
     qq.probeSession = orig;
     assert.ok(j.expired === undefined, '探针说有效时不得标 expired');
-    ok('6. 探针判定有效 → 不标 expired');
+    // Phase 11 P11-4：结论性 alive（purl_present/vkey_present）必须刷新
+    // lastValidatedAt —— 否则 renderer 每次 refreshStatus 都 stale→重探。
+    assert.ok(
+      typeof j.lastValidatedAt === 'number' && j.lastValidatedAt >= before,
+      `结论性 alive 应写 lastValidatedAt，实际 ${JSON.stringify(j.lastValidatedAt)}`,
+    );
+    ok('6. 探针判定有效 → 不标 expired，且 lastValidatedAt 已刷新');
+  }
+
+  // ── 6b. 非结论性探针结果（network_error）不写 lastValidatedAt ──
+  {
+    // 用 spotify：music.service 对非 QQ 恒回 {alive:true, reason:'network_error'}
+    // —— 天然就是"探针没结论"，不用 mock。此 session 的 spotify 从没校验过，
+    // 所以 lastValidatedAt 应保持 null。
+    const r = await call('GET', '/auth/status?provider=spotify&validate=1&extended=1');
+    const j = r.json as any;
+    assert.ok(j.expired === undefined, '保守 alive 不得标 expired');
+    // network_error = "探针没结论"，不算校验过 —— 不写时间，保持 stale 让
+    // 下次 refreshStatus 再探（死态自愈通道）。
+    assert.strictEqual(
+      j.lastValidatedAt,
+      null,
+      `network_error 不应写 lastValidatedAt，实际 ${JSON.stringify(j.lastValidatedAt)}`,
+    );
+    ok('6b. network_error → 不写 lastValidatedAt（保持 stale）');
   }
 
   // ══════════════════════════════════════════════════════════

@@ -15,24 +15,30 @@ export class ConfigService {
    * 允许的 renderer origin（CORS allowlist）。
    *
    * ⚠️ 必须**覆盖 dev 端口的整个避让区间**：renderer 撞到 5273 被占时会自动
-   * 顺延（见 packages/renderer/scripts/dev-port.mjs），这里若只认死端口，
-   * 换端口后所有 /music /auth 请求都会被 CORS 拒掉，症状是
-   * 「页面能开但什么都是 undefined」—— 比黑屏更难查。
+   * 顺延（见 packages/renderer/scripts/dev-port.mjs，MAX_TRIES=50 →
+   * 顺延上限 5322），这里若只认死端口，换端口后所有 /music /auth 请求
+   * 都会被 CORS 拒掉，症状是「页面能开但什么都是 undefined」——
+   * 比黑屏更难查。
    *
-   * 顺延区间取 5273–5299（MAX_TRIES=50 的一半，够用且不无限膨胀）。
+   * RENDERER_ORIGINS 是**追加**不是替换（Phase 11 P11-5）：本机 .env
+   * 只能往里加 origin，不能把下面的避让区间架空 —— 否则配了
+   * `RENDERER_ORIGINS=http://127.0.0.1:5273` 的机器上，vite 顺延到
+   * 5274 后全站 CORS 拒绝。
    */
-  readonly rendererOrigins = (
-    process.env.RENDERER_ORIGINS ??
-    [
-      'http://localhost:3000',
-      // dev 端口自动避让后的实际端口，一并放行（5273-5299）
-      ...Array.from({ length: 27 }, (_, i) => `http://localhost:${5273 + i}`),
-      ...Array.from({ length: 27 }, (_, i) => `http://127.0.0.1:${5273 + i}`),
-    ].join(',')
-  )
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  readonly rendererOrigins = [
+    ...new Set(
+      [
+        'http://localhost:3000',
+        // dev 端口自动避让后的实际端口，一并放行（5273-5322，覆盖 MAX_TRIES=50 全段）
+        ...Array.from({ length: 50 }, (_, i) => `http://localhost:${5273 + i}`),
+        ...Array.from({ length: 50 }, (_, i) => `http://127.0.0.1:${5273 + i}`),
+        // env 追加的额外 origin
+        ...(process.env.RENDERER_ORIGINS ?? '').split(','),
+      ]
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
 
   readonly rendererBase =
     process.env.RENDERER_BASE ??
