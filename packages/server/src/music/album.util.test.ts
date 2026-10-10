@@ -252,6 +252,46 @@ async function main() {
     ok('12. 合并 id 跨平台稳定且已截断');
   }
 
+  // 13. 跨脚本桥接必须真的接进 buildUnifiedAlbums（2026-09-29 review 补）
+  //
+  // 背景：albumsProbablySame 与它的单测都一直存在，但生产代码零调用 ——
+  // 桥接逻辑是死代码，Deezer 罗马音专辑与 QQ/网易云汉字专辑各显示一张卡片。
+  // 用例 10 测的是函数本身，抓不到「函数没被调用」这类接线缺失，所以这里
+  // 一律走 buildUnifiedAlbums 端到端断言。变异验证：摘掉接线 → 13/13b/13c 红。
+  {
+    const r = buildUnifiedAlbums([
+      src('qq', 'm1', '叶惠美', '叶惠美', 11),
+      src('deezer', 'd1', 'Ye Hui Mei', '叶惠美', 11),
+    ]);
+    assert.strictEqual(r.length, 1, '专辑名跨脚本 + 艺人相同 → 应合并成 1 张');
+    assert.deepStrictEqual(r[0].sources.map((x: any) => x.platform).sort(), ['deezer', 'qq'], '两个平台源都应在');
+    ok('13. 跨脚本专辑合并：桥接真的接进了 buildUnifiedAlbums');
+  }
+  {
+    const r = buildUnifiedAlbums([
+      src('qq', 'm1', '叶惠美', '叶惠美', 11),
+      src('deezer', 'd1', '叶惠美', '周杰伦', 11),
+    ]);
+    assert.strictEqual(r.length, 2, '专辑名相同但艺人不同 → 仍是 2 张（桥接不能放宽门槛）');
+    ok('13b. 桥接不破坏「同名不同艺人」边界');
+  }
+  {
+    const r = buildUnifiedAlbums([
+      src('qq', 'm1', '叶惠美', '周杰伦', 11),
+      src('netease', 'n1', '叶惠美', '周杰伦', 18),
+    ]);
+    assert.strictEqual(r.length, 2, 'trackCount 11 vs 18 分歧 → 仍拆开');
+    assert.ok(r.every((x: any) => x.variantMismatch === true), '两张都应打 variantMismatch（桥接不能把分歧拆开的又并回去）');
+    ok('13c. 桥接不破坏 trackCount 分歧保护');
+  }
+  {
+    const r = buildUnifiedAlbums([
+      src('qq', 'm1', '叶惠美', '周杰伦', 11),
+      src('deezer', 'd1', '叶惠美 (Live)', '周杰伦', 11),
+    ]);
+    assert.strictEqual(r.length, 2, 'studio 与 (Live) 是不同版本，不能被桥到一起');
+    ok('13d. 桥接不跨版本（(Live) 不与正式版合并）');
+  }
   console.log(`\n${pass} 个用例全部通过 ✅`);
 }
 
