@@ -22,6 +22,7 @@ import { withTimeout } from '../common/timeout';
 import { LikeSyncQueue } from '../music/like-sync.queue';
 import { MusicService } from '../music/music.service';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
+import { ConfigService } from '../common/config';
 
 const SPOTIFY_CLIENT_ID_KEY = 'secrets:spotify-client-id';
 
@@ -45,6 +46,7 @@ export class AuthController {
     private readonly storage: StorageService,
     private readonly likeSync: LikeSyncQueue,
     private readonly musicService: MusicService,
+    private readonly config: ConfigService,
   ) {}
 
   // ── QQ 音乐（cookie 登录，非 QQ 互联 OAuth）────────────────────────────────
@@ -395,8 +397,7 @@ export class AuthController {
     }
     const session = this.sessionService.resolve(req, res);
     const redirectUri =
-      body?.redirectUri ??
-      `${process.env.RENDERER_BASE ?? 'http://localhost:5173'}/auth/spotify/callback`;
+      body?.redirectUri ?? this.config.rendererBase + '/auth/spotify/callback';
     return this.spotify.startAuth(clientId, redirectUri, session.id);
   }
 
@@ -415,8 +416,7 @@ export class AuthController {
       throw new BadRequestException('code + state 必填');
     }
     const session = this.sessionService.resolve(req, res);
-    const redirectUri =
-      `${process.env.RENDERER_BASE ?? 'http://localhost:5173'}/auth/spotify/callback`;
+    const redirectUri = this.config.rendererBase + '/auth/spotify/callback';
     const result = await this.spotify.exchangeCode(
       session.providers.spotify ?? {},
       code,
