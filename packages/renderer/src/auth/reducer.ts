@@ -51,6 +51,15 @@ export type AuthAction =
    * 这正是 2026-10-08 首次上线时前端无反应的原因。
    */
   | { type: 'mark_expired'; error: AuthError }
+  /**
+   * mark_expired 的逆转移（Phase 11 P11-3）：探针后来回活 / 用户刚登录
+   * 成功，把误判的过期态撤回来。
+   *
+   * 只在 `error.code === 'AUTH_EXPIRED'` 时生效 —— 其它 error（如一次
+   * 真实失败的 AUTH_INVALID）不该被「探针说活着」清掉。幂等：没有对应
+   * error 时是 no-op（返回原 state）。
+   */
+  | { type: 'mark_valid'; user: AuthState['user'] }
   | { type: 'cancel'; attemptId: string; reason: 'user' | 'timeout' }
   | { type: 'dismiss_error' };
 
@@ -150,6 +159,19 @@ export function reducer(state: AuthState, action: AuthAction): AuthState {
           error: action.error,
         },
         error: action.error,
+      };
+    }
+
+    case 'mark_valid': {
+      // 探针回活 → 撤销 mark_expired 留下的过期态（loggedIn/user 恢复、
+      // error 清掉、phase 回 idle 让面板关闭）。非 AUTH_EXPIRED error 不动。
+      if (state.error?.code !== 'AUTH_EXPIRED') return state;
+      return {
+        ...state,
+        loggedIn: true,
+        user: action.user ?? state.user,
+        phase: { kind: 'idle' },
+        error: null,
       };
     }
 

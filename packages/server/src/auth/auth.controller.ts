@@ -238,7 +238,15 @@ export class AuthController {
     // 不传则保持纯结构判断、不发任何额外请求 —— 这是回归护栏，别去掉。
     if (validate === '1') {
       const probe = await this.musicService.probeSession(session, p);
-      if (!probe.alive) {
+      if (probe.alive) {
+        // 只在「结论性存活」时刷新 lastValidatedAt（Phase 11 P11-4）：
+        // network_error 是"探针没结论"不算校验过；不写则保持 stale，
+        // 下次 refreshStatus 会重探 —— 死态留自愈通道，活态不再每轮重探。
+        if (probe.reason === 'purl_present' || probe.reason === 'vkey_present') {
+          this.sessionService.setLastValidatedAt(session, p, Date.now());
+          out['lastValidatedAt'] = Date.now();
+        }
+      } else {
         // 没凭据 = 从没登录过，不是"过期"。此时不标 expired，让上层按未登录处理
         //（否则从没登录的用户一进 app 就被弹"重新登录"）。
         if (probe.reason === 'no_cookie') {

@@ -18,6 +18,7 @@ import {
 import type { MusicProvider } from '../api';
 import { initialAuthState, reducer, type AuthState } from '../auth/reducer';
 import { ATTEMPT_TIMEOUT_MS, type AuthAttempt, type AuthErrorCode } from '../auth/types';
+import { inReloginGrace, markLoginOk } from '../auth/relogin-grace';
 import { authLog, authWarn, authError } from '../lib/debug';
 
 /** True when running inside the Electron shell (not just a browser tab). */
@@ -27,6 +28,9 @@ const isElectron =
 /** 24h — renderer's "stale credentials" probe interval. If lastValidatedAt
  *  is older than this, the next status fetch re-runs the guard call. */
 const STALE_VALIDATION_MS = 24 * 60 * 60 * 1000;
+
+// Phase 11 P11-2 熔断逻辑已抽到 ../auth/relogin-grace.ts（纯函数，可注入
+// 时钟，便于白盒测试）；语义见其文件头注释。
 
 /**
  * Auth for the current provider. Status fetch on provider change, QQ /
@@ -136,6 +140,15 @@ export function useAuth(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
+  // 登录成功埋点（Phase 11 P11-2）：phase 进入 authenticated = 一次真实
+  // 登录尝试 succeed。集中在这里记，不用逐个登录路径埋（QQ/NetEase/
+  // Spotify/cookieFallback 全覆盖且不会漏）。
+  useEffect(() => {
+    if (state.phase.kind === 'authenticated') {
+      markLoginOk(state.provider);
+    }
+  }, [state.phase.kind, state.provider]);
+
   async function refreshStatus(p: MusicProvider): Promise<void> {
     try {
       const status = await getAuthStatus(p);
@@ -171,18 +184,31 @@ export function useAuth(
             // 只认 expired:true。「从没登录过」服务端会给 loggedIn:false
             // 但不带 expired —— 那种情况不该在这里弹重登录。
             if (fresh.expired === true) {
-              // mark_expired 而非 fail：此刻没有登录尝试在跑，fail 会被
-              // attemptId 门控静默丢弃（见 reducer 的 mark_expired 注释）。
-              dispatch({
-                type: 'mark_expired',
-                error: {
-                  code: 'AUTH_EXPIRED',
-                  message: fresh.message ?? '登录已过期，请重新登录',
-                  provider: p,
-                  attemptId: 'stale-probe',
-                  at: Date.now(),
-                },
-              });
+              // Phase 11 P11-2 熔断：刚登录成功不久探针又报死 → 优先怀疑
+              // 探针故障（单首歌受限/QQ 接口变更），宽限期内不落 mark_expired，
+              // 否则用户被锁死在「重登→立刻又被探死→再重登」循环里。
+              if (inReloginGrace(p)) {
+                authWarn(
+                  `stale-probe: ${p} 探针报 expired，但距登录成功 <10min，按宽限期忽略（探针误报保护）`,
+                );
+              } else {
+                // mark_expired 而非 fail：此刻没有登录尝试在跑，fail 会被
+                // attemptId 门控静默丢弃（见 reducer 的 mark_expired 注释）。
+                dispatch({
+                  type: 'mark_expired',
+                  error: {
+                    code: 'AUTH_EXPIRED',
+                    message: fresh.message ?? '登录已过期，请重新登录',
+                    provider: p,
+                    attemptId: 'stale-probe',
+                    at: Date.now(),
+                  },
+                });
+              }
+            } else if (fresh.loggedIn === true) {
+              // Phase 11 P11-3：探针回活 → 撤销此前可能的误标
+              // （mark_expired 的逆转移；非 AUTH_EXPIRED error 时 reducer no-op）
+              dispatch({ type: 'mark_valid', user: fresh.user ?? null });
             }
           }
         } catch {
@@ -628,7 +654,15 @@ export function useAuth(
      * 只能自己去问服务端；问到「过期」之后需要一个进错误态的入口。
      * （见 specs/auth-resilience Phase 10）
      */
-    markExpired: (p: MusicProvider, message?: string) =>
+    markExpired: (p: MusicProvider, message?: string) => {
+      // Phase 11 P11-2 熔断：播放失败兜底探针也走宽限期 —— 这是「重登后
+      // 立刻又被探死」死循环的主要入口，必须在落 mark_expired 前拦截。
+      if (inReloginGrace(p)) {
+        authWarn(
+          `play-failure-probe: ${p} 探针报 expired，但距登录成功 <10min，按宽限期忽略（探针误报保护）`,
+        );
+        return;
+      }
       dispatch({
         type: 'mark_expired',
         error: {
@@ -638,7 +672,8 @@ export function useAuth(
           attemptId: 'play-failure-probe',
           at: Date.now(),
         },
-      }),
+      });
+    },
     /** New: full reducer state for the AuthErrorPanel. */
     authError: state.error,
     authPhase: state.phase,

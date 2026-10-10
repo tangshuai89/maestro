@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ProviderSession } from '../common/session';
 import { withTimeout } from '../common/timeout';
+import { maskUin } from '@maestro/common';
 
 /**
  * QQ 音乐登录策略（cookie 版）。
@@ -48,7 +49,7 @@ export class QqAuthStrategy {
 
     const hasKey = /qm_keyst=|qqmusic_key=/.test(cookie);
     this.logger.log(
-      `qq login: cookieLen=${cookie.length}, uin=${uin ?? 'MISSING'}, ` +
+      `qq login: cookieLen=${cookie.length}, uin=${uin ? maskUin(uin) : 'MISSING'}, ` +
         `hasLoginKey=${hasKey}, cookieCount=${
           extraCookies ? Object.keys(extraCookies).length : 0
         }`,

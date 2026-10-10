@@ -464,3 +464,35 @@ CORS 预检对 `Origin: http://127.0.0.1:5273` 正确回 `Access-Control-Allow-O
 
 `dev-port.test` 12 条，其中 7-11 锁的就是这条发布/读取链路
 （actual 优先 configured、未发布返回 null、退出清理、纯数字原子写）。
+
+## Phase 11 — review 遗留修复（2026-10-10）
+
+Phase 10 上线后 review 出的收尾项。核心是 🔴 **「探针单点 + 重登立刻重探 →
+有效会话可能被永久锁死」**，其余为顺手清掉的 🟡/⚪ 工程债。
+
+### 决策记录
+
+| # | 问题 | 决策 | 理由 |
+|---|------|------|------|
+| P11-1 | 探针只用一首歌（`004Gq0xE1YC8xp`），该歌下架/VIP 化 ⇒ 有效会话被误判死 | **多歌共识**：一次 GetVkey 批量 3 首免费歌（晴天 `004Gq0xE1YC8xp` / 演员 `0002g2BF46I7K7` / 小情歌 `003ypljX44Gq1I`，2026-10-10 用有效 cookie 实测 `pay_play=0` 且均出 purl/vkey）。**全部探针歌皆空才判失效**，任一存活即 alive | Phase 10 风险表当初接受单点（「真出问题时把常量换掉即可」），但 review 发现失败形态比预想糟：不是"换常量"而是用户被锁死在重登循环里。批量不增请求数（songmid 本就数组），三首歌分属不同歌手/厂牌，相关性低 |
+| P11-2 | 用户重登成功后，探针仍报死 ⇒ 立刻再弹「重新登录」死循环 | **登录宽限期熔断**（renderer）：登录成功后 `RELOGIN_GRACE_MS`（10min，对齐探针缓存 TTL）内，任何探针报 expired 都只记 warn 不落 `mark_expired` | 刚登录就让再登一次，在「探针故障 vs 会话真死」无法区分时是 strictly worse UX。宽限期内播放真失败仍走通用错误提示，10min 后恢复正常判定 —— 有界降级 |
+| P11-3 | `mark_expired` 单向不可逆：探针后续回活也清不掉面板 | 新增 `mark_valid` action：`error.code === 'AUTH_EXPIRED'` 时才生效，恢复 loggedIn/user + 清 error + phase→idle；stale-probe 探到非 expired 时派发 | 状态机每个转移都该有逆转移（探针结论可翻转，面板就该可撤销） |
+| P11-4 | `validate=1` 不写 `lastValidatedAt` ⇒ 每次 refreshStatus 都重探 | 探针回**结论性 alive**（`purl_present`/`vkey_present`）→ 写 `lastValidatedAt`；`no_vkey`/`no_cookie`/`network_error` 不写 | 死态保持 stale ⇒ 下次 refreshStatus 还会重探 → mark_valid 自愈通道活着；network_error 是「没结论」不算校验过 |
+| P11-5 | `RENDERER_ORIGINS` env 会**整体替换**派生区间（本机 .env 只有 5273，端口一避让就被 CORS 拒）；且区间 5273–5299 只覆盖 `MAX_TRIES=50` 的一半 | env 改为**追加**合并：派生区间（5273–5322 全段）恒在，env 只能加不能减 | 本地 dev 端口避让是安全网，被 .env 架空等于没有 |
+| P11-6 | electron 用 `sleep 3` 等 vite，慢机器/冷启动端口文件未写就 loadURL → 兜底到错端口 | `waitForDevPort()` 轮询端口文件（150ms × 30s 上限）后才 loadURL | 「vite 写、electron 读」的读侧补上「等到读到为止」；超时仍兜底 5273 + 警告 |
+| P11-7 | 日志明文打 uin（QQ 号） | `maskUin()` 脱敏（`81***59`，留头尾够关联日志） | uin 是稳定用户标识，明文落日志没必要 |
+| ~~P11-8~~ | ~~Deezer 把《叶惠美》的 artist 报成 `Jue Wang`（实为周杰伦）~~ **复核后作废**：Deezer `Jue Wang`（artist/578008）是**真人翻唱艺人**——他的《叶惠美》19 轨含非周杰伦原创（絕緣體女孩/墨染深淵等），词曲署名全为 Jue Wang，与网易云「王珏子乔」18 轨版是同一类翻唱专辑，并非脏数据 | **不加别名**；已加的 `周杰倫 → 'Jue Wang'` 被 `album-service.e2e`「3 张卡片」护栏当场抓出（19 轨翻唱并进 11 轨原版），已回退并改为反向护栏测试 | 合并不等于正确：翻唱专辑并进原版，曲目列表全错，比不并严重得多（album.util.ts:78 早已写明）。若真要做，正确方向是 `王珏子乔 ↔ Jue Wang`（两张翻唱互并），需真实数据核实后再策展 |
+
+### 验收标准
+
+- [x] 探针单次请求批量打 ≥3 首探针歌；全部 purl/vkey 皆空才判 `no_vkey`，任一存活即 alive
+- [x] 探针歌集合跨 ≥2 个不同歌手（降低版权方同时变更的相关性）—— 周杰伦/薛之谦/苏打绿 3 人
+- [x] 登录成功后 10min 内 `mark_expired` 被宽限期拦截（stale-probe 与 play-failure 两条路径都要）；宽限日志走 authWarn；熔断逻辑抽 `auth/relogin-grace.ts` 纯函数，5 条白盒用例（边界/隔离/重登刷新/误报演练）
+- [x] `mark_valid` 只在 `error.code === 'AUTH_EXPIRED'` 时生效（其它 error 不清）；重复到达幂等
+- [x] `validate=1` 结论性 alive → 响应可见 `lastValidatedAt` 已更新（extended=1）
+- [x] `.env` 设 `RENDERER_ORIGINS=http://127.0.0.1:5273` 时，5274 起的 renderer 仍过 CORS
+- [x] dev 端口 >5299（如 5300）也在 allowlist 内
+- [x] electron 在端口文件出现前不 loadURL；文件 30s 内出现则用上实际端口；超时兜底 + warn
+- [x] 日志无完整 uin（两处日志点 `uin=maskUin(...)`，产出 `81***59` 形态）
+- [x] `stageNameAliasMatch('周杰伦','Jue Wang') === false`（P11-8 复核作废：Jue Wang 是真人翻唱艺人，翻唱专辑不得并进原版）；`album-service.e2e`「叶惠美 → 3 张卡片」护栏保持绿
+- [x] `npm run typecheck && npm run lint && npm test` 全绿

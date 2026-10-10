@@ -12,6 +12,7 @@ import { type LyricLine, parseLrc } from '../common/lyrics';
 import { randomBytes, createHash } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
 import { withTimeout } from '../common/timeout';
+import { maskUin } from '@maestro/common';
 import {
   probeQqSessionUncached,
   SessionProbeCache,
@@ -895,7 +896,7 @@ export class QqMusicProvider {
       // errtype 常见含义：无版权 / 需付费 / 登录态失效。日志留痕便于排查。
       this.logger.warn(
         `QQ GetVkey 无 purl: mid=${songmid}, errtype=${info?.errtype}, ` +
-          `hasCookie=${Boolean(session.qqCookie)}, uin=${session.qqUin ?? '?'}`,
+          `hasCookie=${Boolean(session.qqCookie)}, uin=${maskUin(session.qqUin)}`,
       );
       // 拿不到流有三种可能：无版权 / 需付费 / **登录态已失效**。errtype 区分不了
       // （实测失效 cookie 下 errtype 为空串），所以回落探针歌判据来分辨 ——
