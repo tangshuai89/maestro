@@ -1,5 +1,5 @@
 // The NestJS server exposes its routes WITHOUT any prefix: `/music/*`,
-// `/auth/*`, `/reco/*`. In dev (Vite on :5173) those paths are proxied
+// `/auth/*`, `/reco/*`. In dev (Vite on :5273) those paths are proxied
 // to the server on :3200 (see vite.config.ts). The HTML5 <audio>
 // element loads `track.audioUrl` directly — a server-relative path like
 // `/music/stream/deezer/123` — so we resolve every URL against the same

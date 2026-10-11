@@ -153,3 +153,38 @@
 - [x] 3.4 清理 `/tmp/probe-*.mjs`（不进仓库）
 - [ ] 3.5 把有效态基线补进 `spec.md` 附录；把「`get_user_baseinfo_v2` 不是真校验」
       这一发现补进 Phase 11 线索（`loginWithCookie` 的 guard 该换成探针）
+
+## Phase 11 — review 遗留修复（2026-10-10）
+
+> 决策记录与验收标准见 `spec.md` Phase 11 节。核心：探针单点 + 重登立刻
+> 重探可能把有效会话锁死在重登循环里。
+
+- [x] 11.1 `qq-session-probe.ts`：`PROBE_SONGMIDS` 3 首批量（晴天 004Gq0xE1YC8xp /
+      演员 0002g2BF46I7K7 / 小情歌 003ypljX44Gq1I，实测 pay_play=0 均出 purl/vkey），
+      全空才判 no_vkey；单测补共识用例（单首存活 alive / 全空 no_vkey / 部分响应）
+      —— 15 用例全过
+- [x] 11.2 `auth.controller.ts`：validate=1 且探针结论性 alive
+      （purl_present/vkey_present）→ `setLastValidatedAt`；e2e 补断言（9 用例全过）
+- [x] 11.3 `reducer.ts` 新增 `mark_valid`（仅 AUTH_EXPIRED error 时生效，
+      幂等）+ `useAuth`：stale-probe 回活派 mark_valid；登录成功记
+      `lastLoginOkAt`（phase→authenticated 埋点，覆盖全部登录路径），宽限期
+      `RELOGIN_GRACE_MS=10min` 内 mark_expired 被拦（stale-probe 与
+      markExpired 两路）；reducer.test.mjs 补 18/19/20 三条（20 用例全过）。
+      复审补：熔断抽 `auth/relogin-grace.ts` 纯函数（时钟注入），
+      `relogin-grace.test.mjs` 5 条白盒（边界/隔离/重登刷新/误报演练）
+- [x] 11.4 `electron/dev-port.ts` 加 `waitForDevPort()`（150ms 轮询，30s 上限
+      + devPort() 兜底 + warn）；`main.ts` dev 分支等端口文件再 loadURL；
+      dev-port.test.ts 5 用例
+- [x] 11.5 `config.ts`：CORS 派生区间扩到 5273–5322（=MAX_TRIES 全段），
+      `RENDERER_ORIGINS` env 改为追加合并不可替换；config.test.ts 新增
+- [x] 11.6 `common/mask.ts` 新增 `maskUin()`（`81***59`）+ index 导出；
+      qq.provider.ts 与 qq.strategy.ts 的 uin 日志脱敏；mask.test.ts 7 用例
+- [x] 11.7 5173 注释清扫（vite.config / api.ts / spotify-wps / server main.ts /
+      两个 dev-port 头部 / dev-port.test.mjs / desktop-lyrics 测试 stub）；
+      auth.controller.e2e 的「5173 退休端口护栏」按语义保留
+- [x] 11.8 ~~`artistAlias.ts`：`周杰倫` 值补 `'Jue Wang'`~~ **复核作废**：
+      Deezer Jue Wang 是真人翻唱艺人（非脏数据），别名会把 19 轨翻唱专辑
+      并进 11 轨原版（album-service.e2e 护栏已验证）；改为反向护栏测试
+      `stageNameAliasMatch('周杰伦','Jue Wang') === false`
+- [x] 11.9 `npm run typecheck && npm run lint && npm test` 全绿（lint 0 error /
+      14 条存量 warning 与本次无关）

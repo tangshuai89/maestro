@@ -1,7 +1,7 @@
 import type { MusicProvider } from '../common/provider';
 import { normalizeKey, displayKey, artistLooseMatch } from '@maestro/common';
 import { artistTransliterationMatch, titleTransliterationMatch } from './translit';
-import { PLAY_PRIORITY } from './search.util';
+import { PLAY_PRIORITY, classifyVersion } from './search.util';
 import type { AlbumSource, UnifiedAlbum } from './album-types';
 
 /**
@@ -51,6 +51,17 @@ function hasTrackDivergence(sources: AlbumSource[]): boolean {
   return max / min > TRACK_COUNT_DIVERGENCE;
 }
 
+/**
+ * 一个候选专辑组：同 normalizeKey、且 trackCount 未分歧的一组源。
+ *
+ * variantMismatch = 这组内部因曲目数分歧被拆开过（同一张专辑的再版/豪华版
+ * 量级差异），跨脚本桥接必须跳过它们，否则会把刚拆开的又并回去。
+ */
+interface Group {
+  sources: AlbumSource[];
+  variantMismatch: boolean;
+}
+
 export interface BuildUnifiedAlbumsOptions {
   /** 原始查询词。给了才做相关性排序（库合并场景无 query 不需要）。 */
   query?: string;
@@ -84,11 +95,7 @@ export function buildUnifiedAlbums(
   }
 
   // ② 每个 key 的组：分歧大 → 按 platform 再切一层（并标 variantMismatch）
-  interface Group {
-    sources: AlbumSource[];
-    variantMismatch: boolean;
-  }
-  const groups: Group[] = [];
+  let groups: Group[] = [];
   for (const bucket of prelim.values()) {
     const divergent = hasTrackDivergence(bucket);
     if (!divergent) {
@@ -108,6 +115,8 @@ export function buildUnifiedAlbums(
   }
 
   // ③ 组 → UnifiedAlbum
+  groups = mergeCrossScriptAlbumGroups(groups);
+
   const items: UnifiedAlbum[] = groups.map((g) => {
     // 代表项：按 PLAY_PRIORITY 取第一个（qq > netease > deezer > spotify）
     const sources = [...g.sources].sort((a, b) => priorityOf(a.platform) - priorityOf(b.platform));
@@ -170,6 +179,63 @@ export function sortAlbumsByRelevance(albums: UnifiedAlbum[], query: string): Un
   return [...albums].sort((a, b) => score(b) - score(a) || bestRank(a) - bestRank(b));
 }
 
+/** 组内代表源：按 PLAY_PRIORITY 取第一个（与 3 步产 UnifiedAlbum 的口径一致）。 */
+function pickRep(g: Group): AlbumSource {
+  return [...g.sources].sort((a, b) => priorityOf(a.platform) - priorityOf(b.platform))[0];
+}
+
+/**
+ * 跨脚本桥接并组（union-find）。与单曲的 groupMergeEvidence 同思路 ——
+ * normalizeKey 分不到一组的（如「葉惠美 / Jue Wang」对「叶惠美 / 叶惠美」），
+ * 靠 albumsProbablySame 的音译/别名佐证并组。
+ *
+ * ⚠️ 不接这一步，下面那个桥接函数就是**死代码**：它和它的单测都一直存在，
+ * 但生产代码零调用，Deezer 罗马音专辑与 QQ/网易云汉字专辑各显示一张卡片。
+ *
+ * 两条安全阀（缺一不可，review 时踩过）：
+ *  1. variantMismatch 的组不参与桥接 —— 第 2 步刚按 trackCount 分歧把它们
+ *     拆开（豪华版 vs 普通版），并回来就等于把刚拆的又并回去；
+ *  2. 并完重算 variantMismatch —— 三组以上时新组合可能引入原本没有的分歧。
+ */
+function mergeCrossScriptAlbumGroups(groups: Group[]): Group[] {
+  const n = groups.length;
+  if (n < 2) return groups;
+  const parent = groups.map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  const reps = groups.map(pickRep);
+  for (let i = 0; i < n; i += 1) {
+    for (let j = i + 1; j < n; j += 1) {
+      if (find(i) === find(j)) continue;
+      if (groups[i].variantMismatch || groups[j].variantMismatch) continue;
+      if (!albumsProbablySame(reps[i], reps[j])) continue;
+      parent[find(j)] = find(i);
+    }
+  }
+  const merged = new Map<number, Group>();
+  for (let i = 0; i < n; i += 1) {
+    const root = find(i);
+    const g = merged.get(root);
+    if (g) {
+      g.sources.push(...groups[i].sources);
+    } else {
+      merged.set(root, {
+        sources: [...groups[i].sources],
+        variantMismatch: groups[i].variantMismatch,
+      });
+    }
+  }
+  return [...merged.values()].map((g) => ({
+    sources: g.sources,
+    variantMismatch: g.variantMismatch || hasTrackDivergence(g.sources),
+  }));
+}
+
 /**
  * 判断两个专辑源是否指向同一张专辑（跨脚本/别名桥接）。
  *
@@ -187,10 +253,19 @@ export function albumsProbablySame(a: AlbumSource, b: AlbumSource): boolean {
   }
   const ta = displayKey(a.title, '');
   const tb = displayKey(b.title, '');
-  if (!ta || !tb || ta === tb) return false; // 专辑名必须也能桥，否则不并
-  const titleBridge =
+  if (!ta || !tb) return false; // 专辑名必须也能桥，否则不并
+  // NOTE: ta === tb 分支原是 return false，2026-09-29 review 改掉：专辑名归一后相同
+  //   本身是最强的桥接信号，而它最常见的成因恰是跨平台写法差异（繁简体 / 括号）。
+  //   早退会把整类误判成不同专辑；最终判定仍交给下面的**艺人桥接**，所以
+  //   「同名专辑但艺人不同」（翻唱 vs 原版）依然判 false。
+  //   classifyVersion 守卫是配套的：displayKey 会剥掉括号，于是「叶惠美」与
+  //   「叶惠美 (Live)」归一后也相等 —— 不加版本判定会把 Live 版并进正式版。
+  const sameNameSameVersion =
+    ta === tb && classifyVersion(a.title, '') === classifyVersion(b.title, '');
+  const crossScriptName =
     isCrossScriptPair(ta, tb) &&
     (ta.includes(tb) || tb.includes(ta) || translitTitlesMatch(ta, tb));
+  const titleBridge = sameNameSameVersion || crossScriptName;
   if (!titleBridge) return false;
   return artistLooseMatch(a.artist, b.artist) || artistTransliterationMatch(a.artist, b.artist);
 }

@@ -13,7 +13,7 @@ import {
   screen,
 } from 'electron';
 import * as path from 'path';
-import { devRendererUrl } from './dev-port';
+import { devRendererUrl, waitForDevPort } from './dev-port';
 import { spawn, ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { runLoginWindow, type MinimalBrowserWindow } from './auth/login-window-runner';
@@ -367,7 +367,14 @@ function createWindow(): void {
   });
 
   if (isDev) {
-    mainWindow.loadURL(devRendererUrl());
+    // Phase 11 P11-6：等 vite 把实际端口写进 .dev-port 再 loadURL ——
+    // `sleep 3` 在慢机器/冷启动不够，vite 避让到 5274+ 时会连到没人的
+    // 端口黑屏（Phase 10 同款）。30s 超时后仍走 devPort() 兜底。
+    void waitForDevPort().then((port) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        void mainWindow.loadURL(`http://127.0.0.1:${port}/`);
+      }
+    });
     // Open DevTools so users can see renderer console errors (e.g. audio
     // loading failures, network issues with the Deezer preview URL).
     mainWindow.webContents.openDevTools({ mode: 'detach' });

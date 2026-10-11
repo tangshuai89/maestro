@@ -12,11 +12,20 @@ import { withTimeout } from '../common/timeout';
  * 也就是说单靠 GetVkey 响应**无法**区分「登录态失效」与「内容受限」。
  * spec 原文写的判据是「QQ 返回 1000」，与现实对不上。
  *
- * 所以改用**探针歌判据**：拿一首确定免费的歌打 GetVkey，能拿到 `purl` 或
+ * 所以改用**探针歌判据**：拿确定免费的歌打 GetVkey，能拿到 `purl` 或
  * `vkey` 任一非空 → 登录态可用；两者皆空 → 判定失效。
  *
  * 好处：不依赖任何未文档化的错误码语义；判错的最坏后果只是"误报一次需要
  * 重新登录"，**不影响用户数据**。
+ *
+ * ## 多歌共识（Phase 11，P11-1）
+ *
+ * 单首探针歌是单点：它被下架 / 转 VIP / 分区域受限时，**有效会话**会被
+ * 误判成失效；用户重登后立刻又被探死 → 锁死在「重新登录」循环里。
+ * 改成一次请求批量打 3 首免费歌（songmid 本就是数组，不增请求数），
+ * **全部探针歌皆空才判失效**；任一存活即 alive。三首歌刻意分属不同
+ * 歌手/厂牌，降低「同一版权方集中变更」的相关性。
+ * （2026-10-10 用有效 cookie 实测三首 `pay_play=0` 且均返回 purl/vkey。）
  *
  * ## 保守原则
  *
@@ -24,7 +33,12 @@ import { withTimeout } from '../common/timeout';
  * 宁可漏报（退回今天的行为）也不误报（打断正常使用）。
  */
 
-const PROBE_SONGMID = '004Gq0xE1YC8xp'; // 周杰伦《晴天》—— 确定免费
+const PROBE_SONGMIDS = [
+  '004Gq0xE1YC8xp', // 周杰伦《晴天》—— F0 实测免费
+  '0002g2BF46I7K7', // 薛之谦《演员》—— 实测 pay_play=0
+  '003ypljX44Gq1I', // 苏打绿《小情歌》—— 实测 pay_play=0
+] as const;
+const PROBE_SONGMID_SET = new Set<string>(PROBE_SONGMIDS);
 const PROBE_TIMEOUT_MS = 5_000;
 
 export type ProbeReason =
@@ -85,8 +99,8 @@ export async function probeQqSessionUncached(
       method: 'UrlGetVkey',
       param: {
         guid,
-        songmid: [PROBE_SONGMID],
-        songtype: [0],
+        songmid: [...PROBE_SONGMIDS],
+        songtype: PROBE_SONGMIDS.map(() => 0),
         uin,
         loginflag: 1,
         platform: '20',
@@ -117,24 +131,25 @@ export async function probeQqSessionUncached(
         },
       );
       const json = (await r.json()) as VkeyProbeResponse;
-      // 按 songmid 精确匹配，别无脑取 [0] —— 真实响应只含探针歌这一条，
-      // 但异常响应可能给多条，取错会读到别人的空 purl。
+      // 按 songmid 精确匹配出**所有**探针歌条目 —— 异常响应可能给多条或
+      // 缺条，取错会读到别人的空 purl。
       const list = json?.req_0?.data?.midurlinfo;
-      const info = Array.isArray(list)
-        ? (list.find((x) => x?.songmid === PROBE_SONGMID) ?? list[0])
-        : undefined;
-      // ⚠️ 结构对不上（midurlinfo 缺失 / 非数组）时**不能**判成「失效」——
-      // 那是「探针自己没读懂响应」，属于探针故障，按保守原则当 alive。
-      // 只有明确读到一条记录、且 purl/vkey 都空，才判 no_vkey。
-      if (!info) {
+      const infos = Array.isArray(list)
+        ? list.filter((x) => x?.songmid && PROBE_SONGMID_SET.has(x.songmid))
+        : [];
+      // ⚠️ 结构对不上（midurlinfo 缺失 / 非数组 / 一条探针歌都没回声）时
+      // **不能**判成「失效」——那是「探针自己没读懂响应」，属于探针故障，
+      // 按保守原则当 alive。只有明确读到探针歌条目、且**全部** purl/vkey
+      // 都空，才判 no_vkey（多歌共识：一首歌受限不再能单独判死会话）。
+      if (!infos.length) {
         return { alive: true, reason: 'network_error' as const, fetched: true };
       }
-      if (info?.purl) {
+      if (infos.some((i) => i?.purl)) {
         return { alive: true, reason: 'purl_present' as const, fetched: true };
       }
       // purl 空但 vkey 有：拿不到流地址，但 QQ 认这个登录态 —— 判为可用，
       // 避免把「这首歌恰好受限」误报成「登录过期」。
-      if (info?.vkey) {
+      if (infos.some((i) => i?.vkey)) {
         return { alive: true, reason: 'vkey_present' as const, fetched: true };
       }
       return { alive: false, reason: 'no_vkey' as const, fetched: true };

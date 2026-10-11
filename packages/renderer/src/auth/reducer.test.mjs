@@ -283,7 +283,61 @@ async function main() {
     console.log('✅ 17. dismiss_error 能清掉 mark_expired 留下的面板');
   }
 
-  console.log('\n🎉 reducer.test.mjs: all 17 cases passed');
+  // ── 18. mark_valid：mark_expired 的逆转移（Phase 11 P11-3）─────
+  {
+    let s = initialAuthState('qq');
+    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: '唐帅', avatarUrl: '' } });
+    s = reducer(s, {
+      type: 'mark_expired',
+      error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 },
+    });
+    assert.strictEqual(s.loggedIn, false, '前置：已标过期');
+    assert.strictEqual(s.phase.kind, 'failed');
+
+    // 探针回活 → mark_valid 撤销过期态
+    s = reducer(s, { type: 'mark_valid', user: { nickname: '唐帅', avatarUrl: '' } });
+    assert.strictEqual(s.error, null, 'mark_valid 清掉 error → 面板关闭');
+    assert.strictEqual(s.loggedIn, true, 'loggedIn 恢复');
+    assert.strictEqual(s.user?.nickname, '唐帅', 'user 从 validated 响应恢复');
+    assert.strictEqual(s.phase.kind, 'idle', 'phase 回 idle');
+    console.log('✅ 18. mark_valid 撤销 mark_expired（恢复 loggedIn/user/idle）');
+  }
+
+  // ── 19. mark_valid 不清非 AUTH_EXPIRED 的 error ─────────────
+  {
+    // AUTH_INVALID 来自一次真实失败的登录尝试 —— 「探针说活着」不该把它清掉。
+    let s = initialAuthState('qq');
+    s = reducer(s, {
+      type: 'mark_expired',
+      error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 },
+    });
+    // 手动换成另一种 error（模拟随后又有别的错误置位）
+    s = { ...s, error: { code: 'AUTH_INVALID', message: '凭据无效', provider: 'qq', attemptId: 'x', at: 2 } };
+    const after = reducer(s, { type: 'mark_valid', user: null });
+    assert.strictEqual(after, s, '非 AUTH_EXPIRED error → mark_valid 必须 no-op');
+    assert.strictEqual(after.error.code, 'AUTH_INVALID');
+    console.log('✅ 19. mark_valid 不清非 AUTH_EXPIRED error');
+  }
+
+  // ── 20. mark_valid 幂等：无 error / 重复到达 → no-op ────────
+  {
+    let s = initialAuthState('qq');
+    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: 'x', avatarUrl: '' } });
+    const same = reducer(s, { type: 'mark_valid', user: null });
+    assert.strictEqual(same, s, '无 error 时 mark_valid no-op（不改变 loggedIn）');
+
+    // mark_expired → mark_valid → 再一次 mark_valid：第二次仍是 no-op
+    s = reducer(s, {
+      type: 'mark_expired',
+      error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 },
+    });
+    s = reducer(s, { type: 'mark_valid', user: { nickname: 'x', avatarUrl: '' } });
+    const twice = reducer(s, { type: 'mark_valid', user: null });
+    assert.strictEqual(twice, s, '重复 mark_valid 幂等');
+    console.log('✅ 20. mark_valid 幂等（无 error 时 no-op）');
+  }
+
+  console.log('\n🎉 reducer.test.mjs: all 20 cases passed');
 }
 
 main().catch((err) => {

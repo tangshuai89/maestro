@@ -63,6 +63,12 @@ check('蝶 ↔ 一之瀬ユウ', stageNameAliasMatch('蝶', '一之瀬ユウ'));
 // ── 6. 既有正向不回归 ──
 console.log('\n── 既有正向 ──');
 check('周杰伦 ↔ Jay Chou', stageNameAliasMatch('周杰伦', 'Jay Chou'));
+// Phase 11 复核：Deezer「Jue Wang」是**真人翻唱艺人**（非脏数据）——他的
+// 19 轨《叶惠美》是翻唱专辑，绝不能并进周杰伦的 11 轨原版。
+// （曾作为 P11-8 决策入表，album-service.e2e「3 张卡片」护栏当场抓出误并，
+//  见 specs/auth-resilience/spec.md 复核记录。）
+check('周杰伦 ↔ Jue Wang 不并（翻唱艺人非脏数据）', stageNameAliasMatch('周杰伦', 'Jue Wang'), false);
+check('王珏 ↔ Jue Wang 不并', stageNameAliasMatch('王珏', 'Jue Wang'), false);
 check('邓紫棋 ↔ G.E.M.', stageNameAliasMatch('邓紫棋', 'G.E.M.'));
 check('马赛克乐队 ↔ 马赛克', stageNameAliasMatch('马赛克乐队', '马赛克'));
 check('范逸臣 ↔ 【范逸臣 Van Fan】', stageNameAliasMatch('范逸臣', '【范逸臣 Van Fan】'));

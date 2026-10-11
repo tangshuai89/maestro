@@ -146,7 +146,7 @@ function harness(over: Partial<ControllerDeps> = {}): Harness {
       webContentsRefs.push(win.webContents);
       return win;
     },
-    loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5173/lyrics.html' }),
+    loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5273/lyrics.html' }),
     setTimeoutFn: (fn) => {
       const t = { fn, cleared: false };
       timers.push(t);
@@ -433,7 +433,7 @@ withHarness((h) => {
           captured.push(o);
           return stubWindow();
         },
-        loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5173/lyrics.html' }),
+        loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5273/lyrics.html' }),
         clampToVisibleDisplay: clamp as never,
       });
       c.setEnabled(true);
@@ -485,7 +485,7 @@ withHarness((h) => {
       preloadPath: '/tmp/preload.js',
       platform: 'darwin',
       createWindow: () => stubWindow(),
-      loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5173/lyrics.html' }),
+      loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5273/lyrics.html' }),
     });
     first.setEnabled(true);
     first.dispose();
@@ -496,7 +496,7 @@ withHarness((h) => {
       preloadPath: '/tmp/preload.js',
       platform: 'darwin',
       createWindow: () => stubWindow(),
-      loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5173/lyrics.html' }),
+      loadTarget: () => ({ kind: 'url', url: 'http://127.0.0.1:5273/lyrics.html' }),
     });
     assert.strictEqual(second.enabled, true, '下次启动仍是开着');
     assert.strictEqual(second.locked, false, '锁定态不跨重启恢复（避免一启动就挡鼠标）');

@@ -40,8 +40,21 @@ function mockFetch(handler: (url: string, opts?: any) => any) {
   };
 }
 
-const vkey = (info: Record<string, unknown>) => ({
-  req_0: { data: { midurlinfo: [info] } },
+// mock 条目必须带探针 songmid —— 实现按 songmid 精确过滤（PROBE_SONGMIDS
+// 集合），不带 songmid 的条目会被当作"异常响应"忽略 → network_error。
+const PROBE_A = '004Gq0xE1YC8xp'; // 晴天
+const PROBE_B = '0002g2BF46I7K7'; // 演员
+const PROBE_C = '003ypljX44Gq1I'; // 小情歌
+
+const vkey = (...infos: Record<string, unknown>[]) => ({
+  req_0: {
+    data: {
+      midurlinfo: infos.map((x, i) => ({
+        songmid: [PROBE_A, PROBE_B, PROBE_C][i] ?? PROBE_A,
+        ...x,
+      })),
+    },
+  },
 });
 
 async function main() {
@@ -135,6 +148,81 @@ async function main() {
     ok('6. 判据不依赖错误码（errtype/result 任意值，有 purl 即 alive）');
   }
 
+  // ── 7. 多歌共识：任一探针歌存活 → alive（Phase 11 P11-1）────
+  {
+    // 模拟「探针歌 A 被下架/转 VIP」：A、C 皆空，B 出 purl → 仍 alive。
+    const restore = mockFetch(() =>
+      vkey(
+        { songmid: PROBE_A, purl: '', vkey: '', result: 104003 },
+        { songmid: PROBE_B, purl: 'x.m4a', vkey: 'V', result: 0 },
+        { songmid: PROBE_C, purl: '', vkey: '', result: 104003 },
+      ),
+    );
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, true, '一首探针歌存活即 alive，单首受限不能判死会话');
+    assert.strictEqual(r.reason, 'purl_present');
+    ok('7. 多歌共识：A/C 空 + B 有 purl → alive（单首受限不误报）');
+  }
+
+  // ── 8. 多歌共识：三首皆空 → no_vkey ────────────────────────
+  {
+    const restore = mockFetch(() =>
+      vkey(
+        { songmid: PROBE_A, purl: '', vkey: '', result: 104003 },
+        { songmid: PROBE_B, purl: '', vkey: '', result: 104003 },
+        { songmid: PROBE_C, purl: '', vkey: '', result: 104003 },
+      ),
+    );
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, false);
+    assert.strictEqual(r.reason, 'no_vkey');
+    ok('8. 多歌共识：三首皆空 → 判定失效 (no_vkey)');
+  }
+
+  // ── 9. 多歌共识：只有 vkey 的探针歌救场 → vkey_present ────
+  {
+    const restore = mockFetch(() =>
+      vkey(
+        { songmid: PROBE_A, purl: '', vkey: '' },
+        { songmid: PROBE_B, purl: '', vkey: 'V9' },
+        { songmid: PROBE_C, purl: '', vkey: '' },
+      ),
+    );
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, true);
+    assert.strictEqual(r.reason, 'vkey_present');
+    ok('9. 多歌共识：仅 vkey 非空 → alive (vkey_present)');
+  }
+
+  // ── 10. 响应里没有探针歌条目 → 探针故障，保守 alive ────────
+  {
+    const restore = mockFetch(() => ({
+      req_0: { data: { midurlinfo: [{ songmid: 'OTHER_MID', purl: '', vkey: '' }] } },
+    }));
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, true, '探针歌零回声 = 探针没读懂响应，不得判死');
+    assert.strictEqual(r.reason, 'network_error');
+    ok('10. 响应无探针歌条目 → network_error（保守 alive）');
+  }
+
+  // ── 11. 批量请求体：一次请求打了全部探针歌 ─────────────────
+  {
+    let sentMids: string[] = [];
+    const restore = mockFetch((_url, opts) => {
+      sentMids = JSON.parse(opts.body).req_0.param.songmid;
+      return vkey({ songmid: PROBE_A, purl: 'x.m4a', vkey: 'V' });
+    });
+    await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.deepStrictEqual(sentMids, [PROBE_A, PROBE_B, PROBE_C],
+      '应一次请求批量打 3 首探针歌（不增请求数）');
+    ok('11. 单次请求批量携带 3 个探针 songmid');
+  }
+
   // ══════════════════════════════════════════════════════
   // 缓存
   // ══════════════════════════════════════════════════════
@@ -150,7 +238,7 @@ async function main() {
     assert.strictEqual(calls, 1, '第二次应命中缓存，不发请求');
     assert.strictEqual(a.fetched, true);
     assert.strictEqual(b.fetched, false, '命中缓存时 fetched=false');
-    ok('7. 缓存命中不发请求（fetched=false）');
+    ok('12. 缓存命中不发请求（fetched=false）');
   }
   {
     // TTL 过期 → 重探
@@ -168,7 +256,7 @@ async function main() {
     now += 600; // 已过期（>1000）
     await cache.resolve('s1', fn);
     assert.strictEqual(calls, 2, 'TTL 过期后应重探');
-    ok('8. TTL 过期后重探');
+    ok('13. TTL 过期后重探');
   }
   {
     // 不同 session 隔离
@@ -186,7 +274,7 @@ async function main() {
     assert.strictEqual(a, 1);
     assert.strictEqual(b, 1);
     assert.strictEqual(cache.size, 2, '两个 session 各自缓存');
-    ok('9. 不同 session 缓存隔离');
+    ok('14. 不同 session 缓存隔离');
   }
   {
     // 并发单飞：同 key 同时 resolve 只发一个请求
@@ -206,7 +294,7 @@ async function main() {
     assert.strictEqual(x.alive, true);
     assert.strictEqual(y.alive, true);
     assert.strictEqual(z.alive, true);
-    ok('10. 并发同 key 单飞（播放失败的多条兜底路径不会连打 QQ）');
+    ok('15. 并发同 key 单飞（播放失败的多条兜底路径不会连打 QQ）');
   }
 
   console.log(`\n${pass} 个用例全部通过 ✅`);
