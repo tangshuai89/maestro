@@ -76,16 +76,22 @@ export function useLyrics(
   /**
    * 「换个源找歌词」按钮调用：按 title+artist 去每个有歌词 API 的平台搜同名
    * 同时长的曲目再拉一次。命中就替换当前 lyrics；没命中保持上一次结果。
+   *
+   * 返回 `LyricsResult | null`：让调用方能区分「换到了（N 行）」和「其它源
+   * 也没有」——两者都只是歌词内容没变，从 lyrics / loading 上看不出来，UI 需要
+   * 显式反馈否则用户点了不知道发生了什么。'ok' = 换到了，'none' = 白跑一趟。
    */
-  const retryByName = useCallback(async () => {
+  const retryByName = useCallback(async (): Promise<LyricsResult | null> => {
     const cur = trackRef.current;
-    if (!cur?.title || !cur.artist) return;
+    if (!cur?.title || !cur.artist) return null;
     setLoading(true);
     try {
       const res = await fetchLyricsByName(cur.title, cur.artist, cur.duration);
       if (res) setResult(res);
+      return res;
     } catch {
       // 保持上一次的 lyrics
+      return null;
     } finally {
       setLoading(false);
     }
