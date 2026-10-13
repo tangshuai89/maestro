@@ -9,9 +9,13 @@
  *  5. 无歌词 → 「换个源找歌词」按钮 + 网易云外链（href 带歌名歌手）
  *  6. 无歌词时不显示导出按钮
  *  7. 合并徽章：mergedFrom.length > 1 才显示
+ *  8. 「复制歌词」→ clipboard 写入 LRC 格式（synced 带 [mm:ss.xx]）
+ *  9. 非 synced → 写入纯文本，不带时间戳
+ * 10. 「复制本行」→ 只写当前行；activeLine<0 时禁用
+ * 11. 复制成功后按钮 in-place 变「已复制 ✓」，1.2s 后复原
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import TheaterView, { type TheaterViewProps } from './TheaterView';
@@ -68,6 +72,18 @@ function makeProps(over: Partial<TheaterViewProps> = {}): TheaterViewProps {
 }
 
 describe('TheaterView 歌词交互', () => {
+  /** userEvent.setup() 无论 writeToClipboard 取值都会用自己的 stub 顶掉
+   *  navigator.clipboard，所以必须 setup 之后再装 spy（ErrorPanel 那边全程用
+   *  fireEvent，没踩到这个坑）。 */
+  function setupUser() {
+    const user = userEvent.setup({ writeToClipboard: false });
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    return user;
+  }
+
   // 密度由窗口宽度决定（<1100 = narrow 只渲染当前行）。默认 happy-dom 是
   // 1024 宽 → 拿不到「后续行」，所以显式开成 regular 档。
   beforeEach(() => {
@@ -164,5 +180,64 @@ describe('TheaterView 歌词交互', () => {
       />,
     );
     expect(screen.getByText('MERGED · QQ+NETEASE (+3)')).toBeInTheDocument();
+  });
+
+  it('8. 「复制歌词」→ clipboard 写入标准 LRC 行格式 [mm:ss.xx]', async () => {
+    const user = setupUser();
+    render(<TheaterView {...makeProps()} />);
+
+    await user.click(screen.getByRole('button', { name: /复制歌词/ }));
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
+    // currentTime=10 落在 LYRICS[2]；synced=true → 每行都带时间戳
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      [
+        '[00:01.00] 第一句',
+        '[00:05.00] 第二句',
+        '[00:09.00] 第三句',
+        '[00:13.00] 第四句',
+      ].join('\n'),
+    );
+  });
+
+  it('9. 非 synced → 写入纯文本，不带时间戳', async () => {
+    const user = setupUser();
+    render(<TheaterView {...makeProps({ lyricsSynced: false })} />);
+
+    await user.click(screen.getByRole('button', { name: /复制歌词/ }));
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      '第一句\n第二句\n第三句\n第四句',
+    );
+  });
+
+  it('10. 「复制本行」→ 只写当前行；activeLine<0 时禁用', async () => {
+    const user = setupUser();
+
+    // 播放头在歌词起点之前 → 没有当前行 → 按钮禁用，不发 clipboard
+    const first = render(<TheaterView {...makeProps({ currentTime: 0 })} />);
+    const disabledBtn = screen.getByRole('button', { name: /复制本行/ });
+    expect(disabledBtn).toBeDisabled();
+    await user.click(disabledBtn);
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+    first.unmount();
+
+    // currentTime=10 落在 LYRICS[2] → 只复制那一句，不带时间戳
+    render(<TheaterView {...makeProps()} />);
+    await user.click(screen.getByRole('button', { name: /复制本行/ }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('第三句');
+  });
+
+  it('11. 复制成功 → 按钮 in-place 变「已复制 ✓」，1.2s 后复原', async () => {
+    const user = setupUser();
+    render(<TheaterView {...makeProps()} />);
+
+    await user.click(screen.getByRole('button', { name: /复制歌词/ }));
+    expect(await screen.findByRole('button', { name: /已复制/ })).toBeInTheDocument();
+
+    await waitFor(
+      () => expect(screen.getByRole('button', { name: /复制歌词/ })).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
   });
 });

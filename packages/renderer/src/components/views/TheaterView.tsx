@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Track, LyricLine, LyricsSource, MusicProvider, QqQuality, CrossPlatformLikeTotal } from '../../api';
 import { clampText } from '../../lib/format';
 import { theaterDensity, canvasScale, lyricWindow, type TheaterDensity } from '../../lib/theaterLayout';
@@ -174,6 +174,7 @@ export default function TheaterView(props: TheaterViewProps) {
     provider, qqQuality, trialFellBack, likedCount,
     coverBackdropRef,
     lyrics,
+    lyricsSynced,
     lyricsMergedFrom,
     lyricsAdded,
     lyricsLoading,
@@ -276,6 +277,55 @@ export default function TheaterView(props: TheaterViewProps) {
   const [hover, setHover] = useState(false);
   // 更多菜单（dislike 入口）
   const [moreOpen, setMoreOpen] = useState(false);
+  // 复制歌词按钮的 in-place 反馈：idle → all（复制整段）| line（复制当前行）
+  // → 1.2s 自动复原。与 ErrorPanel.handleCopy 同一套模式，不引入 Toast 基建。
+  const [copied, setCopied] = useState<'idle' | 'all' | 'line'>('idle');
+  const copiedTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+
+  /** 复制成功/失败都只改按钮文案——clipboard 在非安全上下文会被拒，
+   *  与 ErrorPanel 一致降级为静默，不打断播放体验。 */
+  const flashCopied = (kind: 'all' | 'line') => {
+    setCopied(kind);
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopied('idle'), 1200);
+  };
+
+  // 整段歌词：synced 拼成标准 LRC 行格式 [mm:ss.xx]，非 synced 走纯文本。
+  const handleCopyAll = async () => {
+    if (!lyrics || lyrics.length === 0) return;
+    const stamp = (s: number) => {
+      const m = Math.floor(s / 60);
+      const sec = (s % 60).toFixed(2).padStart(5, '0');
+      return `[${String(m).padStart(2, '0')}:${sec}]`;
+    };
+    const text = lyrics
+      .map((l) => (lyricsSynced && l.time > 0 ? `${stamp(l.time)} ${l.text}` : l.text))
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      flashCopied('all');
+    } catch {
+      setCopied('idle');
+    }
+  };
+
+  // 当前行：唱到哪句就复制哪句；没唱到（activeLine<0）时按钮禁用。
+  const handleCopyLine = async () => {
+    if (!lyrics || activeLine < 0) return;
+    try {
+      await navigator.clipboard.writeText(lyrics[activeLine].text);
+      flashCopied('line');
+    } catch {
+      setCopied('idle');
+    }
+  };
 
   // 封面渐变主色（从 track 派生，稳定）
   const coverHue = useMemo(() => (track ? seededFromString(track.id, 99) % 360 : 265), [track]);
@@ -539,6 +589,23 @@ export default function TheaterView(props: TheaterViewProps) {
                 </p>
               ))}
               <div className="th-lyric-actions">
+                <button
+                  type="button"
+                  className="th-lyric-action"
+                  onClick={() => void handleCopyAll()}
+                  disabled={!lyrics || lyrics.length === 0}
+                >
+                  ⧉ {copied === 'all' ? '已复制 ✓' : '复制歌词'}
+                </button>
+                <button
+                  type="button"
+                  className="th-lyric-action"
+                  onClick={() => void handleCopyLine()}
+                  disabled={activeLine < 0}
+                  title={activeLine < 0 ? '开始播放后才有当前行' : '复制正在唱的这一句'}
+                >
+                  ⧉ {copied === 'line' ? '已复制 ✓' : '复制本行'}
+                </button>
                 <button
                   type="button"
                   className="th-lyric-action"
