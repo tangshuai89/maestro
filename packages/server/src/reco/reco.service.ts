@@ -211,6 +211,35 @@ export class RecoService {
     return stored?.apiKey ?? null;
   }
 
+  /**
+   * 拿 key，没有就抛 428。**所有**要发 DeepSeek 请求的入口都必须走这个，
+   * 不要自己 `process.env.DEEPSEEK_API_KEY`。
+   *
+   * 2026-09-30 修 NL 歌单恒 401：controller 当时写的是
+   *   `const apiKey = process.env.DEEPSEEK_API_KEY ?? ''`
+   * 同一个 controller 里的前置检查 `isConfigured()` 走的是 getApiKey()
+   * （有 storage 兜底）→ 判定「配好了」放行，但真发请求时 env 是空的
+   * → `Authorization: Bearer ` → DeepSeek 401 → 502 deepseek_401。
+   * 之所以只有 NL 歌单中招：server 重启后 process.env 清空，而 key 是设置页
+   * 写进 storage 的（setApiKey 才顺手同步 env，只在当次进程有效）；
+   * `/reco/run` 用的是 getApiKey()，兜底拿到真 key，一直是好的。
+   * 症状因此极具迷惑性：「推荐能出歌单，只有 NL 歌单 401」。
+   */
+  requireApiKey(): string {
+    const key = this.getApiKey();
+    if (!key) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.PRECONDITION_REQUIRED,
+          error: 'deepseek_key_not_configured',
+          message: '请先在设置里填入 DeepSeek API key',
+        },
+        HttpStatus.PRECONDITION_REQUIRED,
+      );
+    }
+    return key;
+  }
+
   // ── 状态查询 ────────────────────────────────────────────
 
   status(session: Session): { configured: boolean; librarySize: number } {
@@ -241,13 +270,7 @@ export class RecoService {
       exclude_artists?: string[];
     } = {},
   ): Promise<RecoResult> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      throw new HttpException(
-        'deepseek_key_not_configured',
-        HttpStatus.PRECONDITION_REQUIRED,
-      );
-    }
+    const apiKey = this.requireApiKey();
     const lib = this.musicService.getLibrary(session);
     if (!lib || lib.items.length === 0) {
       throw new BadRequestException('library_empty：先 POST /music/library/import');
@@ -1257,6 +1280,22 @@ ${list}
     if (res.status >= 500) {
       this.logger.error(`deepseek 5xx: ${res.status}`);
       throw new HttpException('deepseek_upstream_5xx', HttpStatus.BAD_GATEWAY);
+    }
+    if (res.status === 401 || res.status === 403) {
+      // 之前掉进下面的兜底分支，抛的是 `deepseek_401` 这种机器码，
+      // 前端原样打给用户（对比 429「频率限制」/ 未配置「请先填 key」都有中文）。
+      const text = await res.text().catch(() => '');
+      this.logger.error(
+        `deepseek auth failed ${res.status}: ${text.slice(0, 200)}`,
+      );
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.BAD_GATEWAY,
+          error: 'deepseek_auth_failed',
+          message: 'DeepSeek API key 已失效或无权限，请到设置里更新',
+        },
+        HttpStatus.BAD_GATEWAY,
+      );
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');

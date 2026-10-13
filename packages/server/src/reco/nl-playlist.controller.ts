@@ -8,8 +8,6 @@ import {
   Body,
   Controller,
   Delete,
-  HttpException,
-  HttpStatus,
   Logger,
   Param,
   Patch,
@@ -66,24 +64,17 @@ export class NLPlaylistController {
     const text = validateParseIntentInput(body?.text);
     const session = this.sessionService.resolve(req, res);
 
-    // 1. 必须有 DeepSeek key（沿用 reco 的 PRECONDITION_REQUIRED 路径）
-    if (!this.reco.isConfigured()) {
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.PRECONDITION_REQUIRED,
-          error: 'deepseek_key_not_configured',
-          message: '请先在设置里填入 DeepSeek API key',
-        },
-        HttpStatus.PRECONDITION_REQUIRED,
-      );
-    }
+    // 1. 必须有 DeepSeek key（沿用 reco 的 PRECONDITION_REQUIRED 路径）。
+    // ⚠️ 取 key 必须走 requireApiKey()（env 优先 + storage 兜底），**不要**自己
+    // 读 process.env.DEEPSEEK_API_KEY——那个变量只在 setApiKey() 的当次进程里
+    // 有，server 一重启就空，2026-09-30 之前这里因此恒发空 Bearer → DeepSeek 401。
+    const apiKey = this.reco.requireApiKey();
 
     // 2. 拉库上下文（空库也能跑，仅是锚点为空）
     const lib = this.music.getLibrary(session);
     const sample = pickLibrarySample(lib, 50);
 
     // 3. 调 DeepSeek（沿用 RecoService.callDeepSeek；走同一超时 + 5xx/429 抛错逻辑）
-    const apiKey = process.env.DEEPSEEK_API_KEY ?? ''; // isConfigured 已验过
     const messages = buildParseIntentPrompt(text, sample);
     let raw = '';
     try {
