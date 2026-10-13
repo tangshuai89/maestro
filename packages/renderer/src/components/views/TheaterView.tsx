@@ -58,7 +58,9 @@ export interface TheaterViewProps {
   /** 导出歌词图为本地 PNG；参数是被点击的那一句（undefined = 整段） */
   onExportLyrics?: (highlightText?: string) => void;
   /** 「换个源找歌词」：按歌名 + 歌手去各平台重搜一次 */
-  onRetryLyrics?: () => void;
+  /** 「换个源找歌词」回调。返回 LyricsResult | null —— null = 其它源也没找到，
+   *  UI 靠它区分「换到了」和「白跑一趟」给反馈。 */
+  onRetryLyrics?: () => Promise<{ lines: LyricLine[] } | null>;
   // ── reco / DeepSeek ──────────────────────────────────────────
   recoConfigured: boolean;
   recoLibrarySize: number;
@@ -327,6 +329,36 @@ export default function TheaterView(props: TheaterViewProps) {
     }
   };
 
+  // 换源反馈：idle → ok（换到了 N 行）| none（其它源也没有）→ 2.4s 复原。
+  // 时长对齐导出按钮的 lyricsExport 状态机（App.tsx 也是 2400ms）。
+  const [retryResult, setRetryResult] = useState<'idle' | 'ok' | 'none'>('idle');
+  const [retryLines, setRetryLines] = useState(0);
+  const retryTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    },
+    [],
+  );
+
+  const handleRetryLyrics = async () => {
+    if (!onRetryLyrics) return;
+    const res = await onRetryLyrics();
+    setRetryResult(res && res.lines.length > 0 ? 'ok' : 'none');
+    setRetryLines(res?.lines.length ?? 0);
+    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    retryTimer.current = window.setTimeout(() => setRetryResult('idle'), 2400);
+  };
+
+  // 搜寻中优先——loading 期间不显示结果反馈
+  const retryLabel =
+    retryResult === 'ok'
+      ? `已换源 · ${retryLines} 行 ✓`
+      : retryResult === 'none'
+        ? '其它源也没有歌词'
+        : '↻ 换个源找歌词';
+
   // 封面渐变主色（从 track 派生，稳定）
   const coverHue = useMemo(() => (track ? seededFromString(track.id, 99) % 360 : 265), [track]);
   return (
@@ -546,10 +578,10 @@ export default function TheaterView(props: TheaterViewProps) {
                 <button
                   type="button"
                   className="th-lyric-action"
-                  onClick={onRetryLyrics}
-                  disabled={lyricsLoading}
+                  onClick={() => void handleRetryLyrics()}
+                  disabled={lyricsLoading || !onRetryLyrics}
                 >
-                  {lyricsLoading ? '搜寻中…' : '↻ 换个源找歌词'}
+                  {lyricsLoading ? '搜寻中…' : retryLabel}
                 </button>
                 <a
                   className="th-lyric-action th-lyric-action--link"
@@ -619,10 +651,10 @@ export default function TheaterView(props: TheaterViewProps) {
                 <button
                   type="button"
                   className="th-lyric-action"
-                  onClick={onRetryLyrics}
-                  disabled={lyricsLoading}
+                  onClick={() => void handleRetryLyrics()}
+                  disabled={lyricsLoading || !onRetryLyrics}
                 >
-                  {lyricsLoading ? '搜寻中…' : '↻ 换个源找歌词'}
+                  {lyricsLoading ? '搜寻中…' : retryLabel}
                 </button>
               </div>
             </>

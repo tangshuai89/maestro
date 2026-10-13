@@ -13,6 +13,7 @@
  *  9. 非 synced → 写入纯文本，不带时间戳
  * 10. 「复制本行」→ 只写当前行；activeLine<0 时禁用
  * 11. 复制成功后按钮 in-place 变「已复制 ✓」，1.2s 后复原
+ * 12. 「换个源找歌词」有结果→「已换源 · N 行 ✓」；无结果→「其它源也没有歌词」
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -137,7 +138,8 @@ describe('TheaterView 歌词交互', () => {
   });
 
   it('5. 无歌词 → 重搜按钮 + 网易云外链（href 带歌名/歌手）', async () => {
-    const onRetryLyrics = vi.fn();
+    // 必须给返回值：按钮现在按 res.lines.length 判「换到了」还是「白跑」
+    const onRetryLyrics = vi.fn().mockResolvedValue({ lines: [{ time: 1, text: 'x' }] });
     render(
       <TheaterView
         {...makeProps({ lyrics: null, onRetryLyrics, onExportLyrics: vi.fn() })}
@@ -239,5 +241,31 @@ describe('TheaterView 歌词交互', () => {
       () => expect(screen.getByRole('button', { name: /复制歌词/ })).toBeInTheDocument(),
       { timeout: 3000 },
     );
+  });
+  it('12. 「换个源找歌词」：有结果→「已换源 · N 行 ✓」，无结果→「其它源也没有歌词」', async () => {
+    const user = setupUser();
+
+    // 命中：返回 3 行 → 按钮显示「已换源 · 3 行 ✓」
+    const hit = vi.fn().mockResolvedValue({
+      lines: [
+        { time: 1, text: 'a' },
+        { time: 2, text: 'b' },
+        { time: 3, text: 'c' },
+      ],
+    });
+    const first = render(<TheaterView {...makeProps({ onRetryLyrics: hit })} />);
+    await user.click(screen.getByRole('button', { name: /换个源找歌词/ }));
+    expect(hit).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('button', { name: /已换源 · 3 行/ })).toBeInTheDocument();
+    first.unmount();
+
+    // 未命中：返回 null → 按钮显示「其它源也没有歌词」
+    const miss = vi.fn().mockResolvedValue(null);
+    render(<TheaterView {...makeProps({ onRetryLyrics: miss })} />);
+    await user.click(screen.getByRole('button', { name: /换个源找歌词/ }));
+    expect(miss).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByRole('button', { name: /其它源也没有歌词/ }),
+    ).toBeInTheDocument();
   });
 });
