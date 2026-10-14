@@ -13,15 +13,15 @@
 
 ## 0. 现状盘点（为什么现在还不能 AI 驱动）
 
-| 维度 | 现状 | 问题 |
-|---|---|---|
-| 文件结构 | 单 frame `AETHER — Canvas` 1440×900 | 没有 Pages 分层，AI 无法区分「令牌 / 组件 / 屏幕」 |
-| 组件化 | 无组件，全是普通 frame | AI 拿到的是扁平节点树，无法识别可复用单元、无法生成 React 组件 |
-| 变体 | 无 | 交互状态（hover/active/playing…）在画布里没有表达，代码状态映射全靠猜 |
-| 令牌 | 有 AETHER 变量组（颜色为主） | 变量没绑定到节点（很多是脚本硬编码的 hex）；spacing/radius 只是名字里的数字，不是 number 变量；无 effect styles；无 typography styles |
-| 动效 | 无（零原型连线） | Figma 里唯一的动效载体是原型交互，现在完全没建 |
-| 命名 | 部分语义化，混有机器名 | AI 读图靠命名，命名就是给 AI 看的文档 |
-| 覆盖范围 | 只有「正在播放」主视图 | 缺 SourceSelect / Search / Liked / Settings / 登录 / 空态 / 错误态等屏幕 |
+| 维度     | 现状                                | 问题                                                                                                                                  |
+| -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 文件结构 | 单 frame `AETHER — Canvas` 1440×900 | 没有 Pages 分层，AI 无法区分「令牌 / 组件 / 屏幕」                                                                                    |
+| 组件化   | 无组件，全是普通 frame              | AI 拿到的是扁平节点树，无法识别可复用单元、无法生成 React 组件                                                                        |
+| 变体     | 无                                  | 交互状态（hover/active/playing…）在画布里没有表达，代码状态映射全靠猜                                                                 |
+| 令牌     | 有 AETHER 变量组（颜色为主）        | 变量没绑定到节点（很多是脚本硬编码的 hex）；spacing/radius 只是名字里的数字，不是 number 变量；无 effect styles；无 typography styles |
+| 动效     | 无（零原型连线）                    | Figma 里唯一的动效载体是原型交互，现在完全没建                                                                                        |
+| 命名     | 部分语义化，混有机器名              | AI 读图靠命名，命名就是给 AI 看的文档                                                                                                 |
+| 覆盖范围 | 只有「正在播放」主视图              | 缺 SourceSelect / Search / Liked / Settings / 登录 / 空态 / 错误态等屏幕                                                              |
 
 **结论**：当前文件是「给设计师看的渲染图」，不是「给 AI 看的组件库」。改造核心 = 把一张图拆成
 四层结构（Foundations → Components → Screens → Motion）。
@@ -68,11 +68,11 @@ AETHER/Motion/duration/*      # NUMBER 变量：fast 120 / base 240 / slow 400 /
 
 ### 2.2 必补的三类 Styles（变量之外的样式资产）
 
-| 类型 | 内容 | 为什么 AI 需要 |
-|---|---|---|
-| Text Styles | `AETHER/Display-44`、`Title-28`、`Body-16`、`Caption-12`、`Mono-10`（含字重/字距） | 字体是变量管不了的属性，API/MCP 能列出 styles，AI 才能映射到 SCSS |
-| Effect Styles | `glass-card`、`glass-overlay`、`glow-cyan`、`glow-purple` | 现在玻璃是「fill 透明度 + 描边」模拟的，没有 style；真玻璃要 background blur，必须用 Effect Style 定义 |
-| Grid/布局 | 8pt 网格说明（README 里写） | 代码端 spacing 全靠它对齐 |
+| 类型          | 内容                                                                               | 为什么 AI 需要                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Text Styles   | `AETHER/Display-44`、`Title-28`、`Body-16`、`Caption-12`、`Mono-10`（含字重/字距） | 字体是变量管不了的属性，API/MCP 能列出 styles，AI 才能映射到 SCSS                                      |
+| Effect Styles | `glass-card`、`glass-overlay`、`glow-cyan`、`glow-purple`                          | 现在玻璃是「fill 透明度 + 描边」模拟的，没有 style；真玻璃要 background blur，必须用 Effect Style 定义 |
+| Grid/布局     | 8pt 网格说明（README 里写）                                                        | 代码端 spacing 全靠它对齐                                                                              |
 
 ### 2.3 绑定纪律（最重要的一条）
 
@@ -82,12 +82,12 @@ AETHER/Motion/duration/*      # NUMBER 变量：fast 120 / base 240 / slow 400 /
 
 ### 2.4 代码映射（单一事实源）
 
-| Figma | 代码端 |
-|---|---|
+| Figma                          | 代码端                            |
+| ------------------------------ | --------------------------------- |
 | `AETHER/Color/semantic/accent` | `--accent`（`base/_tokens.scss`） |
-| `AETHER/Spacing/8` | `--space-2` |
-| `AETHER/Radius/16` | `--radius-md` |
-| `AETHER/Type/Display-44` | `.display-44` 或组件样式 |
+| `AETHER/Spacing/8`             | `--space-2`                       |
+| `AETHER/Radius/16`             | `--radius-md`                     |
+| `AETHER/Type/Display-44`       | `.display-44` 或组件样式          |
 
 把这张表写进 README frame + 仓库文档，AI 每次同步先读它。现有代码端的
 `--accent / --space-* / --radius-* / --ease-*` 命名尽量与 Figma 侧对齐，或提供映射表。
@@ -100,24 +100,24 @@ AETHER/Motion/duration/*      # NUMBER 变量：fast 120 / base 240 / slow 400 /
 
 ### 3.1 原子组件（Primitives）
 
-| 组件 | Variant 属性 | 对应代码 |
-|---|---|---|
-| `Icon/Button` | tone=`glass\|neon\|outline`，size=`28\|40\|64`，state=`default\|hover\|active\|disabled\|focus`，boolean `iconOnly` | `.titlebar-btn`、控制按钮 |
-| `Badge/Platform` | platform=`qq\|netease\|deezer\|spotify`，state=`idle\|active\|liked` | 平台徽章（Q/N/D/S） |
-| `Tag/Hud` | tone=`cyan\|purple\|dim`，boolean `live` | `NEURAL FEED`、`HI-RES` 等 |
-| `Progress/Seekbar` | state=`idle\|hover\|dragging`，value=0–100%（实例可换） | 底部进度条 |
-| `Text/…` | 直接用 Text Styles | — |
+| 组件               | Variant 属性                                                                                                        | 对应代码                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `Icon/Button`      | tone=`glass\|neon\|outline`，size=`28\|40\|64`，state=`default\|hover\|active\|disabled\|focus`，boolean `iconOnly` | `.titlebar-btn`、控制按钮  |
+| `Badge/Platform`   | platform=`qq\|netease\|deezer\|spotify`，state=`idle\|active\|liked`                                                | 平台徽章（Q/N/D/S）        |
+| `Tag/Hud`          | tone=`cyan\|purple\|dim`，boolean `live`                                                                            | `NEURAL FEED`、`HI-RES` 等 |
+| `Progress/Seekbar` | state=`idle\|hover\|dragging`，value=0–100%（实例可换）                                                             | 底部进度条                 |
+| `Text/…`           | 直接用 Text Styles                                                                                                  | —                          |
 
 ### 3.2 复合组件（由原子实例组装，用 component properties 暴露参数）
 
-| 组件 | 关键属性 | 状态变体 |
-|---|---|---|
-| `Cover/Art` | 图片（instance swap 槽位）、boolean `playing` | 播放中呼吸光晕 vs 静止 |
-| `Track/Info` | text 属性：曲名/艺术家/专辑 | — |
-| `Lyrics/Line` | text 属性 | state=`prev\|current\|next`（+ 青色指示条） |
-| `Card/Reco` | text：曲名/艺术家，number：match% | state=`default\|hover` |
-| `Controls/Transport` | boolean `shuffle`、`repeat(off\|all\|one)`、`playing` | playing / paused（播放键变体） |
-| `Panel/Glass` | boolean `header`、text 标题 | — |
+| 组件                 | 关键属性                                              | 状态变体                                    |
+| -------------------- | ----------------------------------------------------- | ------------------------------------------- |
+| `Cover/Art`          | 图片（instance swap 槽位）、boolean `playing`         | 播放中呼吸光晕 vs 静止                      |
+| `Track/Info`         | text 属性：曲名/艺术家/专辑                           | —                                           |
+| `Lyrics/Line`        | text 属性                                             | state=`prev\|current\|next`（+ 青色指示条） |
+| `Card/Reco`          | text：曲名/艺术家，number：match%                     | state=`default\|hover`                      |
+| `Controls/Transport` | boolean `shuffle`、`repeat(off\|all\|one)`、`playing` | playing / paused（播放键变体）              |
+| `Panel/Glass`        | boolean `header`、text 标题                           | —                                           |
 
 ### 3.3 组件化纪律（AI 友好度决定项）
 
@@ -189,15 +189,15 @@ AI 会把它实现为 CSS/JS 而不是试图从设计稿里"猜"。
 
 代码端实际有 8 个渲染分支（`.superdesign/init/routes.md`），Figma 只有主视图。补齐：
 
-| 屏幕/模态 | 优先级 | 备注 |
-|---|---|---|
-| NowPlaying 主视图 | ✅ 已有 | 拆组件后重建为实例组装 |
-| 主视图状态变体 | P1 | playing / paused / buffering / no-lyrics / 空库 |
-| SourceSelect 选源页 | P1 | 首启全屏页 |
-| Search 搜索弹层 | P2 | Modal 壳复用 |
-| Liked / Settings / RecoKey / 登录（含 cookie fallback） | P2 | Modal 壳复用，wireframe 级组件化即可 |
-| ErrorPanel / 错误态 | P2 | 玻璃壳 + 语义色 |
-| 窗口三档尺寸 | P3 | 桌面应用可缩放：1280 / 1440 / 1920 各一 frame，auto-layout 约束正确 |
+| 屏幕/模态                                               | 优先级  | 备注                                                                |
+| ------------------------------------------------------- | ------- | ------------------------------------------------------------------- |
+| NowPlaying 主视图                                       | ✅ 已有 | 拆组件后重建为实例组装                                              |
+| 主视图状态变体                                          | P1      | playing / paused / buffering / no-lyrics / 空库                     |
+| SourceSelect 选源页                                     | P1      | 首启全屏页                                                          |
+| Search 搜索弹层                                         | P2      | Modal 壳复用                                                        |
+| Liked / Settings / RecoKey / 登录（含 cookie fallback） | P2      | Modal 壳复用，wireframe 级组件化即可                                |
+| ErrorPanel / 错误态                                     | P2      | 玻璃壳 + 语义色                                                     |
+| 窗口三档尺寸                                            | P3      | 桌面应用可缩放：1280 / 1440 / 1920 各一 frame，auto-layout 约束正确 |
 
 > 注意：代码端现在是「双视觉世界」（Glass Cosmic 壳 + Monster Beats 主视图皮肤，见
 > `.superdesign/init/theme.md`）。AETHER 是新的统一方向，但**壳组件（Titlebar、Modal、SourceSelect）**
@@ -220,13 +220,13 @@ AI 会把它实现为 CSS/JS 而不是试图从设计稿里"猜"。
 
 ## 7. 分阶段执行（不要一次全做）
 
-| 阶段 | 内容 | 产出 |
-|---|---|---|
-| **P0 · 结构** | 拆 4 个 Page；README frame；全量语义化重命名；变量绑定补全（消灭硬编码 hex） | AI 可审计的文件 |
+| 阶段            | 内容                                                                                     | 产出                  |
+| --------------- | ---------------------------------------------------------------------------------------- | --------------------- |
+| **P0 · 结构**   | 拆 4 个 Page；README frame；全量语义化重命名；变量绑定补全（消灭硬编码 hex）             | AI 可审计的文件       |
 | **P1 · 组件化** | 提取原子 5 + 复合 6 组件，含状态变体；主视图重建为实例组装；补 SourceSelect + 主视图状态 | 组件库 + 组件化主视图 |
-| **P2 · 动效** | 8 条核心动效的变体连线 + MOTION SPEC 表 + storyboard | 动效规格化 |
-| **P3 · 补屏** | 全部 modal / 空态 / 错误态 / 三档尺寸 | 覆盖全部代码分支 |
-| **P4 · 打通** | MCP/REST 审计脚本化；变量导出 SCSS；双视觉世界收敛；首个 AI 同步试点 | Figma → 代码闭环 |
+| **P2 · 动效**   | 8 条核心动效的变体连线 + MOTION SPEC 表 + storyboard                                     | 动效规格化            |
+| **P3 · 补屏**   | 全部 modal / 空态 / 错误态 / 三档尺寸                                                    | 覆盖全部代码分支      |
+| **P4 · 打通**   | MCP/REST 审计脚本化；变量导出 SCSS；双视觉世界收敛；首个 AI 同步试点                     | Figma → 代码闭环      |
 
 ---
 
@@ -239,17 +239,17 @@ AI 会把它实现为 CSS/JS 而不是试图从设计稿里"猜"。
 
 ## 9. 实现状态（v4 构建包已就绪）
 
-| 文件 | 内容 |
-|---|---|
-| `scripts/figma-v4-command.md` | 主控指令（喂给 Claude Code 的完整执行手册） |
-| `scripts/figma-aether-v4-foundations.js` | SEG0 页面拆分 + SEG1 变量 + SEG2 样式 + SEG3 README |
-| `scripts/figma-aether-v4-components.js` | 10 组件集 + 变体 + 组件属性 + Card/Glass 槽位 |
-| `scripts/figma-aether-v4-screens.js` | NowPlaying 三态 + SourceSelect，全实例组装 |
-| `scripts/figma-aether-v4-motion.js` | 组件原型连线 + 屏幕流转 + MOTION SPEC 表 |
-| `scripts/figma-aether-v4-audit.mjs` | REST 审计（`FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit.mjs`；`--fixture` 离线自测） |
-| `scripts/figma-v4-typecheck.mjs` | 段代码类型校验（@figma/plugin-typings，改脚本后必跑） |
-| `scripts/figma-v4-smoke.mjs` | mock 运行时冒烟（13+1 段顺序执行 + 结构/绑定断言；`FIGMA_FIXTURE_DUMP` 导出审计 fixture） |
-| `scripts/figma-aether-v4-snapshot.js` | 只读现状快照（Step 0 与执行后核对） |
+| 文件                                     | 内容                                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `scripts/figma-v4-command.md`            | 主控指令（喂给 Claude Code 的完整执行手册）                                                 |
+| `scripts/figma-aether-v4-foundations.js` | SEG0 页面拆分 + SEG1 变量 + SEG2 样式 + SEG3 README                                         |
+| `scripts/figma-aether-v4-components.js`  | 10 组件集 + 变体 + 组件属性 + Card/Glass 槽位                                               |
+| `scripts/figma-aether-v4-screens.js`     | NowPlaying 三态 + SourceSelect，全实例组装                                                  |
+| `scripts/figma-aether-v4-motion.js`      | 组件原型连线 + 屏幕流转 + MOTION SPEC 表                                                    |
+| `scripts/figma-aether-v4-audit.mjs`      | REST 审计（`FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit.mjs`；`--fixture` 离线自测） |
+| `scripts/figma-v4-typecheck.mjs`         | 段代码类型校验（@figma/plugin-typings，改脚本后必跑）                                       |
+| `scripts/figma-v4-smoke.mjs`             | mock 运行时冒烟（13+1 段顺序执行 + 结构/绑定断言；`FIGMA_FIXTURE_DUMP` 导出审计 fixture）   |
+| `scripts/figma-aether-v4-snapshot.js`    | 只读现状快照（Step 0 与执行后核对）                                                         |
 
 执行方式：把 `figma-v4-command.md` 喂给 Claude Code（use_figma 管线），按步骤跑完 13 段，
 跑 `audit.mjs` 验收。v3 画布归档到 `99 · Archive` 页，不覆盖旧稿。
@@ -277,21 +277,24 @@ file_variables scope 的 token 复验；原型连线为平台限制需 UI 手动
 **D1 增量（2026-09-10）—— Modal/Full 屏幕补齐**：基于 v4-ABC 剧场稿，在 03 · Screens 增 6 屏：
 `Screen/Search/Modal`、`Screen/Liked/Modal`、`Screen/Settings/Full`、`Screen/RecoKey/Modal`、
 `Screen/AuthError/Full`、`Screen/EmptyState/Full`。**全部用 v4 已建 11 组件集 + 8 SVG icon
-+ Scene/Backdrop 实例组装，禁裸画**；每屏 description 段写 AI CONTRACT（react 路径 /
-a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md 一致。
-不引新组件（避免又一轮 components SEG1-4 回归）；原型连线不在 D1 范围（仍走 Figma UI 手动）。
-- 交付物：`scripts/figma-aether-v4-screens-d1.js`（6 段）+ `figma-v4-d1-command.md`（执行手册）
-  + `figma-aether-v4-audit-d1.mjs`（增量审计：6 frame 存在 + AI_CONTRACT description +
-  03 页自有填充绑定 ≥70% + 6 屏 x 坐标不冲突）+ `figma-v4-smoke-d1.mjs`（mock 端到端）
-- Mock 冒烟：**23/23 通过**（6 段 + 17 ASSERT 断言），audit-d1 fixture 跑通 17/17
-- 真实执行：用户在自己 Claude Code + use_figma 环境跑，6 段顺序 SEG1-6，x 坐标不冲突
-- 关键约束：03 · Screens 累计 ≥10 个 Screen/ frame（4 v4 + 6 D1）；不破坏 v4-audit 23/25 基线
-- 下一步：D5（Code Connect 补 5 映射：Modal/RecoKeyModal/SettingsModal/LikedLibraryModal/SearchPanel）
+
+- Scene/Backdrop 实例组装，禁裸画**；每屏 description 段写 AI CONTRACT（react 路径 /
+  a11y / states / motion / tokens / bindings），与 spec/d1-screens/design.md 一致。
+  不引新组件（避免又一轮 components SEG1-4 回归）；原型连线不在 D1 范围（仍走 Figma UI 手动）。
+
+* 交付物：`scripts/figma-aether-v4-screens-d1.js`（6 段）+ `figma-v4-d1-command.md`（执行手册）
+  - `figma-aether-v4-audit-d1.mjs`（增量审计：6 frame 存在 + AI_CONTRACT description +
+    03 页自有填充绑定 ≥70% + 6 屏 x 坐标不冲突）+ `figma-v4-smoke-d1.mjs`（mock 端到端）
+* Mock 冒烟：**23/23 通过**（6 段 + 17 ASSERT 断言），audit-d1 fixture 跑通 17/17
+* 真实执行：用户在自己 Claude Code + use_figma 环境跑，6 段顺序 SEG1-6，x 坐标不冲突
+* 关键约束：03 · Screens 累计 ≥10 个 Screen/ frame（4 v4 + 6 D1）；不破坏 v4-audit 23/25 基线
+* 下一步：D5（Code Connect 补 5 映射：Modal/RecoKeyModal/SettingsModal/LikedLibraryModal/SearchPanel）
 
 **D2 增量（2026-09-10）—— 视觉双世界收敛（文档收尾）**：之前评估 D2 是 P0 缺口（"双视觉混用"），
 但 2026-09-10 重新盘点代码发现 `MonsterBeatsView.tsx` / `_monster-beats.scss` / `mb-*` 类**已全部删除**，
 主视图迁到 `TheaterView.tsx`（AETHER 剧场稿），`_transport.scss` 等全部用 `var(--*)` 令牌。
 **实际 D2 = 文档与 Figma Archive 同步**：
+
 - 改 5 个文件：`.superdesign/init/{theme,components,extractable-components}.md` + `App.tsx` 注释 + 本文件
 - Figma 99 · Archive 顶部加 `Archive README` frame（脚本 `figma-aether-v4-archive-readme.js`）——红色 outline + 警告文字 + 指向 03 · Screens AETHER 剧场稿的链接
 - 视觉回归保护（Playwright 截图 baseline）属 P3，不在 D2 范围

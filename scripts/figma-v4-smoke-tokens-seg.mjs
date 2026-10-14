@@ -23,11 +23,19 @@ const repo = resolve(__dirname, '..');
 
 const { SEG1 } = require('./figma-tokens-dump-seg.js');
 const dump = JSON.parse(readFileSync(resolve(repo, 'scripts/figma-tokens-dump.json'), 'utf8'));
-const expected = readFileSync(resolve(repo, 'packages/renderer/src/styles/base/_tokens.generated.scss'), 'utf8');
+const expected = readFileSync(
+  resolve(repo, 'packages/renderer/src/styles/base/_tokens.generated.scss'),
+  'utf8',
+);
 
 // ── 最小 figma 变量 mock：单集合 / 单 mode（与真实文件一致：AETHER + Dark）──
 const MODE = 'M1';
-const COLLECTION = { id: 'C1', name: 'AETHER', modes: [{ modeId: MODE, name: 'Dark' }], variableIds: [] };
+const COLLECTION = {
+  id: 'C1',
+  name: 'AETHER',
+  modes: [{ modeId: MODE, name: 'Dark' }],
+  variableIds: [],
+};
 const variables = dump.variables.map((v, i) => ({
   id: `V${i}`,
   name: v.name,
@@ -54,11 +62,31 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const out = JSON.parse(await new AsyncFunction('figma', SEG1)(figma));
 
 check('SEG1 可解析并返回 JSON', !!out, `${Object.keys(out).length} 个字段`);
-check('变量数一致', out.totalVars === dump.variables.length, `${out.totalVars} vs dump ${dump.variables.length}`);
-check('没有未映射变量', (out.unmappedFromExport ?? []).length === 0, (out.unmappedFromExport ?? []).join(', '));
-check('没有未解析别名', (out.unresolvedAliases ?? []).length === 0, (out.unresolvedAliases ?? []).join(', '));
-check('cssHash 与实际 css 自洽', out.cssHash === djb2(out.css), `段内 ${out.cssHash} / 重算 ${djb2(out.css)}`);
-check('cssLen 与实际 css 自洽', out.cssLen === out.css.length, `${out.cssLen} vs ${out.css.length}`);
+check(
+  '变量数一致',
+  out.totalVars === dump.variables.length,
+  `${out.totalVars} vs dump ${dump.variables.length}`,
+);
+check(
+  '没有未映射变量',
+  (out.unmappedFromExport ?? []).length === 0,
+  (out.unmappedFromExport ?? []).join(', '),
+);
+check(
+  '没有未解析别名',
+  (out.unresolvedAliases ?? []).length === 0,
+  (out.unresolvedAliases ?? []).join(', '),
+);
+check(
+  'cssHash 与实际 css 自洽',
+  out.cssHash === djb2(out.css),
+  `段内 ${out.cssHash} / 重算 ${djb2(out.css)}`,
+);
+check(
+  'cssLen 与实际 css 自洽',
+  out.cssLen === out.css.length,
+  `${out.cssLen} vs ${out.css.length}`,
+);
 check(
   '渲染结果与仓库 _tokens.generated.scss 逐字节一致',
   out.css === expected,
@@ -74,11 +102,14 @@ function firstDiff(a, b) {
   const A = a.split('\n');
   const B = b.split('\n');
   for (let i = 0; i < Math.max(A.length, B.length); i++) {
-    if (A[i] !== B[i]) return `第 ${i + 1} 行 仓库=${JSON.stringify(A[i])} 段=${JSON.stringify(B[i])}`;
+    if (A[i] !== B[i])
+      return `第 ${i + 1} 行 仓库=${JSON.stringify(A[i])} 段=${JSON.stringify(B[i])}`;
   }
   return '长度不同';
 }
 
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} 通过${failed.length ? ` · ${failed.length} FAIL` : ' ✅'}`);
+console.log(
+  `\n${results.length - failed.length}/${results.length} 通过${failed.length ? ` · ${failed.length} FAIL` : ' ✅'}`,
+);
 process.exit(failed.length ? 1 : 0);

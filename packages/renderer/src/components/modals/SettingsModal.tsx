@@ -154,7 +154,9 @@ export default function SettingsModal({
 
   // ESC 关闭
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -257,7 +259,15 @@ export default function SettingsModal({
         <header className="set-hud">
           <span className="set-hud-title">SETTINGS // CONFIG</span>
           <button className="set-close" onClick={onClose} aria-label="关闭" title="关闭">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
@@ -268,17 +278,13 @@ export default function SettingsModal({
           {/* ① 播放模式 */}
           <section className="set-section set-section--compact">
             <h3 className="set-section-title">播放模式</h3>
-            <p className="set-section-hint">
-              切换即时生效并记住选择 · 播放进度与队列不受影响
-            </p>
+            <p className="set-section-hint">切换即时生效并记住选择 · 播放进度与队列不受影响</p>
             <div className="set-mode-group" role="group" aria-label="播放模式">
               {PLAYER_MODE_OPTIONS.map((opt) => (
                 <button
                   key={opt.mode}
                   type="button"
-                  className={`set-btn${
-                    playerMode === opt.mode ? ' set-btn--accent' : ''
-                  }`}
+                  className={`set-btn${playerMode === opt.mode ? ' set-btn--accent' : ''}`}
                   aria-pressed={playerMode === opt.mode}
                   title={opt.hint}
                   onClick={() => onChangePlayerMode(opt.mode)}
@@ -288,7 +294,6 @@ export default function SettingsModal({
               ))}
             </div>
           </section>
-
 
           {/* ② 音频（EQ）—— specs/audio-fx */}
           <section className="set-section set-section--compact audio-fx">
@@ -311,9 +316,7 @@ export default function SettingsModal({
                   <button
                     key={preset.id}
                     type="button"
-                    className={`set-btn${
-                      audioFx.presetId === preset.id ? ' set-btn--accent' : ''
-                    }`}
+                    className={`set-btn${audioFx.presetId === preset.id ? ' set-btn--accent' : ''}`}
                     aria-pressed={audioFx.presetId === preset.id}
                     title={preset.hint}
                     onClick={() => onApplyEqPreset(preset.id)}
@@ -449,7 +452,9 @@ export default function SettingsModal({
           <section className="set-section">
             <h3 className="set-section-title">本地自动备份</h3>
             <p className="set-section-hint">每日自动备份会话快照到本地目录</p>
-            <div className="set-path" title={backupDir}>{backupDir}</div>
+            <div className="set-path" title={backupDir}>
+              {backupDir}
+            </div>
             <div className="set-section-actions">
               <span className="set-stat-tag">
                 <span className="set-stat-label">BACKUPS</span>

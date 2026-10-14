@@ -80,11 +80,7 @@ function makeService() {
     ['a', 'b', 'c'],
     'qq.liked 应是本地+导入的并集（不丢 a）',
   );
-  assert.deepStrictEqual(
-    [...merged.providers.qq.disliked].sort(),
-    ['x', 'y'],
-    'qq.disliked 并集',
-  );
+  assert.deepStrictEqual([...merged.providers.qq.disliked].sort(), ['x', 'y'], 'qq.disliked 并集');
   // 本地 queue 保留（不被导入的 OLD 覆盖）
   assert.deepStrictEqual(
     merged.providers.qq.queue,
@@ -99,11 +95,7 @@ function makeService() {
   );
   // fanOut 去重 + 追加
   assert.strictEqual(merged.fanOut.m1.length, 2, 'm1 fanOut 去重后 2 条');
-  assert.deepStrictEqual(
-    merged.fanOut.m2,
-    [{ platform: 'qq', trackId: 'z' }],
-    'm2 新 fanOut 带入',
-  );
+  assert.deepStrictEqual(merged.fanOut.m2, [{ platform: 'qq', trackId: 'z' }], 'm2 新 fanOut 带入');
   console.log('✅ 3. music:* liked/disliked/fanOut 并集，queue 本地优先');
 }
 

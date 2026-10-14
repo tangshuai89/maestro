@@ -264,7 +264,11 @@ async function main() {
       src('deezer', 'd1', 'Ye Hui Mei', '叶惠美', 11),
     ]);
     assert.strictEqual(r.length, 1, '专辑名跨脚本 + 艺人相同 → 应合并成 1 张');
-    assert.deepStrictEqual(r[0].sources.map((x: any) => x.platform).sort(), ['deezer', 'qq'], '两个平台源都应在');
+    assert.deepStrictEqual(
+      r[0].sources.map((x: any) => x.platform).sort(),
+      ['deezer', 'qq'],
+      '两个平台源都应在',
+    );
     ok('13. 跨脚本专辑合并：桥接真的接进了 buildUnifiedAlbums');
   }
   {
@@ -281,7 +285,10 @@ async function main() {
       src('netease', 'n1', '叶惠美', '周杰伦', 18),
     ]);
     assert.strictEqual(r.length, 2, 'trackCount 11 vs 18 分歧 → 仍拆开');
-    assert.ok(r.every((x: any) => x.variantMismatch === true), '两张都应打 variantMismatch（桥接不能把分歧拆开的又并回去）');
+    assert.ok(
+      r.every((x: any) => x.variantMismatch === true),
+      '两张都应打 variantMismatch（桥接不能把分歧拆开的又并回去）',
+    );
     ok('13c. 桥接不破坏 trackCount 分歧保护');
   }
   {

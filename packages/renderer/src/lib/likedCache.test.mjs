@@ -31,12 +31,23 @@ function check(label, fn) {
 }
 
 async function main() {
-  const { readCachedLibrary, writeCachedLibrary, clearCachedLibrary } = await import('./likedCache.ts');
+  const { readCachedLibrary, writeCachedLibrary, clearCachedLibrary } =
+    await import('./likedCache.ts');
 
   // Helper: create a valid LibraryImportResult
   function makeLib(overrides = {}) {
     return {
-      items: [{ id: 'a', title: 'Song', artist: 'X', coverUrl: '', duration: 200, sources: [], likedPlatforms: ['qq'] }],
+      items: [
+        {
+          id: 'a',
+          title: 'Song',
+          artist: 'X',
+          coverUrl: '',
+          duration: 200,
+          sources: [],
+          likedPlatforms: ['qq'],
+        },
+      ],
       sources: [],
       importedAt: Date.now(),
       ...overrides,
@@ -79,11 +90,17 @@ async function main() {
   // ── 5. Missing fields → null ─────────────────────────────────────────
   lsStore.clear();
   check('5a. missing items array → null', () => {
-    lsStore.set('maestro:liked-library-cache', JSON.stringify({ sources: [], importedAt: Date.now() }));
+    lsStore.set(
+      'maestro:liked-library-cache',
+      JSON.stringify({ sources: [], importedAt: Date.now() }),
+    );
     assert.strictEqual(readCachedLibrary(), null);
   });
   check('5b. missing sources array → null', () => {
-    lsStore.set('maestro:liked-library-cache', JSON.stringify({ items: [], importedAt: Date.now() }));
+    lsStore.set(
+      'maestro:liked-library-cache',
+      JSON.stringify({ items: [], importedAt: Date.now() }),
+    );
     assert.strictEqual(readCachedLibrary(), null);
   });
   check('5c. missing importedAt → null', () => {
@@ -91,7 +108,10 @@ async function main() {
     assert.strictEqual(readCachedLibrary(), null);
   });
   check('5d. importedAt not a number → null', () => {
-    lsStore.set('maestro:liked-library-cache', JSON.stringify({ items: [], sources: [], importedAt: 'yesterday' }));
+    lsStore.set(
+      'maestro:liked-library-cache',
+      JSON.stringify({ items: [], sources: [], importedAt: 'yesterday' }),
+    );
     assert.strictEqual(readCachedLibrary(), null);
   });
 
@@ -117,7 +137,9 @@ async function main() {
   lsStore.clear();
   check('8. writeCachedLibrary swallows quota error', () => {
     const origSetItem = globalThis.localStorage.setItem;
-    globalThis.localStorage.setItem = () => { throw new DOMException('quota exceeded'); };
+    globalThis.localStorage.setItem = () => {
+      throw new DOMException('quota exceeded');
+    };
     try {
       writeCachedLibrary(makeLib()); // should not throw
     } finally {
@@ -128,7 +150,9 @@ async function main() {
   // ── 9. readCachedLibrary doesn't throw on access error ───────────────
   check('9. readCachedLibrary swallows access error', () => {
     const origGetItem = globalThis.localStorage.getItem;
-    globalThis.localStorage.getItem = () => { throw new Error('private mode'); };
+    globalThis.localStorage.getItem = () => {
+      throw new Error('private mode');
+    };
     try {
       assert.strictEqual(readCachedLibrary(), null);
     } finally {
@@ -139,7 +163,9 @@ async function main() {
   // ── 10. clearCachedLibrary doesn't throw on error ────────────────────
   check('10. clearCachedLibrary swallows error', () => {
     const origRemove = globalThis.localStorage.removeItem;
-    globalThis.localStorage.removeItem = () => { throw new Error('denied'); };
+    globalThis.localStorage.removeItem = () => {
+      throw new Error('denied');
+    };
     try {
       clearCachedLibrary(); // should not throw
     } finally {

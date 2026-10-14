@@ -7,14 +7,14 @@
 
 ## 1. 6 个新 Screen frame
 
-| # | frame 名 | 尺寸 | 类型 | 用现有组件 | 自由组装节点 | 优先级 |
-|---|---|---|---|---|---|---|
-| 1 | `Screen/Search/Modal` | 1440×900 (弹层覆盖在 NowPlaying 上) | modal | Tag/Stat, Lyrics/Line×N, Icon/Search | 输入框 + 平台 chips + 结果列表 | P1 |
-| 2 | `Screen/Liked/Modal` | 1440×900 (弹层) | modal | Tag/Stat, Icon/Heart, Badge/Platform | 列表行（封面缩略 + 曲名 + 平台 + 状态）| P2 |
-| 3 | `Screen/Settings/Full` | 1440×900 (全屏) | full | Tag/Stat, Button/Text, Input/Text | 3 个 section 卡片 | P1 |
-| 4 | `Screen/RecoKey/Modal` | 1440×900 (弹层覆盖) | modal | Tag/Stat, Button/Text, Input/Text | 模态壳 + 输入 + DeepSeek 链接 | P1 |
-| 5 | `Screen/AuthError/Full` | 1440×900 (全屏) | full | Tag/Stat, Button/Text, Input/Text | 错误码 tag + 错误消息 + 操作按钮 | P2 |
-| 6 | `Screen/EmptyState/Full` | 1440×900 (全屏) | full | Tag/Stat, Button/Text, Icon/Heart | 居中 illustration + 提示 + CTA | P2 |
+| #   | frame 名                 | 尺寸                                | 类型  | 用现有组件                           | 自由组装节点                            | 优先级 |
+| --- | ------------------------ | ----------------------------------- | ----- | ------------------------------------ | --------------------------------------- | ------ |
+| 1   | `Screen/Search/Modal`    | 1440×900 (弹层覆盖在 NowPlaying 上) | modal | Tag/Stat, Lyrics/Line×N, Icon/Search | 输入框 + 平台 chips + 结果列表          | P1     |
+| 2   | `Screen/Liked/Modal`     | 1440×900 (弹层)                     | modal | Tag/Stat, Icon/Heart, Badge/Platform | 列表行（封面缩略 + 曲名 + 平台 + 状态） | P2     |
+| 3   | `Screen/Settings/Full`   | 1440×900 (全屏)                     | full  | Tag/Stat, Button/Text, Input/Text    | 3 个 section 卡片                       | P1     |
+| 4   | `Screen/RecoKey/Modal`   | 1440×900 (弹层覆盖)                 | modal | Tag/Stat, Button/Text, Input/Text    | 模态壳 + 输入 + DeepSeek 链接           | P1     |
+| 5   | `Screen/AuthError/Full`  | 1440×900 (全屏)                     | full  | Tag/Stat, Button/Text, Input/Text    | 错误码 tag + 错误消息 + 操作按钮        | P2     |
+| 6   | `Screen/EmptyState/Full` | 1440×900 (全屏)                     | full  | Tag/Stat, Button/Text, Icon/Heart    | 居中 illustration + 提示 + CTA          | P2     |
 
 总计：**4 P1 + 2 P2**——P1 屏幕在 D1 必交付，P2 屏幕如时间紧可放后续。
 

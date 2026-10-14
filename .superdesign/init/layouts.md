@@ -75,8 +75,7 @@ export default function Titlebar({
   onOpenLiked,
   onOpenSettings,
 }: Props) {
-  const showQuality =
-    (provider === 'qq' || provider === 'netease') && loggedIn;
+  const showQuality = (provider === 'qq' || provider === 'netease') && loggedIn;
 
   return (
     <div className="titlebar">
@@ -127,16 +126,10 @@ export default function Titlebar({
         )}
       </button>
 
-      {showQuality && (
-        <QualityMenu quality={qqQuality} onSelect={onChangeQuality} />
-      )}
+      {showQuality && <QualityMenu quality={qqQuality} onSelect={onChangeQuality} />}
 
       {loggedIn ? null : (
-        <button
-          className="titlebar-btn login-btn"
-          onClick={onLogin}
-          disabled={loggingIn}
-        >
+        <button className="titlebar-btn login-btn" onClick={onLogin} disabled={loggingIn}>
           {loggingIn ? '登录中…' : '登录'}
         </button>
       )}
@@ -212,9 +205,7 @@ export default function SourceMenu({ provider, onSelect }: Props) {
             {SELECTABLE.map((p) => (
               <button
                 key={p}
-                className={`source-menu-item${
-                  p === provider ? ' source-menu-item--active' : ''
-                }`}
+                className={`source-menu-item${p === provider ? ' source-menu-item--active' : ''}`}
                 onClick={() => {
                   onSelect(p);
                   setOpen(false);
@@ -272,9 +263,7 @@ export default function QualityMenu({ quality, onSelect }: Props) {
             {QUALITIES.map((q) => (
               <button
                 key={q}
-                className={`source-menu-item${
-                  q === quality ? ' source-menu-item--active' : ''
-                }`}
+                className={`source-menu-item${q === quality ? ' source-menu-item--active' : ''}`}
                 onClick={() => {
                   onSelect(q);
                   setOpen(false);
@@ -416,9 +405,9 @@ export default function SourceSelect({ onSelect }: SourceSelectProps) {
   // Spotify tier drives the desc on its card. Default to "unknown" — when
   // the user just opens the app and the status fetch is still pending, we
   // fall back to the conservative "30s 预览" wording.
-  const [spotifyTier, setSpotifyTier] = useState<
-    'premium' | 'free' | 'open' | 'unknown'
-  >('unknown');
+  const [spotifyTier, setSpotifyTier] = useState<'premium' | 'free' | 'open' | 'unknown'>(
+    'unknown',
+  );
   useEffect(() => {
     void getSpotifyStatus()
       .then((s) => {

@@ -32,8 +32,18 @@ const { MatchService } = require('../match/match.service');
 // 测试用 logger：保持安静
 const quietProviders = () => ({
   qq: { fetchLikedMidSet: async () => new Set(), like: async () => true, unlike: async () => true },
-  netease: { fetchLiked: async () => [], like: async () => true, unlike: async () => true, fmTrash: async () => true },
-  spotify: { fetchLiked: async () => [], like: async () => ({ success: true }), unlike: async () => ({ success: true }), bindSessionId: () => {} },
+  netease: {
+    fetchLiked: async () => [],
+    like: async () => true,
+    unlike: async () => true,
+    fmTrash: async () => true,
+  },
+  spotify: {
+    fetchLiked: async () => [],
+    like: async () => ({ success: true }),
+    unlike: async () => ({ success: true }),
+    bindSessionId: () => {},
+  },
   deezer: { getEditorials: () => [] },
   search: { searchUnified: async () => [] },
   lyricsOvh: { fetch: async () => null },
@@ -85,12 +95,7 @@ async function makeServiceV2() {
   const qs = quietProviders();
   const match = new MatchService(qs);
   const { LikeSyncQueue } = require('./like-sync.queue');
-  const lyricsService = new LyricsService(
-    qs.netease,
-    qs.deezer,
-    qs.qq,
-    qs.lyricsOvh,
-  );
+  const lyricsService = new LyricsService(qs.netease, qs.deezer, qs.qq, qs.lyricsOvh);
   const ms = new MusicService(
     storage,
     qs.qq,
@@ -200,9 +205,7 @@ async function test4_inflightPendingPreserved() {
   // Monkey-patch pendingTargets：模拟「队列报告了一个 in-flight like」（这正是
   // pendingTargets 在 active + pending 期间返回的内容）。这样 reconcileLiked
   // 看到的就是「真实在途」语义，不受 fake drain 时序影响。
-  const originalPending = (ms as any).likeSync.pendingTargets.bind(
-    (ms as any).likeSync,
-  );
+  const originalPending = (ms as any).likeSync.pendingTargets.bind((ms as any).likeSync);
   (ms as any).likeSync.pendingTargets = (sid: string) => {
     if (sid !== s.id) return [];
     return [{ platform: 'qq', trackId: 'track-c', liked: true }];
@@ -215,10 +218,8 @@ async function test4_inflightPendingPreserved() {
     // reconcileLiked 计算 next = remote ∪ in-flight like
     // remote 没有 track-c，但有 in-flight like 应把 track-c 补进 next
     const set = await (ms as any).getLikedSet(s, 'qq');
-    assert.strictEqual(set!.has('track-c'), true,
-      'reconcile 后 cache 含 in-flight like（不被抹）');
-    assert.strictEqual(set!.has('track-existing'), true,
-      'reconcile 后 cache 保留已有 ❤');
+    assert.strictEqual(set!.has('track-c'), true, 'reconcile 后 cache 含 in-flight like（不被抹）');
+    assert.strictEqual(set!.has('track-existing'), true, 'reconcile 后 cache 保留已有 ❤');
   } finally {
     (ms as any).likeSync.pendingTargets = originalPending;
   }

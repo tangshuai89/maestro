@@ -15,14 +15,14 @@
 
 `04 · Motion` 页 `MOTION SPEC` frame（node `314:2040`，1440×334）内的**隐藏 TEXT 子节点**：
 
-| 项 | 值 |
-|---|---|
-| 节点名 | `MOTION_SPEC`（与 D1 的 `AI_CONTRACT` 同一套命名） |
-| 当前 node id | `508:2` |
-| `visible` | `false` |
-| `fills` | `[]`（不进"自有填充变量绑定率"统计的分母） |
-| `characters` | `---\n{"MOTION_SPEC":"1.0","spec":[...]}\n---` |
-| 长度 / 指纹 | 6295 字符 · djb2 `6c55cc64`（2026-09-20） |
+| 项           | 值                                                 |
+| ------------ | -------------------------------------------------- |
+| 节点名       | `MOTION_SPEC`（与 D1 的 `AI_CONTRACT` 同一套命名） |
+| 当前 node id | `508:2`                                            |
+| `visible`    | `false`                                            |
+| `fills`      | `[]`（不进"自有填充变量绑定率"统计的分母）         |
+| `characters` | `---\n{"MOTION_SPEC":"1.0","spec":[...]}\n---`     |
+| 长度 / 指纹  | 6295 字符 · djb2 `6c55cc64`（2026-09-20）          |
 
 为什么 REST 读得到：隐藏 TEXT 节点的 `characters` 照常出现在 `/v1/files/:key` 的节点树里
 （只要 `depth` 够），所以 AI 侧不需要 Dev Mode 也能拿到。
@@ -75,19 +75,19 @@ PASS  Figma ↔ 仓库 spec id 集合一致 — 共 20 条
 
 ## Schema 字段约定
 
-| 字段 | 必填 | 取值 |
-|---|---|---|
-| `id` | ✅ | 唯一字符串（如 `btn-play-hover`） |
-| `category` | ✅ | `interaction` / `transition` / `ambient` / `screen-flow` |
-| `component` | ✅ | Figma 已存在组件名（如 `Core/Play`） |
-| `trigger` | ✅ | `ON_HOVER` / `ON_CLICK` / `ON_PRESS` / `MOUSE_DOWN` / `AFTER_TIMEOUT` / `track-time` / `audio-reactive` |
-| `from_state` / `to_state` | interaction/transition/screen-flow 必填 | 变体名 |
-| `duration_ms` | transition/screen-flow 必填 | 整数 |
-| `easing` | transition/screen-flow 必填 | CSS easing 或预设 |
-| `driver` | ambient 必填 | `bass-intensity` / `currentTime` / `pointer` / `audio-rms` / `track-id-seed` 等 |
-| `animation` | ❌ | 默认 `smart-animate` / `css-keyframe` / `spring` |
-| `tokens` | ❌ | 数组，引用 Color/Spacing/Radius 变量名 |
-| `description` | ❌ | 人读说明 |
+| 字段                      | 必填                                    | 取值                                                                                                    |
+| ------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                      | ✅                                      | 唯一字符串（如 `btn-play-hover`）                                                                       |
+| `category`                | ✅                                      | `interaction` / `transition` / `ambient` / `screen-flow`                                                |
+| `component`               | ✅                                      | Figma 已存在组件名（如 `Core/Play`）                                                                    |
+| `trigger`                 | ✅                                      | `ON_HOVER` / `ON_CLICK` / `ON_PRESS` / `MOUSE_DOWN` / `AFTER_TIMEOUT` / `track-time` / `audio-reactive` |
+| `from_state` / `to_state` | interaction/transition/screen-flow 必填 | 变体名                                                                                                  |
+| `duration_ms`             | transition/screen-flow 必填             | 整数                                                                                                    |
+| `easing`                  | transition/screen-flow 必填             | CSS easing 或预设                                                                                       |
+| `driver`                  | ambient 必填                            | `bass-intensity` / `currentTime` / `pointer` / `audio-rms` / `track-id-seed` 等                         |
+| `animation`               | ❌                                      | 默认 `smart-animate` / `css-keyframe` / `spring`                                                        |
+| `tokens`                  | ❌                                      | 数组，引用 Color/Spacing/Radius 变量名                                                                  |
+| `description`             | ❌                                      | 人读说明                                                                                                |
 
 ## 与 Figma interactions 的关系
 

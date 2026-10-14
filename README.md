@@ -4,7 +4,7 @@
 
 > Your cross-platform music brain. Log into NetEase Cloud Music, QQ Music,
 > Spotify and Deezer, pull your **liked ("hearted") songs** from every
-> platform, let a large language model (**DeepSeek**, using *your own* API
+> platform, let a large language model (**DeepSeek**, using _your own_ API
 > key) recommend what to fall in love with next — and when you heart a
 > track, heart it **everywhere it's licensed**, so "sorry, unavailable in
 > your region / no rights" never stops the music again.
@@ -84,35 +84,35 @@ Legend: ✅ done · 🚧 partial / in progress · 📋 planned
 
 ### Per-platform capabilities
 
-| Capability                         | NetEase | QQ Music | Spotify | Deezer |
-| ---------------------------------- | :-----: | :------: | :-----: | :----: |
-| Log in                             | ✅ QR scan | ✅ cookie (embedded window) | ✅ OAuth PKCE | ✅ anonymous |
-| Play full track                    | ✅ | ✅ (std / 320 / lossless) | ✅ Premium · 🚧 Free = 30s preview | 🚧 30s preview |
-| Radio / station feed               | ✅ private FM | 🚧 keyword-seeded pseudo-radio | 🚧 short preview | ✅ editorial charts |
-| Search                             | ✅ | ✅ | 🚧 limited | ✅ |
-| Local like / dislike               | ✅ | ✅ | ✅ | ✅ |
-| Sync ❤ back to the platform        | ✅ | ✅ | ✅ | ✅ |
-| Import your existing liked songs   | ✅ | ✅ | ✅ | ✅ |
+| Capability                       |    NetEase    |            QQ Music            |              Spotify               |       Deezer        |
+| -------------------------------- | :-----------: | :----------------------------: | :--------------------------------: | :-----------------: |
+| Log in                           |  ✅ QR scan   |  ✅ cookie (embedded window)   |           ✅ OAuth PKCE            |    ✅ anonymous     |
+| Play full track                  |      ✅       |   ✅ (std / 320 / lossless)    | ✅ Premium · 🚧 Free = 30s preview |   🚧 30s preview    |
+| Radio / station feed             | ✅ private FM | 🚧 keyword-seeded pseudo-radio |          🚧 short preview          | ✅ editorial charts |
+| Search                           |      ✅       |               ✅               |             🚧 limited             |         ✅          |
+| Local like / dislike             |      ✅       |               ✅               |                 ✅                 |         ✅          |
+| Sync ❤ back to the platform      |      ✅       |               ✅               |                 ✅                 |         ✅          |
+| Import your existing liked songs |      ✅       |               ✅               |                 ✅                 |         ✅          |
 
 ### Cross-cutting product features
 
-| Feature | Status |
-| --- | :---: |
-| Multi-source player shell (Electron / React / Nest) | ✅ |
-| Per-platform login & session persistence | ✅ |
-| Server-side audio proxy (URLs never reach the UI) | ✅ |
-| **AETHER Theater view** (1440×900 holographic orbit cover + lyric stream + energy-core transport + nebula backdrop, Figma-driven) | ✅ (PR #56) |
-| Light / dark / system theme | ✅ |
-| **Unified multi-source search & playback fallback** | ✅ |
-| **Cross-platform track matching** (ISRC + fuzzy title/artist/duration; artist aliases bridged via `@maestro/common`) | ✅ |
-| **Unified liked-songs library** (import + de-dup; badge counts aligned end-to-end via shared normalizer) | ✅ |
-| **DeepSeek BYO-key AI recommendations** | ✅ |
-| **Heart fan-out to all licensed platforms** | ✅ |
-| **Spotify adapter** (OAuth PKCE + read + ❤ write-back + WPS full-track for Premium) | ⚠️ dev done · **license 500** in prod |
-| Frontend architecture: CSS/tsx 解耦 + SCSS 7-1 + 拆巨石 | ✅ (PR #13) |
-| **castLabs Electron fork** (Widevine CDM + dev VMP — **prod VMP via EVS** required) | ✅ (PR #39) / upgraded v31→v43 (PR #52) |
-| **Figma-driven design pipeline** (`.superdesign/` brief → `scripts/figma-aether-v4-*.mjs` build → `figma-remote` MCP audit → PR #56) | ✅ (PR #56) |
-| **Production packaging** (NestJS sidecar + prod API base + **Apple Dev + castLabs EVS VMP signing**) | 🚧 in progress |
+| Feature                                                                                                                              |                 Status                  |
+| ------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------: |
+| Multi-source player shell (Electron / React / Nest)                                                                                  |                   ✅                    |
+| Per-platform login & session persistence                                                                                             |                   ✅                    |
+| Server-side audio proxy (URLs never reach the UI)                                                                                    |                   ✅                    |
+| **AETHER Theater view** (1440×900 holographic orbit cover + lyric stream + energy-core transport + nebula backdrop, Figma-driven)    |               ✅ (PR #56)               |
+| Light / dark / system theme                                                                                                          |                   ✅                    |
+| **Unified multi-source search & playback fallback**                                                                                  |                   ✅                    |
+| **Cross-platform track matching** (ISRC + fuzzy title/artist/duration; artist aliases bridged via `@maestro/common`)                 |                   ✅                    |
+| **Unified liked-songs library** (import + de-dup; badge counts aligned end-to-end via shared normalizer)                             |                   ✅                    |
+| **DeepSeek BYO-key AI recommendations**                                                                                              |                   ✅                    |
+| **Heart fan-out to all licensed platforms**                                                                                          |                   ✅                    |
+| **Spotify adapter** (OAuth PKCE + read + ❤ write-back + WPS full-track for Premium)                                                  |  ⚠️ dev done · **license 500** in prod  |
+| Frontend architecture: CSS/tsx 解耦 + SCSS 7-1 + 拆巨石                                                                              |               ✅ (PR #13)               |
+| **castLabs Electron fork** (Widevine CDM + dev VMP — **prod VMP via EVS** required)                                                  | ✅ (PR #39) / upgraded v31→v43 (PR #52) |
+| **Figma-driven design pipeline** (`.superdesign/` brief → `scripts/figma-aether-v4-*.mjs` build → `figma-remote` MCP audit → PR #56) |               ✅ (PR #56)               |
+| **Production packaging** (NestJS sidecar + prod API base + **Apple Dev + castLabs EVS VMP signing**)                                 |             🚧 in progress              |
 
 **Rough completion: ~85%.** The defining product features (unified search,
 match engine, library, DeepSeek recommendations, heart fan-out) all work
@@ -287,17 +287,17 @@ so `npm test` runs cleanly even when bind() is denied.
 Every variable is optional in dev; the server falls back to sensible
 defaults.
 
-| Var | Default | Notes |
-| --- | --- | --- |
-| `PORT` | `3200` | NestJS port |
-| `RENDERER_BASE` | `http://localhost:5273` | Post-login redirect base |
-| `RENDERER_ORIGINS` | `http://localhost:5273,http://localhost:3000` | CORS allow-list |
-| `SESSION_SECRET` | dev placeholder | Cookie signing key — **set in prod** |
-| `SESSION_TTL_MS` | 30 days | Session lifetime |
-| `STORAGE_DIR` | `.storage` | Where `state.json` lives |
-| `NETEASE_MUSIC_U` | – | Dev-only: inject a NetEase `MUSIC_U` cookie |
-| `NETEASE_QR_POLL_MS` | `1500` | QR poll interval |
-| `DEEPSEEK_API_KEY` | – | **You supply this at runtime** (BYO key) — server reads from session |
+| Var                  | Default                                       | Notes                                                                |
+| -------------------- | --------------------------------------------- | -------------------------------------------------------------------- |
+| `PORT`               | `3200`                                        | NestJS port                                                          |
+| `RENDERER_BASE`      | `http://localhost:5273`                       | Post-login redirect base                                             |
+| `RENDERER_ORIGINS`   | `http://localhost:5273,http://localhost:3000` | CORS allow-list                                                      |
+| `SESSION_SECRET`     | dev placeholder                               | Cookie signing key — **set in prod**                                 |
+| `SESSION_TTL_MS`     | 30 days                                       | Session lifetime                                                     |
+| `STORAGE_DIR`        | `.storage`                                    | Where `state.json` lives                                             |
+| `NETEASE_MUSIC_U`    | –                                             | Dev-only: inject a NetEase `MUSIC_U` cookie                          |
+| `NETEASE_QR_POLL_MS` | `1500`                                        | QR poll interval                                                     |
+| `DEEPSEEK_API_KEY`   | –                                             | **You supply this at runtime** (BYO key) — server reads from session |
 
 ---
 

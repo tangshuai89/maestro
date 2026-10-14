@@ -7,7 +7,7 @@
 ## Phase 1 — 状态与存储
 
 - [x] **P1-1** `lib/storage.ts`：`PlayerMode = 'theater' | 'mini' | 'lite'` +
-  `STORAGE_KEYS.playerMode` + `readStoredPlayerMode` / `writeStoredPlayerMode`
+      `STORAGE_KEYS.playerMode` + `readStoredPlayerMode` / `writeStoredPlayerMode`
 - [x] **P1-2** `MiniPlayer.tsx` 移除本地 `PlayerMode` 导出；`Titlebar.tsx` 改从 storage 导入
 
 ## Phase 2 — LiteView 组件

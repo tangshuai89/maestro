@@ -32,11 +32,7 @@ export class RefreshCoordinator {
    * to cast back when reading the in-flight entry — both the inserter and
    * the reader agree on `unknown`, and `T` is only on the return signature.
    */
-  run<T>(
-    provider: string,
-    sessionId: string,
-    doRefresh: () => Promise<T>,
-  ): Promise<T> {
+  run<T>(provider: string, sessionId: string, doRefresh: () => Promise<T>): Promise<T> {
     const key = `${provider}:${sessionId}`;
     const existing = this.inflight.get(key) as Promise<T> | undefined;
     if (existing) {

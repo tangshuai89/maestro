@@ -180,11 +180,7 @@ export async function buildCandidatePool(
   const inflight: Array<Promise<void>> = [];
   const searchPool = new TaskPool(limits.concurrency);
 
-  const enqueue = (t: {
-    artist: string;
-    origin: CandidateOrigin;
-    seedArtist?: string;
-  }): void => {
+  const enqueue = (t: { artist: string; origin: CandidateOrigin; seedArtist?: string }): void => {
     targets.push(t);
     const key = `${targets.length - 1}`;
     targetItems.set(key, []);
@@ -279,10 +275,7 @@ export async function buildCandidatePool(
     .filter((c): c is RecoCandidate => Boolean(c));
 
   // ── 4. 交错合并并截断 ──────────────────────────────────
-  const candidates = interleave([deepen, neighbors, radio]).slice(
-    0,
-    limits.maxPoolSize,
-  );
+  const candidates = interleave([deepen, neighbors, radio]).slice(0, limits.maxPoolSize);
   const byOrigin: Record<CandidateOrigin, number> = {
     artist: 0,
     'related-artist': 0,
@@ -306,10 +299,7 @@ export function interleave<T>(groups: T[][]): T[] {
  * 候选曲目的艺人是否就是我们要搜的那位。按 `normalizeKey` 双向包含判断——
  * 能过掉 feat./合作写法差异与大小写变体，也能拦掉"某某的翻唱版"。
  */
-export function artistMatches(
-  candidateArtist: string,
-  targetArtist: string,
-): boolean {
+export function artistMatches(candidateArtist: string, targetArtist: string): boolean {
   const a = normalizeKey(candidateArtist ?? '', '');
   const b = normalizeKey(targetArtist ?? '', '');
   if (!a || !b) return false;

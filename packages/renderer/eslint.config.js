@@ -20,10 +20,7 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // ISSUES.md §1.2：堵新 console.log（warn 起步，给已有 4 处 console.log
       // 留过渡）。console.warn / console.error 是合法的错误日志通道，
       // 显式 allow——不误伤音频错误日志等。

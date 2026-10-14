@@ -9,26 +9,26 @@
 
 ## 1. 现状与问题（2026-09-20 实测）
 
-| # | 问题 | 证据 |
-|---|---|---|
-| P1 | 比对脚本命名映射与导出脚本**不一致** | `check-token-drift.mjs` 的 `toCssName()` 把 `Color/semantic/accent` 映射成 `--semantic-accent`，导出脚本映射成 `--accent` → 17 组缺失/多余 |
-| P2 | 比对脚本**不补 px 单位** | spacing/radius 全部报 `SCSS=8px vs Figma=8`（17 处假 FAIL） |
-| P3 | dump 快照**过期** | 提交的 dump 51 条，Figma 实际 52 条（缺 `Color/semantic/status-error`，D1/D2 期间新建） |
-| P4 | 导出**无 CI 门禁** | `.github/workflows/` 无任何 token 相关 job；只能手跑 |
-| P5 | 手写层与生成层的**遮蔽无人管** | `_tokens.scss` 与 `_tokens.generated.scss` 都写 `:root`，`main.scss` 先 `@use 'base/tokens'` 后 `@use 'base/tokens.generated'` → **生成层胜出**，手写覆盖静默失效（见 §5 实测） |
+| #   | 问题                                 | 证据                                                                                                                                                                            |
+| --- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | 比对脚本命名映射与导出脚本**不一致** | `check-token-drift.mjs` 的 `toCssName()` 把 `Color/semantic/accent` 映射成 `--semantic-accent`，导出脚本映射成 `--accent` → 17 组缺失/多余                                      |
+| P2  | 比对脚本**不补 px 单位**             | spacing/radius 全部报 `SCSS=8px vs Figma=8`（17 处假 FAIL）                                                                                                                     |
+| P3  | dump 快照**过期**                    | 提交的 dump 51 条，Figma 实际 52 条（缺 `Color/semantic/status-error`，D1/D2 期间新建）                                                                                         |
+| P4  | 导出**无 CI 门禁**                   | `.github/workflows/` 无任何 token 相关 job；只能手跑                                                                                                                            |
+| P5  | 手写层与生成层的**遮蔽无人管**       | `_tokens.scss` 与 `_tokens.generated.scss` 都写 `:root`，`main.scss` 先 `@use 'base/tokens'` 后 `@use 'base/tokens.generated'` → **生成层胜出**，手写覆盖静默失效（见 §5 实测） |
 
 ## 2. 范围
 
-| 工作 | 文件 | 类型 |
-|---|---|---|
-| 专题 spec + tasks | `specs/d4-token-drift/{spec,tasks}.md` | 新 |
-| 单一映射实现（导出/比对共用） | `scripts/lib/aether-tokens.mjs` | 新 |
-| 导出脚本改用共享映射 + 支持 `--out` / `--stdout` | `scripts/figma-export-tokens.mjs` | 改 |
-| 比对脚本重写（修 P1/P2，加手写层遮蔽检测） | `scripts/check-token-drift.mjs` | 改 |
-| REST 实时拉取变量（Tier 2，带 scope 缺失降级） | `scripts/figma-tokens-pull.mjs` | 新 |
-| 实时漂移工作流（schedule + 手动，无 secret 自动跳过） | `.github/workflows/token-drift.yml` | 新 |
-| 离线门禁接进 `test:ci` | `package.json` | 改 |
-| 刷新 dump 快照（51 → 52）+ 重新生成 SCSS | `scripts/figma-tokens-dump.json`、`_tokens.generated.scss` | 改 |
+| 工作                                                  | 文件                                                       | 类型 |
+| ----------------------------------------------------- | ---------------------------------------------------------- | ---- |
+| 专题 spec + tasks                                     | `specs/d4-token-drift/{spec,tasks}.md`                     | 新   |
+| 单一映射实现（导出/比对共用）                         | `scripts/lib/aether-tokens.mjs`                            | 新   |
+| 导出脚本改用共享映射 + 支持 `--out` / `--stdout`      | `scripts/figma-export-tokens.mjs`                          | 改   |
+| 比对脚本重写（修 P1/P2，加手写层遮蔽检测）            | `scripts/check-token-drift.mjs`                            | 改   |
+| REST 实时拉取变量（Tier 2，带 scope 缺失降级）        | `scripts/figma-tokens-pull.mjs`                            | 新   |
+| 实时漂移工作流（schedule + 手动，无 secret 自动跳过） | `.github/workflows/token-drift.yml`                        | 新   |
+| 离线门禁接进 `test:ci`                                | `package.json`                                             | 改   |
+| 刷新 dump 快照（51 → 52）+ 重新生成 SCSS              | `scripts/figma-tokens-dump.json`、`_tokens.generated.scss` | 改   |
 
 ## 3. 设计：两条腿，三级判定
 
@@ -41,11 +41,11 @@
 
 **三级判定**
 
-| 级别 | 含义 | 退出码影响 |
-|---|---|---|
-| FAIL | 生成物与 dump 不一致、dump schema 坏了、实时与快照不一致 | 非 0 |
-| WARN | 手写层遮蔽生成层、代码侧多出的 token、dump 里未被映射的变量 | 0（打印） |
-| OK | 一致 | 0 |
+| 级别 | 含义                                                        | 退出码影响 |
+| ---- | ----------------------------------------------------------- | ---------- |
+| FAIL | 生成物与 dump 不一致、dump schema 坏了、实时与快照不一致    | 非 0       |
+| WARN | 手写层遮蔽生成层、代码侧多出的 token、dump 里未被映射的变量 | 0（打印）  |
+| OK   | 一致                                                        | 0          |
 
 **为什么遮蔽是 WARN 不是 FAIL**：遮蔽有合法用法（正在收敛），但没有一处是"无人知道"的。
 所以打印出来逼人看一眼，不阻断 CI。真需要豁免时在 `scripts/token-drift-allowlist.json`
@@ -54,18 +54,18 @@
 ## 4. 验收标准
 
 - [x] `node scripts/check-token-drift.mjs` → **0 exit**，`✅ Token 一致（52 个 token）`
-  （当前基线：51 处假 FAIL）
+      （当前基线：51 处假 FAIL）
 - [x] `node scripts/check-token-drift.mjs --json` → 机器可读结果，含
-  `{ ok, counts, missingInScss, missingInFigma, valueMismatch, shadowed, codeOnly }`
+      `{ ok, counts, missingInScss, missingInFigma, valueMismatch, shadowed, codeOnly }`
 - [x] Figma 实时变量渲染出的 52 个 token **值全部与仓库生成物一致**（逐行核对）
-  ⚠️ 唯一差异是 Radius 块**顺序**：Figma 原生是创建序（8,12,16,20,24,10,14），
-  快照是人工规范序（8,10,12,14,16,20,24）。工具里已显式区分（外部 dump 的顺序差异
-  只报 ℹ️ 不计 drift），快照本身维持规范序。
+      ⚠️ 唯一差异是 Radius 块**顺序**：Figma 原生是创建序（8,12,16,20,24,10,14），
+      快照是人工规范序（8,10,12,14,16,20,24）。工具里已显式区分（外部 dump 的顺序差异
+      只报 ℹ️ 不计 drift），快照本身维持规范序。
 - [x] `node scripts/figma-tokens-pull.mjs` 在无 `FIGMA_TOKEN` 时退出码 3 + 明确指引；
       PAT 缺 `file_variables` scope（HTTP 403）时同样退出码 3 并打印补救步骤
 - [x] `npm run test:ci` 包含 token 检查（新环境 clone 后跑 CI 即自动门禁）
 - [x] `.github/workflows/token-drift.yml`：无 secret 时 job 跳过而非失败（YAML 已校验；
-  Actions 侧执行需推到远端后才能实跑）
+      Actions 侧执行需推到远端后才能实跑）
 - [x] `npm run typecheck` ✅ + `npm run lint` ✅（0 error，12 个既有 warning）
 - [⚠️] `npm test`：**沙箱内跑不到全绿**——`music.controller.e2e` 的
   `GET /music/search?provider=qq&q=test` 需要真实出网，本环境 DNS 解析不了 `u.y.qq.com`
@@ -115,20 +115,20 @@
 
 ## 7. 风险
 
-| 风险 | 处置 |
-|---|---|
-| CI 无 PAT 时 live 检查跑不了 | 离线腿（dump 快照）承担门禁；live 腿只在有 secret 的 schedule 上跑 |
+| 风险                           | 处置                                                                 |
+| ------------------------------ | -------------------------------------------------------------------- |
+| CI 无 PAT 时 live 检查跑不了   | 离线腿（dump 快照）承担门禁；live 腿只在有 secret 的 schedule 上跑   |
 | dump 快照本身会过期（P3 重演） | live 腿每次 schedule 都对比"实时 vs 快照"，过期即在 job summary 报出 |
-| 遮蔽检测误报（合法覆盖） | 白名单 + 强制 reason 字段 |
+| 遮蔽检测误报（合法覆盖）       | 白名单 + 强制 reason 字段                                            |
 
 ## 8. CI 实时腿的凭据现状（2026-09-20 实测）
 
 结论：**手上的 PAT 跑不了 REST 实时腿，CI 需要换一条路或换一个 token。**
 
-| 凭据 | `GET /v1/me` | `GET /v1/files/:key/variables/local` | 判定 |
-|---|---|---|---|
-| PAT-A（Claude 历史里的第一条） | 401 | 403 | 已失效/被吊销 |
-| PAT-B（第二条） | 200 | 403 | **有效但缺 scope** |
+| 凭据                           | `GET /v1/me` | `GET /v1/files/:key/variables/local` | 判定               |
+| ------------------------------ | ------------ | ------------------------------------ | ------------------ |
+| PAT-A（Claude 历史里的第一条） | 401          | 403                                  | 已失效/被吊销      |
+| PAT-B（第二条）                | 200          | 403                                  | **有效但缺 scope** |
 
 PAT-B 的 403 原文（Figma 直接列出了它有的 scope）：
 

@@ -46,27 +46,22 @@ export class ConfigService {
       ? `http://127.0.0.1:${process.env.RENDERER_PORT}`
       : 'http://127.0.0.1:5273');
 
-  readonly sessionSecret =
-    process.env.SESSION_SECRET ?? 'dev-only-secret-change-me';
-  readonly sessionTtlMs =
-    Number(process.env.SESSION_TTL_MS ?? 30 * 24 * 3600 * 1000);
+  readonly sessionSecret = process.env.SESSION_SECRET ?? 'dev-only-secret-change-me';
+  readonly sessionTtlMs = Number(process.env.SESSION_TTL_MS ?? 30 * 24 * 3600 * 1000);
 
   readonly storageDir = process.env.STORAGE_DIR ?? path.resolve('.storage');
 
   // Auto-backup target. On macOS the packaged app resolves this to
   // ~/Library/Application Support/Maestro/backups via the STORAGE_BACKUP_DIR
   // env (set by Electron main); dev falls back to <storageDir>/backups.
-  readonly backupDir =
-    process.env.STORAGE_BACKUP_DIR ?? path.join(this.storageDir, 'backups');
+  readonly backupDir = process.env.STORAGE_BACKUP_DIR ?? path.join(this.storageDir, 'backups');
   readonly backupRetention = Number(process.env.STORAGE_BACKUP_RETENTION ?? 7);
 
   // QQ 音乐:走内嵌登录窗口捕获 cookie，无需 appid/secret（QQ 互联那套已废弃）
 
   // 网易云（没有公开 OAuth，用 cookie / 扫码）
   readonly neteaseMusicU = process.env.NETEASE_MUSIC_U ?? '';
-  readonly neteaseQrPollIntervalMs = Number(
-    process.env.NETEASE_QR_POLL_MS ?? 1500,
-  );
+  readonly neteaseQrPollIntervalMs = Number(process.env.NETEASE_QR_POLL_MS ?? 1500);
 
   // DeepSeek（AI 推荐引擎，用户自带 Key，仅本地使用，不上传）
   readonly deepSeekApiKey = process.env.DEEPSEEK_API_KEY ?? '';

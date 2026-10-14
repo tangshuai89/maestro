@@ -88,7 +88,7 @@ Error:
    ①依据：多平台都有的那条就是曲库里的正式版本；②片段/剪辑版总是更短，旧口径
    （取"最短"）会让折叠行显示 1:20 的片段（2026-09-20 用户搜"盲选"实测）。
    不变量：`versions[0]` 必定是主版本，item 级 `title/artist/album/coverUrl/duration/
-   sources/bestSource` 全部来自它 —— renderer 折叠行就是拿 `versions[0]` 播放的。
+sources/bestSource` 全部来自它 —— renderer 折叠行就是拿 `versions[0]` 播放的。
 8. **偏离主版本时长 >50% 的 cluster 不并入 `versions`**，单独成 item。
    判据：片段/剪辑版偏 -50% 以上（1:20 vs 4:47 = -72%）；而 radio edit 3:30 vs
    专辑版 5:00 只偏 -30%，必须继续留在同一个 item 里当版本。时长未知（0）时不拆。

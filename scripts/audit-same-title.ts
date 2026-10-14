@@ -171,7 +171,8 @@ for (const r of results) {
       const inter = plats[i].split('/').filter((p) => plats[j].split('/').includes(p));
       if (inter.length === 0 && plats[i] && plats[j]) flags.push('⚠️跨平台不同歌手');
       if (durs[i] > 0 && durs[j] > 0 && Math.abs(durs[i] - durs[j]) <= 3) flags.push('⚠️时长近');
-      if (artistTokenIntersection(r.groups[i].artist, r.groups[j].artist)) flags.push('⚠️artist有交集');
+      if (artistTokenIntersection(r.groups[i].artist, r.groups[j].artist))
+        flags.push('⚠️artist有交集');
     }
   }
   console.log(`── #${no} · ${r.titles.join(' | ')}`);

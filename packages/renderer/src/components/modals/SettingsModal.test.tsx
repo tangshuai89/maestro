@@ -38,9 +38,7 @@ const mocks = vi.hoisted(() => ({
   collectLocalStorage: vi.fn(() => ({ theme: 'dark' })),
   restoreLocalStorage: vi.fn(),
   // §5 新增的 api wrappers（被 SettingsModal 内嵌子组件调用）
-  fetchRecoStatus: vi.fn(() =>
-    Promise.resolve({ configured: false, librarySize: 0 }),
-  ),
+  fetchRecoStatus: vi.fn(() => Promise.resolve({ configured: false, librarySize: 0 })),
   resetRecoKey: vi.fn(() => Promise.resolve({ ok: true })),
 }));
 const {
@@ -86,9 +84,7 @@ vi.mock('../settings/SourceHealthSection', () => ({
 // 保留 generatePassphrase/type 走真模块。
 vi.mock('../../lib/backup-crypto', async () => {
   const actual =
-    await vi.importActual<typeof import('../../lib/backup-crypto')>(
-      '../../lib/backup-crypto',
-    );
+    await vi.importActual<typeof import('../../lib/backup-crypto')>('../../lib/backup-crypto');
   return {
     ...actual,
     encryptBundle: mocks.encryptBundle,
@@ -301,14 +297,8 @@ describe('SettingsModal', () => {
     render(<SettingsModal {...baseProps({ playerMode: 'mini', onChangePlayerMode })} />);
     await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
-    expect(screen.getByRole('button', { name: '迷你' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: '极简' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    expect(screen.getByRole('button', { name: '迷你' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '极简' })).toHaveAttribute('aria-pressed', 'false');
     await userEvent.click(screen.getByRole('button', { name: '极简' }));
     expect(onChangePlayerMode).toHaveBeenCalledWith('lite');
     await userEvent.click(screen.getByRole('button', { name: '完整' }));
@@ -426,9 +416,7 @@ describe('SettingsModal', () => {
       const onEqEnabled = vi.fn();
       // 从「关」出发：第一次点应当要 true
       render(
-        <SettingsModal
-          {...baseProps({ audioFx: { ...flatEq, eqEnabled: false }, onEqEnabled })}
-        />,
+        <SettingsModal {...baseProps({ audioFx: { ...flatEq, eqEnabled: false }, onEqEnabled })} />,
       );
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
@@ -442,9 +430,7 @@ describe('SettingsModal', () => {
       mockGetBackupInfo.mockResolvedValue({ backupDir: '/x', backupCount: 0 });
       const onEqEnabled = vi.fn();
       render(
-        <SettingsModal
-          {...baseProps({ audioFx: { ...flatEq, eqEnabled: true }, onEqEnabled })}
-        />,
+        <SettingsModal {...baseProps({ audioFx: { ...flatEq, eqEnabled: true }, onEqEnabled })} />,
       );
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
@@ -456,9 +442,7 @@ describe('SettingsModal', () => {
 
     it('presetId 为 null（已手动改过）→ 8 个预置全部 aria-pressed=false', async () => {
       mockGetBackupInfo.mockResolvedValue({ backupDir: '/x', backupCount: 0 });
-      render(
-        <SettingsModal {...baseProps({ audioFx: { ...flatEq, presetId: null } })} />,
-      );
+      render(<SettingsModal {...baseProps({ audioFx: { ...flatEq, presetId: null } })} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
       const presetGroup = screen.getByRole('group', { name: 'EQ 预置' });
@@ -473,9 +457,7 @@ describe('SettingsModal', () => {
 
     it('presetId 非 null → 恰好 1 个预置高亮，且是 id 对应的那个', async () => {
       mockGetBackupInfo.mockResolvedValue({ backupDir: '/x', backupCount: 0 });
-      render(
-        <SettingsModal {...baseProps({ audioFx: { ...flatEq, presetId: 'vocal' } })} />,
-      );
+      render(<SettingsModal {...baseProps({ audioFx: { ...flatEq, presetId: 'vocal' } })} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
       const presetGroup = screen.getByRole('group', { name: 'EQ 预置' });
@@ -531,9 +513,7 @@ describe('SettingsModal', () => {
 
     it('EQ 开启时不再显示旁路提示', async () => {
       mockGetBackupInfo.mockResolvedValue({ backupDir: '/x', backupCount: 0 });
-      render(
-        <SettingsModal {...baseProps({ audioFx: { ...flatEq, eqEnabled: true } })} />,
-      );
+      render(<SettingsModal {...baseProps({ audioFx: { ...flatEq, eqEnabled: true } })} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
       expect(screen.queryByText(/当前不参与出声/)).not.toBeInTheDocument();
     });
@@ -542,9 +522,7 @@ describe('SettingsModal', () => {
       mockGetBackupInfo.mockResolvedValue({ backupDir: '/x', backupCount: 0 });
       // 三档读数各占一段：+3.5 / -2 / 0
       const gains = [3.5, -2, 0, 0, 0, 0, 0, 0, 0, 0];
-      render(
-        <SettingsModal {...baseProps({ audioFx: { ...flatEq, eqGains: gains } })} />,
-      );
+      render(<SettingsModal {...baseProps({ audioFx: { ...flatEq, eqGains: gains } })} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
       // 标签列和读数列共用同一个数字（"0"既是标签也是读数），所以按

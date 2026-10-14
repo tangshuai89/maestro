@@ -24,7 +24,9 @@ const require = createRequire(import.meta.url);
 function resolveCli() {
   try {
     return require.resolve('@playwright/test/cli'); // exports 里声明的子路径
-  } catch { /* 继续走退路 */ }
+  } catch {
+    /* 继续走退路 */
+  }
   try {
     const pkg = require('@playwright/test/package.json');
     const main = require.resolve('@playwright/test');
@@ -33,7 +35,9 @@ function resolveCli() {
       const p = path.join(path.dirname(main), bin);
       if (existsSync(p)) return p;
     }
-  } catch { /* 继续报错 */ }
+  } catch {
+    /* 继续报错 */
+  }
   return null;
 }
 
@@ -41,10 +45,17 @@ const cli = resolveCli();
 if (!cli) {
   // 区分"没装"和"装了但解析不到" —— 后者是脚本自身的问题，不该让你去重装依赖
   let installed = false;
-  try { require.resolve('@playwright/test'); installed = true; } catch { installed = false; }
+  try {
+    require.resolve('@playwright/test');
+    installed = true;
+  } catch {
+    installed = false;
+  }
   if (installed) {
     console.error('❌ @playwright/test 已安装，但解析不到它的 CLI 入口。');
-    console.error('   多半是包结构变了；请把 node_modules/@playwright/test/package.json 的 exports/bin 发我。');
+    console.error(
+      '   多半是包结构变了；请把 node_modules/@playwright/test/package.json 的 exports/bin 发我。',
+    );
     process.exit(2);
   }
   console.error('❌ 缺少 @playwright/test');

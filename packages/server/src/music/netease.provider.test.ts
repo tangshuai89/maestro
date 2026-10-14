@@ -37,10 +37,7 @@ const SESSION: any = { musicU: 'test-music-u', csrfToken: 'test-csrf' };
 async function main() {
   // ── 1. isConfigured: 有 musicU → true ───────────────────────────
   {
-    assert.strictEqual(
-      prov.isConfigured({ musicU: 'abc' } as any),
-      true,
-    );
+    assert.strictEqual(prov.isConfigured({ musicU: 'abc' } as any), true);
     console.log('✅ 1. isConfigured: 有 musicU → true');
   }
 
@@ -64,7 +61,10 @@ async function main() {
         {
           id: 1001,
           name: '晴天',
-          artists: [{ id: 1, name: '周杰伦' }, { id: 2, name: '方文山' }],
+          artists: [
+            { id: 1, name: '周杰伦' },
+            { id: 2, name: '方文山' },
+          ],
           album: { id: 10, name: '叶惠美', picUrl: 'https://p.example.com/10.jpg' },
           duration: 269000,
         },
@@ -168,9 +168,7 @@ async function main() {
         // playlist → specialType=5
         return {
           code: 200,
-          playlist: [
-            { id: 555, name: '我喜欢的音乐', specialType: 5, creator: { userId: 999 } },
-          ],
+          playlist: [{ id: 555, name: '我喜欢的音乐', specialType: 5, creator: { userId: 999 } }],
         };
       }
       // detail → tracks
@@ -379,11 +377,7 @@ async function main() {
     }));
     const tracks = await prov.search(SESSION, 'VIP单曲', 30);
     restore();
-    assert.strictEqual(
-      tracks[0].vipLocked,
-      true,
-      'pl=999000 + fee=8（VIP 付费单曲）→ 一律锁',
-    );
+    assert.strictEqual(tracks[0].vipLocked, true, 'pl=999000 + fee=8（VIP 付费单曲）→ 一律锁');
     console.log('✅ 15c. search pl>0 + fee=8 → vipLocked=true');
   }
 
@@ -409,11 +403,7 @@ async function main() {
     const tracks = await prov.search(SESSION, '权限缺失', 30);
     restore();
     assert.strictEqual(tracks.length, 1, 'privilege 缺失不应阻塞 tracks');
-    assert.strictEqual(
-      tracks[0].vipLocked,
-      true,
-      'privilege 缺失 + 非 VIP session → 保守锁',
-    );
+    assert.strictEqual(tracks[0].vipLocked, true, 'privilege 缺失 + 非 VIP session → 保守锁');
     console.log('✅ 15d. search privilege 缺失 + 非 VIP → vipLocked=true（兜底）');
   }
 
@@ -422,9 +412,7 @@ async function main() {
     const restore = mockFetch(() => ({
       code: 200,
       result: {
-        songs: [
-          { id: 7005, name: 'VIP 权限缺失歌', ar: [{ id: 1, name: '某歌手' }], dt: 180000 },
-        ],
+        songs: [{ id: 7005, name: 'VIP 权限缺失歌', ar: [{ id: 1, name: '某歌手' }], dt: 180000 }],
       },
     }));
     const tracks = await prov.search(
@@ -484,7 +472,9 @@ async function main() {
       // standard 有 url
       return {
         code: 200,
-        data: [{ id: 6002, url: 'https://stream.example.com/6002-std.mp3', br: 128000, size: 4000 }],
+        data: [
+          { id: 6002, url: 'https://stream.example.com/6002-std.mp3', br: 128000, size: 4000 },
+        ],
       };
     });
     const url = await prov.getStreamPath(SESSION, '6002', 'high');

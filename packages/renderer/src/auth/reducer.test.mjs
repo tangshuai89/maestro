@@ -61,7 +61,12 @@ async function main() {
   // ── 2. set_provider resets phase + error AND clears snapshot ──────────
   {
     let s = initialAuthState('qq');
-    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: '唐帅', avatarUrl: '' }, tier: undefined });
+    s = reducer(s, {
+      type: 'set_status',
+      loggedIn: true,
+      user: { nickname: '唐帅', avatarUrl: '' },
+      tier: undefined,
+    });
     s = reducer(s, {
       type: 'fail',
       error: { code: 'AUTH_INVALID', message: 'x', provider: 'qq', attemptId: 'a1', at: 1 },
@@ -106,11 +111,25 @@ async function main() {
   // ── 5. fail flips loggedIn=false ──────────────────────────
   {
     let s = initialAuthState('spotify');
-    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: 'old', avatarUrl: '' }, tier: 'premium' });
+    s = reducer(s, {
+      type: 'set_status',
+      loggedIn: true,
+      user: { nickname: 'old', avatarUrl: '' },
+      tier: 'premium',
+    });
     const a = attempt('spotify', 'a1');
     s = reducer(s, { type: 'start', attempt: a });
     s = reducer(s, { type: 'enter_waiting_user' });
-    s = reducer(s, { type: 'fail', error: { code: 'AUTH_EXPIRED', message: 'refresh_token revoked', provider: 'spotify', attemptId: 'a1', at: 1 } });
+    s = reducer(s, {
+      type: 'fail',
+      error: {
+        code: 'AUTH_EXPIRED',
+        message: 'refresh_token revoked',
+        provider: 'spotify',
+        attemptId: 'a1',
+        at: 1,
+      },
+    });
     assert.strictEqual(s.phase.kind, 'failed');
     assert.strictEqual(s.loggedIn, false);
     assert.strictEqual(s.user, null);
@@ -129,7 +148,10 @@ async function main() {
     const a2 = attempt('qq', 'a2');
     s = reducer(s, { type: 'start', attempt: a2 });
     s = reducer(s, { type: 'enter_waiting_user' });
-    s = reducer(s, { type: 'fail', error: { code: 'AUTH_INVALID', message: 'late', provider: 'qq', attemptId: 'a1', at: 2 } });
+    s = reducer(s, {
+      type: 'fail',
+      error: { code: 'AUTH_INVALID', message: 'late', provider: 'qq', attemptId: 'a1', at: 2 },
+    });
     assert.strictEqual(s.phase.kind, 'waiting_user');
     assert.strictEqual(s.error, null);
     console.log('✅ 6. late failure from previous attempt: ignored');
@@ -162,7 +184,10 @@ async function main() {
   {
     let s = initialAuthState('qq');
     s = reducer(s, { type: 'start', attempt: attempt('qq', 'a1') });
-    s = reducer(s, { type: 'fail', error: { code: 'AUTH_INVALID', message: 'x', provider: 'qq', attemptId: 'a1', at: 1 } });
+    s = reducer(s, {
+      type: 'fail',
+      error: { code: 'AUTH_INVALID', message: 'x', provider: 'qq', attemptId: 'a1', at: 1 },
+    });
     s = reducer(s, { type: 'dismiss_error' });
     assert.strictEqual(s.phase.kind, 'idle');
     assert.strictEqual(s.error, null);
@@ -191,7 +216,10 @@ async function main() {
   {
     let s = initialAuthState('qq');
     s = reducer(s, { type: 'start', attempt: attempt('qq', 'a1') });
-    s = reducer(s, { type: 'fail', error: { code: 'AUTH_INVALID', message: 'x', provider: 'qq', attemptId: 'a1', at: 1 } });
+    s = reducer(s, {
+      type: 'fail',
+      error: { code: 'AUTH_INVALID', message: 'x', provider: 'qq', attemptId: 'a1', at: 1 },
+    });
     s = reducer(s, { type: 'succeed', user: { nickname: 'alice', avatarUrl: '' } });
     assert.strictEqual(s.phase.kind, 'authenticated');
     assert.strictEqual(s.loggedIn, true);
@@ -208,12 +236,25 @@ async function main() {
   // ── 14. switch providers never leaks snapshot ───────────────
   {
     let s = initialAuthState('qq');
-    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: '唐帅', avatarUrl: '' }, tier: undefined });
+    s = reducer(s, {
+      type: 'set_status',
+      loggedIn: true,
+      user: { nickname: '唐帅', avatarUrl: '' },
+      tier: undefined,
+    });
     s = reducer(s, { type: 'set_provider', provider: 'netease' });
     assert.strictEqual(s.provider, 'netease');
-    assert.strictEqual(s.loggedIn, false, 'switch must clear loggedIn even before refreshStatus lands');
+    assert.strictEqual(
+      s.loggedIn,
+      false,
+      'switch must clear loggedIn even before refreshStatus lands',
+    );
     assert.strictEqual(s.user, null, 'switch must clear user even before refreshStatus lands');
-    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: 'konanco', avatarUrl: 'https://...' } });
+    s = reducer(s, {
+      type: 'set_status',
+      loggedIn: true,
+      user: { nickname: 'konanco', avatarUrl: 'https://...' },
+    });
     assert.strictEqual(s.user?.nickname, 'konanco');
     assert.strictEqual(s.loggedIn, true);
     console.log('✅ 14. set_provider clears snapshot synchronously; set_status refills it');
@@ -229,7 +270,10 @@ async function main() {
   {
     // 先走完一次登录
     let s = initialAuthState('qq');
-    s = reducer(s, { type: 'start', attempt: { id: 'a_login_1', provider: 'qq', startedAt: Date.now() } });
+    s = reducer(s, {
+      type: 'start',
+      attempt: { id: 'a_login_1', provider: 'qq', startedAt: Date.now() },
+    });
     s = reducer(s, { type: 'enter_validating' });
     s = reducer(s, { type: 'succeed', user: { nickname: '唐帅', avatarUrl: '' } });
     assert.strictEqual(s.phase.kind, 'authenticated');
@@ -238,10 +282,17 @@ async function main() {
     // 旧做法：fail + 外部 attemptId → 被静默丢弃（这就是 bug）
     const dropped = reducer(s, {
       type: 'fail',
-      error: { code: 'AUTH_EXPIRED', message: '登录已过期', provider: 'qq', attemptId: 'stale-probe', at: Date.now() },
+      error: {
+        code: 'AUTH_EXPIRED',
+        message: '登录已过期',
+        provider: 'qq',
+        attemptId: 'stale-probe',
+        at: Date.now(),
+      },
     });
     assert.strictEqual(
-      dropped.error, null,
+      dropped.error,
+      null,
       'fail + 外部 attemptId 会被 isCurrentAttempt 丢弃（这正是线上症状的根因）',
     );
     assert.strictEqual(dropped.loggedIn, true, '被丢弃时 loggedIn 不变');
@@ -249,7 +300,13 @@ async function main() {
     // 新做法：mark_expired → 生效
     const after = reducer(s, {
       type: 'mark_expired',
-      error: { code: 'AUTH_EXPIRED', message: '登录已过期，请重新登录', provider: 'qq', attemptId: 'stale-probe', at: Date.now() },
+      error: {
+        code: 'AUTH_EXPIRED',
+        message: '登录已过期，请重新登录',
+        provider: 'qq',
+        attemptId: 'stale-probe',
+        at: Date.now(),
+      },
     });
     assert.ok(after.error, 'mark_expired 必须落 error（AuthErrorPanel 靠它渲染）');
     assert.strictEqual(after.error.code, 'AUTH_EXPIRED');
@@ -276,7 +333,10 @@ async function main() {
   {
     let s = initialAuthState('qq');
     s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: 'x', avatarUrl: '' } });
-    s = reducer(s, { type: 'mark_expired', error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 } });
+    s = reducer(s, {
+      type: 'mark_expired',
+      error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 },
+    });
     assert.ok(s.error, '前置：error 已置位');
     s = reducer(s, { type: 'dismiss_error' });
     assert.strictEqual(s.error, null, 'dismiss 后 error 清空 → 面板关闭');
@@ -286,7 +346,11 @@ async function main() {
   // ── 18. mark_valid：mark_expired 的逆转移（Phase 11 P11-3）─────
   {
     let s = initialAuthState('qq');
-    s = reducer(s, { type: 'set_status', loggedIn: true, user: { nickname: '唐帅', avatarUrl: '' } });
+    s = reducer(s, {
+      type: 'set_status',
+      loggedIn: true,
+      user: { nickname: '唐帅', avatarUrl: '' },
+    });
     s = reducer(s, {
       type: 'mark_expired',
       error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 },
@@ -312,7 +376,10 @@ async function main() {
       error: { code: 'AUTH_EXPIRED', message: '过期', provider: 'qq', attemptId: 'p1', at: 1 },
     });
     // 手动换成另一种 error（模拟随后又有别的错误置位）
-    s = { ...s, error: { code: 'AUTH_INVALID', message: '凭据无效', provider: 'qq', attemptId: 'x', at: 2 } };
+    s = {
+      ...s,
+      error: { code: 'AUTH_INVALID', message: '凭据无效', provider: 'qq', attemptId: 'x', at: 2 },
+    };
     const after = reducer(s, { type: 'mark_valid', user: null });
     assert.strictEqual(after, s, '非 AUTH_EXPIRED error → mark_valid 必须 no-op');
     assert.strictEqual(after.error.code, 'AUTH_INVALID');

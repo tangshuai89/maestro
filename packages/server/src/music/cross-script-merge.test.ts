@@ -24,8 +24,15 @@ const { warmupJa } = require('./translit');
 function T(p: string, id: string, title: string, artist: string, duration: number): any {
   return {
     track: {
-      id, provider: p, title, artist, album: '', coverUrl: '', audioUrl: '',
-      duration, liked: false,
+      id,
+      provider: p,
+      title,
+      artist,
+      album: '',
+      coverUrl: '',
+      audioUrl: '',
+      duration,
+      liked: false,
     },
     platform: p,
   };
@@ -47,7 +54,11 @@ void (async () => {
     assert.strictEqual(isCrossScript('はなび', 'hanabi'), true, '假名 vs 罗马音（修复前 false）');
     assert.strictEqual(isCrossScript('もっと', 'motto'), true, '假名 vs 罗马音');
     assert.strictEqual(isCrossScript('hanabi', 'はなび'), true, '反向');
-    assert.strictEqual(isCrossScript('花火', 'はなび'), false, '汉字 vs 假名同属日文侧，不算跨脚本');
+    assert.strictEqual(
+      isCrossScript('花火', 'はなび'),
+      false,
+      '汉字 vs 假名同属日文侧，不算跨脚本',
+    );
     assert.strictEqual(isCrossScript('hanabi', 'sakura'), false, '两边都是拉丁，不跨脚本');
     console.log('✅ 1. isCrossScript 把假名（぀-ヿ）视作日文侧');
   }
@@ -65,7 +76,10 @@ void (async () => {
   // ── 3. 用户场景：aiko 花火（假名 はなび）vs Hanabi → 合并（修复点）──
   {
     assert.strictEqual(
-      mergeCount([T('netease', 'n1', 'はなび', 'aiko', 330), T('spotify', 's1', 'Hanabi', 'aiko', 330)]),
+      mergeCount([
+        T('netease', 'n1', 'はなび', 'aiko', 330),
+        T('spotify', 's1', 'Hanabi', 'aiko', 330),
+      ]),
       1,
       'はなび(假名) ↔ Hanabi 应合并为 1 条（修复点）',
     );

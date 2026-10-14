@@ -28,7 +28,9 @@ const { LyricsService } = require('./lyrics.service');
 function makeThrowingProvider(): any {
   return {
     isConfigured: () => true,
-    fetchRadioBatch: async () => { throw new Error('network down'); },
+    fetchRadioBatch: async () => {
+      throw new Error('network down');
+    },
   };
 }
 function makeEmptyProvider(): any {
@@ -45,8 +47,15 @@ function makeStockProvider(tracks: any[]): any {
 }
 function makeTrack(id: string, title: string): any {
   return {
-    id, provider: 'qq', title, artist: 'Artist',
-    album: '', coverUrl: '', audioUrl: '', duration: 200, liked: false,
+    id,
+    provider: 'qq',
+    title,
+    artist: 'Artist',
+    album: '',
+    coverUrl: '',
+    audioUrl: '',
+    duration: 200,
+    liked: false,
   };
 }
 function makeSession(): any {
@@ -60,7 +69,9 @@ function makeStorage(): any {
   const store: Record<string, unknown> = {};
   return {
     get: (key: string) => store[key],
-    set: (key: string, val: unknown) => { store[key] = val; },
+    set: (key: string, val: unknown) => {
+      store[key] = val;
+    },
   };
 }
 const lyricsOvh = { getLyrics: async () => null };
@@ -84,8 +95,15 @@ function makeService(qq: any): any {
     lyricsOvh as any,
   );
   return new MusicService(
-    makeStorage(), qq, makeEmptyProvider(), makeEmptyProvider(),
-    makeEmptyProvider(), lyricsOvh, lyricsService, match, likeSync,
+    makeStorage(),
+    qq,
+    makeEmptyProvider(),
+    makeEmptyProvider(),
+    makeEmptyProvider(),
+    lyricsOvh,
+    lyricsService,
+    match,
+    likeSync,
   );
 }
 
@@ -94,8 +112,10 @@ async function main() {
   {
     const svc = makeService(makeThrowingProvider());
     const track = await svc.getNextTrack(makeSession(), 'qq');
-    assert.ok(track.id.startsWith('placeholder-'),
-      `placeholder id 应以 placeholder- 开头，实际 ${track.id}`);
+    assert.ok(
+      track.id.startsWith('placeholder-'),
+      `placeholder id 应以 placeholder- 开头，实际 ${track.id}`,
+    );
     assert.strictEqual(track.title, '暂时没有可播放的曲目');
     assert.strictEqual(track.artist, 'network down');
     assert.strictEqual(track.audioUrl, '');
@@ -129,7 +149,10 @@ async function main() {
     let callCount = 0;
     const provider = {
       isConfigured: () => true,
-      fetchRadioBatch: async () => { callCount++; return [t1, t2]; },
+      fetchRadioBatch: async () => {
+        callCount++;
+        return [t1, t2];
+      },
     };
     const svc = makeService(provider);
     const first = await svc.getNextTrack(makeSession(), 'qq');
@@ -161,8 +184,10 @@ async function main() {
     state.providers.qq.disliked.add('q1');
     svc.saveState(session, state);
     const track = await svc.getNextTrack(session, 'qq');
-    assert.ok(track.id.startsWith('placeholder-'),
-      `全 disliked 后应返 placeholder，实际 ${track.id}`);
+    assert.ok(
+      track.id.startsWith('placeholder-'),
+      `全 disliked 后应返 placeholder，实际 ${track.id}`,
+    );
     console.log('✅ 6. 全 disliked 过滤后 → placeholder');
   }
 

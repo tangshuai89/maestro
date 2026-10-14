@@ -12,19 +12,34 @@ export default {
         ring: 'hsl(var(--sh-ring))',
         background: 'hsl(var(--sh-background))',
         foreground: 'hsl(var(--sh-foreground))',
-        primary: { DEFAULT: 'hsl(var(--sh-primary))', foreground: 'hsl(var(--sh-primary-foreground))' },
-        secondary: { DEFAULT: 'hsl(var(--sh-secondary))', foreground: 'hsl(var(--sh-secondary-foreground))' },
-        destructive: { DEFAULT: 'hsl(var(--sh-destructive))', foreground: 'hsl(var(--sh-destructive-foreground))' },
+        primary: {
+          DEFAULT: 'hsl(var(--sh-primary))',
+          foreground: 'hsl(var(--sh-primary-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--sh-secondary))',
+          foreground: 'hsl(var(--sh-secondary-foreground))',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--sh-destructive))',
+          foreground: 'hsl(var(--sh-destructive-foreground))',
+        },
         muted: { DEFAULT: 'hsl(var(--sh-muted))', foreground: 'hsl(var(--sh-muted-foreground))' },
-        accent: { DEFAULT: 'hsl(var(--sh-accent))', foreground: 'hsl(var(--sh-accent-foreground))' },
-        popover: { DEFAULT: 'hsl(var(--sh-popover))', foreground: 'hsl(var(--sh-popover-foreground))' },
+        accent: {
+          DEFAULT: 'hsl(var(--sh-accent))',
+          foreground: 'hsl(var(--sh-accent-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--sh-popover))',
+          foreground: 'hsl(var(--sh-popover-foreground))',
+        },
         card: { DEFAULT: 'hsl(var(--sh-card))', foreground: 'hsl(var(--sh-card-foreground))' },
         // AETHER 派生 (spec §数据模型)
         success: 'hsl(var(--sh-success))',
         warning: 'hsl(var(--sh-warning))',
-        info:    'hsl(var(--sh-info))',
-        'accent-warm':   'hsl(var(--sh-accent-warm))',
-        'accent-blue':   'hsl(var(--sh-accent-blue))',
+        info: 'hsl(var(--sh-info))',
+        'accent-warm': 'hsl(var(--sh-accent-warm))',
+        'accent-blue': 'hsl(var(--sh-accent-blue))',
         'accent-purple': 'hsl(var(--sh-accent-purple))',
       },
       borderRadius: {

@@ -40,7 +40,7 @@
    这是 D2 踩过的同一个坑。修法：改用 `{ ...ACCENT, opacity: 0.55 }`（accent 变量 + 55% 透明度）。
    顺带**没有**去新建该变量 —— 那会让生成层多出 `--accent-soft` 并覆盖手写的 Plexamp 蓝（见 D4）。
 2. **`setProperties` 打在 COMPONENT 上**：`node.setProperties: no such property 'setProperties' on
-   COMPONENT node`（实测）——该方法只属于 INSTANCE，且 Figma 会让**整段事务回滚**。
+COMPONENT node`（实测）——该方法只属于 INSTANCE，且 Figma 会让**整段事务回滚**。
    两处（QualityMenu / SourceMenu）都改成只用 `addComponentProperty` 的默认值。
 3. **`componentPropertyReferences` 设置早于 `appendChild`**：违反 v4-command.md §沙箱实测规则 3
    （必须先挂进组件树 → 再 addComponentProperty → 最后设引用）。ErrorPanel 两处顺序已调正。

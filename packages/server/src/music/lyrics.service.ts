@@ -36,7 +36,6 @@ const LYRICS_SOURCE_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer'];
 const LYRICS_CACHE_TTL_MS = 10 * 60 * 1000;
 const LYRICS_CACHE_MAX = 2_000;
 
-
 /** 参与合并的来源标识——平台源或 lyrics.ovh 第三方兜底。 */
 export type LyricsSourceId = MusicProvider | 'lyricsovh';
 
@@ -60,10 +59,7 @@ export class LyricsService {
   private readonly logger = new Logger(LyricsService.name);
   /** (provider:trackId | ovh:artist|title) → 最近一次歌词结果。miss（null）
    *  也缓存，availability 扫描一页搜索结果时不至于反复打同一批接口。 */
-  private readonly lyricsCache = new Map<
-    string,
-    { at: number; lines: LyricLine[] | null }
-  >();
+  private readonly lyricsCache = new Map<string, { at: number; lines: LyricLine[] | null }>();
 
   /**
    * In-flight coalescing for `getLyrics`（稳定性扫描：同 searchEquivalent
@@ -110,9 +106,7 @@ export class LyricsService {
         }
         // Spotify exposes no lyrics API — falls through as null.
       } catch (err) {
-        this.logger.warn(
-          `lyrics fetch failed (${provider}/${trackId}): ${(err as Error).message}`,
-        );
+        this.logger.warn(`lyrics fetch failed (${provider}/${trackId}): ${(err as Error).message}`);
         return null; // 失败不缓存，下次还有机会
       }
       this.lyricsCache.set(cacheKey, { at: Date.now(), lines });
@@ -144,11 +138,7 @@ export class LyricsService {
       priority: number;
     }> = [];
     const seen = new Set<string>();
-    const push = (
-      platform: MusicProvider,
-      id: string,
-      priority: number,
-    ): void => {
+    const push = (platform: MusicProvider, id: string, priority: number): void => {
       if (!id) return;
       const key = `${platform}:${id}`;
       if (seen.has(key)) return;
@@ -212,9 +202,7 @@ export class LyricsService {
       // getLyrics 内部已 catch（未登录 / 网络错 → null）且带 TTL 缓存 +
       // in-flight 合并，allSettled 只是再加一层保险。
       const settled = await Promise.allSettled(
-        candidates.map((c) =>
-          this.getLyrics(session, c.platform, c.trackId),
-        ),
+        candidates.map((c) => this.getLyrics(session, c.platform, c.trackId)),
       );
       const bundles: LyricSourceBundle[] = [];
       settled.forEach((r, i) => {
@@ -279,8 +267,7 @@ export class LyricsService {
   ): Promise<{ available: boolean; source: MusicProvider | null }> {
     const ordered = [...sources].sort(
       (a, b) =>
-        LYRICS_SOURCE_PRIORITY.indexOf(a.platform) -
-        LYRICS_SOURCE_PRIORITY.indexOf(b.platform),
+        LYRICS_SOURCE_PRIORITY.indexOf(a.platform) - LYRICS_SOURCE_PRIORITY.indexOf(b.platform),
     );
     for (const s of ordered) {
       if (!s.trackId) continue;

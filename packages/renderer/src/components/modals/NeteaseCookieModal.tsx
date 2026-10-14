@@ -125,10 +125,7 @@ export default function NeteaseCookieModal({ onSuccess, onClose }: Props) {
         <p className="qr-help">{status}</p>
 
         {!showManual ? (
-          <button
-            className="qr-manual-toggle"
-            onClick={() => setShowManual(true)}
-          >
+          <button className="qr-manual-toggle" onClick={() => setShowManual(true)}>
             扫不了码？手动粘贴 Cookie
           </button>
         ) : (
@@ -151,11 +148,7 @@ export default function NeteaseCookieModal({ onSuccess, onClose }: Props) {
               </a>{' '}
               → DevTools → Application → Cookies → 复制 <code>MUSIC_U</code>
             </div>
-            <button
-              className="qr-submit"
-              onClick={handleManualSubmit}
-              disabled={submitting}
-            >
+            <button className="qr-submit" onClick={handleManualSubmit} disabled={submitting}>
               {submitting ? '验证中…' : '登录'}
             </button>
           </div>

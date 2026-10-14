@@ -28,9 +28,7 @@ interface ServerLike {
   close: () => Promise<void>;
 }
 
-async function makeUpstream(
-  handler: (req: any, res: any) => void,
-): Promise<ServerLike> {
+async function makeUpstream(handler: (req: any, res: any) => void): Promise<ServerLike> {
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(handler);
     // ISSUES.md §1.1 同类修复：sandbox / 无 NET_BIND_SERVICE 环境下

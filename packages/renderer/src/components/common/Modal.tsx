@@ -16,10 +16,7 @@ export default function Modal({ onClose, panelClassName, children }: Props) {
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
-        className={`modal-panel${panelClassName ? ` ${panelClassName}` : ''}`}
-        onClick={stop}
-      >
+      <div className={`modal-panel${panelClassName ? ` ${panelClassName}` : ''}`} onClick={stop}>
         {children}
       </div>
     </div>

@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { activeLineWindow } from '../lib/lyrics';
 import type { LyricLine } from '../api';
-import type {
-  DesktopLyricsState,
-  DesktopLyricsStatus,
-} from '../../../electron/src/preload';
+import type { DesktopLyricsState, DesktopLyricsStatus } from '../../../electron/src/preload';
 
 /**
  * 主窗口侧的桌面歌词浮窗接线（NEXT-ITERATION §7.2）。

@@ -95,9 +95,7 @@ void (async () => {
     assert.strictEqual(items[0].title, '寂寞，好了');
     assert.strictEqual(items[0].artist, '蔡旻佑');
     // Deezer 342s 与 QQ 342s 落进同一 cluster → 该版本应同时带 qq+deezer 源
-    const dzVer = items[0].versions.find((v) =>
-      v.sources.some((s) => s.platform === 'deezer'),
-    );
+    const dzVer = items[0].versions.find((v) => v.sources.some((s) => s.platform === 'deezer'));
     assert.ok(dzVer, '应有含 deezer 源的版本');
     assert.ok(
       dzVer.sources.some((s) => s.platform === 'qq'),
@@ -196,14 +194,16 @@ void (async () => {
     ]);
     assert.strictEqual(items.length, 1, '同一首歌应合并成 1 条');
     assert.strictEqual(items[0].artist, '裘德', '展示元数据取优先级更高的中文源');
-    assert.deepStrictEqual(
-      items[0].sources.map((s: { platform: string }) => s.platform).sort(),
-      ['netease', 'spotify'],
-    );
+    assert.deepStrictEqual(items[0].sources.map((s: { platform: string }) => s.platform).sort(), [
+      'netease',
+      'spotify',
+    ]);
     assert.strictEqual(items[0].bestSource, 'netease', 'bestSource 应落回能出声的网易云');
     // 合并产物必须能被下游判成"可播"——这是这条断言真正的价值所在：
     // 之前只有 sources/bestSource 的形状断言，漏了"点下去会怎样"。
-    const best = items[0].sources.find((s: { platform: string }) => s.platform === items[0].bestSource);
+    const best = items[0].sources.find(
+      (s: { platform: string }) => s.platform === items[0].bestSource,
+    );
     assert.ok(best && best.hasCopyright, 'bestSource 必须是有版权、能出声的源');
   });
 

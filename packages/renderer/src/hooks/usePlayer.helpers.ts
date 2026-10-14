@@ -21,12 +21,7 @@ import { isPlayableEntry, pickPlayableTrack } from '../api';
  * track 的其它平台 source 里挑下一个能播的。QQ/网易云是完整曲流优先，
  * Deezer/Spotify 是 30s 预览兜底。
  */
-export const FALLBACK_PRIORITY: MusicProvider[] = [
-  'qq',
-  'netease',
-  'deezer',
-  'spotify',
-];
+export const FALLBACK_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer', 'spotify'];
 
 /** 可拿全曲流的平台：QQ + 网易云始终。Spotify Premium (WPS) 是例外——见
  *  getFullSongProviders()。 */
@@ -47,9 +42,7 @@ export function getFullSongProviders(
   wpsReady: boolean = false,
 ): MusicProvider[] {
   const isPremiumTier =
-    spotifyTier === 'premium' ||
-    spotifyTier === 'premium-duo' ||
-    spotifyTier === 'premium-family';
+    spotifyTier === 'premium' || spotifyTier === 'premium-duo' || spotifyTier === 'premium-family';
   if (isPremiumTier && wpsReady) {
     return [...FULL_SONG_PROVIDERS, 'spotify'];
   }
@@ -96,15 +89,15 @@ export function pickFallbackSource<T extends { platform: string; hasCopyright: b
  * pickFallbackSource but filters to full-song providers only (QQ/网易云
  * always; Spotify if Premium) and skips vipLocked entries.
  */
-export function pickUpgradeSource<T extends { platform: string; hasCopyright: boolean; vipLocked?: boolean }>(
+export function pickUpgradeSource<
+  T extends { platform: string; hasCopyright: boolean; vipLocked?: boolean },
+>(
   sources: T[],
   tried: Set<string>,
   fullProviders: readonly string[] = FULL_SONG_PROVIDERS,
 ): T | undefined {
   for (const p of fullProviders) {
-    const s = sources.find(
-      (src) => src.platform === p && !tried.has(p),
-    );
+    const s = sources.find((src) => src.platform === p && !tried.has(p));
     if (s && s.hasCopyright && !s.vipLocked) return s;
   }
   return undefined;
@@ -128,9 +121,7 @@ export function parsePlayableQueue(
   const unifiedItems: UnifiedSearchItem[] = [];
   for (const it of items) {
     // WPS 可用 → Spotify 源优先（audioUrl 留空，presentTrack 里 WPS 接管）
-    const spotifySrc = wpsReady
-      ? it.sources.find((s) => s.platform === 'spotify')
-      : undefined;
+    const spotifySrc = wpsReady ? it.sources.find((s) => s.platform === 'spotify') : undefined;
     const t: Track | null = spotifySrc
       ? {
           id: spotifySrc.trackId,
@@ -155,7 +146,6 @@ export function parsePlayableQueue(
   }
   return { tracks, unifiedItems };
 }
-
 
 /**
  * Decide whether the WPS wrapper should be paused+forgotten before
@@ -199,8 +189,7 @@ export function shouldStopWpsBeforeTransition(
   if (!nextTrack) return false;
   // Same track still eligible for WPS → don't disturb a possibly-paused
   // deck; the useEffect's `playing` branch handles play/resume correctly.
-  const stillWpsEligible =
-    wpsReady && nextTrack.provider === 'spotify' && Boolean(nextTrack.id);
+  const stillWpsEligible = wpsReady && nextTrack.provider === 'spotify' && Boolean(nextTrack.id);
   if (stillWpsEligible && wpsLastPlayedId === nextTrack.id) return false;
   // Everything else → we must stop WPS so it doesn't keep the old URI
   // alive while <audio> (or a fresh WPS.play) takes over. Covers (A),

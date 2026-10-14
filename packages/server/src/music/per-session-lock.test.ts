@@ -26,9 +26,28 @@ const { SessionService } = require('../common/session');
 const { MatchService } = require('../match/match.service');
 
 const quietProviders = () => ({
-  qq: { fetchLikedMidSet: async () => new Set(), like: async () => true, unlike: async () => true, fetchRadioBatch: async () => [] },
-  netease: { fetchLiked: async () => [], like: async () => true, unlike: async () => true, fmTrash: async () => true, search: async () => [], fetchRadioBatch: async () => [] },
-  spotify: { fetchLiked: async () => [], like: async () => ({ success: true }), unlike: async () => ({ success: true }), bindSessionId: () => {}, search: async () => [], fetchRadioBatch: async () => [] },
+  qq: {
+    fetchLikedMidSet: async () => new Set(),
+    like: async () => true,
+    unlike: async () => true,
+    fetchRadioBatch: async () => [],
+  },
+  netease: {
+    fetchLiked: async () => [],
+    like: async () => true,
+    unlike: async () => true,
+    fmTrash: async () => true,
+    search: async () => [],
+    fetchRadioBatch: async () => [],
+  },
+  spotify: {
+    fetchLiked: async () => [],
+    like: async () => ({ success: true }),
+    unlike: async () => ({ success: true }),
+    bindSessionId: () => {},
+    search: async () => [],
+    fetchRadioBatch: async () => [],
+  },
   deezer: { getEditorials: () => [], search: async () => [], fetchRadioBatch: async () => [] },
   search: { searchUnified: async () => [] },
   lyricsOvh: { fetch: async () => null },
@@ -55,9 +74,7 @@ async function makeService() {
   const qs = quietProviders();
   const match = new MatchService(qs);
   const { LikeSyncQueue } = require('./like-sync.queue');
-  const lyricsService = new LyricsService(
-    qs.netease, qs.deezer, qs.qq, qs.lyricsOvh,
-  );
+  const lyricsService = new LyricsService(qs.netease, qs.deezer, qs.qq, qs.lyricsOvh);
   const ms = new MusicService(
     sharedStorage,
     qs.qq,
@@ -123,14 +140,10 @@ async function test2_likeThenDislike() {
 
   // 并发 dislikeMerged + toggleLike（QQ 同一 track）
   const promises = [
-    ms.dislikeMerged(
-      s,
-      'merged-2',
-      [
-        { platform: 'qq', trackId: 't-qq-2' },
-        { platform: 'netease', trackId: 't-ne-2' },
-      ],
-    ),
+    ms.dislikeMerged(s, 'merged-2', [
+      { platform: 'qq', trackId: 't-qq-2' },
+      { platform: 'netease', trackId: 't-ne-2' },
+    ]),
     ms.toggleLike(s, 'qq', 't-qq-2'),
   ];
   await Promise.all(promises);

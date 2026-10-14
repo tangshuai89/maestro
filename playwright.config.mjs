@@ -2,7 +2,7 @@
 // Playwright 视觉回归配置（D11）
 //
 // 目标：把「CSS 漂移」变成 CI 里的一次失败，而不是"上线后看着不太对"。
-// 覆盖对象是**渲染器在浏览器里的渲染**（vite preview 起 dist），不是 Electron 窗口 —— 
+// 覆盖对象是**渲染器在浏览器里的渲染**（vite preview 起 dist），不是 Electron 窗口 ——
 // 不测窗口 chrome / 原生拖拽区，那些 Electron 侧的事不在本配置范围。
 //
 // 为什么 scale 与动效都要定住：

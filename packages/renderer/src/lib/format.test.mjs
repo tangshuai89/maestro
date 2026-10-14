@@ -13,7 +13,9 @@ function check(label, actual, expected) {
     console.log(`✅ ${label}`);
     passed++;
   } else {
-    console.log(`❌ ${label}\n   expected: ${JSON.stringify(expected)}\n   actual:   ${JSON.stringify(actual)}`);
+    console.log(
+      `❌ ${label}\n   expected: ${JSON.stringify(expected)}\n   actual:   ${JSON.stringify(actual)}`,
+    );
     failed++;
   }
 }
@@ -46,7 +48,11 @@ async function main() {
   // ── clampText ────────────────────────────────────────────────────────
   check('19. clampText("hello", 10) → "hello" (under limit)', clampText('hello', 10), 'hello');
   check('20. clampText("hello", 5) → "hello" (at limit)', clampText('hello', 5), 'hello');
-  check('21. clampText("hello world", 8) → "hello w… (truncated)', clampText('hello world', 8), 'hello w…');
+  check(
+    '21. clampText("hello world", 8) → "hello w… (truncated)',
+    clampText('hello world', 8),
+    'hello w…',
+  );
   check('22. clampText("", 10) → "" (empty)', clampText('', 10), '');
   check('23. clampText("hi", 3) → "hi" (under limit)', clampText('hi', 3), 'hi');
   check('24. clampText("abcdef", 4) → "abc… (truncated)', clampText('abcdef', 4), 'abc…');

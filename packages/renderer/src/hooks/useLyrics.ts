@@ -37,9 +37,7 @@ export function useLyrics(
     return fetchLyrics(provider, cur.id, {
       title: cur.title,
       artist: cur.artist,
-      sources: altSources?.filter(
-        (s) => !(s.platform === provider && s.trackId === cur.id),
-      ),
+      sources: altSources?.filter((s) => !(s.platform === provider && s.trackId === cur.id)),
     });
   }, [provider, altSources]);
 

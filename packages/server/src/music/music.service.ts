@@ -991,10 +991,7 @@ export class MusicService {
    * （= 保守当作可用），因为 spec 明确「本轮只修 QQ」。netease / spotify 的
    * 过期检测留在 Phase 11 —— 这里的形状已按 provider 参数化，届时加分支即可。
    */
-  async probeSession(
-    session: Session,
-    provider: MusicProvider,
-  ): Promise<SessionProbeResult> {
+  async probeSession(session: Session, provider: MusicProvider): Promise<SessionProbeResult> {
     if (provider === 'qq') {
       const ps = (session.providers.qq ?? {}) as ProviderSession;
       return this.qq.probeSession(ps);

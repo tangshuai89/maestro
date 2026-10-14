@@ -38,7 +38,9 @@ const SKIP = (msg) => {
 };
 
 if (!TOKEN) {
-  SKIP('缺少 FIGMA_TOKEN。CI 里属正常跳过；本地想跑请先 `export FIGMA_TOKEN=<带 file_variables scope 的 PAT>`');
+  SKIP(
+    '缺少 FIGMA_TOKEN。CI 里属正常跳过；本地想跑请先 `export FIGMA_TOKEN=<带 file_variables scope 的 PAT>`',
+  );
 }
 
 let res;
@@ -55,8 +57,8 @@ try {
 if (res.status === 403) {
   SKIP(
     'PAT 缺 `file_variables` scope（Figma REST 变量接口要 Enterprise 权限）。\n' +
-    '    补救: Figma → Settings → Security → Personal access tokens → 重建 token 并勾选 file_variables\n' +
-    '    替代: 用 Figma MCP 的 use_figma 只读段导出（OAuth，无需 PAT scope）'
+      '    补救: Figma → Settings → Security → Personal access tokens → 重建 token 并勾选 file_variables\n' +
+      '    替代: 用 Figma MCP 的 use_figma 只读段导出（OAuth，无需 PAT scope）',
   );
 }
 if (res.status === 404) SKIP(`文件不可访问（file key 写错，或 token 无该文件权限）: ${FILE_KEY}`);
@@ -69,10 +71,13 @@ const rawCols = meta.variableCollections ?? {};
 if (!rawVars.length) SKIP('REST 返回 0 个变量（文件里没有本地变量，或 token 看不到）');
 
 const byId = new Map(rawVars.map((v) => [v.id, v]));
-const defaultModeOf = (v) => rawCols[v.variableCollectionId]?.defaultModeId ?? Object.keys(v.valuesByMode ?? {})[0];
+const defaultModeOf = (v) =>
+  rawCols[v.variableCollectionId]?.defaultModeId ?? Object.keys(v.valuesByMode ?? {})[0];
 
 const resolveValue = (v) => {
-  let cur = v, raw = null, depth = 0;
+  let cur = v,
+    raw = null,
+    depth = 0;
   while (cur && depth < 8) {
     const modeId = defaultModeOf(cur);
     raw = cur.valuesByMode?.[modeId];
@@ -83,7 +88,12 @@ const resolveValue = (v) => {
   }
   const round = (n) => Math.round(n * 10000) / 10000;
   if (cur?.resolvedType === 'COLOR' && raw && typeof raw === 'object' && 'r' in raw) {
-    return { r: round(raw.r), g: round(raw.g), b: round(raw.b), a: raw.a === undefined ? 1 : round(raw.a) };
+    return {
+      r: round(raw.r),
+      g: round(raw.g),
+      b: round(raw.b),
+      a: raw.a === undefined ? 1 : round(raw.a),
+    };
   }
   return raw;
 };
@@ -94,7 +104,11 @@ const snapshotPath = resolve(__dirname, 'figma-tokens-dump.json');
 const prevOrder = existsSync(snapshotPath)
   ? (JSON.parse(readFileSync(snapshotPath, 'utf8')).variables ?? []).map((v) => v.name)
   : [];
-const live = rawVars.map((v) => ({ name: v.name, resolvedType: v.resolvedType, value: resolveValue(v) }));
+const live = rawVars.map((v) => ({
+  name: v.name,
+  resolvedType: v.resolvedType,
+  value: resolveValue(v),
+}));
 const liveByName = new Map(live.map((v) => [v.name, v]));
 const ordered = [
   ...prevOrder.map((n) => liveByName.get(n)).filter(Boolean),
@@ -103,8 +117,10 @@ const ordered = [
 
 // ── 与快照对比（按名字，不看顺序） ──────────────────────────────
 const prevByName = new Map(
-  (existsSync(snapshotPath) ? JSON.parse(readFileSync(snapshotPath, 'utf8')).variables ?? [] : [])
-    .map((v) => [v.name, JSON.stringify(v.value)])
+  (existsSync(snapshotPath)
+    ? (JSON.parse(readFileSync(snapshotPath, 'utf8')).variables ?? [])
+    : []
+  ).map((v) => [v.name, JSON.stringify(v.value)]),
 );
 const added = live.filter((v) => !prevByName.has(v.name)).map((v) => v.name);
 const removed = [...prevByName.keys()].filter((n) => !liveByName.has(n));
@@ -125,15 +141,35 @@ if (!hasDrift) console.log('  ✅ 与快照一致');
 // 顺带体检：映射覆盖率（有变量既没进 SCSS 也没被报出来的情况）
 const mapped = collectTokens(ordered);
 if (mapped.length !== live.length) {
-  const unmapped = live.filter((v) => !mapped.some((m) => m.figmaName === v.name)).map((v) => v.name);
+  const unmapped = live
+    .filter((v) => !mapped.some((m) => m.figmaName === v.name))
+    .map((v) => v.name);
   console.log(`  ⚠️  ${unmapped.length} 个变量不在 AETHER 映射内: ${unmapped.join(', ')}`);
 }
 
 if (WRITE) {
-  writeFileSync(snapshotPath, JSON.stringify({ variables: ordered.map(({ name, resolvedType, value }) => ({ name, resolvedType, value })) }, null, 1) + '\n');
+  writeFileSync(
+    snapshotPath,
+    JSON.stringify(
+      {
+        variables: ordered.map(({ name, resolvedType, value }) => ({ name, resolvedType, value })),
+      },
+      null,
+      1,
+    ) + '\n',
+  );
   console.log(`✅ 已写入快照 ${snapshotPath}`);
 } else if (OUT !== snapshotPath) {
-  writeFileSync(OUT, JSON.stringify({ variables: ordered.map(({ name, resolvedType, value }) => ({ name, resolvedType, value })) }, null, 1) + '\n');
+  writeFileSync(
+    OUT,
+    JSON.stringify(
+      {
+        variables: ordered.map(({ name, resolvedType, value }) => ({ name, resolvedType, value })),
+      },
+      null,
+      1,
+    ) + '\n',
+  );
   console.log(`✅ 已写入 ${OUT}`);
 } else if (hasDrift) {
   console.log('（默认不写文件；确认无误后加 --write 刷新快照）');

@@ -19,12 +19,7 @@
  */
 export {};
 const assert = require('node:assert');
-const {
-  parseLrc,
-  lyricLineKey,
-  mergeLyricSources,
-  LYRIC_MAX_MERGED_LINES,
-} = require('./lyrics');
+const { parseLrc, lyricLineKey, mergeLyricSources, LYRIC_MAX_MERGED_LINES } = require('./lyrics');
 
 let passed = 0;
 let failed = 0;
@@ -256,7 +251,10 @@ check('21. 容差 400ms 内视为同一句；副歌同词不同时间保留两�
   ])!;
   assert.strictEqual(merged.lines.length, 2, '副歌第二次重复要保留');
   assert.strictEqual(merged.dropped, 1);
-  assert.deepStrictEqual(merged.lines.map((l) => l.text), ['Chorus', 'Chorus']);
+  assert.deepStrictEqual(
+    merged.lines.map((l) => l.text),
+    ['Chorus', 'Chorus'],
+  );
   // 整体对齐 -0.2s（锚点众数），第二次重复随之平移
   assert.strictEqual(merged.lines[1].time, 16, '单锚点不判系统性偏移');
   assert.deepStrictEqual(merged.rejected, []);
@@ -286,7 +284,10 @@ check('22. 低优先级源整体晚 1s → 对齐后并入（不丢源）', () =
   ])!;
   assert.deepStrictEqual(merged.rejected, []);
   assert.strictEqual(merged.dropped, 3, '三行都对齐成重复');
-  assert.deepStrictEqual(merged.lines.map((l) => l.time), [1, 5, 9]);
+  assert.deepStrictEqual(
+    merged.lines.map((l) => l.time),
+    [1, 5, 9],
+  );
 });
 
 // ── 22b. 残差超出容差 → 保留成新行（不猜）────────────────────
@@ -371,8 +372,22 @@ check('25. 纯标点行（——）被丢弃', () => {
 // ── 26. 全纯文本源 → synced=false，按 key 去重拼接 ────────────
 check('26. 无 synced 源（lyrics.ovh 纯文本）→ synced=false', () => {
   const merged = mergeLyricSources([
-    { source: 'lyricsovh', priority: 0, lines: [{ time: 0, text: 'line one' }, { time: 0, text: 'line two' }] },
-    { source: 'deezer', priority: 1, lines: [{ time: 0, text: 'Line One!' }, { time: 0, text: 'line three' }] },
+    {
+      source: 'lyricsovh',
+      priority: 0,
+      lines: [
+        { time: 0, text: 'line one' },
+        { time: 0, text: 'line two' },
+      ],
+    },
+    {
+      source: 'deezer',
+      priority: 1,
+      lines: [
+        { time: 0, text: 'Line One!' },
+        { time: 0, text: 'line three' },
+      ],
+    },
   ])!;
   assert.strictEqual(merged.synced, false);
   assert.strictEqual(merged.lines.length, 3, 'Line 1! 与 line one 同键被去重');
@@ -436,7 +451,11 @@ check('31. 非字符串 text / NaN time 不炸', () => {
       source: 'qq',
       priority: 0,
       // 白盒：故意塞脏数据（line 数组在这里是 any 上下文）
-      lines: [{ time: 1, text: 'A' }, { time: NaN, text: null }, { time: 2, text: 'C' }],
+      lines: [
+        { time: 1, text: 'A' },
+        { time: NaN, text: null },
+        { time: 2, text: 'C' },
+      ],
     },
   ])!;
   assert.strictEqual(merged.lines.length, 2);

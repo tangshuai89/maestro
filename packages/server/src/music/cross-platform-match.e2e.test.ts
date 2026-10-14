@@ -68,11 +68,8 @@ const spotify = {
 const match = {};
 const lyricsOvh = { getLyrics: async () => null };
 
-
 const likeSync = new LikeSyncQueue(); // 真队列，跑后台 discover + 同步
-const lyricsService = new LyricsService(
-  qq as any, netease as any, deezer as any, lyricsOvh as any,
-);
+const lyricsService = new LyricsService(qq as any, netease as any, deezer as any, lyricsOvh as any);
 const svc = new MusicService(
   fakeStorage,
   qq,
@@ -96,10 +93,7 @@ async function likedIds(provider: string): Promise<string[]> {
   return arr.map((t: { id: string }) => t.id);
 }
 
-async function waitFor(
-  pred: () => Promise<boolean>,
-  ms = 2000,
-): Promise<boolean> {
+async function waitFor(pred: () => Promise<boolean>, ms = 2000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < ms) {
     if (await pred()) return true;
@@ -122,13 +116,7 @@ function neTrack(id: string, title: string, artist: string, duration: number) {
   };
 }
 
-function qqTrack(
-  id: string,
-  title: string,
-  artist: string,
-  duration: number,
-  mediaMid?: string,
-) {
+function qqTrack(id: string, title: string, artist: string, duration: number, mediaMid?: string) {
   return {
     id,
     provider: 'qq',
@@ -144,12 +132,7 @@ function qqTrack(
 }
 
 /** Spot 测试用 Track（与 neTrack 同结构但 provider = 'spotify'）。 */
-function spTrack(
-  id: string,
-  title: string,
-  artist: string,
-  duration: number,
-) {
+function spTrack(id: string, title: string, artist: string, duration: number) {
   return {
     id,
     provider: 'spotify',
@@ -172,61 +155,41 @@ async function main() {
   // ── 1. fanOutLike(qq-only) → 后台匹配到 netease 等价曲目并同步 ──────
   {
     neteaseSearchResults = [neTrack('n1', '晴天', '周杰伦', 271)]; // 时长差 1s ≤ 3
-    await svc.fanOutLike(
-      session,
-      'merged-qq-1',
-      [{ platform: 'qq', trackId: 'q1' }],
-      true,
-      { title: '晴天', artist: '周杰伦', duration: 270 },
-    );
-    const ok = await waitFor(async () =>
-      (await likedIds('netease')).includes('n1'),
-    );
+    await svc.fanOutLike(session, 'merged-qq-1', [{ platform: 'qq', trackId: 'q1' }], true, {
+      title: '晴天',
+      artist: '周杰伦',
+      duration: 270,
+    });
+    const ok = await waitFor(async () => (await likedIds('netease')).includes('n1'));
     assert.ok(ok, '跨平台匹配应把 netease n1 加入本地 liked');
-    assert.ok(
-      neteaseLikes.includes('n1'),
-      '应调用 netease.like 把红心同步到远端',
-    );
-    assert.ok(
-      (await likedIds('qq')).includes('q1'),
-      'qq 原本的红心仍在',
-    );
+    assert.ok(neteaseLikes.includes('n1'), '应调用 netease.like 把红心同步到远端');
+    assert.ok((await likedIds('qq')).includes('q1'), 'qq 原本的红心仍在');
     console.log('✅ 1. fanOutLike(qq-only) → 后台匹配 netease 并同步');
   }
 
   // ── 2. 时长差 > ±3s → 不匹配（严格 duration gate）──────────────────
   {
     neteaseSearchResults = [neTrack('n2', '稻香', '周杰伦', 200)]; // 差 70s
-    await svc.fanOutLike(
-      session,
-      'merged-qq-2',
-      [{ platform: 'qq', trackId: 'q2' }],
-      true,
-      { title: '稻香', artist: '周杰伦', duration: 270 },
-    );
+    await svc.fanOutLike(session, 'merged-qq-2', [{ platform: 'qq', trackId: 'q2' }], true, {
+      title: '稻香',
+      artist: '周杰伦',
+      duration: 270,
+    });
     await new Promise((r) => setTimeout(r, 250)); // 给后台队列时间
-    assert.ok(
-      !(await likedIds('netease')).includes('n2'),
-      '时长差 70s 不应匹配（严格 ±3s）',
-    );
+    assert.ok(!(await likedIds('netease')).includes('n2'), '时长差 70s 不应匹配（严格 ±3s）');
     console.log('✅ 2. 时长差超容差 → 不匹配');
   }
 
   // ── 3. 歌名/歌手对不上 → 不匹配 ────────────────────────────────────
   {
     neteaseSearchResults = [neTrack('n3', '完全不同的歌', '别的歌手', 270)];
-    await svc.fanOutLike(
-      session,
-      'merged-qq-3',
-      [{ platform: 'qq', trackId: 'q3' }],
-      true,
-      { title: '七里香', artist: '周杰伦', duration: 270 },
-    );
+    await svc.fanOutLike(session, 'merged-qq-3', [{ platform: 'qq', trackId: 'q3' }], true, {
+      title: '七里香',
+      artist: '周杰伦',
+      duration: 270,
+    });
     await new Promise((r) => setTimeout(r, 250));
-    assert.ok(
-      !(await likedIds('netease')).includes('n3'),
-      '归一化歌名+歌手不一致不应匹配',
-    );
+    assert.ok(!(await likedIds('netease')).includes('n3'), '归一化歌名+歌手不一致不应匹配');
     console.log('✅ 3. 歌名/歌手不一致 → 不匹配');
   }
 
@@ -241,9 +204,7 @@ async function main() {
       { title: '告白气球', artist: '周杰伦', duration: 215 },
     );
     assert.strictEqual(r.liked, true, 'detect 到 qq 已红心 → liked=true');
-    const ok = await waitFor(async () =>
-      (await likedIds('netease')).includes('n-det'),
-    );
+    const ok = await waitFor(async () => (await likedIds('netease')).includes('n-det'));
     assert.ok(ok, 'detect 后台匹配应把 netease n-det 加入');
     assert.ok(neteaseLikes.includes('n-det'), 'detect 匹配应同步远端 netease');
     console.log('✅ 4. detect(qq 已红心) → 后台匹配补齐 netease');
@@ -265,15 +226,21 @@ async function main() {
       { title: '告白气球', artist: '周杰伦', duration: 215 },
     );
     assert.strictEqual(r.liked, true, '已 fanOut → liked 仍为 true');
-    assert.deepStrictEqual(r.fannedOutTo.sort(), ['netease', 'qq'],
-      'fannedOutTo 不变（含 qq + netease）');
+    assert.deepStrictEqual(
+      r.fannedOutTo.sort(),
+      ['netease', 'qq'],
+      'fannedOutTo 不变（含 qq + netease）',
+    );
     // 关键：远端不应多 call netease.like（证明没有新队列任务触发 discover）
     const afterLikes = neteaseLikes.length;
     // 等一小段时间，给任何潜在的后台任务时间跑完
     await new Promise((r) => setTimeout(r, 300));
-    assert.strictEqual(afterLikes, neteaseLikes.length,
-      `不应多 call netease.like（第一次 already fanOut 已写，after 队里不新增）`+
-      `实际 before=${beforeLikes}, after=${afterLikes}`);
+    assert.strictEqual(
+      afterLikes,
+      neteaseLikes.length,
+      `不应多 call netease.like（第一次 already fanOut 已写，after 队里不新增）` +
+        `实际 before=${beforeLikes}, after=${afterLikes}`,
+    );
     console.log('✅ 4b. detect 重跑 — fanOut 全覆盖 → 不入队不写远端');
   }
 
@@ -289,10 +256,7 @@ async function main() {
       { title: '一路向北', artist: '周杰伦', duration: 300 },
     );
     await new Promise((r) => setTimeout(r, 250));
-    assert.ok(
-      !neteaseLikes.includes('n5'),
-      '取消收藏方向不应触发跨平台匹配搜索',
-    );
+    assert.ok(!neteaseLikes.includes('n5'), '取消收藏方向不应触发跨平台匹配搜索');
     console.log('✅ 5. 取消方向不触发匹配');
   }
 
@@ -385,13 +349,11 @@ async function main() {
       sources: [],
     };
     neteaseSearchResults = [neTrack('n-lib', '反方向的钟', '周杰伦', 260)];
-    await svc.fanOutLike(
-      session,
-      'merged-lib',
-      [{ platform: 'qq', trackId: 'q-lib' }],
-      true,
-      { title: '反方向的钟', artist: '周杰伦', duration: 261 },
-    );
+    await svc.fanOutLike(session, 'merged-lib', [{ platform: 'qq', trackId: 'q-lib' }], true, {
+      title: '反方向的钟',
+      artist: '周杰伦',
+      duration: 261,
+    });
     const ok = await waitFor(async () => {
       const lib = store['library:sess-xpm'] as any;
       return lib.items[0].sources.some((s: any) => s.platform === 'netease');
@@ -407,9 +369,7 @@ async function main() {
     );
     // QQ 原有 source 不被覆盖，仍在。
     assert.ok(
-      (store['library:sess-xpm'] as any).items[0].sources.some(
-        (s: any) => s.platform === 'qq',
-      ),
+      (store['library:sess-xpm'] as any).items[0].sources.some((s: any) => s.platform === 'qq'),
       'QQ 原有 source 应保留',
     );
     console.log('✅ 8. 跨平台匹配 → 增量补进库快照（bug3）');
@@ -451,24 +411,14 @@ async function main() {
     const origNetease = (svc as any).netease;
     (svc as any).netease = wrappedNetease;
     try {
-      await svc.fanOutLike(
-        session,
-        'merged-tobe',
-        [{ platform: 'qq', trackId: 'q-tobe' }],
-        true,
-        { title: 'TO BE (存在)', artist: '滨崎步 (浜崎あゆみ)', duration: 317 },
-      );
-      const ok = await waitFor(async () =>
-        (await likedIds('netease')).includes('n-tobe'),
-      );
-      assert.ok(
-        ok,
-        '原 kw 0 候选 → 剥括号兜底命中 → netease 应被点亮',
-      );
-      assert.ok(
-        neteaseLikes.includes('n-tobe'),
-        '兜底命中后应同步远端 netease.like',
-      );
+      await svc.fanOutLike(session, 'merged-tobe', [{ platform: 'qq', trackId: 'q-tobe' }], true, {
+        title: 'TO BE (存在)',
+        artist: '滨崎步 (浜崎あゆみ)',
+        duration: 317,
+      });
+      const ok = await waitFor(async () => (await likedIds('netease')).includes('n-tobe'));
+      assert.ok(ok, '原 kw 0 候选 → 剥括号兜底命中 → netease 应被点亮');
+      assert.ok(neteaseLikes.includes('n-tobe'), '兜底命中后应同步远端 netease.like');
       // 关键断言：搜索至少发起 2 次（原始 + 剥括号兜底），否则兜底没生效
       assert.ok(
         neteaseKwHistory.length >= 2,
@@ -499,19 +449,20 @@ async function main() {
       ...spotify,
       search: async (_ps: unknown, kw: string, limit: number) => {
         spotifyCalls.push(`q=${kw}&limit=${limit}`);
-        if (kw === 'サマータイムシンデレラ') return [
-          {
-            id: 's-summertime',
-            provider: 'spotify',
-            title: 'サマータイムシンデレラ',
-            artist: '緑黄色社会',
-            album: '',
-            coverUrl: '',
-            audioUrl: '',
-            duration: 228,
-            liked: false,
-          },
-        ];
+        if (kw === 'サマータイムシンデレラ')
+          return [
+            {
+              id: 's-summertime',
+              provider: 'spotify',
+              title: 'サマータイムシンデレラ',
+              artist: '緑黄色社会',
+              album: '',
+              coverUrl: '',
+              audioUrl: '',
+              duration: 228,
+              liked: false,
+            },
+          ];
         // 原 kw 命中 3 个无关候选（模拟 Spotify 解析偏差）
         return [
           {
@@ -558,15 +509,11 @@ async function main() {
       spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
     };
     try {
-      const t = await (svc as any).searchEquivalent(
-        session,
-        'spotify',
-        {
-          title: 'サマータイムシンデレラ (盛夏的灰姑娘)',
-          artist: '緑黄色社会',
-          duration: 228,
-        },
-      );
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: 'サマータイムシンデレラ (盛夏的灰姑娘)',
+        artist: '緑黄色社会',
+        duration: 228,
+      });
       assert.ok(t, 'title-only 变体应能命中真实歌曲');
       assert.strictEqual(t.id, 's-summertime', '命中 title-only 那次返回的 result');
       assert.ok(
@@ -624,21 +571,14 @@ async function main() {
       spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
     };
     try {
-      const t = await (svc as any).searchEquivalent(
-        session,
-        'spotify',
-        {
-          title: '胸の煙 (焚心如火)',
-          artist: 'ずっと真夜中でいいのに。 (永远是深夜有多好｡)',
-          duration: 249,
-        },
-      );
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: '胸の煙 (焚心如火)',
+        artist: 'ずっと真夜中でいいのに。 (永远是深夜有多好｡)',
+        duration: 249,
+      });
       assert.ok(t, 'Tier 5 (relaxed title stripped) 应能命中变体');
       assert.strictEqual(t.id, 's-munenonKemuri', '命中 Official MV 候选');
-      assert.ok(
-        spotifyCalls.length >= 1,
-        `至少跑过 1 次搜索，实际 ${spotifyCalls.length} 次`,
-      );
+      assert.ok(spotifyCalls.length >= 1, `至少跑过 1 次搜索，实际 ${spotifyCalls.length} 次`);
     } finally {
       (svc as any).spotify = origSpotify;
       (session as any).providers = origSessionProviders;
@@ -678,11 +618,11 @@ async function main() {
       spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
     };
     try {
-      const t = await (svc as any).searchEquivalent(
-        session,
-        'spotify',
-        { title: '聖夜', artist: 'あるぱか', duration: 200 },
-      );
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: '聖夜',
+        artist: 'あるぱか',
+        duration: 200,
+      });
       assert.ok(t, 'JW fuzzy title match 应能命中「聖夜☆」vs「聖夜」');
       assert.strictEqual(t.id, 's-seiya2');
       assert.ok(spotifyCalls >= 1, '至少跑过 1 次搜索');
@@ -743,21 +683,17 @@ async function main() {
     try {
       // 同一 seed 测两个平台：netease 必须拒（艺人是王馨卓 ≠王力宏）、spotify
       // 必须收（Leohom Wang 是王力宏拼音，跨脚本）。分别调用，避免互相污染。
-      const tNe = await (svc as any).searchEquivalent(
-        session,
-        'netease',
-        { title: '花田错', artist: '王力宏', duration: 249 },
-      );
-      assert.strictEqual(
-        tNe,
-        null,
-        'netease 搜到王馨卓是不同名曲 → 必须返回 null，不写 fanOut',
-      );
-      const tSp = await (svc as any).searchEquivalent(
-        session,
-        'spotify',
-        { title: '花田错', artist: '王力宏', duration: 249 },
-      );
+      const tNe = await (svc as any).searchEquivalent(session, 'netease', {
+        title: '花田错',
+        artist: '王力宏',
+        duration: 249,
+      });
+      assert.strictEqual(tNe, null, 'netease 搜到王馨卓是不同名曲 → 必须返回 null，不写 fanOut');
+      const tSp = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: '花田错',
+        artist: '王力宏',
+        duration: 249,
+      });
       assert.ok(tSp, 'spotify 搜到 Leohom Wang（王力宏拼音）应能命中');
       assert.strictEqual(tSp.id, 's-leehom');
     } finally {
@@ -780,7 +716,12 @@ async function main() {
       { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ', dur: 258, tag: 'no-period' },
       { title: 'ねえ、ちゃんと聞いてる？', artist: 'Riria', dur: 258, tag: 'cross-script' },
       { title: 'ねえちゃんと聞いてる？', artist: 'りりあ。', dur: 258, tag: 'no-cmm' },
-      { title: 'ねえ、ちゃんと聞いてる？ (Acoustic)', artist: 'りりあ。', dur: 258, tag: 'extra-parens' },
+      {
+        title: 'ねえ、ちゃんと聞いてる？ (Acoustic)',
+        artist: 'りりあ。',
+        dur: 258,
+        tag: 'extra-parens',
+      },
     ];
     for (const v of variants) {
       const wrappedSpotify = {
@@ -807,11 +748,11 @@ async function main() {
         spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
       };
       try {
-        const t = await (svc as any).searchEquivalent(
-          session,
-          'spotify',
-          { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ。', duration: 258 },
-        );
+        const t = await (svc as any).searchEquivalent(session, 'spotify', {
+          title: 'ねえ、ちゃんと聞いてる？',
+          artist: 'りりあ。',
+          duration: 258,
+        });
         assert.ok(t, `变体 ${v.tag} (="${v.title} - ${v.artist}") 应能命中`);
         assert.strictEqual(t.id, 's-ria', `变体 ${v.tag} 命中同一首`);
       } finally {
@@ -855,11 +796,11 @@ async function main() {
       // 清 cache：test 14 同 session 同 kw 写过命中，cache 里已是 's-ria'。
       // 实际 test 15 候选 ID 是 's-ria-243'，必须绕过 cache。
       (svc as any).equivSearchCache.clear();
-      const t = await (svc as any).searchEquivalent(
-        session,
-        'spotify',
-        { title: 'ねえ、ちゃんと聞いてる？', artist: 'りりあ。', duration: 258 },
-      );
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: 'ねえ、ちゃんと聞いてる？',
+        artist: 'りりあ。',
+        duration: 258,
+      });
       assert.ok(t, '跨版本 15s 差命中');
       assert.strictEqual(t.id, 's-ria-243');
     } finally {
@@ -926,29 +867,17 @@ async function main() {
     };
     try {
       (svc as any).equivSearchCache.clear();
-      const t = await (svc as any).searchEquivalent(
-        session,
-        'spotify',
-        {
-          title:
-            'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
-          artist: 'EGOIST (エゴイスト)',
-          duration: 255,
-        },
-      );
+      const t = await (svc as any).searchEquivalent(session, 'spotify', {
+        title: 'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
+        artist: 'EGOIST (エゴイスト)',
+        duration: 255,
+      });
       assert.ok(t, '`~` vs `〜` tilde 变体应能命中（之前所有 tier 全挂）');
       // Tier 2 (loose) 命中后即返回——按 search 返回顺序取首条。
       // 这里不强求命中 dur=255（duration-preferring 属于另一个 PR 的优化），
       // 只确保命中**正版本**（256/255 之一），绝不能命中 95 的 TV Edit。
-      assert.notStrictEqual(
-        t.id,
-        's-dep-tv',
-        '不得误命中 dur=95 TV Edit（与 seed 差 160s）',
-      );
-      assert.ok(
-        ['s-dep-256', 's-dep-255'].includes(t.id),
-        `命中正版本（256/255），实际 ${t.id}`,
-      );
+      assert.notStrictEqual(t.id, 's-dep-tv', '不得误命中 dur=95 TV Edit（与 seed 差 160s）');
+      assert.ok(['s-dep-256', 's-dep-255'].includes(t.id), `命中正版本（256/255），实际 ${t.id}`);
     } finally {
       (svc as any).spotify = origSpotify;
       (svc as any).equivSearchCache.clear();
@@ -1042,7 +971,9 @@ async function main() {
       (svc as any).equivSearchCache.clear();
       (session as any).providers = origSessionProviders;
     }
-    console.log('✅ 17. 同名不同艺人翻唱链：跨脚本艺人音译对不上 → 拒绝误并（修 Lefty/铃木爱理/wacci 事故）');
+    console.log(
+      '✅ 17. 同名不同艺人翻唱链：跨脚本艺人音译对不上 → 拒绝误并（修 Lefty/铃木爱理/wacci 事故）',
+    );
   }
 
   // ── 18. 纯汉字日文名的合法跨脚本：藤井风 ↔ Fujii Kaze 仍能命中（Tier 3b）──
@@ -1218,7 +1149,17 @@ async function main() {
     try {
       (svc as any).spotify = makeStub(
         [
-          { id: 'sp-zutomayo', provider: 'spotify', title: 'ヒューマノイド', artist: 'ZUTOMAYO', album: '', coverUrl: '', audioUrl: '', duration: 259, liked: false },
+          {
+            id: 'sp-zutomayo',
+            provider: 'spotify',
+            title: 'ヒューマノイド',
+            artist: 'ZUTOMAYO',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 259,
+            liked: false,
+          },
         ],
         'sp-zutomayo',
       );
@@ -1231,7 +1172,17 @@ async function main() {
 
       (svc as any).spotify = makeStub(
         [
-          { id: 'sp-kojika', provider: 'spotify', title: 'Humanoid Colic (feat. HATSUNE MIKU)', artist: 'kojika / Hatsune Miku', album: '', coverUrl: '', audioUrl: '', duration: 193, liked: false },
+          {
+            id: 'sp-kojika',
+            provider: 'spotify',
+            title: 'Humanoid Colic (feat. HATSUNE MIKU)',
+            artist: 'kojika / Hatsune Miku',
+            album: '',
+            coverUrl: '',
+            audioUrl: '',
+            duration: 193,
+            liked: false,
+          },
         ],
         'sp-kojika',
       );
@@ -1295,9 +1246,7 @@ async function main() {
       // (a) settle-wait：detect 的响应应等 discover 落定，直接含新匹配的平台。
       (svc as any).likedCache.clear(); // 清掉前面用例的 liked TTL 缓存
       qqLikedRemote = ['q-det-settle'];
-      neteaseSearchResults = [
-        neTrack('n-det-settle', 'settle-wait 测试曲', 'Settle Artist', 200),
-      ];
+      neteaseSearchResults = [neTrack('n-det-settle', 'settle-wait 测试曲', 'Settle Artist', 200)];
       const ra = await svc.detectLikedAndSync(
         session,
         'merged-settle',
@@ -1337,8 +1286,8 @@ async function main() {
   }
 
   // ── 23. 多艺人 collab + Spotify 「title + co-author 后缀」识别 ──
-  // 用户实测回归：「PLACEBO (安慰剂) - 米津玄師 (よねづ けんし) / 野田洋次郎 
-  // (のだようじろう)」(QQ/netease, dur=240) 在 Spotify 是「PLACEBO ＋ 野田洋次郎 - 
+  // 用户实测回归：「PLACEBO (安慰剂) - 米津玄師 (よねづ けんし) / 野田洋次郎
+  // (のだようじろう)」(QQ/netease, dur=240) 在 Spotify 是「PLACEBO ＋ 野田洋次郎 -
   // Kenshi Yonezu / Yojiro Noda」(dur=240)。两个拦路虎：
   //   a) 艺人字段多艺人用「/」拼——别名表/罗马化按 blob 查不到。
   //      修：artistLooseMatch 多艺人兜底，按 /／,&; 拆后配对别名/罗马化，命中
@@ -1416,10 +1365,7 @@ async function main() {
       false,
       `翻唱（Coby KiraCola）绝不能被 fan-out 到 netease，实际 fannedOutTo=${JSON.stringify(r.fannedOutTo)}`,
     );
-    assert.ok(
-      !(await likedIds('netease')).includes('n-cover'),
-      '翻唱不能被写进本地 liked',
-    );
+    assert.ok(!(await likedIds('netease')).includes('n-cover'), '翻唱不能被写进本地 liked');
     console.log('✅ 24. Tier 5b 翻唱拒绝：Coby KiraCola 不被 fan-out');
   }
 
@@ -1483,13 +1429,8 @@ async function main() {
         true,
         { title: '誘 (Live)', artist: '林宥嘉', duration: 320 },
       );
-      const ok = await waitFor(async () =>
-        (await likedIds('spotify')).includes('sp-live-2'),
-      );
-      assert.ok(
-        ok,
-        '同版本（都是 LIVE）差 20s 仍命中 30s lenient',
-      );
+      const ok = await waitFor(async () => (await likedIds('spotify')).includes('sp-live-2'));
+      assert.ok(ok, '同版本（都是 LIVE）差 20s 仍命中 30s lenient');
     } finally {
       (session as any).providers = origSessionProviders;
     }
@@ -1527,7 +1468,9 @@ async function main() {
   // 出现在 seed 字段里）。修复后：加 extraIsExactCandArtist 整串佐证，
   // PLACEBO 重新命中。
   {
-    spotifySearchResults = [spTrack('sp-placebo', 'PLACEBO + 野田洋次郎', 'Kenshi Yonezu / Yojiro Noda', 240)];
+    spotifySearchResults = [
+      spTrack('sp-placebo', 'PLACEBO + 野田洋次郎', 'Kenshi Yonezu / Yojiro Noda', 240),
+    ];
     const origSessionProviders = session.providers;
     (session as any).providers = {
       ...session.providers,
@@ -1541,13 +1484,8 @@ async function main() {
         true,
         { title: 'PLACEBO (安慰剂)', artist: '米津玄師 / 野田洋次郎', duration: 240 },
       );
-      const ok = await waitFor(async () =>
-        (await likedIds('spotify')).includes('sp-placebo'),
-      );
-      assert.ok(
-        ok,
-        'PLACEBO 多艺人 collab 重新命中（extra 整串等于 cand 艺人）',
-      );
+      const ok = await waitFor(async () => (await likedIds('spotify')).includes('sp-placebo'));
+      assert.ok(ok, 'PLACEBO 多艺人 collab 重新命中（extra 整串等于 cand 艺人）');
     } finally {
       (session as any).providers = origSessionProviders;
     }
@@ -1576,16 +1514,12 @@ async function main() {
       spotify: { spotify: { accessToken: 'tok', tier: 'free' } },
     };
     try {
-      await svc.fanOutLike(
-        session,
-        'merged-koi',
-        [{ platform: 'qq', trackId: 'q-koi' }],
-        true,
-        { title: '恋', artist: '星野源', duration: 270 },
-      );
-      const ok = await waitFor(async () =>
-        (await likedIds('spotify')).includes('sp-koi'),
-      );
+      await svc.fanOutLike(session, 'merged-koi', [{ platform: 'qq', trackId: 'q-koi' }], true, {
+        title: '恋',
+        artist: '星野源',
+        duration: 270,
+      });
+      const ok = await waitFor(async () => (await likedIds('spotify')).includes('sp-koi'));
       assert.ok(ok, '标题罗马音变体应命中 Spotify 的 Koi（星野源 恋）');
     } finally {
       (svc as any).spotify = origSpotify;
@@ -1620,9 +1554,7 @@ async function main() {
         true,
         { title: 'もっと', artist: 'aiko', duration: 291 },
       );
-      const ok = await waitFor(async () =>
-        (await likedIds('spotify')).includes('sp-motto'),
-      );
+      const ok = await waitFor(async () => (await likedIds('spotify')).includes('sp-motto'));
       assert.ok(ok, '假名标题跨脚本应命中 Spotify 的 Motto（aiko もっと）');
     } finally {
       (svc as any).spotify = origSpotify;
@@ -1657,14 +1589,12 @@ async function main() {
         true,
         { title: '告别的时代', artist: '罗大佑', duration: 300 },
       );
-      const ok = await waitFor(async () =>
-        (await likedIds('spotify')).includes('sp-album'),
-      );
-      assert.ok(ok, '应 star 时长最接近的同专辑版 sp-album(301)，非排第一的精选集版 sp-compilation(280)');
+      const ok = await waitFor(async () => (await likedIds('spotify')).includes('sp-album'));
       assert.ok(
-        !(await likedIds('spotify')).includes('sp-compilation'),
-        '不应 star 精选集版',
+        ok,
+        '应 star 时长最接近的同专辑版 sp-album(301)，非排第一的精选集版 sp-compilation(280)',
       );
+      assert.ok(!(await likedIds('spotify')).includes('sp-compilation'), '不应 star 精选集版');
     } finally {
       (svc as any).spotify = origSpotify;
       (session as any).providers = origSessionProviders;
@@ -1733,10 +1663,7 @@ async function main() {
         );
         return rb.settled === true && rb.fannedOutTo.includes('netease');
       }, 8000);
-      assert.ok(
-        ok,
-        'discover 落定后 detect 应返回 settled=true 且 fannedOutTo 含 netease',
-      );
+      assert.ok(ok, 'discover 落定后 detect 应返回 settled=true 且 fannedOutTo 含 netease');
       const rc = await svc.detectLikedAndSync(
         session,
         'merged-slow',
@@ -1755,7 +1682,9 @@ async function main() {
       (svc as any).equivSearchCache.clear();
       neteaseSearchResults = [];
     }
-    console.log('✅ 33. 慢 discover → detect settled=false（中间态），落定后 settled=true 角标齐全');
+    console.log(
+      '✅ 33. 慢 discover → detect settled=false（中间态），落定后 settled=true 角标齐全',
+    );
   }
 
   // ── 34. 合唱跨平台配对：拼接 key 移除后仍走拆分配对命中 ──
@@ -1765,9 +1694,7 @@ async function main() {
   // Spotify「Khalil Fong / Wang Leehom」按位桥（表：方大同↔Khalil Fong、
   // 王力宏↔Wang Leehom），2/2 命中 → 红心正常同步。回归锁死这条链路。
   {
-    neteaseSearchResults = [
-      neTrack('n-collab-34', '好不容易', 'Khalil Fong / Wang Leehom', 380),
-    ];
+    neteaseSearchResults = [neTrack('n-collab-34', '好不容易', 'Khalil Fong / Wang Leehom', 380)];
     // fanOutLike 立即返回（discover 异步落账），轮询本地 liked 集合等命中。
     await svc.fanOutLike(
       session,
@@ -1776,13 +1703,8 @@ async function main() {
       true,
       { title: '好不容易', artist: '方大同 / 王力宏', duration: 380 },
     );
-    const ok = await waitFor(async () =>
-      (await likedIds('netease')).includes('n-collab-34'),
-    );
-    assert.ok(
-      ok,
-      '合唱 seed 应通过拆分配对命中 netease 合唱候选（Khalil Fong / Wang Leehom）',
-    );
+    const ok = await waitFor(async () => (await likedIds('netease')).includes('n-collab-34'));
+    assert.ok(ok, '合唱 seed 应通过拆分配对命中 netease 合唱候选（Khalil Fong / Wang Leehom）');
     console.log('✅ 34. 合唱跨平台配对：方大同/王力宏 ↔ Khalil Fong/Wang Leehom 命中');
   }
 
@@ -1804,7 +1726,9 @@ async function main() {
     };
     try {
       const t = await (svc as any).searchEquivalent(session, 'spotify', {
-        title: '我们', artist: '陈奕迅', duration: 260,
+        title: '我们',
+        artist: '陈奕迅',
+        duration: 260,
       });
       assert.strictEqual(t, null, '「我们」不得匹配「我們萬歲」（短标题门）');
     } finally {
@@ -1814,15 +1738,19 @@ async function main() {
 
     (svc as any).spotify = {
       ...origSpotify,
-      search: async () => [
-        spTrack('sp-live-35', '告别的时代 - Live', '罗大佑', 237),
-      ],
+      search: async () => [spTrack('sp-live-35', '告别的时代 - Live', '罗大佑', 237)],
     };
     try {
       const t = await (svc as any).searchEquivalent(session, 'spotify', {
-        title: '告别的时代', artist: '罗大佑', duration: 300,
+        title: '告别的时代',
+        artist: '罗大佑',
+        duration: 300,
       });
-      assert.strictEqual(t, null, '「告别的时代」studio 不得匹配「告别的时代 - Live」（无括号版本尾缀守卫）');
+      assert.strictEqual(
+        t,
+        null,
+        '「告别的时代」studio 不得匹配「告别的时代 - Live」（无括号版本尾缀守卫）',
+      );
     } finally {
       (svc as any).spotify = origSpotify;
       (svc as any).equivSearchCache.clear();

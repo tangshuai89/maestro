@@ -211,9 +211,7 @@ export class LikeSyncQueue {
     const key = this.key(task);
     const existing = this.pending.get(key);
     if (existing && existing.liked === task.liked) {
-      const byPlatform = new Map(
-        existing.targets.map((t) => [t.platform, t] as const),
-      );
+      const byPlatform = new Map(existing.targets.map((t) => [t.platform, t] as const));
       for (const t of targets) {
         if (!byPlatform.has(t.platform)) byPlatform.set(t.platform, t);
       }
@@ -250,11 +248,7 @@ export class LikeSyncQueue {
    *   把它标记为 unsettled，前端继续轮询而不是据此判稳定）。best-effort：
    *   队列被长退避重试阻塞时不把 detect 卡死；下次 detect / refresh 会再等。
    */
-  waitForSettled(
-    sessionId: string,
-    mergedId: string,
-    timeoutMs = 6000,
-  ): Promise<boolean> {
+  waitForSettled(sessionId: string, mergedId: string, timeoutMs = 6000): Promise<boolean> {
     const key = `${sessionId}:${mergedId}`;
     return new Promise((resolve) => {
       const start = Date.now();
@@ -390,10 +384,7 @@ export class LikeSyncQueue {
    *
    * 接受可选 `rng` 让单测断言「种子 X → 固定 jitter 值」（ISSUES.md §2.11）；
    * 不传时退化为 Math.random（生产路径行为不变）。 */
-  private static backoffMs(
-    attempt: number,
-    rng: () => number = Math.random,
-  ): number {
+  private static backoffMs(attempt: number, rng: () => number = Math.random): number {
     const base = LikeSyncQueue.BACKOFF_BASE_MS * 2 ** attempt;
     return base + Math.floor(rng() * LikeSyncQueue.BACKOFF_BASE_MS);
   }

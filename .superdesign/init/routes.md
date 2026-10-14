@@ -14,16 +14,16 @@ main.tsx
 
 ## State → component mapping (authoritative, from App.tsx)
 
-| # | Condition (state) | Component(s) rendered | Notes |
-|---|---|---|---|
-| 1 | `!player.provider` | `SourceSelect` (`components/source-select/SourceSelect.tsx`) | Source picker screen. `?demo=qq\|netease\|deezer\|spotify` URL param writes localStorage and reloads to force a provider (dev helper). |
-| 2 | `player.provider` set | `.app` shell: `Titlebar` + `.bg-layer` (cover wash) + `MonsterBeatsView` + always-mounted `<audio>` | The main player view. `search-open` class added to `.app` while search is open (freezes cover animations behind the overlay's backdrop-filter). |
-| 3 | `auth.showCookieFallback` | `NeteaseCookieModal` (`components/modals/NeteaseCookieModal.tsx`) | QR → cookie fallback login for NetEase/QQ. |
-| 4 | `player.searchOpen` | `SearchPanel` (`components/search/SearchPanel.tsx`) | Cross-platform unified search overlay (inside shared `Modal`). |
-| 5 | `reco.recoKeyOpen` | `RecoKeyModal` (`components/modals/RecoKeyModal.tsx`) | DeepSeek API key dialog. |
-| 6 | `likedOpen` | `LikedLibraryModal` (`components/modals/LikedLibraryModal.tsx`) | Merged ❤ library across platforms (virtualized list). |
-| 7 | `settingsOpen` | `SettingsModal` (`components/modals/SettingsModal.tsx`) | Session-snapshot backup / export / import. |
-| 8 | `auth.authError` | `AuthErrorPanel` (`components/common/AuthErrorPanel.tsx`) | Auth failure recovery, fixed bottom-center at App level. |
+| #   | Condition (state)         | Component(s) rendered                                                                               | Notes                                                                                                                                           |
+| --- | ------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `!player.provider`        | `SourceSelect` (`components/source-select/SourceSelect.tsx`)                                        | Source picker screen. `?demo=qq\|netease\|deezer\|spotify` URL param writes localStorage and reloads to force a provider (dev helper).          |
+| 2   | `player.provider` set     | `.app` shell: `Titlebar` + `.bg-layer` (cover wash) + `MonsterBeatsView` + always-mounted `<audio>` | The main player view. `search-open` class added to `.app` while search is open (freezes cover animations behind the overlay's backdrop-filter). |
+| 3   | `auth.showCookieFallback` | `NeteaseCookieModal` (`components/modals/NeteaseCookieModal.tsx`)                                   | QR → cookie fallback login for NetEase/QQ.                                                                                                      |
+| 4   | `player.searchOpen`       | `SearchPanel` (`components/search/SearchPanel.tsx`)                                                 | Cross-platform unified search overlay (inside shared `Modal`).                                                                                  |
+| 5   | `reco.recoKeyOpen`        | `RecoKeyModal` (`components/modals/RecoKeyModal.tsx`)                                               | DeepSeek API key dialog.                                                                                                                        |
+| 6   | `likedOpen`               | `LikedLibraryModal` (`components/modals/LikedLibraryModal.tsx`)                                     | Merged ❤ library across platforms (virtualized list).                                                                                           |
+| 7   | `settingsOpen`            | `SettingsModal` (`components/modals/SettingsModal.tsx`)                                             | Session-snapshot backup / export / import.                                                                                                      |
+| 8   | `auth.authError`          | `AuthErrorPanel` (`components/common/AuthErrorPanel.tsx`)                                           | Auth failure recovery, fixed bottom-center at App level.                                                                                        |
 
 Modals 3–8 are all mounted **inside** the main player view branch (state 2) and are conditionally rendered (unmounted when closed). The `<audio>` element is never conditionally unmounted (Web Audio graph must stay valid).
 

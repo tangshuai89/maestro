@@ -27,15 +27,15 @@
   "spec": [
     {
       "id": "btn-play-hover",
-      "category": "interaction",       // interaction | transition | ambient | screen-flow
+      "category": "interaction", // interaction | transition | ambient | screen-flow
       "component": "Core/Play",
-      "trigger": "ON_HOVER",            // ON_HOVER | ON_CLICK | ON_PRESS | MOUSE_DOWN | AFTER_TIMEOUT | track-time | audio-reactive
+      "trigger": "ON_HOVER", // ON_HOVER | ON_CLICK | ON_PRESS | MOUSE_DOWN | AFTER_TIMEOUT | track-time | audio-reactive
       "from_state": "idle",
       "to_state": "hover",
-      "animation": "smart-animate",     // smart-animate | dissolve | spring | css
+      "animation": "smart-animate", // smart-animate | dissolve | spring | css
       "duration_ms": 120,
       "easing": "cubic-bezier(.16,1,.3,1)",
-      "driver": null,                   // null | "bass-intensity" | "currentTime" | "pointer"
+      "driver": null, // null | "bass-intensity" | "currentTime" | "pointer"
       "tokens": ["Color/semantic/accent", "Radius/full"],
       "description": "播放键 hover 态：cyan glow + 1.02 缩放"
     }
@@ -44,6 +44,7 @@
 ```
 
 字段：
+
 - **必填**：`id` / `category` / `component` / `trigger`
 - **transition 必填**（category=interaction/transition/screen-flow）：`from_state` / `to_state` / `duration_ms` / `easing`
 - **ambient 必填**（category=ambient）：`driver` / `description`
@@ -51,15 +52,15 @@
 
 ## 2. 范围
 
-| 工作 | 文件 | 类型 |
-|---|---|---|
-| D10 spec + tasks | `specs/d10-motion-spec/{spec,tasks}.md` | 新 |
-| 完整 motion spec 数据（20 条） | `specs/motion-spec.json` | 新 |
-| AI CONTRACT 模板（贴到 04 · Motion SPEC frame description） | `specs/d10-motion-spec/fixture-description.md` | 新 |
-| Audit 校验脚本（REST + fixture） | `scripts/figma-aether-v4-audit-d10.mjs` | 新 |
-| fixture 生成器（含 20 条规格 + 1 条缺字段负面用例） | `scripts/figma-d10-fixture.js` | 新 |
-| CI 集成 | `package.json` | 改 |
-| 04 · Motion SPEC frame description 写入（用户跑） | Figma UI 手动 | 用户操作 |
+| 工作                                                        | 文件                                           | 类型     |
+| ----------------------------------------------------------- | ---------------------------------------------- | -------- |
+| D10 spec + tasks                                            | `specs/d10-motion-spec/{spec,tasks}.md`        | 新       |
+| 完整 motion spec 数据（20 条）                              | `specs/motion-spec.json`                       | 新       |
+| AI CONTRACT 模板（贴到 04 · Motion SPEC frame description） | `specs/d10-motion-spec/fixture-description.md` | 新       |
+| Audit 校验脚本（REST + fixture）                            | `scripts/figma-aether-v4-audit-d10.mjs`        | 新       |
+| fixture 生成器（含 20 条规格 + 1 条缺字段负面用例）         | `scripts/figma-d10-fixture.js`                 | 新       |
+| CI 集成                                                     | `package.json`                                 | 改       |
+| 04 · Motion SPEC frame description 写入（用户跑）           | Figma UI 手动                                  | 用户操作 |
 
 ## 3. 不在 D10 范围
 
@@ -77,16 +78,17 @@
 
 ## 5. 数据来源（20 条规格）
 
-| 来源 | 数量 | 类别 |
-|---|---|---|
-| `docs/prototype-wiring-checklist.md` 12 条 prototype wirings | 12 | interaction |
-| `docs/prototype-wiring-checklist.md` 3 条自动轮播 | 3 | screen-flow |
-| `docs/figma-driven-frontend.md` §4.3 + v4 motion SEG1 | 5 | ambient |
-| **合计** | **20** | — |
+| 来源                                                         | 数量   | 类别        |
+| ------------------------------------------------------------ | ------ | ----------- |
+| `docs/prototype-wiring-checklist.md` 12 条 prototype wirings | 12     | interaction |
+| `docs/prototype-wiring-checklist.md` 3 条自动轮播            | 3      | screen-flow |
+| `docs/figma-driven-frontend.md` §4.3 + v4 motion SEG1        | 5      | ambient     |
+| **合计**                                                     | **20** | —           |
 
 ## 6. Audit 检查项
 
 对 Figma 04 · Motion 页 MOTION SPEC frame：
+
 1. description 含 `---MOTION_SPEC:---` 段
 2. 段内 JSON 可被 `JSON.parse` 解析
 3. JSON 顶层有 `spec` 数组

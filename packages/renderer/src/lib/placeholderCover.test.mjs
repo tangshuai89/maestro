@@ -45,10 +45,7 @@ function expect(label, cond, detail = '') {
 {
   const a = placeholderCover('晴天·周杰伦');
   const b = placeholderCover('稻香·周杰伦');
-  expect(
-    '2. 不同 seed → 不同 background',
-    a.background !== b.background,
-  );
+  expect('2. 不同 seed → 不同 background', a.background !== b.background);
 }
 
 // ── 3. 空 seed → 不崩溃 ───────────────────────────────────────
@@ -56,9 +53,7 @@ function expect(label, cond, detail = '') {
   const r = placeholderCover('');
   expect(
     '3. 空 seed → 不崩溃，返回合法对象',
-    typeof r.background === 'string' &&
-      Array.isArray(r.accent) &&
-      r.accent.length === 3,
+    typeof r.background === 'string' && Array.isArray(r.accent) && r.accent.length === 3,
   );
 }
 
@@ -70,11 +65,7 @@ function expect(label, cond, detail = '') {
     r.background.startsWith('linear-gradient(135deg, '),
     r.background.slice(0, 40),
   );
-  expect(
-    '4b. background 以 100%) 结尾',
-    r.background.endsWith(' 100%)'),
-    r.background.slice(-10),
-  );
+  expect('4b. background 以 100%) 结尾', r.background.endsWith(' 100%)'), r.background.slice(-10));
 }
 
 // ── 5. accent 是合法 RGB triplet（0-255）─────────────────────
@@ -114,10 +105,7 @@ function expect(label, cond, detail = '') {
 // ── 8. 长 seed 不崩溃 ─────────────────────────────────────────
 {
   const longSeed = 'x'.repeat(10000);
-  expect(
-    '8. 10K 字符 seed 不崩溃',
-    typeof placeholderCover(longSeed).background === 'string',
-  );
+  expect('8. 10K 字符 seed 不崩溃', typeof placeholderCover(longSeed).background === 'string');
 }
 
 // ── 9. accent 与 gradient 第一 stop 一致 ──────────────────────

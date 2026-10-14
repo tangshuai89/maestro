@@ -863,9 +863,7 @@ export class QqMusicProvider {
     }
     // key 用 cookie 的哈希前 16 位 + uin：同一 session 稳定，换登录立即失效
     const key = `${uin}:${createHash('sha256').update(cookie).digest('hex').slice(0, 16)}`;
-    const res = await this.probeCache.resolve(key, () =>
-      probeQqSessionUncached(cookie, uin),
-    );
+    const res = await this.probeCache.resolve(key, () => probeQqSessionUncached(cookie, uin));
     this.logger.log(
       `QQ session probe: alive=${res.alive} reason=${res.reason} cached=${!res.fetched}`,
     );

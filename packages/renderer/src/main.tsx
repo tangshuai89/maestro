@@ -12,7 +12,5 @@ import './styles/main.scss';
 const isSmoke = window.location.search.includes('smoke=1');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    {isSmoke ? <ButtonSmoke /> : <App />}
-  </React.StrictMode>,
+  <React.StrictMode>{isSmoke ? <ButtonSmoke /> : <App />}</React.StrictMode>,
 );

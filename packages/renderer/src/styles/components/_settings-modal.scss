@@ -63,7 +63,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .set-close:hover {
@@ -85,8 +88,12 @@
   align-items: center;
 
   // 滚动条样式（macOS / WebKit）
-  &::-webkit-scrollbar { width: 8px; }
-  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
   &::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--white) 8%, transparent);
     border-radius: 4px;
@@ -107,7 +114,9 @@
 }
 
 // 紧凑节：库清理 / 源健康这种"状态列表"，padding 略小
-.set-section--compact { padding: 18px 24px; }
+.set-section--compact {
+  padding: 18px 24px;
+}
 
 .set-section-title {
   margin: 0 0 6px;
@@ -141,7 +150,10 @@
   padding: 12px 0;
   border-top: 1px solid color-mix(in srgb, var(--white) 4%, transparent);
 
-  &:first-child { border-top: none; padding-top: 0; }
+  &:first-child {
+    border-top: none;
+    padding-top: 0;
+  }
 }
 
 .set-row-platform {
@@ -178,10 +190,18 @@
 
 // ── 平台徽章颜色（QQ 黄 / 网易云红 / Deezer 紫 / Spotify 绿） ─
 
-.set-row-platform--qq { background: linear-gradient(135deg, #ffb800 0%, #ff6b00 100%); }
-.set-row-platform--netease { background: linear-gradient(135deg, #d63031 0%, #c0392b 100%); }
-.set-row-platform--deezer { background: linear-gradient(135deg, #6c5ce7 0%, #4834d4 100%); }
-.set-row-platform--spotify { background: linear-gradient(135deg, #1db954 0%, #0f8a3a 100%); }
+.set-row-platform--qq {
+  background: linear-gradient(135deg, #ffb800 0%, #ff6b00 100%);
+}
+.set-row-platform--netease {
+  background: linear-gradient(135deg, #d63031 0%, #c0392b 100%);
+}
+.set-row-platform--deezer {
+  background: linear-gradient(135deg, #6c5ce7 0%, #4834d4 100%);
+}
+.set-row-platform--spotify {
+  background: linear-gradient(135deg, #1db954 0%, #0f8a3a 100%);
+}
 
 // ── 渠道优先级拖拽项 ─────────────────────────────────────────────
 
@@ -196,10 +216,16 @@
   margin-bottom: 6px;
   cursor: grab;
 
-  &:active { cursor: grabbing; }
-  &:last-child { margin-bottom: 0; }
+  &:active {
+    cursor: grabbing;
+  }
+  &:last-child {
+    margin-bottom: 0;
+  }
 
-  &.is-current { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  &.is-current {
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
 }
 
 .set-priority-up,
@@ -223,7 +249,10 @@
     border-color: color-mix(in srgb, var(--white) 20%, transparent);
   }
 
-  &:disabled { opacity: 0.3; cursor: default; }
+  &:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
 }
 
 .set-priority-handle {
@@ -262,10 +291,18 @@
   transition: width 0.25s ease;
 }
 
-.set-health-bar-fill--good { background: var(--status-sync); }
-.set-health-bar-fill--mid { background: #ffb800; }
-.set-health-bar-fill--bad { background: var(--status-error); }
-.set-health-bar-fill--zero { background: transparent; }
+.set-health-bar-fill--good {
+  background: var(--status-sync);
+}
+.set-health-bar-fill--mid {
+  background: #ffb800;
+}
+.set-health-bar-fill--bad {
+  background: var(--status-error);
+}
+.set-health-bar-fill--zero {
+  background: transparent;
+}
 
 .set-health-rate {
   width: 56px;
@@ -348,7 +385,10 @@
   color: var(--text-main);
 }
 
-.set-btn:disabled { opacity: 0.5; cursor: default; }
+.set-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 .set-btn--accent {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -408,7 +448,10 @@
     border-color: color-mix(in srgb, var(--white) 20%, transparent);
   }
 
-  &:disabled { opacity: 0.4; cursor: default; }
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
 }
 
 // ── Input/Text（对应 Figma Input/Text 组件） ────────────────────
@@ -435,8 +478,12 @@
   outline: none;
   transition: border-color 0.15s ease;
 
-  &::placeholder { color: color-mix(in srgb, var(--text-main) 20%, transparent); }
-  &:focus { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  &::placeholder {
+    color: color-mix(in srgb, var(--text-main) 20%, transparent);
+  }
+  &:focus {
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
 }
 
 .set-input-row {
@@ -470,6 +517,10 @@
   font-size: 12px;
   line-height: 1.4;
 
-  &--ok { color: var(--status-sync); }
-  &--err { color: var(--status-error); }
+  &--ok {
+    color: var(--status-sync);
+  }
+  &--err {
+    color: var(--status-error);
+  }
 }

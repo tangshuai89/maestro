@@ -88,8 +88,8 @@ entry.vipLocked = detectVipLocked(p);
 ```ts
 function detectVipLocked(p: { pl?: number; fee?: number; st?: number } | undefined): boolean {
   if (!p) return false;
-  if (typeof p.fee === 'number' && p.fee > 0) return true;  // 数字专辑/付费单曲
-  return !(typeof p.pl === 'number' && p.pl > 0);            // 保留旧逻辑
+  if (typeof p.fee === 'number' && p.fee > 0) return true; // 数字专辑/付费单曲
+  return !(typeof p.pl === 'number' && p.pl > 0); // 保留旧逻辑
 }
 ```
 
@@ -122,13 +122,13 @@ pay?: {
 
 ## 风险与权衡
 
-| 风险 | 说明 | 缓解 |
-|---|---|---|
-| 过度保守：把免费歌也锁了 | QQ 的 `fee` 字段历史上有边缘 case（部分翻唱版 fee=0 但实际有限制） | 单测里覆盖 fee=0 回归；锁的代价是"在播放时换源或显示灰"，远比"播 30 秒就停"轻 |
-| `pay.fee > 0` 误伤免费试听 | QQ 有个 edge case：用户已购买专辑的歌曲 fee 仍显示原值（不是 0），但 session 不带购买状态 | 本地无法判定是否已买，保守锁符合"先正确，再优化"原则；如果用户投诉再考虑加 user-album 字段 |
-| selectBestSource 第三档兜底把所有付费专辑当"全锁"返回 bestSource=null | 如果 QQ/网易云两个平台的同一首歌都是数字专辑 | 正确行为——应该提示用户去购买，而不是让用户以为"这是免费歌" |
-| 网易云 pl 缺失且未知 isVip 的兜底逻辑 | 现有 netease.provider.ts:329-331 的 `if (entry && entry.vipLocked === undefined && !isVip) { entry.vipLocked = true; }` | 不动这段，让"未知 = 保守锁"的旧行为继续生效 |
-| 测试用 mock 数据不准 | 单测的 pay 对象是手写 mock，跟真实 QQ API 可能字段位置不同 | 字段名都来自 `pay` 对象的同一层级，QQ API 历史上相对稳定；如果 mock 改了真实字段名按 mock 写测试 |
+| 风险                                                                  | 说明                                                                                                                    | 缓解                                                                                             |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 过度保守：把免费歌也锁了                                              | QQ 的 `fee` 字段历史上有边缘 case（部分翻唱版 fee=0 但实际有限制）                                                      | 单测里覆盖 fee=0 回归；锁的代价是"在播放时换源或显示灰"，远比"播 30 秒就停"轻                    |
+| `pay.fee > 0` 误伤免费试听                                            | QQ 有个 edge case：用户已购买专辑的歌曲 fee 仍显示原值（不是 0），但 session 不带购买状态                               | 本地无法判定是否已买，保守锁符合"先正确，再优化"原则；如果用户投诉再考虑加 user-album 字段       |
+| selectBestSource 第三档兜底把所有付费专辑当"全锁"返回 bestSource=null | 如果 QQ/网易云两个平台的同一首歌都是数字专辑                                                                            | 正确行为——应该提示用户去购买，而不是让用户以为"这是免费歌"                                       |
+| 网易云 pl 缺失且未知 isVip 的兜底逻辑                                 | 现有 netease.provider.ts:329-331 的 `if (entry && entry.vipLocked === undefined && !isVip) { entry.vipLocked = true; }` | 不动这段，让"未知 = 保守锁"的旧行为继续生效                                                      |
+| 测试用 mock 数据不准                                                  | 单测的 pay 对象是手写 mock，跟真实 QQ API 可能字段位置不同                                                              | 字段名都来自 `pay` 对象的同一层级，QQ API 历史上相对稳定；如果 mock 改了真实字段名按 mock 写测试 |
 
 ## 执行顺序
 

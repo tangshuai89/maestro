@@ -46,7 +46,7 @@ interface ParseIntentResponse {
  *  controller 同一条审计基线（audit 1.1）；parse-intent 会消耗用户的
  *  DeepSeek token，绝不能裸奔。 */
 @UseGuards(RequireInternalTokenGuard)
-@Controller()  // 路由前缀各方法自填（@Post('reco/parse-intent') 等）
+@Controller() // 路由前缀各方法自填（@Post('reco/parse-intent') 等）
 export class NLPlaylistController {
   constructor(
     private readonly reco: RecoService,
@@ -111,10 +111,7 @@ export class NLPlaylistController {
   }
 
   @Get('library/playlists')
-  listPlaylists(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ): Playlist[] {
+  listPlaylists(@Req() req: Request, @Res({ passthrough: true }) res: Response): Playlist[] {
     const session = this.sessionService.resolve(req, res);
     return this.playlists.list(session.id);
   }

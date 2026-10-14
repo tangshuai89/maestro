@@ -9,21 +9,10 @@
  * 本 PR 范围不含：歌单内曲目排序 / 拖拽 / 多轮对话（spec §不做什么 v2）。
  */
 import * as React from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/Dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/textarea';
-import {
-  parseIntent,
-  runReco,
-  type NLIntent,
-  type UnifiedSearchItem,
-} from '../../api';
+import { parseIntent, runReco, type NLIntent, type UnifiedSearchItem } from '../../api';
 import { usePlaylist } from '../../hooks/usePlaylist';
 
 export interface NLPlaylistModalProps {
@@ -61,8 +50,7 @@ export function NLPlaylistModal({
   const [error, setError] = React.useState<string | null>(null);
   // 「覆盖队列 / 追加」切换（spec §UI）；覆盖且已有队列时弹确认（spec §验收）。
   const [mode, setMode] = React.useState<'replace' | 'append'>('replace');
-  const [confirmItems, setConfirmItems] =
-    React.useState<UnifiedSearchItem[] | null>(null);
+  const [confirmItems, setConfirmItems] = React.useState<UnifiedSearchItem[] | null>(null);
 
   // 保存为歌单：二次 Dialog
   const [saveOpen, setSaveOpen] = React.useState(false);
@@ -184,9 +172,7 @@ export function NLPlaylistModal({
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {text.length}/500
-            </span>
+            <span className="text-xs text-muted-foreground">{text.length}/500</span>
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>
                 关闭
@@ -218,9 +204,7 @@ export function NLPlaylistModal({
             <div className="rounded-md border border-border bg-card/40 p-3 text-sm">
               <div className="mb-2 font-medium">我理解的意图</div>
               {intent.rationale && (
-                <div className="mb-2 text-muted-foreground">
-                  {intent.rationale}
-                </div>
+                <div className="mb-2 text-muted-foreground">{intent.rationale}</div>
               )}
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 <dt className="text-muted-foreground">心情</dt>
@@ -244,9 +228,7 @@ export function NLPlaylistModal({
           {items.length > 0 && (
             <div className="rounded-md border border-border p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  生成的队列（{items.length} 首）
-                </span>
+                <span className="text-sm font-medium">生成的队列（{items.length} 首）</span>
                 <div className="flex items-center gap-2">
                   {/* spec §UI：覆盖当前队列 / 追加到当前队列 切换 */}
                   <div className="flex overflow-hidden rounded-md border border-border text-xs">
@@ -312,10 +294,7 @@ export function NLPlaylistModal({
               </div>
               <ul className="flex flex-col gap-1 text-sm">
                 {pl.playlists.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex items-center justify-between gap-2"
-                  >
+                  <li key={p.id} className="flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => requestPlayQueue(p.tracks)}
@@ -324,11 +303,7 @@ export function NLPlaylistModal({
                     >
                       {p.name}（{p.tracks.length}）
                     </button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void pl.remove_playlist(p.id)}
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => void pl.remove_playlist(p.id)}>
                       删除
                     </Button>
                   </li>
@@ -344,9 +319,7 @@ export function NLPlaylistModal({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>保存为歌单</DialogTitle>
-            <DialogDescription>
-              给这 {items.length} 首队列起个名字
-            </DialogDescription>
+            <DialogDescription>给这 {items.length} 首队列起个名字</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <Textarea
@@ -361,10 +334,7 @@ export function NLPlaylistModal({
               <Button variant="outline" onClick={() => setSaveOpen(false)}>
                 取消
               </Button>
-              <Button
-                onClick={onSave}
-                disabled={saving || !saveName.trim()}
-              >
+              <Button onClick={onSave} disabled={saving || !saveName.trim()}>
                 {saving ? '保存中…' : '保存'}
               </Button>
             </div>
@@ -373,10 +343,7 @@ export function NLPlaylistModal({
       </Dialog>
 
       {/* spec §验收：覆盖当前播放队列前的确认弹窗 */}
-      <Dialog
-        open={confirmItems !== null}
-        onOpenChange={(o) => !o && setConfirmItems(null)}
-      >
+      <Dialog open={confirmItems !== null} onOpenChange={(o) => !o && setConfirmItems(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>替换当前队列？</DialogTitle>

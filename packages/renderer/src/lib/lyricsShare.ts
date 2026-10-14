@@ -41,10 +41,7 @@ export function sliceLyricsWindow(
     const idx = lines.findIndex((l) => l.text === highlightText);
     if (idx >= 0) {
       // 以高亮行为中心，前后各留一半；start 夹在 [0, lines.length - limit]
-      start = Math.min(
-        Math.max(idx - Math.floor((limit - 1) / 2), 0),
-        lines.length - limit,
-      );
+      start = Math.min(Math.max(idx - Math.floor((limit - 1) / 2), 0), lines.length - limit);
       highlightIndex = idx - start;
     }
   }
@@ -132,22 +129,17 @@ export async function downloadLyricsImage(opts: {
   // 歌名 / 歌手
   const textX = cover ? PADDING + COVER_SIZE + 24 : PADDING;
   ctx.fillStyle = '#2b2119';
-  ctx.font =
-    '600 26px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.font = '600 26px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.fillText(title, textX, PADDING + 44, WIDTH - textX - PADDING);
   ctx.fillStyle = '#8a7361';
-  ctx.font =
-    '400 18px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.font = '400 18px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.fillText(artist, textX, PADDING + 76, WIDTH - textX - PADDING);
 
   // 歌词正文
   ctx.fillStyle = '#453629';
-  ctx.font =
-    '400 19px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-  const REGULAR_FONT =
-    '400 19px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-  const HIGHLIGHT_FONT =
-    '700 19px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.font = '400 19px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  const REGULAR_FONT = '400 19px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  const HIGHLIGHT_FONT = '700 19px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
   let y = headerH + LINE_HEIGHT;
   for (let i = 0; i < lines.length; i++) {
     const isHighlight = i === pick.highlightIndex;
@@ -168,8 +160,7 @@ export async function downloadLyricsImage(opts: {
 
   // 落款
   ctx.fillStyle = '#b7a390';
-  ctx.font =
-    '400 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.font = '400 14px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.fillText('Maestro', PADDING, height - 28);
 
   const a = document.createElement('a');

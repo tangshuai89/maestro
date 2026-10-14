@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '../common/config';
 import { StorageService } from '../common/storage';
 import { Session, SessionService } from '../common/session';
@@ -23,11 +17,7 @@ import {
   type TasteProfile,
   type TasteProfileCore,
 } from './taste-profile';
-import {
-  buildCandidatePool,
-  type CandidatePoolResult,
-  type RecoCandidate,
-} from './candidate-pool';
+import { buildCandidatePool, type CandidatePoolResult, type RecoCandidate } from './candidate-pool';
 import {
   appendSignals,
   artistSignalScores,
@@ -47,12 +37,7 @@ import {
   type EvalReport,
   type EvalRunResult,
 } from './eval';
-import {
-  PEN_BAD,
-  versionPenalty,
-  durationPenalty,
-  isBadVersionTitle,
-} from './version-filter';
+import { PEN_BAD, versionPenalty, durationPenalty, isBadVersionTitle } from './version-filter';
 
 const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
 const DEEPSEEK_MODEL = 'deepseek-chat';
@@ -304,9 +289,7 @@ export class RecoService {
           ...(opts.intent.language && opts.intent.language !== 'any'
             ? { language: opts.intent.language }
             : {}),
-          ...(opts.intent.mood?.trim()
-            ? { mood: opts.intent.mood }
-            : {}),
+          ...(opts.intent.mood?.trim() ? { mood: opts.intent.mood } : {}),
           intentHints: intentToPromptHints(opts.intent, {
             exclude_titles: opts.exclude_titles,
             exclude_artists: opts.exclude_artists,
@@ -341,13 +324,7 @@ export class RecoService {
     }
 
     // 口味档案：主干（anchors）稳定、种子每轮换（P0-a）。见 taste-profile.ts。
-    const profile = this.getTasteProfile(
-      session,
-      lib.items,
-      lib.importedAt,
-      signals,
-      signalScores,
-    );
+    const profile = this.getTasteProfile(session, lib.items, lib.importedAt, signals, signalScores);
 
     // 目录锚定候选池（P0-c）：候选只来自真实目录，模型只负责挑选与排序。
     // 这是 v2 的主路径；候选池不够（离线/未登录/搜索全失败）时回退自由生成，
@@ -388,10 +365,7 @@ export class RecoService {
       raw = await this.callDeepSeek(
         apiKey,
         this.buildSelectPrompt(profile, listed, {
-          count: Math.min(
-            Math.ceil(count * SELECT_OVERASK),
-            listed.length,
-          ),
+          count: Math.min(Math.ceil(count * SELECT_OVERASK), listed.length),
           // NL 路径：intent 的 language/mood 覆盖顶层入参（nlOpts 只在
           // intent 明确给了非 any / 非空值时才设置）。
           language: nlOpts.language ?? opts.language,
@@ -420,9 +394,7 @@ export class RecoService {
         mode = 'generate';
       }
     } else {
-      this.logger.log(
-        `reco: 候选池不足（${pool.candidates.length} < ${count}），走自由生成`,
-      );
+      this.logger.log(`reco: 候选池不足（${pool.candidates.length} < ${count}），走自由生成`);
       raw = await this.callDeepSeek(
         apiKey,
         this.buildGeneratePrompt(profile, { ...opts, ...nlOpts }, exclude, count),
@@ -437,13 +409,9 @@ export class RecoService {
     // 排除艺人写进结果；select 路径的池已滤过，这里一般 0 命中。
     if (nlExcludeArtistKeys.size) {
       const before = rawItems.length;
-      rawItems = rawItems.filter(
-        (it) => !nlExcludeArtistKeys.has(normalizeKey(it.artist, '')),
-      );
+      rawItems = rawItems.filter((it) => !nlExcludeArtistKeys.has(normalizeKey(it.artist, '')));
       if (rawItems.length < before) {
-        this.logger.log(
-          `reco: NL 排除艺人后置剔除 ${before - rawItems.length} 首`,
-        );
+        this.logger.log(`reco: NL 排除艺人后置剔除 ${before - rawItems.length} 首`);
       }
     }
 
@@ -453,18 +421,14 @@ export class RecoService {
     // 的余量足够覆盖。
     const sanitized = this.sanitizeBadVersions(rawItems);
     if (sanitized.length < rawItems.length) {
-      this.logger.log(
-        `reco: 预筛丢弃 ${rawItems.length - sanitized.length} 条「坏版本」标题`,
-      );
+      this.logger.log(`reco: 预筛丢弃 ${rawItems.length - sanitized.length} 条「坏版本」标题`);
     }
     const deduped = this.dedupAgainstLibrary(sanitized, lib.items, exclude);
     // 多样性：同一位归一艺人最多 ARTIST_CAP 首（候选池本身已限量，这里是
     // 自由生成路径的兜底——两轮都防"一位歌手占满整批"）。
     const diversified = this.applyArtistCap(deduped, ARTIST_CAP);
     if (diversified.length < deduped.length) {
-      this.logger.log(
-        `reco: 多样性限制丢弃 ${deduped.length - diversified.length} 条同艺人超额`,
-      );
+      this.logger.log(`reco: 多样性限制丢弃 ${deduped.length - diversified.length} 条同艺人超额`);
     }
     const tFillStart = Date.now();
     const filled = await this.fillPlatforms(session, diversified, count);
@@ -522,11 +486,7 @@ export class RecoService {
     },
   ): Array<{ role: 'system' | 'user'; content: string }> {
     const libList = library
-      .map(
-        (it, i) =>
-          `${i + 1}. ${it.title} - ${it.artist}` +
-          (it.album ? ` (${it.album})` : ''),
-      )
+      .map((it, i) => `${i + 1}. ${it.title} - ${it.artist}` + (it.album ? ` (${it.album})` : ''))
       .join('\n');
 
     // #6 更强的规则：正名/原文歌手/排除翻唱·live·remix·伴奏，降低 fill 阶段
@@ -569,9 +529,10 @@ export class RecoService {
 { "items": [ { "title": "...", "artist": "...", "reason": "..." } ] }
 只输出这一个 JSON 对象。`;
 
-    const lang = opts.language && opts.language !== 'auto'
-      ? `语言偏好：${opts.language === 'zh' ? '中文' : opts.language === 'en' ? '英文' : opts.language === 'ja' ? '日文' : opts.language === 'ko' ? '韩文' : opts.language}`
-      : '语言不限';
+    const lang =
+      opts.language && opts.language !== 'auto'
+        ? `语言偏好：${opts.language === 'zh' ? '中文' : opts.language === 'en' ? '英文' : opts.language === 'ja' ? '日文' : opts.language === 'ko' ? '韩文' : opts.language}`
+        : '语言不限';
     const mood = opts.mood ? `当前心情：${opts.mood}` : '';
     // #6 高频歌手锚点：明确点名用户最常听的歌手，让「风格相近」更贴脸。
     const anchor =
@@ -587,9 +548,7 @@ export class RecoService {
             .map((e) => `- ${e.title} - ${e.artist}`)
             .join('\n')}`
         : '';
-    const intentHints = opts.intentHints?.length
-      ? '\n' + opts.intentHints.join('\n')
-      : '';
+    const intentHints = opts.intentHints?.length ? '\n' + opts.intentHints.join('\n') : '';
     const user = `我的口味库（采样）：\n${libList}${anchor}\n\n${lang}\n${mood}${avoid}${intentHints}\n\n请按 JSON 数组输出 ${opts.count} 首推荐。`;
 
     return [
@@ -630,22 +589,14 @@ export class RecoService {
   ): Promise<EvalReport> {
     const lib = this.musicService.getLibrary(session);
     if (!lib || lib.items.length < 2) {
-      throw new BadRequestException(
-        'library_empty：先导入库（至少 2 首）再跑评测',
-      );
+      throw new BadRequestException('library_empty：先导入库（至少 2 首）再跑评测');
     }
     const mode = opts.mode ?? 'pool';
     const count = Math.min(Math.max(opts.count ?? 10, 1), 30);
-    const holdoutSize = Math.min(
-      Math.max(opts.holdoutSize ?? 20, 1),
-      lib.items.length - 1,
-    );
+    const holdoutSize = Math.min(Math.max(opts.holdoutSize ?? 20, 1), lib.items.length - 1);
     const runs = Math.min(Math.max(opts.runs ?? 1, 1), 10);
     if (mode === 'llm' && !this.isConfigured()) {
-      throw new HttpException(
-        'deepseek_key_not_configured',
-        HttpStatus.PRECONDITION_REQUIRED,
-      );
+      throw new HttpException('deepseek_key_not_configured', HttpStatus.PRECONDITION_REQUIRED);
     }
 
     const apiKey = mode === 'llm' ? this.getApiKey() : null;
@@ -653,10 +604,7 @@ export class RecoService {
     const signalScores = artistSignalScores(signals);
     const bannedArtists = bannedArtistKeys(signalScores);
     const negatives = negativeTracks(signals);
-    const exclude = this.mergeExclude(undefined, [
-      ...this.loadRecoHistory(session),
-      ...negatives,
-    ]);
+    const exclude = this.mergeExclude(undefined, [...this.loadRecoHistory(session), ...negatives]);
 
     // 可复现：seed 决定留出集与探索艺人的随机序列。
     let rngState = opts.seed ?? 1;
@@ -846,10 +794,7 @@ export class RecoService {
    * 内会反复走这条路。排除集变化（续播时前端会带上已推荐清单）就地过滤缓存，
    * 过滤后不够用了才真正重建。
    */
-  private readonly poolCache = new Map<
-    string,
-    { at: number; pool: CandidatePoolResult }
-  >();
+  private readonly poolCache = new Map<string, { at: number; pool: CandidatePoolResult }>();
 
   /** 用当前 exclude 过滤缓存池（池子本身不含 exclude 语义）。 */
   private filterPoolByExclude(
@@ -858,9 +803,7 @@ export class RecoService {
   ): CandidatePoolResult {
     if (!exclude.length) return pool;
     const keys = new Set(exclude.map((e) => normalizeKey(e.title, e.artist)));
-    const candidates = pool.candidates.filter(
-      (c) => !keys.has(normalizeKey(c.title, c.artist)),
-    );
+    const candidates = pool.candidates.filter((c) => !keys.has(normalizeKey(c.title, c.artist)));
     const byOrigin: Record<string, number> = {
       artist: 0,
       'related-artist': 0,
@@ -896,24 +839,16 @@ export class RecoService {
     if (!opts.noCache && hit && Date.now() - hit.at < POOL_CACHE_TTL_MS) {
       const filtered = this.filterPoolByExclude(hit.pool, exclude);
       if (filtered.candidates.length >= count) {
-        this.logger.log(
-          `reco: 候选池命中缓存（${filtered.candidates.length} 首可用，省掉重建）`,
-        );
+        this.logger.log(`reco: 候选池命中缓存（${filtered.candidates.length} 首可用，省掉重建）`);
         return { pool: filtered, cached: true };
       }
     }
 
     const exploreArtists = seedArtist
       ? []
-      : pickExploreArtists(
-          profile.artists,
-          exploreCandidates,
-          EXPLORE_ARTIST_COUNT,
-        );
+      : pickExploreArtists(profile.artists, exploreCandidates, EXPLORE_ARTIST_COUNT);
     // 被信号拉黑的艺人 / 种子歌自身：不进候选（种子歌本身用户已经在听）。
-    const poolExclude = seed
-      ? [...exclude, { title: seed.title, artist: seed.artist }]
-      : exclude;
+    const poolExclude = seed ? [...exclude, { title: seed.title, artist: seed.artist }] : exclude;
     const deps = {
       searchArtist: (artist: string) =>
         this.musicService
@@ -927,8 +862,7 @@ export class RecoService {
           }),
       findRelatedArtists: (artist: string) =>
         this.musicService.findRelatedArtists(session, artist, RELATED_PER_ANCHOR),
-      fetchRadio: () =>
-        this.musicService.fetchRecoRadioCandidates(session, RADIO_PER_PROVIDER),
+      fetchRadio: () => this.musicService.fetchRecoRadioCandidates(session, RADIO_PER_PROVIDER),
     };
 
     try {
@@ -957,9 +891,7 @@ export class RecoService {
     } catch (err) {
       // 理论上 buildCandidatePool 自己已经兜住了大部分失败；这里再兜一层，
       // 保证候选池的任何意外都不会让"推荐"整体失败。
-      this.logger.warn(
-        `reco: 候选池构建失败，回退自由生成：${(err as Error)?.message}`,
-      );
+      this.logger.warn(`reco: 候选池构建失败，回退自由生成：${(err as Error)?.message}`);
       return {
         pool: {
           candidates: [],
@@ -1012,9 +944,7 @@ export class RecoService {
       '5. 宁愿少挑也不要凑数；同一位歌手、同一张专辑不要重复挑。',
     ].join('\n');
 
-    const anchorLine = profile.anchors.length
-      ? `最常听的歌手：${profile.anchors.join('、')}`
-      : '';
+    const anchorLine = profile.anchors.length ? `最常听的歌手：${profile.anchors.join('、')}` : '';
     const sample = profile.seeds
       .slice(0, SELECT_PROMPT_SAMPLE)
       .map((it) => `${it.title} - ${it.artist}`)
@@ -1023,10 +953,7 @@ export class RecoService {
     // 足够挑 10 首；池子里剩下的条目仍然参与后面的"补位"。
     const list = candidates
       .slice(0, SELECT_PROMPT_CANDIDATES)
-      .map(
-        (c, i) =>
-          `[${i}] ${c.title} - ${c.artist}${c.album ? ` (${c.album})` : ''}`,
-      )
+      .map((c, i) => `[${i}] ${c.title} - ${c.artist}${c.album ? ` (${c.album})` : ''}`)
       .join('\n');
     const lang =
       opts.language && opts.language !== 'auto'
@@ -1110,10 +1037,7 @@ ${list}
    * **白名单校验**：id 必须落在候选池下标内、整数、不重复——越界/幻觉 id 一律丢。
    * 这是"消灭幻觉推荐"的最后一道闸门：模型给的是下标，取的是候选池里的真实条目。
    */
-  private parseSelection(
-    raw: string,
-    poolSize: number,
-  ): Array<{ id: number; reason: string }> {
+  private parseSelection(raw: string, poolSize: number): Array<{ id: number; reason: string }> {
     let parsed: unknown = null;
     try {
       parsed = JSON.parse(raw);
@@ -1134,13 +1058,7 @@ ${list}
     let arr: unknown = parsed;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const obj = parsed as Record<string, unknown>;
-      arr =
-        obj.picks ??
-        obj.items ??
-        obj.recommendations ??
-        obj.songs ??
-        obj.tracks ??
-        obj.data;
+      arr = obj.picks ?? obj.items ?? obj.recommendations ?? obj.songs ?? obj.tracks ?? obj.data;
     }
     if (!Array.isArray(arr)) {
       this.logger.warn('reco: 挑选结果不是数组');
@@ -1185,11 +1103,7 @@ ${list}
     candidates: RecoCandidate[],
     count: number,
   ): RecoRawItem[] {
-    const target = Math.min(
-      count * OVERASK_FACTOR,
-      OVERASK_MAX,
-      candidates.length,
-    );
+    const target = Math.min(count * OVERASK_FACTOR, OVERASK_MAX, candidates.length);
     const used = new Set<number>();
     const out: RecoRawItem[] = [];
     for (const p of picks) {
@@ -1257,10 +1171,7 @@ ${list}
       }
     } catch (err) {
       this.logger.error(`deepseek fetch failed: ${(err as Error).message}`);
-      throw new HttpException(
-        'deepseek_unreachable',
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException('deepseek_unreachable', HttpStatus.BAD_GATEWAY);
     }
 
     if (res.status === 429) {
@@ -1285,9 +1196,7 @@ ${list}
       // 之前掉进下面的兜底分支，抛的是 `deepseek_401` 这种机器码，
       // 前端原样打给用户（对比 429「频率限制」/ 未配置「请先填 key」都有中文）。
       const text = await res.text().catch(() => '');
-      this.logger.error(
-        `deepseek auth failed ${res.status}: ${text.slice(0, 200)}`,
-      );
+      this.logger.error(`deepseek auth failed ${res.status}: ${text.slice(0, 200)}`);
       throw new HttpException(
         {
           statusCode: HttpStatus.BAD_GATEWAY,
@@ -1300,19 +1209,13 @@ ${list}
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       this.logger.error(`deepseek ${res.status}: ${text.slice(0, 200)}`);
-      throw new HttpException(
-        `deepseek_${res.status}`,
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException(`deepseek_${res.status}`, HttpStatus.BAD_GATEWAY);
     }
 
     const data = (await res.json()) as DeepSeekChatResponse;
     if (data.error?.message) {
       this.logger.error(`deepseek error: ${data.error.message}`);
-      throw new HttpException(
-        `deepseek_error: ${data.error.message}`,
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException(`deepseek_error: ${data.error.message}`, HttpStatus.BAD_GATEWAY);
     }
     return data.choices?.[0]?.message?.content ?? '';
   }
@@ -1430,24 +1333,16 @@ ${list}
     return `reco:history:${sessionId}`;
   }
 
-  private loadRecoHistory(
-    session: Session,
-  ): Array<{ title: string; artist: string }> {
+  private loadRecoHistory(session: Session): Array<{ title: string; artist: string }> {
     const h = this.storage.get<Array<{ title: string; artist: string }>>(
       this.historyKey(session.id),
     );
     return Array.isArray(h) ? h : [];
   }
 
-  private saveRecoHistory(
-    session: Session,
-    items: Array<{ title: string; artist: string }>,
-  ): void {
+  private saveRecoHistory(session: Session, items: Array<{ title: string; artist: string }>): void {
     // 保留最近 RECO_HISTORY_MAX 首（按加入顺序，旧的先淘汰）。
-    this.storage.set(
-      this.historyKey(session.id),
-      items.slice(-RECO_HISTORY_MAX),
-    );
+    this.storage.set(this.historyKey(session.id), items.slice(-RECO_HISTORY_MAX));
   }
 
   // ── 拿推荐 → 走 P0 统一搜索填实平台 ────────────────────
@@ -1473,17 +1368,11 @@ ${list}
     while (out.length < wantCount && cursor < items.length) {
       const need = wantCount - out.length;
       // 多搜一点余量补掉匹配失败/搜空的坑；但压在并发上限内，别一次砸太多。
-      const waveSize = Math.min(
-        items.length - cursor,
-        need + FILL_WAVE_SLACK,
-        FILL_CONCURRENCY,
-      );
+      const waveSize = Math.min(items.length - cursor, need + FILL_WAVE_SLACK, FILL_CONCURRENCY);
       const wave = items.slice(cursor, cursor + waveSize);
       cursor += waveSize;
       // Promise.all 保序 → 命中按推荐原始顺序进 out。
-      const matched = await Promise.all(
-        wave.map((r) => this.searchAndMatch(session, r)),
-      );
+      const matched = await Promise.all(wave.map((r) => this.searchAndMatch(session, r)));
       for (const m of matched) {
         if (m && out.length < wantCount) out.push(m);
       }
@@ -1528,8 +1417,7 @@ ${list}
       const candidates = res.items.filter(
         (it) =>
           it.bestSource &&
-          (normalizeKey(it.title, it.artist) === wantKey ||
-            this.looseMatch(r, it)),
+          (normalizeKey(it.title, it.artist) === wantKey || this.looseMatch(r, it)),
       );
       if (!candidates.length) return null;
       // 用户/模型自己就点名要某版本（rec.title 里带 remix/live…）→ 不惩罚版本。
@@ -1546,9 +1434,7 @@ ${list}
           notExact: normalizeKey(it.title, it.artist) === wantKey ? 0 : 1,
           len: normalizeKey(it.title, '').length,
         }))
-        .sort(
-          (a, b) => a.pen - b.pen || a.notExact - b.notExact || a.len - b.len,
-        );
+        .sort((a, b) => a.pen - b.pen || a.notExact - b.notExact || a.len - b.len);
       const best = scored[0];
       // 最优仍是坏版本（DJ/remix/伴奏…）或时长离谱且没被豁免 → 丢弃，
       // 换一首正常歌。PEN_BAD 阈值同时覆盖 VERSION_BAD 和 DURATION_BAD。
@@ -1587,10 +1473,7 @@ ${list}
     if (hit !== undefined) return hit;
     let cover = '';
     try {
-      cover = await this.musicService.fetchCoverFallback(
-        session,
-        `${r.title} ${r.artist}`,
-      );
+      cover = await this.musicService.fetchCoverFallback(session, `${r.title} ${r.artist}`);
     } catch (err) {
       this.logger.warn(`cover fallback failed for "${r.title}": ${(err as Error).message}`);
     }

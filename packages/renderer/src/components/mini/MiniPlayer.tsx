@@ -50,15 +50,7 @@ const ICONS: Record<string, string[]> = {
   ],
 };
 
-function MiniIcon({
-  icon,
-  size = 16,
-  fill,
-}: {
-  icon: string;
-  size?: number;
-  fill?: boolean;
-}) {
+function MiniIcon({ icon, size = 16, fill }: { icon: string; size?: number; fill?: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -96,15 +88,12 @@ export default function MiniPlayer({
   const hasTrack = Boolean(track);
   const effTime = hasTrack ? currentTime : 0;
   const effDuration = hasTrack ? duration : 0;
-  const pct =
-    effDuration > 0 ? Math.min(100, (effTime / effDuration) * 100) : 0;
+  const pct = effDuration > 0 ? Math.min(100, (effTime / effDuration) * 100) : 0;
   const effPlaying = hasTrack && playing;
 
   // 封面：<img> 直接渲染跨域 URL 没问题（CORS 只影响像素提取，那是
   // cover-proxy 的职责）；失败/无封面 → placeholderCover 渐变 + ♪。
-  const placeholder = placeholderCover(
-    track ? `${track.title}·${track.artist}` : 'maestro',
-  );
+  const placeholder = placeholderCover(track ? `${track.title}·${track.artist}` : 'maestro');
 
   const handleSeek = (e: MouseEvent<HTMLDivElement>) => {
     if (!hasTrack || effDuration <= 0) return;
@@ -141,21 +130,19 @@ export default function MiniPlayer({
         )}
       </button>
 
-      {(onOpenNL) && (
-          <button
-            type="button"
-            onClick={onOpenNL}
-            className="mini-nl-entry"
-            title="说一句话生成歌单（DeepSeek）"
-            aria-label="NL 歌单"
-          >
-            ✨ NL 歌单
-          </button>
-        )}
-        <div className="mini-info">
-        <div className="mini-title">
-          {track ? clampText(track.title, 24) : '等待播放'}
-        </div>
+      {onOpenNL && (
+        <button
+          type="button"
+          onClick={onOpenNL}
+          className="mini-nl-entry"
+          title="说一句话生成歌单（DeepSeek）"
+          aria-label="NL 歌单"
+        >
+          ✨ NL 歌单
+        </button>
+      )}
+      <div className="mini-info">
+        <div className="mini-title">{track ? clampText(track.title, 24) : '等待播放'}</div>
         <div className="mini-sub">
           {track
             ? clampText(`${track.artist} — ${track.album || '未知专辑'}`, 40)
@@ -174,14 +161,9 @@ export default function MiniPlayer({
             tabIndex={hasTrack ? 0 : -1}
             onClick={handleSeek}
           >
-            <div
-              className="mini-progress-fill"
-              style={{ width: `${pct}%` }}
-            />
+            <div className="mini-progress-fill" style={{ width: `${pct}%` }} />
           </div>
-          <span className="mini-time">
-            -{formatTime(Math.max(0, effDuration - effTime))}
-          </span>
+          <span className="mini-time">-{formatTime(Math.max(0, effDuration - effTime))}</span>
         </div>
       </div>
 

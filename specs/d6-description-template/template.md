@@ -8,10 +8,10 @@
 ```yaml
 ---
 AI_CONTRACT:
-  react: <path>        # React 组件源码路径（必填）
-  props: {}            # 必填（可空对象）
-  a11y: {}             # 必填（可空对象；至少 role）
-  states: [default]    # 必填（≥1 个；用 default 占位也可）
+  react: <path> # React 组件源码路径（必填）
+  props: {} # 必填（可空对象）
+  a11y: {} # 必填（可空对象；至少 role）
+  states: [default] # 必填（≥1 个；用 default 占位也可）
 ---
 ```
 
@@ -40,7 +40,7 @@ AI_CONTRACT:
     - Color/semantic/<name>
     - Spacing/<n>
     - Radius/<n>
-  bindings: [Component/<name>, ...]   # 引用的其他 Figma 组件
+  bindings: [Component/<name>, ...] # 引用的其他 Figma 组件
 ---
 ```
 
@@ -83,7 +83,7 @@ AI_CONTRACT:
     enter: { overlay: fade 200ms, panel: fade-up 240ms }
     exit: { overlay: fade 200ms }
   tokens: [Color/semantic/glass-fill, Color/semantic/glass-stroke]
-  bindings: [Scene/Backdrop]   # Modal 通常在 Backdrop 之上
+  bindings: [Scene/Backdrop] # Modal 通常在 Backdrop 之上
 ---
 ```
 
@@ -95,7 +95,7 @@ AI_CONTRACT:
   react: packages/renderer/src/components/<X>.tsx
   routes: [search]
   props:
-    onPlay: { type: function, args: "items, index" }
+    onPlay: { type: function, args: 'items, index' }
     onClose: { type: function }
   a11y:
     role: dialog

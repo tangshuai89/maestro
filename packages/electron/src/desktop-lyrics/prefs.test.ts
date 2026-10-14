@@ -43,11 +43,31 @@ assert.strictEqual(partial.locked, DEFAULT_PREFS.locked, '缺省 locked 回默�
 assert.strictEqual(partial.stroke, DEFAULT_PREFS.stroke, '缺省 stroke 回默认');
 assert.strictEqual(partial.bounds, null, '缺省 bounds 为 null');
 
-assert.strictEqual(normalisePrefs({ fontScale: 99 }).fontScale, FONT_SCALE_MAX, 'fontScale 上限夹紧');
-assert.strictEqual(normalisePrefs({ fontScale: 0 }).fontScale, FONT_SCALE_MIN, 'fontScale 下限夹紧');
-assert.strictEqual(normalisePrefs({ fontScale: 'x' }).fontScale, DEFAULT_PREFS.fontScale, '非数字回落默认');
-assert.strictEqual(normalisePrefs({ stroke: 'yes' }).stroke, DEFAULT_PREFS.stroke, '非布尔 stroke 回落');
-assert.strictEqual(normalisePrefs({ palette: 'neon' }).palette, DEFAULT_PREFS.palette, '未知 palette 回落');
+assert.strictEqual(
+  normalisePrefs({ fontScale: 99 }).fontScale,
+  FONT_SCALE_MAX,
+  'fontScale 上限夹紧',
+);
+assert.strictEqual(
+  normalisePrefs({ fontScale: 0 }).fontScale,
+  FONT_SCALE_MIN,
+  'fontScale 下限夹紧',
+);
+assert.strictEqual(
+  normalisePrefs({ fontScale: 'x' }).fontScale,
+  DEFAULT_PREFS.fontScale,
+  '非数字回落默认',
+);
+assert.strictEqual(
+  normalisePrefs({ stroke: 'yes' }).stroke,
+  DEFAULT_PREFS.stroke,
+  '非布尔 stroke 回落',
+);
+assert.strictEqual(
+  normalisePrefs({ palette: 'neon' }).palette,
+  DEFAULT_PREFS.palette,
+  '未知 palette 回落',
+);
 assert.strictEqual(normalisePrefs({ palette: 'cyan' }).palette, 'cyan', '合法 palette 透传');
 
 assert.deepStrictEqual(
@@ -73,7 +93,14 @@ const dir = tmpDir();
 try {
   assert.deepStrictEqual(loadPrefs(dir), DEFAULT_PREFS, '文件不存在 → 默认');
 
-  const saved = { ...DEFAULT_PREFS, enabled: true, locked: true, fontScale: 1.25, palette: 'amber' as const, bounds: { x: 5, y: 6, width: 700, height: 150 } };
+  const saved = {
+    ...DEFAULT_PREFS,
+    enabled: true,
+    locked: true,
+    fontScale: 1.25,
+    palette: 'amber' as const,
+    bounds: { x: 5, y: 6, width: 700, height: 150 },
+  };
   assert.strictEqual(savePrefs(dir, saved), true, 'savePrefs 成功');
   const back = loadPrefs(dir);
   assert.strictEqual(back.enabled, true);

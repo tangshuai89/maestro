@@ -21,9 +21,15 @@ async function main() {
   let logCall: unknown[] | undefined;
   let warnCall: unknown[] | undefined;
   let errorCall: unknown[] | undefined;
-  (console as any).log = (...args: unknown[]) => { logCall = args; };
-  (console as any).warn = (...args: unknown[]) => { warnCall = args; };
-  (console as any).error = (...args: unknown[]) => { errorCall = args; };
+  (console as any).log = (...args: unknown[]) => {
+    logCall = args;
+  };
+  (console as any).warn = (...args: unknown[]) => {
+    warnCall = args;
+  };
+  (console as any).error = (...args: unknown[]) => {
+    errorCall = args;
+  };
 
   try {
     logger.log('hello', 42, { x: 1 });
@@ -46,7 +52,9 @@ async function main() {
   {
     const saved = console.log;
     let debugCalled = false;
-    (console as any).log = () => { debugCalled = true; };
+    (console as any).log = () => {
+      debugCalled = true;
+    };
     delete process.env.ELECTRON_ENABLE_VERBOSE;
     try {
       logger.debug('should-not-log');
@@ -61,7 +69,9 @@ async function main() {
   {
     const saved = console.log;
     let debugCall: unknown[] | undefined;
-    (console as any).log = (...args: unknown[]) => { debugCall = args; };
+    (console as any).log = (...args: unknown[]) => {
+      debugCall = args;
+    };
     process.env.ELECTRON_ENABLE_VERBOSE = '1';
     try {
       logger.debug('debug-payload', 99);

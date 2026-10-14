@@ -46,7 +46,6 @@ export function activeLineWindow(
   const current = lines[index];
   const next = lines[index + 1] ?? null;
   const span = next ? next.time - current.time : 0;
-  const progress =
-    span > 0 ? Math.min(1, Math.max(0, (t - current.time) / span)) : 0;
+  const progress = span > 0 ? Math.min(1, Math.max(0, (t - current.time) / span)) : 0;
   return { index, current, next, progress };
 }

@@ -39,12 +39,7 @@ const likeSync = {
   enqueue: () => {},
   pendingTargets: () => [],
 };
-const lyricsService = new LyricsService(
-  netease as any,
-  deezer as any,
-  qq as any,
-  lyricsOvh as any,
-);
+const lyricsService = new LyricsService(netease as any, deezer as any, qq as any, lyricsOvh as any);
 
 const svc = new MusicService(
   fakeStorage,
@@ -209,7 +204,7 @@ async function main() {
   );
   console.log('✅ 4. 历史 deezer 脏数据被 isLikeable 过滤');
 
-// ── 6. likedPlatforms 与 base 相同 → 复用同一对象（避免无谓重渲染） ──
+  // ── 6. likedPlatforms 与 base 相同 → 复用同一对象（避免无谓重渲染） ──
   // fanOut 不含新平台时，likedPlatforms 应该是新数组（即使内容相同，对象不同
   // 也无所谓，因为我们用 `same` 短路过）；测试确保 likedPlatforms 字段确实
   // 被覆写为新值（不然 same 短路下应该返回原 item）
@@ -237,7 +232,7 @@ async function main() {
     importedAt: 1,
     items: [
       {
-        id: 'merged-netease-N1',  // id 用 netease 作 main（import 路径决定的）
+        id: 'merged-netease-N1', // id 用 netease 作 main（import 路径决定的）
         title: 'T-m-drift',
         artist: 'A',
         album: '',
@@ -246,9 +241,7 @@ async function main() {
         // 真实线上：library item 只有最初 import 的 source（netease）——
         // patchLibraryWithSources 可能因 normalizeKey 不一致未命中、或用户在
         // fanOut 完成前没再打开过库。sources 仍只有 netease。
-        sources: [
-          { platform: 'netease', trackId: 'N1', hasCopyright: true, url: '' },
-        ],
+        sources: [{ platform: 'netease', trackId: 'N1', hasCopyright: true, url: '' }],
         bestSource: 'netease',
         likedPlatforms: ['netease'],
       },
@@ -278,7 +271,9 @@ async function main() {
     ['netease', 'qq', 'spotify'],
     `library 只有 netease source + fanOut 在另一个 key 时反向索引应把整组并入，实际: ${JSON.stringify(driftItem.likedPlatforms)}`,
   );
-  console.log('✅ 7. fanOut key ≠ library item.id + library 单 source → 反向索引取整组合并（修 Lefty Hand Cream 翻唱歌曲漏 badge）');
+  console.log(
+    '✅ 7. fanOut key ≠ library item.id + library 单 source → 反向索引取整组合并（修 Lefty Hand Cream 翻唱歌曲漏 badge）',
+  );
 
   // ── 8. healLibraryItem: trackId 漂移场景用搜索兜底 ──────────────────
   // 真实线上回归：library item 用 netease trackId 作 main，fanOut 用 QQ trackId
@@ -320,11 +315,19 @@ async function main() {
     // qq: 模拟返回同一首歌（normalizeKey 一致 + 时长匹配）
     {
       fetchLiked: async () => [],
-      search: async () => [{
-        id: 'qq-roman-1', title: 'Betsu no Hito no Kanojo',
-        artist: 'Lefty Hand Cream', album: '', coverUrl: '',
-        duration: 215, audioUrl: '', liked: true, provider: 'qq',
-      }],
+      search: async () => [
+        {
+          id: 'qq-roman-1',
+          title: 'Betsu no Hito no Kanojo',
+          artist: 'Lefty Hand Cream',
+          album: '',
+          coverUrl: '',
+          duration: 215,
+          audioUrl: '',
+          liked: true,
+          provider: 'qq',
+        },
+      ],
     },
     // netease: 空（不参与这次自愈）
     { fetchLiked: async () => [], search: async () => [] },
@@ -332,11 +335,19 @@ async function main() {
     {},
     {
       fetchLiked: async () => [],
-      search: async () => [{
-        id: 'sp-roman-1', title: 'Betsu no Hito no Kanojo',
-        artist: 'Lefty Hand Cream', album: '', coverUrl: '',
-        duration: 215, audioUrl: '', liked: true, provider: 'spotify',
-      }],
+      search: async () => [
+        {
+          id: 'sp-roman-1',
+          title: 'Betsu no Hito no Kanojo',
+          artist: 'Lefty Hand Cream',
+          album: '',
+          coverUrl: '',
+          duration: 215,
+          audioUrl: '',
+          liked: true,
+          provider: 'spotify',
+        },
+      ],
       bindSessionId: () => {}, // MusicService 传 session 时会绑 sessionId（refresh 单飞用）
     },
     { getLyrics: async () => null },
@@ -352,17 +363,19 @@ async function main() {
   // 模拟 library：只有 netease source
   fakeStorage2.set(`library:${session2.id}`, {
     importedAt: 1,
-    items: [{
-      id: 'merged-netease-1815901850',
-      title: 'Betsu no Hito no Kanojo ni Natta yo',
-      artist: 'Lefty Hand Cream',
-      album: '',
-      coverUrl: '',
-      duration: 215,
-      sources: [{ platform: 'netease', trackId: '1815901850', hasCopyright: true, url: '' }],
-      bestSource: 'netease',
-      likedPlatforms: ['netease'],
-    }],
+    items: [
+      {
+        id: 'merged-netease-1815901850',
+        title: 'Betsu no Hito no Kanojo ni Natta yo',
+        artist: 'Lefty Hand Cream',
+        album: '',
+        coverUrl: '',
+        duration: 215,
+        sources: [{ platform: 'netease', trackId: '1815901850', hasCopyright: true, url: '' }],
+        bestSource: 'netease',
+        likedPlatforms: ['netease'],
+      },
+    ],
     sources: [{ provider: 'netease', count: 1 }],
   });
   fakeStorage2.set(`music:${session2.id}`, {
@@ -412,7 +425,9 @@ async function main() {
     ['qq', 'spotify'],
     `healLibraryItem 后 fanOut[item.id] 新增 QQ+Spotify，实际: ${JSON.stringify(fanOutPlatforms)}`,
   );
-  console.log('✅ 8. healLibraryItem: trackId 漂移时用 searchEquivalent 兜底补 source + fanOut（修日音罗马字漏 badge）');
+  console.log(
+    '✅ 8. healLibraryItem: trackId 漂移时用 searchEquivalent 兜底补 source + fanOut（修日音罗马字漏 badge）',
+  );
 
   console.log('\n🎉 library-badge-merge.e2e 全部 8 项通过');
 }

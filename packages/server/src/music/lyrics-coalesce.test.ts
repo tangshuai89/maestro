@@ -37,26 +37,26 @@ async function main() {
         getLyrics: async () => {
           fetchCalls++;
           return new Promise((resolve) => {
-            releasePromise.then(() => resolve([
-              { time: 0, text: '歌词' },
-            ] as any));
+            releasePromise.then(() => resolve([{ time: 0, text: '歌词' }] as any));
           });
         },
       } as any,
       { getLyrics: async () => null } as any,
     );
     const N = 8;
-    const promises = Array.from({ length: N }, () =>
-      svc.getLyrics(session, 'qq', 'track-1'),
-    );
+    const promises = Array.from({ length: N }, () => svc.getLyrics(session, 'qq', 'track-1'));
     release!();
     const results = await Promise.all(promises);
     assert.strictEqual(
-      fetchCalls, 1,
+      fetchCalls,
+      1,
       `并发 ${N} 个应只触发 1 次远端 fetchLyrics，实际 ${fetchCalls}`,
     );
     assert.strictEqual(results.length, N);
-    assert.ok(results.every((r) => Array.isArray(r)), '所有 awaiter 拿到结果');
+    assert.ok(
+      results.every((r) => Array.isArray(r)),
+      '所有 awaiter 拿到结果',
+    );
     console.log(`✅ 1. 并发 ${N} 个：共享同一 Promise（fetchCalls=1）`);
   }
 
@@ -97,10 +97,7 @@ async function main() {
       await svc.getLyrics(session, 'qq', `t-${i}`);
     }
     const inflightSize = ((svc as any).inflightLyrics as Map<any, any>).size;
-    assert.strictEqual(
-      inflightSize, 0,
-      `inflight 应在 promise 完成后清理，size=${inflightSize}`,
-    );
+    assert.strictEqual(inflightSize, 0, `inflight 应在 promise 完成后清理，size=${inflightSize}`);
     console.log('✅ 3. inflight map 完成后清理（无 key 残留）');
   }
 

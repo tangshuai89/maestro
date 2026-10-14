@@ -66,7 +66,13 @@ function DesktopLyricsApp() {
   // 没装 preload（浏览器里直接开 lyrics.html 调试）→ 兜个空态，别白屏。
   if (!api) {
     return (
-      <div className="lyric-overlay" data-palette="light" data-locked="true" data-stroke="on" data-playing="false">
+      <div
+        className="lyric-overlay"
+        data-palette="light"
+        data-locked="true"
+        data-stroke="on"
+        data-playing="false"
+      >
         <p className="lyric-empty">♪ 需要在 Maestro 桌面端里打开</p>
       </div>
     );

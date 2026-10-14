@@ -24,7 +24,17 @@ class FakeStorage {
 const svc = new PlaylistService(new FakeStorage() as any);
 
 const mkTrack = (id: string) =>
-  ({ id, title: `t-${id}`, artist: 'a', album: '', coverUrl: '', audioUrl: '', duration: 0, liked: false, sources: [{ platform: 'qq', trackId: id, hasCopyright: true, url: '' }] } as any);
+  ({
+    id,
+    title: `t-${id}`,
+    artist: 'a',
+    album: '',
+    coverUrl: '',
+    audioUrl: '',
+    duration: 0,
+    liked: false,
+    sources: [{ platform: 'qq', trackId: id, hasCopyright: true, url: '' }],
+  }) as any;
 
 // ── 1. create 命名冲突 -2/-3 ─────────────────────────────
 {
@@ -43,12 +53,17 @@ const mkTrack = (id: string) =>
   const s2 = new PlaylistService(new FakeStorage() as any);
   const a = s2.create('s2', { name: 'a', tracks: [mkTrack('1')] });
   // 手动让 b 的 updatedAt 更早
-  const _t1 = Date.now(); while (Date.now() - _t1 < 20) {}
+  const _t1 = Date.now();
+  while (Date.now() - _t1 < 20) {}
   const b = s2.create('s2', { name: 'b', tracks: [mkTrack('2')] });
-  const _t2 = Date.now(); while (Date.now() - _t2 < 20) {}
+  const _t2 = Date.now();
+  while (Date.now() - _t2 < 20) {}
   const c = s2.create('s2', { name: 'c', tracks: [mkTrack('3')] });
   const list = s2.list('s2');
-  assert.deepStrictEqual(list.map((p: any) => p.name), ['c', 'b', 'a']);
+  assert.deepStrictEqual(
+    list.map((p: any) => p.name),
+    ['c', 'b', 'a'],
+  );
   console.log('  ✓ list sorted by updatedAt desc');
 }
 
@@ -72,11 +87,14 @@ const mkTrack = (id: string) =>
 // ── 4. patch: rename + append + remove ──────────────────
 {
   const s4 = new PlaylistService(new FakeStorage() as any);
-  const _t1a = Date.now(); while (Date.now() - _t1a < 20) {}
+  const _t1a = Date.now();
+  while (Date.now() - _t1a < 20) {}
   const a = s4.create('s4', { name: 'old', tracks: [mkTrack('1'), mkTrack('2')] });
   const aUpdatedAt = a.updatedAt;
-  const _t1b = Date.now(); while (Date.now() - _t1b < 20) {}
-  const _t1 = Date.now(); while (Date.now() - _t1 < 20) {}
+  const _t1b = Date.now();
+  while (Date.now() - _t1b < 20) {}
+  const _t1 = Date.now();
+  while (Date.now() - _t1 < 20) {}
   // ⚠️ patch() 同一对象 in-place mutate（PlaylistService 不拷贝对象），
   // 所以 a === ren；这里改测「存储中最新值 >= 创建时刻 + 实际推进」而非「>」。
   const ren = s4.patch('s4', a.id, { name: 'new' });
@@ -99,16 +117,26 @@ const mkTrack = (id: string) =>
 // ── 5. 校验 ─────────────────────────────────────────
 {
   const s5 = new PlaylistService(new FakeStorage() as any);
-  assert.throws(() => s5.create('s5', { name: '', tracks: [mkTrack('1')] }),
-    (e: any) => e?.status === 400);
-  assert.throws(() => s5.create('s5', { name: '   ', tracks: [mkTrack('1')] }),
-    (e: any) => e?.status === 400);
-  assert.throws(() => s5.create('s5', { name: 'a'.repeat(61), tracks: [mkTrack('1')] }),
-    (e: any) => e?.status === 400 && e?.response?.error === 'playlist_name_too_long');
-  assert.throws(() => s5.create('s5', { name: 'ok', tracks: [] }),
-    (e: any) => e?.status === 400);
-  assert.throws(() => s5.create('s5', { name: 'ok', tracks: 'not-array' as any }),
-    (e: any) => e?.status === 400);
+  assert.throws(
+    () => s5.create('s5', { name: '', tracks: [mkTrack('1')] }),
+    (e: any) => e?.status === 400,
+  );
+  assert.throws(
+    () => s5.create('s5', { name: '   ', tracks: [mkTrack('1')] }),
+    (e: any) => e?.status === 400,
+  );
+  assert.throws(
+    () => s5.create('s5', { name: 'a'.repeat(61), tracks: [mkTrack('1')] }),
+    (e: any) => e?.status === 400 && e?.response?.error === 'playlist_name_too_long',
+  );
+  assert.throws(
+    () => s5.create('s5', { name: 'ok', tracks: [] }),
+    (e: any) => e?.status === 400,
+  );
+  assert.throws(
+    () => s5.create('s5', { name: 'ok', tracks: 'not-array' as any }),
+    (e: any) => e?.status === 400,
+  );
   console.log('  ✓ validation: empty name / too long / empty tracks / non-array');
 }
 

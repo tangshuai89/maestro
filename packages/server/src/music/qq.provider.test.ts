@@ -58,14 +58,13 @@ function sess(extra: Record<string, unknown> = {}): any {
 function encResponse(req0: { code?: number; data?: unknown }) {
   const text = JSON.stringify({ req_0: req0 });
   // 与 decryptResponse 对应的加密：循环 XOR
-  const key = Buffer.from(
-    '7a3f8c1d5e9b2f0a6c4d7e8b1f3a5c9d0e2b6f4a81',
-    'hex',
-  );
+  const key = Buffer.from('7a3f8c1d5e9b2f0a6c4d7e8b1f3a5c9d0e2b6f4a81', 'hex');
   const buf = Buffer.from(text, 'utf8');
   const out = Buffer.allocUnsafe(buf.length);
   for (let i = 0; i < buf.length; i++) out[i] = buf[i] ^ key[i % key.length];
-  return { arrayBuffer: async () => out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) };
+  return {
+    arrayBuffer: async () => out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength),
+  };
 }
 
 async function main() {
@@ -77,21 +76,13 @@ async function main() {
 
   // ── 2. computeGtk: 单字符 'a' ───────────────────────────────────
   {
-    assert.strictEqual(
-      gtk('a'),
-      String(referenceDjb2('a')),
-      'single char should match reference',
-    );
+    assert.strictEqual(gtk('a'), String(referenceDjb2('a')), 'single char should match reference');
     console.log('✅ 2. computeGtk("a") → 与参考实现一致');
   }
 
   // ── 3. computeGtk: 'abc' ────────────────────────────────────────
   {
-    assert.strictEqual(
-      gtk('abc'),
-      String(referenceDjb2('abc')),
-      '"abc" should match reference',
-    );
+    assert.strictEqual(gtk('abc'), String(referenceDjb2('abc')), '"abc" should match reference');
     console.log('✅ 3. computeGtk("abc") → 与参考实现一致');
   }
 
@@ -161,7 +152,9 @@ async function main() {
     assert.strictEqual(t.mediaMid, 'MM001');
     assert.strictEqual(t.liked, false);
     assert.strictEqual(t.provider, 'qq');
-    console.log('✅ 8. search 命中结果 → 字段映射（id/title/artist/album/coverUrl/audioUrl/duration）');
+    console.log(
+      '✅ 8. search 命中结果 → 字段映射（id/title/artist/album/coverUrl/audioUrl/duration）',
+    );
   }
 
   // ── 9. search: 空结果（data=[]） ────────────────────────────────
@@ -245,11 +238,7 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), 'vip', 20);
     restore();
-    assert.strictEqual(
-      tracks[0].vipLocked,
-      false,
-      'VIP 用户 + pay_play=1 → 不锁',
-    );
+    assert.strictEqual(tracks[0].vipLocked, false, 'VIP 用户 + pay_play=1 → 不锁');
     console.log('✅ 12. search pay_play=1 + VIP 用户 → vipLocked=false');
   }
 
@@ -336,11 +325,7 @@ async function main() {
     restore();
     // 2026-09-23 修正：pay_album 同样是"商业分类"标签，实测已购/绿钻账号
     // 对数字专辑曲目也能拿到全曲流。VIP 解锁；误判由 30s-trial 兜底。
-    assert.strictEqual(
-      tracks[0].vipLocked,
-      false,
-      'pay_album=1 + VIP → 不锁（会员可解口径）',
-    );
+    assert.strictEqual(tracks[0].vipLocked, false, 'pay_album=1 + VIP → 不锁（会员可解口径）');
     console.log('✅ 13b. search pay_album=1 + VIP → vipLocked=false（会员可解口径）');
   }
 
@@ -466,10 +451,19 @@ async function main() {
   // 单购"——绿钻账号实测能放全曲（vkey purl 非空）。qqVip=true → 不锁；
   // qqVip=false → 锁；qqVip=undefined（探测未知）→ 保守锁。
   const paidTrackPay = {
-    pay_down: 0, pay_month: 1, pay_play: 0, pay_status: 0,
-    price_album: 0, price_track: 200, time_free: 0,
+    pay_down: 0,
+    pay_month: 1,
+    pay_play: 0,
+    pay_status: 0,
+    price_album: 0,
+    price_track: 200,
+    time_free: 0,
   };
-  for (const [vip, want] of [[false, true], [undefined, true], [true, false]] as const) {
+  for (const [vip, want] of [
+    [false, true],
+    [undefined, true],
+    [true, false],
+  ] as const) {
     const restore = mockFetch(() => ({
       json: async () => ({
         code: 0,
@@ -492,8 +486,11 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: vip }), 'pt', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, want,
-      `price_track=200 + qqVip=${String(vip)} → vipLocked=${want}`);
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      want,
+      `price_track=200 + qqVip=${String(vip)} → vipLocked=${want}`,
+    );
   }
   console.log('✅ 13g. search price_track=200 → qqVip 分治锁定（会员可解）');
 
@@ -523,8 +520,11 @@ async function main() {
     restore();
     // 数字专辑同样走会员可解口径：实测已购账号 price_album=3000 也能放全曲；
     // 若真未购，播放时 renderer 30s-trial 检测兜底升级，比直接甩给 Deezer 强。
-    assert.strictEqual(tracks[0].vipLocked, false,
-      'price_album=1000 + qqVip=true → 不锁（会员/已购可放）');
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      false,
+      'price_album=1000 + qqVip=true → 不锁（会员/已购可放）',
+    );
     console.log('✅ 13h. search price_album=1000 + qqVip=true → vipLocked=false');
   }
 
@@ -552,8 +552,11 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: true }), 'pm', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, false,
-      'pay_month=1 + qqVip=true → 不锁（会员曲库标签）');
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      false,
+      'pay_month=1 + qqVip=true → 不锁（会员曲库标签）',
+    );
     console.log('✅ 13i. search pay_month=1 + qqVip=true → vipLocked=false');
   }
 
@@ -572,8 +575,14 @@ async function main() {
                 album: { name: '某专辑', mid: 'a' },
                 interval: 240,
                 mediaMid: 'MMf3',
-                pay: { pay_down: 0, pay_month: 0, pay_play: 0, price_album: 0,
-                       price_track: 0, time_free: 0 },
+                pay: {
+                  pay_down: 0,
+                  pay_month: 0,
+                  pay_play: 0,
+                  price_album: 0,
+                  price_track: 0,
+                  time_free: 0,
+                },
               },
             ],
           },
@@ -582,8 +591,7 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: false }), 'free3', 20);
     restore();
-    assert.strictEqual(tracks[0].vipLocked, false,
-      '全部付费字段 0 → 不锁（回归保护）');
+    assert.strictEqual(tracks[0].vipLocked, false, '全部付费字段 0 → 不锁（回归保护）');
     console.log('✅ 13j. search 全部付费字段 0 → vipLocked=false（回归保护）');
   }
 
@@ -613,8 +621,11 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: false }), 'albc', 20);
     restore();
-    assert.strictEqual(tracks[0].vipCategory, 'paid-album',
-      'pay_album=1 → vipCategory=paid-album（数字专辑）');
+    assert.strictEqual(
+      tracks[0].vipCategory,
+      'paid-album',
+      'pay_album=1 → vipCategory=paid-album（数字专辑）',
+    );
     console.log('✅ 13k. vipCategory pay_album=1 → paid-album');
   }
 
@@ -642,8 +653,11 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: false }), 'ptc', 20);
     restore();
-    assert.strictEqual(tracks[0].vipCategory, 'paid-track',
-      'price_track=200 → vipCategory=paid-track（付费单曲，不走 paid-album）');
+    assert.strictEqual(
+      tracks[0].vipCategory,
+      'paid-track',
+      'price_track=200 → vipCategory=paid-track（付费单曲，不走 paid-album）',
+    );
     console.log('✅ 13l. vipCategory price_track=200 → paid-track');
   }
 
@@ -671,8 +685,11 @@ async function main() {
     }));
     const tracks = await prov.search(sess({ qqVip: false }), 'free4', 20);
     restore();
-    assert.strictEqual(tracks[0].vipCategory, undefined,
-      '全部付费字段 0 → vipCategory=undefined（免费，不加 [P]/[NP]）');
+    assert.strictEqual(
+      tracks[0].vipCategory,
+      undefined,
+      '全部付费字段 0 → vipCategory=undefined（免费，不加 [P]/[NP]）',
+    );
     console.log('✅ 13m. vipCategory 全部 0 → undefined');
   }
 
@@ -808,12 +825,7 @@ async function main() {
         }),
       };
     });
-    const url = await prov.getStreamPath(
-      sess(),
-      '001abc',
-      'MM001',
-      'high' as any,
-    );
+    const url = await prov.getStreamPath(sess(), '001abc', 'MM001', 'high' as any);
     restore();
     assert.ok(url.includes('vkey=FALLBACK'), '应回退默认音质');
     assert.strictEqual(callCount, 2, '应请求 2 次（高音质 + 回退）');
@@ -877,10 +889,7 @@ async function main() {
     try {
       // 独立 cookie：探针按 cookie 哈希做缓存 key，共用 sess() 会命中
       // 前面用例缓存的 alive 结果，测不到本条路径。
-      await prov.getStreamPath(
-        sess({ qqCookie: 'qm_keyst=expired-case-19b; euin=x' }),
-        'x',
-      );
+      await prov.getStreamPath(sess({ qqCookie: 'qm_keyst=expired-case-19b; euin=x' }), 'x');
     } catch (e: any) {
       body = e.getResponse ? e.getResponse() : null;
       msg = e.message;
@@ -907,10 +916,7 @@ async function main() {
     let body: any = null;
     let msg = '';
     try {
-      await prov.getStreamPath(
-        sess({ qqCookie: 'qm_keyst=netfail-case-19c; euin=y' }),
-        'y',
-      );
+      await prov.getStreamPath(sess({ qqCookie: 'qm_keyst=netfail-case-19c; euin=y' }), 'y');
     } catch (e: any) {
       body = e.getResponse ? e.getResponse() : null;
       msg = e.message;

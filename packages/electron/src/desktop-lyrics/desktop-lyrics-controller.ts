@@ -184,9 +184,7 @@ export class DesktopLyricsController {
   // ── 播放状态转发 ────────────────────────────────────────────────────────
 
   pushState(state: DesktopLyricsState): void {
-    const progress = Number.isFinite(state.progress)
-      ? Math.min(1, Math.max(0, state.progress))
-      : 0;
+    const progress = Number.isFinite(state.progress) ? Math.min(1, Math.max(0, state.progress)) : 0;
     this.lastState = { ...state, progress };
     const win = this.window();
     if (win) win.webContents.send('desktop-lyrics:state', this.lastState);
@@ -221,7 +219,13 @@ export class DesktopLyricsController {
         return;
       case 'prefs': {
         if (!msg.prefs) return;
-        this.prefs = normalisePrefs({ ...this.prefs, ...msg.prefs, enabled: this.prefs.enabled, locked: this.prefs.locked, bounds: this.prefs.bounds });
+        this.prefs = normalisePrefs({
+          ...this.prefs,
+          ...msg.prefs,
+          enabled: this.prefs.enabled,
+          locked: this.prefs.locked,
+          bounds: this.prefs.bounds,
+        });
         this.persist();
         this.broadcastPrefs();
         return;

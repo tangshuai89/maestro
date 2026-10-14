@@ -68,7 +68,10 @@ function explainTitleDiff(t1: string, t2: string): string | null {
   return null;
 }
 
-const groups = new Map<string, { lib: string; items: Map<string, LibItem>; reason: string; dur: number }>();
+const groups = new Map<
+  string,
+  { lib: string; items: Map<string, LibItem>; reason: string; dur: number }
+>();
 
 for (const [libKey, raw] of libs) {
   const items = (raw as { items?: LibItem[] }).items ?? [];
@@ -118,7 +121,9 @@ for (const [gk, g] of groups) {
   console.log(`── #${no} · ${titles.join(' | ')}`);
   console.log(`   artist: ${items[0].artist}  dur: ${g.dur}s  platforms: ${platforms.join('/')}`);
   console.log(`   原因: ${g.reason}`);
-  console.log(`   items: ${items.map((i) => `${i.id} (${i.sources.map((s) => s.platform).join(',')})`).join('  ')}`);
+  console.log(
+    `   items: ${items.map((i) => `${i.id} (${i.sources.map((s) => s.platform).join(',')})`).join('  ')}`,
+  );
   console.log('');
 }
 console.log(`📊 合计疑似问题组：${groups.size}`);

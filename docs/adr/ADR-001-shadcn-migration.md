@@ -1,5 +1,5 @@
 ---
-title: "ADR-001 引入 shadcn/ui 作为 AETHER 组件库"
+title: 'ADR-001 引入 shadcn/ui 作为 AETHER 组件库'
 tags: [adr, decision, shadcn, tailwind, design-system, aether]
 created: 2026-09-24
 status: proposed
@@ -18,6 +18,7 @@ source: discussion
 maestro renderer 当前组件库**没有统一抽象**——45 个 `_*.scss` 文件 + 各自管自己的 `*.tsx`，零散复用靠 copy-paste 或局部 hook（`usePlayer` 等）。D 收尾（D1–D11）已经统一了设计令牌（`--accent` / `--status-error` / etc.）和组件 set（Figma Code Connect 已联），但**没有可复用的组件层**——每加一个 modal / button / tooltip 都要从 0 写。
 
 下一阶段（milestone 路线）会进：
+
 - 全局 toast / notification（异常反馈 / 推荐命中 / sync 状态）
 - 更多 modal（dismiss-to-confirm / multi-step form / search-as-modal）
 - 复杂 form（rotation、cell-grid、date-range）
@@ -31,6 +32,7 @@ maestro renderer 当前组件库**没有统一抽象**——45 个 `_*.scss` 文
 采用 **shadcn/ui**（Radix UI Primitives + Tailwind CSS + 复制源码到仓库的所有权模式）+ **Tailwind CSS**。
 
 接入策略：
+
 1. **Tailwind 装到 `packages/renderer`** 单一包（Electron 主进程 + Extension 不动）
 2. **shadcn/ui 用 CLI 复制源码到 `packages/renderer/src/components/ui/`**（不引 runtime 依赖，组件所有权在仓库）
 3. **AETHER 令牌桥接 shadcn tokens**：shadcn 用 `--background` / `--foreground` / `--primary` 等 HSL 命名，我们包一层 `tokens-bridge.scss` 把 shadcn CSS variable 映射到现有 AETHER 令牌（`--surface-deep` / `--text-main` / `--accent`）。**shadcn 用 HSL 三元组（如 `--accent: 195 100% 50%`），AETHER 用 hex**（如 `--accent: #00E5FF`），所以用 `hsl(var(--accent))` 包装
@@ -48,29 +50,32 @@ maestro renderer 当前组件库**没有统一抽象**——45 个 `_*.scss` 文
 
 ## 备选方案 (Alternatives)
 
-| 方案 | 优点 | 缺点 | 为何不选 |
-|---|---|---|---|
-| **维持现状**（手写 SCSS + 各自 .tsx） | 0 引入成本 | 无组件库 → 重复造轮子；无 a11y 基座 → 键盘/读屏支持差 | 1 年撑不住 |
-| **Material UI / Chakra / Ant Design** | 完整组件库 | 不所有权化 → 改一个 button 要 monkey-patch；视觉风格难与 AETHER 对齐 | 风格冲突；vendor lock-in |
-| **Radix Primitives 直接用**（不接 shadcn） | a11y 基座 + 自由度高 | 每个组件自己写（Button、Dialog、Tooltip 都得从 0） | 工作量等同 shadcn 还更散 |
-| **Mantine** | TS 友好、组件齐全 | 运行时依赖、定制成本 | 同 MUI 改造成本 |
-| **Headless UI**（Tailwind 官方） | a11y + Tailwind 友好 | 组件种类少于 Radix（缺复杂组件如 Calendar / Combobox） | 复杂组件仍要自己写 |
+| 方案                                       | 优点                 | 缺点                                                                 | 为何不选                 |
+| ------------------------------------------ | -------------------- | -------------------------------------------------------------------- | ------------------------ |
+| **维持现状**（手写 SCSS + 各自 .tsx）      | 0 引入成本           | 无组件库 → 重复造轮子；无 a11y 基座 → 键盘/读屏支持差                | 1 年撑不住               |
+| **Material UI / Chakra / Ant Design**      | 完整组件库           | 不所有权化 → 改一个 button 要 monkey-patch；视觉风格难与 AETHER 对齐 | 风格冲突；vendor lock-in |
+| **Radix Primitives 直接用**（不接 shadcn） | a11y 基座 + 自由度高 | 每个组件自己写（Button、Dialog、Tooltip 都得从 0）                   | 工作量等同 shadcn 还更散 |
+| **Mantine**                                | TS 友好、组件齐全    | 运行时依赖、定制成本                                                 | 同 MUI 改造成本          |
+| **Headless UI**（Tailwind 官方）           | a11y + Tailwind 友好 | 组件种类少于 Radix（缺复杂组件如 Calendar / Combobox）               | 复杂组件仍要自己写       |
 
 ## 后果 (Consequences)
 
 ### ✅ 正向
+
 - 后续 component-heavy 工作（toast / modal / chat UI 等）效率 +200%
 - A11y 底座到位（Radix 处理 keyboard / focus / screen reader）
 - shadcn 主题切换结构（HSL 三元组）天然支持 dark/light 切换（虽然本期不做）
 - Tailwind 与 SCSS 共存——新组件用 Tailwind className，旧 SCSS 按模块渐进迁移
 
 ### ⚠️ 风险
+
 - 引入 Tailwind 增加 bundle 体积（PurgeCSS 后预计 +20KB，可接受）
 - shadcn + AETHER 令牌双层抽象（`hsl(var(--accent))`），新人上手成本略高
 - SCSS ↔ Tailwind className 混用期，组件代码风格可能短期分裂
 - Figma Code Connect 配置需要同步加 shadcn 组件（specs/d5-code-connect 后续）
 
 ### 📌 待跟进
+
 - [ ] 写 `specs/shadcn-migration/spec.md`（验收标准 + 范围 + 不在范围 + 文件改动清单）
 - [ ] 实际加 `tokens-bridge.scss`（HSL 三元组映射 AETHER 令牌）
 - [ ] shadcn CLI 初始化（只复制 Button + Dialog + Tooltip 三件套先验证）

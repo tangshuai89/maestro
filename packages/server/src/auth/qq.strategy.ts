@@ -50,14 +50,10 @@ export class QqAuthStrategy {
     const hasKey = /qm_keyst=|qqmusic_key=/.test(cookie);
     this.logger.log(
       `qq login: cookieLen=${cookie.length}, uin=${uin ? maskUin(uin) : 'MISSING'}, ` +
-        `hasLoginKey=${hasKey}, cookieCount=${
-          extraCookies ? Object.keys(extraCookies).length : 0
-        }`,
+        `hasLoginKey=${hasKey}, cookieCount=${extraCookies ? Object.keys(extraCookies).length : 0}`,
     );
     if (!hasKey) {
-      this.logger.warn(
-        'qq login: 没有 qm_keyst / qqmusic_key，可能只登录了 QQ 未登录 QQ 音乐',
-      );
+      this.logger.warn('qq login: 没有 qm_keyst / qqmusic_key，可能只登录了 QQ 未登录 QQ 音乐');
     }
 
     // Guarded profile fetch (5s timeout). 不再做 best-effort：拿不到
@@ -159,10 +155,7 @@ export class QqAuthStrategy {
       const json = JSON.parse(text) as {
         req_0?: {
           data?: {
-            map_userinfo?: Record<
-              string,
-              { nick?: string; headpic?: string; avatar?: string }
-            >;
+            map_userinfo?: Record<string, { nick?: string; headpic?: string; avatar?: string }>;
           };
         };
       };

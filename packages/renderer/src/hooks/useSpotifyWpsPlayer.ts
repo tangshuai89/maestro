@@ -23,10 +23,7 @@ import { wpsLog, wpsWarn, wpsError, wpsDebugBanner } from '../lib/debug';
  */
 async function probeEmeWidevine(): Promise<void> {
   const nav = navigator as Navigator & {
-    requestMediaKeySystemAccess?: (
-      keySystem: string,
-      config: unknown[],
-    ) => Promise<unknown>;
+    requestMediaKeySystemAccess?: (keySystem: string, config: unknown[]) => Promise<unknown>;
   };
   if (typeof nav.requestMediaKeySystemAccess !== 'function') {
     wpsError('eme', 'navigator.requestMediaKeySystemAccess 不存在 → EME 不可用，WPS 播放必失败');
@@ -42,10 +39,11 @@ async function probeEmeWidevine(): Promise<void> {
         persistentState: 'optional',
       },
     ]);
-    const info = await (
-      access as { getConfiguration: () => unknown }
-    ).getConfiguration();
-    wpsLog('eme', `requestMediaKeySystemAccess('com.widevine.alpha') OK — keySystem=${(info as { keySystem?: string }).keySystem ?? 'widevine'}`);
+    const info = await (access as { getConfiguration: () => unknown }).getConfiguration();
+    wpsLog(
+      'eme',
+      `requestMediaKeySystemAccess('com.widevine.alpha') OK — keySystem=${(info as { keySystem?: string }).keySystem ?? 'widevine'}`,
+    );
   } catch (err) {
     wpsError(
       'eme',
@@ -116,10 +114,16 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
       try {
         const tok = await getSpotifyToken();
         if (cancelled) return;
-        wpsLog('init', `token received tier=${tok.tier} expiresIn=${Math.round((tok.expiresAt - Date.now()) / 1000)}s`);
+        wpsLog(
+          'init',
+          `token received tier=${tok.tier} expiresIn=${Math.round((tok.expiresAt - Date.now()) / 1000)}s`,
+        );
         if (tok.tier !== 'premium') {
           // 罕见的并发：login 切到 free / premium 切换中 → 不连
-          wpsLog('init', `tier !== 'premium' (got ${String(tok.tier)}) → skip connect, wpsReady stays false → 30s preview fallback`);
+          wpsLog(
+            'init',
+            `tier !== 'premium' (got ${String(tok.tier)}) → skip connect, wpsReady stays false → 30s preview fallback`,
+          );
           setWpsReady(false);
           return;
         }
@@ -135,7 +139,10 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
           if (!cancelled) setState(s);
         });
         await w.connect(tok.accessToken);
-        if (cancelled) { w.disconnect(); return; }
+        if (cancelled) {
+          w.disconnect();
+          return;
+        }
         wpsLog('init', 'connect returned; polling for emeOk && hasDeviceId (15s budget)');
         // 不等 fixed timeout——SDK ready 事件先到才真 ready。
         // 安全上限 15s；期间 emeOk 变为 false 或 ready 不 fire 则退出。
@@ -152,7 +159,10 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
           check();
         });
         if (!ready) {
-          wpsWarn('init', `ready check failed: emeOk=${w.emeOk} hasDeviceId=${w.hasDeviceId} → wpsReady=false`);
+          wpsWarn(
+            'init',
+            `ready check failed: emeOk=${w.emeOk} hasDeviceId=${w.hasDeviceId} → wpsReady=false`,
+          );
           setWpsReady(false);
           return;
         }
@@ -173,7 +183,10 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
               // 修复：不重连，只让 SDK 的 getOAuthToken 回调在下次 WebSocket 续连
               // 时拿到新 token）。
               w.refreshToken(cur.accessToken);
-              wpsLog('token-refresh', `刷新 token（剩 ${Math.round(remaining / 1000)}s < 60s lead）`);
+              wpsLog(
+                'token-refresh',
+                `刷新 token（剩 ${Math.round(remaining / 1000)}s < 60s lead）`,
+              );
             }
           } catch (err) {
             // token 端点失败时保持现有连接（WPS 自己会断），下次 tick 再试
@@ -185,8 +198,12 @@ export function useSpotifyWpsPlayer({ enabled }: Options): UseSpotifyWpsPlayer {
         if (!cancelled) {
           console.warn('[wps] init failed (Premium required, Free = expected):', err);
           // 大概率是 waitForSdk 超时 / scope 缺 streaming / token 无效
-          wpsError('init', 'connect() 抛错 → wpsReady=false:', err,
-            '→ 大概率：SDK 超时（网络/scdn.co 被墙）/ OAuth scope 缺 streaming / token 无效');
+          wpsError(
+            'init',
+            'connect() 抛错 → wpsReady=false:',
+            err,
+            '→ 大概率：SDK 超时（网络/scdn.co 被墙）/ OAuth scope 缺 streaming / token 无效',
+          );
           setWpsReady(false);
         }
       }

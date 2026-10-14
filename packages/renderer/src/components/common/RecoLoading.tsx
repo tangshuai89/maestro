@@ -63,7 +63,9 @@ export default function RecoLoading({ librarySize, onClose }: Props) {
   // ESC 关闭
   useEffect(() => {
     if (!onClose) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -86,7 +88,15 @@ export default function RecoLoading({ librarySize, onClose }: Props) {
           <span className="rl-hud-title">DEEP.SEEK // NEURAL FEED</span>
           {onClose && (
             <button className="rl-close" onClick={onClose} aria-label="关闭" title="关闭">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+              >
                 <path d="M18 6 6 18M6 6l12 12" />
               </svg>
             </button>
@@ -109,7 +119,9 @@ export default function RecoLoading({ librarySize, onClose }: Props) {
         <div className="rl-progress" role="status" aria-live="polite">
           <div className="rl-progress-bar" aria-hidden="true" />
           <div className="rl-progress-text">
-            <span className="rl-step-label">STEP {stepIndex + 1}/{STEPS.length}</span>
+            <span className="rl-step-label">
+              STEP {stepIndex + 1}/{STEPS.length}
+            </span>
             <span className="rl-step-desc">
               {STEPS[stepIndex].label}
               {elapsedMs >= 4_000 && (

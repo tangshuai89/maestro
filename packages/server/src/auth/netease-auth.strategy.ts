@@ -83,15 +83,12 @@ export class NeteaseAuthStrategy {
 
   /** 第二步：轮询扫码状态。803 时捕获 Set-Cookie 里的 MUSIC_U / __csrf。 */
   async qrCheck(key: string): Promise<NeteaseQrCheckResult> {
-    const res = await fetch(
-      'https://music.163.com/api/login/qrcode/client/login',
-      {
-        method: 'POST',
-        headers: BASE_HEADERS,
-        body: new URLSearchParams({ key, type: '1' }).toString(),
-        redirect: 'manual',
-      },
-    );
+    const res = await fetch('https://music.163.com/api/login/qrcode/client/login', {
+      method: 'POST',
+      headers: BASE_HEADERS,
+      body: new URLSearchParams({ key, type: '1' }).toString(),
+      redirect: 'manual',
+    });
     const json = (await res.json()) as { code: number; message?: string };
     this.logger.log(`netease qr check key=${key.slice(0, 8)}… → code=${json.code}`);
     if (json.code !== 803) {
@@ -103,9 +100,7 @@ export class NeteaseAuthStrategy {
     // a single combined header can't be split on commas because expiry dates
     // contain commas).
     const setCookies =
-      typeof res.headers.getSetCookie === 'function'
-        ? res.headers.getSetCookie()
-        : [];
+      typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
     const cookies: Record<string, string> = {};
     for (const line of setCookies) {
       const [pair] = line.split(';');
@@ -157,10 +152,7 @@ export class NeteaseAuthStrategy {
   }
 
   /** 浏览器调试兜底：用户手动粘贴 MUSIC_U。 */
-  async loginWithCookie(
-    musicU: string,
-    csrfToken?: string,
-  ): Promise<ProviderSession> {
+  async loginWithCookie(musicU: string, csrfToken?: string): Promise<ProviderSession> {
     if (!musicU || musicU.length < 8) {
       throw new BadRequestException({
         error: 'AUTH_INVALID',
@@ -198,8 +190,7 @@ export class NeteaseAuthStrategy {
     csrfToken: string,
   ): Promise<{ nickname: string; avatarUrl: string } | null> {
     try {
-      const cookie =
-        `MUSIC_U=${musicU}; os=pc` + (csrfToken ? `; __csrf=${csrfToken}` : '');
+      const cookie = `MUSIC_U=${musicU}; os=pc` + (csrfToken ? `; __csrf=${csrfToken}` : '');
       const res = await fetch('https://music.163.com/api/nuser/account/get', {
         method: 'POST',
         headers: { ...BASE_HEADERS, Cookie: cookie },
@@ -246,21 +237,14 @@ export class NeteaseAuthStrategy {
    * 即可：`true` = 黑胶/SVIP，`false` = 免费。`data.redVipLevel` 是冗余字段
    * （黑胶=8、SVIP=9），但某些老响应里只有 redVipLevel 没 isVip，两个一起看。
    */
-  private async fetchVipStatus(
-    musicU: string,
-    csrfToken: string,
-  ): Promise<boolean | null> {
+  private async fetchVipStatus(musicU: string, csrfToken: string): Promise<boolean | null> {
     try {
-      const cookie =
-        `MUSIC_U=${musicU}; os=pc` + (csrfToken ? `; __csrf=${csrfToken}` : '');
-      const res = await fetch(
-        'https://music.163.com/api/music-vip-membership/front/vip/info',
-        {
-          method: 'POST',
-          headers: { ...BASE_HEADERS, Cookie: cookie },
-          body: '',
-        },
-      );
+      const cookie = `MUSIC_U=${musicU}; os=pc` + (csrfToken ? `; __csrf=${csrfToken}` : '');
+      const res = await fetch('https://music.163.com/api/music-vip-membership/front/vip/info', {
+        method: 'POST',
+        headers: { ...BASE_HEADERS, Cookie: cookie },
+        body: '',
+      });
       const data = (await res.json()) as VipInfoResponse;
       if (data.code !== 200 || !data.data) return null;
       const d = data.data;

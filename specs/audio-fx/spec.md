@@ -21,11 +21,11 @@ Web Audio graph 在 `usePlayer.ensureAudioGraph()`（`packages/renderer/src/hook
 WPS（Premium 全曲播放）由 SDK 自己解码输出（`lib/spotify-wps.ts`），renderer 的
 `<audio>` 元素不参与出声。于是：
 
-| 能力 | QQ / 网易云 / Deezer（`<audio>` 路径） | Spotify WPS |
-|---|---|---|
-| EQ | 生效 | **不生效** |
-| crossfade | 生效 | **不生效**（WPS 自己切歌） |
-| 声波环可视化 | 生效 | 不生效 |
+| 能力         | QQ / 网易云 / Deezer（`<audio>` 路径） | Spotify WPS                |
+| ------------ | -------------------------------------- | -------------------------- |
+| EQ           | 生效                                   | **不生效**                 |
+| crossfade    | 生效                                   | **不生效**（WPS 自己切歌） |
+| 声波环可视化 | 生效                                   | 不生效                     |
 
 **但 WPS 现在根本播不了**（license 500，卡在 castLabs EVS，见 NEXT-ITERATION §0），
 所以这条边界既无法实景验证、也不构成日常影响。因此：
@@ -103,13 +103,13 @@ NEXT-ITERATION §7.1 写的是「优先用平台返回的响度元数据、否�
 
 ## 6. 落地位置
 
-| 关注点 | 位置 | 理由 |
-|---|---|---|
-| 频段表 / 预置常量 | `renderer/src/lib/audioFx.ts` | 纯数据、白盒可测，不塞进 hook |
-| EQ 链构建 / 参数推送 | `renderer/src/lib/eqChain.ts` | 纯函数，可脱离 React 运行时测试 |
-| 偏好读写 | `renderer/src/lib/storage.ts` | 与 volume / theme / playerMode 同级，进备份集 |
-| 音频链构造 | `renderer/src/hooks/usePlayer.ts`（改造 `ensureAudioGraph`） | graph 是它的既有职责，不另起一套 |
-| EQ 滑块 UI | `renderer/src/components/modals/SettingsModal.tsx` 新增「音频」节 | 10 个滑块需要空间；主界面（剧场）已满 |
+| 关注点               | 位置                                                              | 理由                                          |
+| -------------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| 频段表 / 预置常量    | `renderer/src/lib/audioFx.ts`                                     | 纯数据、白盒可测，不塞进 hook                 |
+| EQ 链构建 / 参数推送 | `renderer/src/lib/eqChain.ts`                                     | 纯函数，可脱离 React 运行时测试               |
+| 偏好读写             | `renderer/src/lib/storage.ts`                                     | 与 volume / theme / playerMode 同级，进备份集 |
+| 音频链构造           | `renderer/src/hooks/usePlayer.ts`（改造 `ensureAudioGraph`）      | graph 是它的既有职责，不另起一套              |
+| EQ 滑块 UI           | `renderer/src/components/modals/SettingsModal.tsx` 新增「音频」节 | 10 个滑块需要空间；主界面（剧场）已满         |
 
 ## 7. 风险
 

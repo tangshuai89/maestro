@@ -69,9 +69,7 @@ describe('RecoKeyModal', () => {
 
   it('空 key 时点 scrim（modal-overlay）调 onClose', () => {
     const onClose = vi.fn();
-    const { container } = render(
-      <RecoKeyModal onSave={() => {}} onClose={onClose} />,
-    );
+    const { container } = render(<RecoKeyModal onSave={() => {}} onClose={onClose} />);
     fireEvent.click(container.querySelector('.modal-overlay')!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });

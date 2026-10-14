@@ -41,23 +41,15 @@ register('data:text/javascript,' + encodeURIComponent(loaderCode), import.meta.u
 const T0 = 1_000_000_000;
 
 async function main() {
-  const {
-    RELOGIN_GRACE_MS,
-    markLoginOk,
-    inReloginGrace,
-    __resetReloginGrace,
-  } = await import('./relogin-grace.ts');
+  const { RELOGIN_GRACE_MS, markLoginOk, inReloginGrace, __resetReloginGrace } =
+    await import('./relogin-grace.ts');
 
   // ── 1. 宽限期内：刚登录成功 → inReloginGrace=true（mark_expired 被拦）──
   {
     __resetReloginGrace();
     markLoginOk('qq', T0);
     assert.strictEqual(inReloginGrace('qq', T0), true, '登录完成瞬间即在宽限期');
-    assert.strictEqual(
-      inReloginGrace('qq', T0 + RELOGIN_GRACE_MS - 1),
-      true,
-      '宽限期边界内仍拦截',
-    );
+    assert.strictEqual(inReloginGrace('qq', T0 + RELOGIN_GRACE_MS - 1), true, '宽限期边界内仍拦截');
     console.log('✅ 1. 登录成功 → 宽限期内 inReloginGrace=true');
   }
 
@@ -70,11 +62,7 @@ async function main() {
       false,
       '恰好满 10min 即结束（严格小于边界）',
     );
-    assert.strictEqual(
-      inReloginGrace('qq', T0 + RELOGIN_GRACE_MS + 1),
-      false,
-      '宽限过后正常放行',
-    );
+    assert.strictEqual(inReloginGrace('qq', T0 + RELOGIN_GRACE_MS + 1), false, '宽限过后正常放行');
     console.log('✅ 2. 宽限期边界：≥RELOGIN_GRACE_MS → false');
   }
 
@@ -87,11 +75,7 @@ async function main() {
       false,
       'netease 没登录过 → qq 的宽限期不罩它',
     );
-    assert.strictEqual(
-      inReloginGrace('spotify', T0 + 1000),
-      false,
-      'spotify 同理',
-    );
+    assert.strictEqual(inReloginGrace('spotify', T0 + 1000), false, 'spotify 同理');
     assert.strictEqual(inReloginGrace('qq', T0 + 1000), true, 'qq 自己在宽限');
     console.log('✅ 3. 宽限期 per-provider 隔离');
   }
@@ -103,11 +87,7 @@ async function main() {
     const T1 = T0 + RELOGIN_GRACE_MS + 60_000; // 宽限已过
     assert.strictEqual(inReloginGrace('qq', T1), false, '前置：宽限已结束');
     markLoginOk('qq', T1); // 用户又登录成功一次
-    assert.strictEqual(
-      inReloginGrace('qq', T1 + 1000),
-      true,
-      '再次登录 → 新的 10min 宽限',
-    );
+    assert.strictEqual(inReloginGrace('qq', T1 + 1000), true, '再次登录 → 新的 10min 宽限');
     console.log('✅ 4. 重新登录刷新宽限期起点');
   }
 

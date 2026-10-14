@@ -153,8 +153,12 @@ function reset() {
 // ── 6. pickPlayableTrack：bestSource 有值 ─────────────────────
 {
   const item = {
-    title: '晴天', artist: '周杰伦', album: '叶惠美', coverUrl: '/cover.jpg',
-    duration: 270, bestSource: 'qq',
+    title: '晴天',
+    artist: '周杰伦',
+    album: '叶惠美',
+    coverUrl: '/cover.jpg',
+    duration: 270,
+    bestSource: 'qq',
     sources: [{ platform: 'qq', trackId: 'qq-1', url: '/qq/stream', mediaMid: 'mm1' }],
   };
   const track = pickPlayableTrack(item);
@@ -170,8 +174,12 @@ function reset() {
 // ── 7. pickPlayableTrack：bestSource = null → null ────────────
 {
   const item = {
-    title: 'Test', artist: 'A', album: 'B', coverUrl: '/c.jpg',
-    duration: 200, bestSource: null,
+    title: 'Test',
+    artist: 'A',
+    album: 'B',
+    coverUrl: '/c.jpg',
+    duration: 200,
+    bestSource: null,
     sources: [{ platform: 'qq', trackId: '1', url: '/u', mediaMid: 'm' }],
   };
   expect('7. pickPlayableTrack bestSource=null → null', pickPlayableTrack(item) === null);
@@ -180,8 +188,12 @@ function reset() {
 // ── 8. pickPlayableTrack：source 找不到 bestSource → null ─────
 {
   const item = {
-    title: 'Test', artist: 'A', album: 'B', coverUrl: '/c.jpg',
-    duration: 200, bestSource: 'spotify',
+    title: 'Test',
+    artist: 'A',
+    album: 'B',
+    coverUrl: '/c.jpg',
+    duration: 200,
+    bestSource: 'spotify',
     sources: [{ platform: 'qq', trackId: '1', url: '/u', mediaMid: 'm' }],
   };
   expect('8. pickPlayableTrack source 不匹配 → null', pickPlayableTrack(item) === null);
@@ -222,19 +234,30 @@ reset();
 // ── 12. fetchNextTrack：URL 组装 ──────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"id":"1","provider":"deezer","title":"test","artist":"a","album":"b","coverUrl":"","audioUrl":"/u","duration":200,"liked":false}', {
-    status: 200, headers: { 'Content-Type': 'application/json' },
-  });
+  mockResponse = new Response(
+    '{"id":"1","provider":"deezer","title":"test","artist":"a","album":"b","coverUrl":"","audioUrl":"/u","duration":200,"liked":false}',
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
   await fetchNextTrack('deezer');
-  expect('12. fetchNextTrack URL 含 provider=deezer', fetchCalls[0].url.includes('provider=deezer'));
+  expect(
+    '12. fetchNextTrack URL 含 provider=deezer',
+    fetchCalls[0].url.includes('provider=deezer'),
+  );
 }
 
 // ── 13. fetchNextTrack：带 preset ─────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"id":"1","provider":"deezer","title":"test","artist":"a","album":"b","coverUrl":"","audioUrl":"/u","duration":200,"liked":false}', {
-    status: 200, headers: { 'Content-Type': 'application/json' },
-  });
+  mockResponse = new Response(
+    '{"id":"1","provider":"deezer","title":"test","artist":"a","album":"b","coverUrl":"","audioUrl":"/u","duration":200,"liked":false}',
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
   await fetchNextTrack('deezer', 'rock');
   expect('13. fetchNextTrack URL 含 preset=rock', fetchCalls[0].url.includes('preset=rock'));
 }
@@ -242,7 +265,10 @@ reset();
 // ── 14. toggleLike：POST body ─────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"success":true,"liked":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"success":true,"liked":true}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await toggleLike('qq', 'track-1', { title: 'T', artist: 'A', duration: 200 });
   const call = fetchCalls[0];
   expect('14. toggleLike URL 含 /music/like', call.url.includes('/music/like'));
@@ -255,7 +281,10 @@ reset();
 // ── 15. getLiked：GET 请求 ────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('[]', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await getLiked('qq');
   expect('15. getLiked URL 含 /music/liked', fetchCalls[0].url.includes('/music/liked'));
   expect('15b. getLiked URL 含 provider=qq', fetchCalls[0].url.includes('provider=qq'));
@@ -272,26 +301,38 @@ reset();
 // ── 17. fetchDeezerEditorials ─────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"items":[{"id":0,"name":"All"}]}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"items":[{"id":0,"name":"All"}]}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   const result = await fetchDeezerEditorials();
   expect('17. fetchDeezerEditorials 返回数组', Array.isArray(result));
-  expect('17b. fetchDeezerEditorials URL 含 /music/deezer/editorials', fetchCalls[0].url.includes('/music/deezer/editorials'));
+  expect(
+    '17b. fetchDeezerEditorials URL 含 /music/deezer/editorials',
+    fetchCalls[0].url.includes('/music/deezer/editorials'),
+  );
 }
 
 // ── 18. searchTracks ──────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('[]', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await searchTracks('qq', '晴天');
   expect('18. searchTracks URL 含 /music/search', fetchCalls[0].url.includes('/music/search'));
   expect('18b. searchTracks URL 含 provider=qq', fetchCalls[0].url.includes('provider=qq'));
-  expect('18c. searchTracks URL 含 q=晴天', fetchCalls[0].url.includes('q=') );
+  expect('18c. searchTracks URL 含 q=晴天', fetchCalls[0].url.includes('q='));
 }
 
 // ── 19. searchUnified ─────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"items":[],"total":0}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"items":[],"total":0}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await searchUnified('test');
   expect('19. searchUnified URL 含 /music/search', fetchCalls[0].url.includes('/music/search'));
 }
@@ -299,7 +340,10 @@ reset();
 // ── 20. fetchRecoStatus ───────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"configured":false,"librarySize":0}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"configured":false,"librarySize":0}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   const result = await fetchRecoStatus();
   expect('20. fetchRecoStatus 返回对象', typeof result === 'object');
   expect('20b. fetchRecoStatus URL 含 /reco/status', fetchCalls[0].url.includes('/reco/status'));
@@ -308,7 +352,10 @@ reset();
 // ── 21. runReco：POST body ────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"ok":true}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await runReco({ count: 5 });
   const call = fetchCalls[0];
   expect('21. runReco URL 含 /reco/run', call.url.includes('/reco/run'));
@@ -318,7 +365,10 @@ reset();
 // ── 22. saveRecoKey：POST body ────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"ok":true,"tail":"abcd"}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"ok":true,"tail":"abcd"}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await saveRecoKey('sk-test-key-1234567890');
   const call = fetchCalls[0];
   expect('22. saveRecoKey URL 含 /reco/key', call.url.includes('/reco/key'));
@@ -330,25 +380,39 @@ reset();
 // ── 23. importLibrary ─────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"imported":0}', { status: 201, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"imported":0}', {
+    status: 201,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await importLibrary();
-  expect('23. importLibrary URL 含 /music/library/import', fetchCalls[0].url.includes('/music/library/import'));
+  expect(
+    '23. importLibrary URL 含 /music/library/import',
+    fetchCalls[0].url.includes('/music/library/import'),
+  );
   expect('23b. importLibrary method = POST', fetchCalls[0].init.method === 'POST');
 }
 
 // ── 24. getLibrary ────────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('null', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('null', {
+    status: 404,
+    headers: { 'Content-Type': 'application/json' },
+  });
   // getLibrary on 404 might throw — catch it
-  try { await getLibrary(); } catch {}
+  try {
+    await getLibrary();
+  } catch {}
   expect('24. getLibrary URL 含 /music/library', fetchCalls[0].url.includes('/music/library'));
 }
 
 // ── 25. fetchLyrics ───────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"lines":[],"source":null,"synced":false}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"lines":[],"source":null,"synced":false}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await fetchLyrics('qq', 'track-1');
   expect('25. fetchLyrics URL 含 /music/lyrics', fetchCalls[0].url.includes('/music/lyrics'));
   expect('25b. fetchLyrics URL 含 provider=qq', fetchCalls[0].url.includes('provider=qq'));
@@ -358,33 +422,57 @@ reset();
 // ── 26. fetchLyricsAvailability ───────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"available":false}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"available":false}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await fetchLyricsAvailability([{ platform: 'qq', trackId: 'track-1' }]);
-  expect('26. fetchLyricsAvailability URL 含 /music/lyrics/availability', fetchCalls[0].url.includes('/music/lyrics/availability'));
-  expect('26b. URL 含 qq%3Atrack-1（encodeURIComponent）', fetchCalls[0].url.includes('qq%3Atrack-1'));
+  expect(
+    '26. fetchLyricsAvailability URL 含 /music/lyrics/availability',
+    fetchCalls[0].url.includes('/music/lyrics/availability'),
+  );
+  expect(
+    '26b. URL 含 qq%3Atrack-1（encodeURIComponent）',
+    fetchCalls[0].url.includes('qq%3Atrack-1'),
+  );
 }
 
 // ── 27. fetchLyricsByName ─────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('[]', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await fetchLyricsByName('晴天', '周杰伦');
-  expect('27. fetchLyricsByName URL 含 /music/lyrics/search', fetchCalls[0].url.includes('/music/lyrics/search'));
+  expect(
+    '27. fetchLyricsByName URL 含 /music/lyrics/search',
+    fetchCalls[0].url.includes('/music/lyrics/search'),
+  );
   expect('27b. fetchLyricsByName URL 含 title=晴天', fetchCalls[0].url.includes('title='));
 }
 
 // ── 28. getStateSnapshot ──────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await getStateSnapshot();
-  expect('28. getStateSnapshot URL 含 /storage/state', fetchCalls[0].url.includes('/storage/state'));
+  expect(
+    '28. getStateSnapshot URL 含 /storage/state',
+    fetchCalls[0].url.includes('/storage/state'),
+  );
 }
 
 // ── 29. triggerBackup ─────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"path":"/tmp/b.zip","count":5}', { status: 201, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"path":"/tmp/b.zip","count":5}', {
+    status: 201,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await triggerBackup();
   expect('29. triggerBackup URL 含 /storage/backup', fetchCalls[0].url.includes('/storage/backup'));
   expect('29b. triggerBackup method = POST', fetchCalls[0].init.method === 'POST');
@@ -393,7 +481,10 @@ reset();
 // ── 30. getBackupInfo ─────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"backupDir":"/tmp","backupCount":0}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"backupDir":"/tmp","backupCount":0}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await getBackupInfo();
   expect('30. getBackupInfo URL 含 /storage/info', fetchCalls[0].url.includes('/storage/info'));
 }
@@ -401,12 +492,16 @@ reset();
 // ── 31. json() !res.ok → AuthError with code ─────────────────
 reset();
 {
-  mockResponse = new Response(
-    JSON.stringify({ error: 'AUTH_TIMEOUT', message: '登录超时' }),
-    { status: 408, headers: { 'Content-Type': 'application/json' } },
-  );
+  mockResponse = new Response(JSON.stringify({ error: 'AUTH_TIMEOUT', message: '登录超时' }), {
+    status: 408,
+    headers: { 'Content-Type': 'application/json' },
+  });
   let caught = null;
-  try { await fetchNextTrack('deezer'); } catch (e) { caught = e; }
+  try {
+    await fetchNextTrack('deezer');
+  } catch (e) {
+    caught = e;
+  }
   expect('31. !res.ok → AuthError', caught instanceof AuthError);
   expect('31b. AuthError.code = AUTH_TIMEOUT', caught?.code === 'AUTH_TIMEOUT');
   expect('31c. AuthError.status = 408', caught?.status === 408);
@@ -415,12 +510,16 @@ reset();
 // ── 32. json() !res.ok + unknown error code → AUTH_UNKNOWN ────
 reset();
 {
-  mockResponse = new Response(
-    JSON.stringify({ error: 'SOMETHING_NEW', message: '新错误' }),
-    { status: 500, headers: { 'Content-Type': 'application/json' } },
-  );
+  mockResponse = new Response(JSON.stringify({ error: 'SOMETHING_NEW', message: '新错误' }), {
+    status: 500,
+    headers: { 'Content-Type': 'application/json' },
+  });
   let caught = null;
-  try { await fetchNextTrack('deezer'); } catch (e) { caught = e; }
+  try {
+    await fetchNextTrack('deezer');
+  } catch (e) {
+    caught = e;
+  }
   expect('32. 未知 error code → AUTH_UNKNOWN', caught?.code === 'AUTH_UNKNOWN');
 }
 
@@ -429,7 +528,11 @@ reset();
 {
   mockResponse = new Response('plain text error', { status: 500 });
   let caught = null;
-  try { await fetchNextTrack('deezer'); } catch (e) { caught = e; }
+  try {
+    await fetchNextTrack('deezer');
+  } catch (e) {
+    caught = e;
+  }
   expect('33. 非 JSON body → AUTH_UNKNOWN', caught?.code === 'AUTH_UNKNOWN');
   expect('33b. message = raw text', caught?.message === 'plain text error');
 }
@@ -437,12 +540,16 @@ reset();
 // ── 34. json() !res.ok + body 有 message ──────────────────────
 reset();
 {
-  mockResponse = new Response(
-    JSON.stringify({ error: 'AUTH_CANCELLED', message: '用户取消' }),
-    { status: 400, headers: { 'Content-Type': 'application/json' } },
-  );
+  mockResponse = new Response(JSON.stringify({ error: 'AUTH_CANCELLED', message: '用户取消' }), {
+    status: 400,
+    headers: { 'Content-Type': 'application/json' },
+  });
   let caught = null;
-  try { await fetchNextTrack('deezer'); } catch (e) { caught = e; }
+  try {
+    await fetchNextTrack('deezer');
+  } catch (e) {
+    caught = e;
+  }
   expect('34. body message 提取', caught?.message === '用户取消');
   expect('34b. code = AUTH_CANCELLED', caught?.code === 'AUTH_CANCELLED');
 }
@@ -450,12 +557,17 @@ reset();
 // ── 35. json() !res.ok + body 无 message → msg = raw text（非 fallback）
 reset();
 {
-  mockResponse = new Response(
-    JSON.stringify({ error: 'AUTH_EXPIRED' }),
-    { status: 401, statusText: 'Unauthorized', headers: { 'Content-Type': 'application/json' } },
-  );
+  mockResponse = new Response(JSON.stringify({ error: 'AUTH_EXPIRED' }), {
+    status: 401,
+    statusText: 'Unauthorized',
+    headers: { 'Content-Type': 'application/json' },
+  });
   let caught = null;
-  try { await fetchNextTrack('deezer'); } catch (e) { caught = e; }
+  try {
+    await fetchNextTrack('deezer');
+  } catch (e) {
+    caught = e;
+  }
   // msg = text (raw JSON body) since parsed.message is not a string
   expect('35. 无 message → msg = raw text', caught?.message.includes('AUTH_EXPIRED'));
   expect('35b. code = AUTH_EXPIRED', caught?.code === 'AUTH_EXPIRED');
@@ -466,7 +578,17 @@ reset();
 reset();
 {
   mockResponse = new Response(
-    JSON.stringify({ id: '1', provider: 'qq', title: 'T', artist: 'A', album: 'B', coverUrl: '', audioUrl: '/u', duration: 200, liked: false }),
+    JSON.stringify({
+      id: '1',
+      provider: 'qq',
+      title: 'T',
+      artist: 'A',
+      album: 'B',
+      coverUrl: '',
+      audioUrl: '/u',
+      duration: 200,
+      liked: false,
+    }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
   const track = await fetchNextTrack('qq');
@@ -477,7 +599,10 @@ reset();
 // ── 37. searchOne ─────────────────────────────────────────────
 reset();
 {
-  mockResponse = new Response('{"items":[]}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  mockResponse = new Response('{"items":[]}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
   await searchOne('netease', '稻香');
   expect('37. searchOne URL 含 /music/search', fetchCalls[0].url.includes('/music/search'));
   expect('37b. searchOne URL 含 provider=netease', fetchCalls[0].url.includes('provider=netease'));
@@ -490,11 +615,20 @@ reset();
 {
   mockResponse = new Response(
     JSON.stringify({
-      items: [{
-        id: 'n1', provider: 'netease', title: '稻香', artist: '周杰伦',
-        album: '魔杰座', coverUrl: '/c.jpg', audioUrl: '/music/stream/netease/n1',
-        duration: 223, liked: false, vipLocked: true,
-      }],
+      items: [
+        {
+          id: 'n1',
+          provider: 'netease',
+          title: '稻香',
+          artist: '周杰伦',
+          album: '魔杰座',
+          coverUrl: '/c.jpg',
+          audioUrl: '/music/stream/netease/n1',
+          duration: 223,
+          liked: false,
+          vipLocked: true,
+        },
+      ],
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
@@ -504,8 +638,14 @@ reset();
   expect('38b. versions 恰 1 条（指向自己）', it.versions.length === 1);
   expect('38c. versions[0].bestSource = netease', it.versions[0].bestSource === 'netease');
   expect('38d. versions[0].sources[0].trackId = n1', it.versions[0].sources[0].trackId === 'n1');
-  expect('38e. versions[0] 带版本元数据', it.versions[0].title === '稻香' && it.versions[0].duration === 223);
-  expect('38f. vipLocked 透传到 source', it.sources[0].vipLocked === true && it.versions[0].sources[0].vipLocked === true);
+  expect(
+    '38e. versions[0] 带版本元数据',
+    it.versions[0].title === '稻香' && it.versions[0].duration === 223,
+  );
+  expect(
+    '38f. vipLocked 透传到 source',
+    it.sources[0].vipLocked === true && it.versions[0].sources[0].vipLocked === true,
+  );
 }
 
 // ── 39. searchOne：noPreview 透传（Spotify 无 preview_url）────
@@ -513,11 +653,21 @@ reset();
 {
   mockResponse = new Response(
     JSON.stringify({
-      items: [{
-        id: 'sp1', provider: 'spotify', title: '浓缩蓝鲸', artist: 'Jude Chiu',
-        album: '浓缩蓝鲸', coverUrl: '/c.jpg', audioUrl: '/music/stream/spotify/sp1',
-        duration: 277, liked: false, vipLocked: true, noPreview: true,
-      }],
+      items: [
+        {
+          id: 'sp1',
+          provider: 'spotify',
+          title: '浓缩蓝鲸',
+          artist: 'Jude Chiu',
+          album: '浓缩蓝鲸',
+          coverUrl: '/c.jpg',
+          audioUrl: '/music/stream/spotify/sp1',
+          duration: 277,
+          liked: false,
+          vipLocked: true,
+          noPreview: true,
+        },
+      ],
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
@@ -552,7 +702,9 @@ reset();
 {
   const spotifyOnly = {
     bestSource: 'spotify',
-    sources: [{ platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/s', noPreview: true }],
+    sources: [
+      { platform: 'spotify', trackId: 'sp1', hasCopyright: true, url: '/s', noPreview: true },
+    ],
   };
   expect('41. Spotify 独占无预览 + 无 WPS → 不可播', isPlayableEntry(spotifyOnly, false) === false);
   expect('41b. 同一条 + WPS 已连 → 可播', isPlayableEntry(spotifyOnly, true) === true);
@@ -584,18 +736,26 @@ reset();
     bestSource: 'qq',
     sources: [{ platform: 'qq', trackId: 'q1', hasCopyright: false, url: '/q' }],
   };
-  expect('42. QQ 无版权 → no-copyright（不是 spotify-no-preview）',
-    playableReason(qqNoCopyright, false) === 'no-copyright');
+  expect(
+    '42. QQ 无版权 → no-copyright（不是 spotify-no-preview）',
+    playableReason(qqNoCopyright, false) === 'no-copyright',
+  );
   expect('42b. 对应文案', unplayableText(qqNoCopyright, false) === '所有平台都无版权');
 
   const spNoPreview = {
     bestSource: 'spotify',
-    sources: [{ platform: 'spotify', trackId: 's1', hasCopyright: true, url: '/s', noPreview: true }],
+    sources: [
+      { platform: 'spotify', trackId: 's1', hasCopyright: true, url: '/s', noPreview: true },
+    ],
   };
-  expect('42c. Spotify 无预览 → spotify-no-preview',
-    playableReason(spNoPreview, false) === 'spotify-no-preview');
-  expect('42d. 文案提 Premium 通道',
-    (unplayableText(spNoPreview, false) || '').includes('Premium'));
+  expect(
+    '42c. Spotify 无预览 → spotify-no-preview',
+    playableReason(spNoPreview, false) === 'spotify-no-preview',
+  );
+  expect(
+    '42d. 文案提 Premium 通道',
+    (unplayableText(spNoPreview, false) || '').includes('Premium'),
+  );
   expect('42e. WPS 已连 → 可播（reason=null）', playableReason(spNoPreview, true) === null);
   expect('42f. 可播时文案也是 null', unplayableText(spNoPreview, true) === null);
 
@@ -606,13 +766,22 @@ reset();
     bestSource: null,
     sources: [{ platform: 'qq', trackId: 'q2', hasCopyright: false, url: '/q2' }],
   };
-  expect('42g2. bestSource=null 但源全无版权 → no-copyright',
-    playableReason(nullBestNoCopyright, false) === 'no-copyright');
-  expect('42g3. 该场景 isPlayableEntry 仍为 false（行为未变）',
-    isPlayableEntry(nullBestNoCopyright, false) === false);
-  const bestMissing = { bestSource: 'qq', sources: [{ platform: 'netease', trackId: 'n', hasCopyright: true, url: '/n' }] };
-  expect('42h. bestSource 指向不存在的源 → no-source',
-    playableReason(bestMissing, false) === 'no-source');
+  expect(
+    '42g2. bestSource=null 但源全无版权 → no-copyright',
+    playableReason(nullBestNoCopyright, false) === 'no-copyright',
+  );
+  expect(
+    '42g3. 该场景 isPlayableEntry 仍为 false（行为未变）',
+    isPlayableEntry(nullBestNoCopyright, false) === false,
+  );
+  const bestMissing = {
+    bestSource: 'qq',
+    sources: [{ platform: 'netease', trackId: 'n', hasCopyright: true, url: '/n' }],
+  };
+  expect(
+    '42h. bestSource 指向不存在的源 → no-source',
+    playableReason(bestMissing, false) === 'no-source',
+  );
 
   // isPlayableEntry 必须是 playableReason 的薄封装（两者不能漂）
   for (const [label, entry, wps] of [
@@ -621,8 +790,10 @@ reset();
     ['Spotify 无预览 + WPS', spNoPreview, true],
     ['bestSource=null', noBest, false],
   ]) {
-    expect(`42i. isPlayableEntry 与 playableReason 一致：${label}`,
-      isPlayableEntry(entry, wps) === (playableReason(entry, wps) === null));
+    expect(
+      `42i. isPlayableEntry 与 playableReason 一致：${label}`,
+      isPlayableEntry(entry, wps) === (playableReason(entry, wps) === null),
+    );
   }
 }
 
@@ -648,14 +819,19 @@ reset();
   // 1. URL 必须带 validate=1（否则又走回不验证的老路）
   await callWith({ provider: 'qq', loggedIn: false, expired: true, error: 'AUTH_EXPIRED' });
   const url = fetchCalls[0] || '';
-  expect('43. getAuthStatusValidated URL 带 validate=1',
-    url.includes('provider=qq') && url.includes('validate=1'));
+  expect(
+    '43. getAuthStatusValidated URL 带 validate=1',
+    url.includes('provider=qq') && url.includes('validate=1'),
+  );
   expect('43b. 同时带 extended=1（复用 AuthStatusExtended）', url.includes('extended=1'));
 
   // 2. 过期响应能透出 expired / error / message
   const exp = await callWith({
-    provider: 'qq', loggedIn: false, expired: true,
-    error: 'AUTH_EXPIRED', message: 'QQ 登录已过期，请重新登录',
+    provider: 'qq',
+    loggedIn: false,
+    expired: true,
+    error: 'AUTH_EXPIRED',
+    message: 'QQ 登录已过期，请重新登录',
   });
   expect('44. 过期响应 expired=true', exp.expired === true);
   expect('45. 过期响应 error=AUTH_EXPIRED', exp.error === 'AUTH_EXPIRED');

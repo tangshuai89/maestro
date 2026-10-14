@@ -115,24 +115,18 @@ describe('TheaterView 歌词交互', () => {
 
   it('4. 导出状态机：working → done 文案切换 + 禁用', async () => {
     const { rerender } = render(
-      <TheaterView
-        {...makeProps({ lyricsExportState: 'working', onExportLyrics: vi.fn() })}
-      />,
+      <TheaterView {...makeProps({ lyricsExportState: 'working', onExportLyrics: vi.fn() })} />,
     );
     const btn = screen.getByRole('button', { name: /导出中/ });
     expect(btn).toBeDisabled();
 
     rerender(
-      <TheaterView
-        {...makeProps({ lyricsExportState: 'done', onExportLyrics: vi.fn() })}
-      />,
+      <TheaterView {...makeProps({ lyricsExportState: 'done', onExportLyrics: vi.fn() })} />,
     );
     expect(screen.getByRole('button', { name: /已导出/ })).toBeEnabled();
 
     rerender(
-      <TheaterView
-        {...makeProps({ lyricsExportState: 'error', onExportLyrics: vi.fn() })}
-      />,
+      <TheaterView {...makeProps({ lyricsExportState: 'error', onExportLyrics: vi.fn() })} />,
     );
     expect(screen.getByRole('button', { name: /导出失败/ })).toBeEnabled();
   });
@@ -141,9 +135,7 @@ describe('TheaterView 歌词交互', () => {
     // 必须给返回值：按钮现在按 res.lines.length 判「换到了」还是「白跑」
     const onRetryLyrics = vi.fn().mockResolvedValue({ lines: [{ time: 1, text: 'x' }] });
     render(
-      <TheaterView
-        {...makeProps({ lyrics: null, onRetryLyrics, onExportLyrics: vi.fn() })}
-      />,
+      <TheaterView {...makeProps({ lyrics: null, onRetryLyrics, onExportLyrics: vi.fn() })} />,
     );
     expect(screen.getByText(/暂无歌词/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /换个源找歌词/ }));
@@ -158,19 +150,13 @@ describe('TheaterView 歌词交互', () => {
   });
 
   it('6. 无歌词时不显示导出按钮', () => {
-    render(
-      <TheaterView
-        {...makeProps({ lyrics: null, onExportLyrics: vi.fn() })}
-      />,
-    );
+    render(<TheaterView {...makeProps({ lyrics: null, onExportLyrics: vi.fn() })} />);
     expect(screen.queryByRole('button', { name: /导出歌词图/ })).toBeNull();
   });
 
   it('7. 合并徽章：mergedFrom > 1 才显示', () => {
     const { rerender } = render(
-      <TheaterView
-        {...makeProps({ lyricsMergedFrom: ['qq'], lyricsAdded: 0 })}
-      />,
+      <TheaterView {...makeProps({ lyricsMergedFrom: ['qq'], lyricsAdded: 0 })} />,
     );
     expect(screen.queryByText(/MERGED/)).toBeNull();
     rerender(
@@ -193,12 +179,9 @@ describe('TheaterView 歌词交互', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
     // currentTime=10 落在 LYRICS[2]；synced=true → 每行都带时间戳
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      [
-        '[00:01.00] 第一句',
-        '[00:05.00] 第二句',
-        '[00:09.00] 第三句',
-        '[00:13.00] 第四句',
-      ].join('\n'),
+      ['[00:01.00] 第一句', '[00:05.00] 第二句', '[00:09.00] 第三句', '[00:13.00] 第四句'].join(
+        '\n',
+      ),
     );
   });
 
@@ -208,9 +191,7 @@ describe('TheaterView 歌词交互', () => {
 
     await user.click(screen.getByRole('button', { name: /复制歌词/ }));
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      '第一句\n第二句\n第三句\n第四句',
-    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('第一句\n第二句\n第三句\n第四句');
   });
 
   it('10. 「复制本行」→ 只写当前行；activeLine<0 时禁用', async () => {
@@ -264,8 +245,6 @@ describe('TheaterView 歌词交互', () => {
     render(<TheaterView {...makeProps({ onRetryLyrics: miss })} />);
     await user.click(screen.getByRole('button', { name: /换个源找歌词/ }));
     expect(miss).toHaveBeenCalledTimes(1);
-    expect(
-      await screen.findByRole('button', { name: /其它源也没有歌词/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /其它源也没有歌词/ })).toBeInTheDocument();
   });
 });

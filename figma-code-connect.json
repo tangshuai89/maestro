@@ -16,7 +16,10 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (D2 收敛后内联，原 components/player/TransportBar.tsx 已删；如需独立 export 见未来 task)",
       "props": {
-        "liked": { "figmaProp": "state", "map": { "liked": true, "unliked": false, "fanout": true } },
+        "liked": {
+          "figmaProp": "state",
+          "map": { "liked": true, "unliked": false, "fanout": true }
+        },
         "fanOutCount": { "figmaProp": "fanOutCount", "type": "number" }
       }
     },
@@ -30,7 +33,10 @@
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum" },
         "size": { "figmaProp": "size", "map": { "sm": 16, "md": 20 } },
-        "disabled": { "figmaProp": "state", "map": { "disabled": true, "default": false, "hover": false, "active": false } }
+        "disabled": {
+          "figmaProp": "state",
+          "map": { "disabled": true, "default": false, "hover": false, "active": false }
+        }
       }
     },
     {
@@ -154,7 +160,11 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (内联 button；未来如独立提取，可参考 modals/SettingsModal 中 mkButton 模式)",
       "props": {
-        "tone": { "figmaProp": "tone", "type": "enum", "map": { "default": "", "accent": "accent", "danger": "danger" } },
+        "tone": {
+          "figmaProp": "tone",
+          "type": "enum",
+          "map": { "default": "", "accent": "accent", "danger": "danger" }
+        },
         "state": { "figmaProp": "state", "type": "enum" },
         "label": { "figmaProp": "label", "type": "string" }
       }
@@ -189,10 +199,20 @@
       "reactPath": "packages/renderer/src/components/search/SearchPanel.tsx",
       "_status": "D1_DONE",
       "props": {
-        "onPlay": { "figmaProp": "(回调)", "type": "function", "args": "items: UnifiedSearchItem[], index: number" },
+        "onPlay": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "items: UnifiedSearchItem[], index: number"
+        },
         "onClose": { "figmaProp": "(回调)", "type": "function" },
         "onOpenNL": { "figmaProp": "(回调)", "type": "function?", "args": "—（打开 NL 歌单弹窗）" },
-        "wpsReady": { "figmaProp": "state", "type": "boolean?", "default": "undefined", "map": { "true": "connected", "false": "disconnected" }, "desc": "Spotify Web Playback SDK 是否已连；决定 Spotify 独占源算不算能出声" }
+        "wpsReady": {
+          "figmaProp": "state",
+          "type": "boolean?",
+          "default": "undefined",
+          "map": { "true": "connected", "false": "disconnected" },
+          "desc": "Spotify Web Playback SDK 是否已连；决定 Spotify 独占源算不算能出声"
+        }
       }
     },
     {
@@ -203,9 +223,21 @@
       "_status": "D1_DONE",
       "props": {
         "onClose": { "figmaProp": "(回调)", "type": "function" },
-        "onPlay": { "figmaProp": "(回调)", "type": "function", "args": "items: UnifiedSearchItem[], index: number" },
-        "refreshSignal": { "figmaProp": "(数据刷新信号)", "type": "number?", "default": "undefined" },
-        "onImportSettled": { "figmaProp": "(回调)", "type": "function?", "args": "newCount: number | undefined" }
+        "onPlay": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "items: UnifiedSearchItem[], index: number"
+        },
+        "refreshSignal": {
+          "figmaProp": "(数据刷新信号)",
+          "type": "number?",
+          "default": "undefined"
+        },
+        "onImportSettled": {
+          "figmaProp": "(回调)",
+          "type": "function?",
+          "args": "newCount: number | undefined"
+        }
       }
     },
     {
@@ -217,10 +249,22 @@
       "props": {
         "onClose": { "figmaProp": "(回调)", "type": "function" },
         "playerMode": { "figmaProp": "playerMode", "type": "enum[theater|mini|lite]" },
-        "onChangePlayerMode": { "figmaProp": "(回调)", "type": "function", "args": "mode: 'theater' | 'mini' | 'lite'" },
-        "audioFx": { "figmaProp": "state", "type": "object", "desc": "EQ 偏好镜像：eqEnabled / eqGains[10] / presetId / crossfadeSec（specs/audio-fx）" },
+        "onChangePlayerMode": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "mode: 'theater' | 'mini' | 'lite'"
+        },
+        "audioFx": {
+          "figmaProp": "state",
+          "type": "object",
+          "desc": "EQ 偏好镜像：eqEnabled / eqGains[10] / presetId / crossfadeSec（specs/audio-fx）"
+        },
         "onEqEnabled": { "figmaProp": "(回调)", "type": "function", "args": "enabled: boolean" },
-        "onEqBandGain": { "figmaProp": "(回调)", "type": "function", "args": "index: number, dB: number" },
+        "onEqBandGain": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "index: number, dB: number"
+        },
         "onApplyEqPreset": { "figmaProp": "(回调)", "type": "function", "args": "presetId: string" }
       }
     },
@@ -247,7 +291,11 @@
         "onRetry": { "figmaProp": "(回调)", "type": "function" },
         "onReLogin": { "figmaProp": "(回调)", "type": "function" },
         "onSwitch": { "figmaProp": "(回调)", "type": "function" },
-        "onPasteCookie": { "figmaProp": "(回调，可选)", "type": "function?", "note": "仅 provider=qq|netease 时显示按钮" },
+        "onPasteCookie": {
+          "figmaProp": "(回调，可选)",
+          "type": "function?",
+          "note": "仅 provider=qq|netease 时显示按钮"
+        },
         "onDismiss": { "figmaProp": "(回调)", "type": "function" }
       }
     },
@@ -268,7 +316,11 @@
       "_status": "D1_DONE",
       "props": {
         "onClose": { "figmaProp": "(回调)", "type": "function" },
-        "panelClassName": { "figmaProp": "(额外 class)", "type": "string?", "default": "undefined" },
+        "panelClassName": {
+          "figmaProp": "(额外 class)",
+          "type": "string?",
+          "default": "undefined"
+        },
         "children": { "figmaProp": "(ReactNode 槽位)", "type": "ReactNode" }
       }
     },
@@ -323,7 +375,11 @@
       "_status": "D1_DONE",
       "props": {
         "provider": { "figmaProp": "provider", "type": "MusicProvider" },
-        "onSwitchProvider": { "figmaProp": "(回调)", "type": "function", "args": "p: MusicProvider" },
+        "onSwitchProvider": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "p: MusicProvider"
+        },
         "deezerEditorials": { "figmaProp": "deezerEditorials", "type": "DeezerEditorial[]" },
         "deezerPreset": { "figmaProp": "deezerPreset", "type": "string" },
         "onChangeDeezerPreset": { "figmaProp": "(回调)", "type": "function", "args": "p: string" },

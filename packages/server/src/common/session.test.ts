@@ -184,8 +184,11 @@ check('11. setPref 持久化到磁盘', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mbx-session-test-'));
   const storage = new StorageService({ storageDir: dir });
   const cfg = {
-    storageDir: dir, sessionSecret: 's', sessionTtlMs: 7 * 24 * 3600 * 1000,
-    backupDir: path.join(dir, 'b'), backupRetention: 7,
+    storageDir: dir,
+    sessionSecret: 's',
+    sessionTtlMs: 7 * 24 * 3600 * 1000,
+    backupDir: path.join(dir, 'b'),
+    backupRetention: 7,
   };
   const s1 = new SessionService(storage, cfg);
   const { req, res } = fakeReqRes();
@@ -252,7 +255,10 @@ check('14. destroy：删除会话 + clearCookie', () => {
   assert.strictEqual(res2.cookies['mb_session'], undefined, 'cookie 已清除');
   // 再 require 应 401
   const { req: req3, res: res3 } = fakeReqRes(s.id);
-  assert.throws(() => session.require(req3, res3), (e: any) => e.status === 401);
+  assert.throws(
+    () => session.require(req3, res3),
+    (e: any) => e.status === 401,
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -262,15 +268,20 @@ check('15. evictExpired：过期会话被清理', () => {
   const storage = new StorageService({ storageDir: dir });
   // 设一个极短的 TTL（1ms）
   const cfg = {
-    storageDir: dir, sessionSecret: 's', sessionTtlMs: 1,
-    backupDir: path.join(dir, 'b'), backupRetention: 7,
+    storageDir: dir,
+    sessionSecret: 's',
+    sessionTtlMs: 1,
+    backupDir: path.join(dir, 'b'),
+    backupRetention: 7,
   };
   const session = new SessionService(storage, cfg);
   const { req, res } = fakeReqRes();
   const s = session.resolve(req, res);
   // 等待 > 1ms
   const start = Date.now();
-  while (Date.now() - start < 5) { /* spin */ }
+  while (Date.now() - start < 5) {
+    /* spin */
+  }
   // 触发 evictExpired（通过新建 SessionService 模拟，构造函数会调）
   const storage2 = new StorageService({ storageDir: dir });
   const session2 = new SessionService(storage2, cfg);

@@ -30,28 +30,21 @@
       「九十年代摇滚，排除周杰伦」→ exclude_artists=[周杰伦] + era 1990–1999；
       「像 Deadmau5 那种」→ similar_artists=[Deadmau5] + genres=progressive house。
       两条约束都被 `intentToPromptHints` 翻译进 prompt（该函数有单测覆盖）。
-- [x] **C3** 错误路径：缺 key / 429 / 5xx / JSON parse fail / network — UI 全部友好提示
-      > 服务端 5 条路径已在 `nl-playlist.e2e.test.ts` 覆盖（428/429/5xx/502 非 JSON
-      > + 400 输入校验）；renderer 侧 NLPlaylistModal 三处 error banner
-      > （生成失败 / 歌单操作失败 / parse-intent 400）均 fail loud 不静默。
-- [x] **C4** e2e：输入 → 队列 → 播放 → 保存歌单 → 重开仍在
-      > 自动化部分（`nl-playlist.e2e.test.ts`，上游 DeepSeek 全 stub 不出网）：
-      > parse-intent happy path + 库上下文进 prompt + 歌单 CRUD 全链路 + 错误路径。
-      > **未覆盖**：「≥10 首可播队列」与「跨平台回填命中率」需真实 DeepSeek key +
-      > 出网，属 C1 人工环节。
+- [x] **C3** 错误路径：缺 key / 429 / 5xx / JSON parse fail / network — UI 全部友好提示 > 服务端 5 条路径已在 `nl-playlist.e2e.test.ts` 覆盖（428/429/5xx/502 非 JSON > + 400 输入校验）；renderer 侧 NLPlaylistModal 三处 error banner > （生成失败 / 歌单操作失败 / parse-intent 400）均 fail loud 不静默。
+- [x] **C4** e2e：输入 → 队列 → 播放 → 保存歌单 → 重开仍在 > 自动化部分（`nl-playlist.e2e.test.ts`，上游 DeepSeek 全 stub 不出网）：> parse-intent happy path + 库上下文进 prompt + 歌单 CRUD 全链路 + 错误路径。> **未覆盖**：「≥10 首可播队列」与「跨平台回填命中率」需真实 DeepSeek key + > 出网，属 C1 人工环节。
 
 ## 排期
 
-| commit | 内容 | 估时 |
-|---|---|---|
-| 1 | A1+A2 | 0.5d |
-| 2 | A3 | 0.5d |
-| 3 | A4+A5 | 0.5d |
-| 4 | A6（单测） | 内含在 A1-A5 |
-| 5 | B1+B2+B3 | 1d |
-| 6 | B4+B5 | 0.5d |
-| 7 | C1-C4 | 1d |
-| **总** | 7 commit / 1 PR | **4d** |
+| commit | 内容            | 估时         |
+| ------ | --------------- | ------------ |
+| 1      | A1+A2           | 0.5d         |
+| 2      | A3              | 0.5d         |
+| 3      | A4+A5           | 0.5d         |
+| 4      | A6（单测）      | 内含在 A1-A5 |
+| 5      | B1+B2+B3        | 1d           |
+| 6      | B4+B5           | 0.5d         |
+| 7      | C1-C4           | 1d           |
+| **总** | 7 commit / 1 PR | **4d**       |
 
 ## 不在本 PR 范围（v2 留）
 

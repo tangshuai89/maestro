@@ -66,12 +66,18 @@ function stripComments(lines) {
     while (i < s.length) {
       if (inBlock) {
         const end = s.indexOf('*/', i);
-        if (end === -1) { i = s.length; break; }
+        if (end === -1) {
+          i = s.length;
+          break;
+        }
         inBlock = false;
         i = end + 2;
       } else {
         const start = s.indexOf('/*', i);
-        if (start === -1) { out += s.slice(i); break; }
+        if (start === -1) {
+          out += s.slice(i);
+          break;
+        }
         out += s.slice(i, start);
         inBlock = true;
         i = start + 2;
@@ -142,7 +148,9 @@ if (WRITE_BUDGET) {
     exempt,
   };
   writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
-  console.log(`已写入预算: ${BUDGET_PATH}（${Object.keys(scopedByFile).length} 个文件，合计 ${total} 处）`);
+  console.log(
+    `已写入预算: ${BUDGET_PATH}（${Object.keys(scopedByFile).length} 个文件，合计 ${total} 处）`,
+  );
   process.exit(0);
 }
 
@@ -160,8 +168,10 @@ if (BY_VALUE) {
   console.log(`按色值聚合 — ${sorted.length} 个不同值 / ${total} 处\n`);
   for (const v of sorted) {
     const files = [...v.files];
-    console.log(`  ${String(v.count).padStart(3)}×  ${v.literal.padEnd(28)} ${files.length} 个文件` +
-      (files.length <= 3 ? `  (${files.join(', ')})` : `  (${files.slice(0, 3).join(', ')} …)`));
+    console.log(
+      `  ${String(v.count).padStart(3)}×  ${v.literal.padEnd(28)} ${files.length} 个文件` +
+        (files.length <= 3 ? `  (${files.join(', ')})` : `  (${files.slice(0, 3).join(', ')} …)`),
+    );
   }
   process.exit(0);
 }
@@ -177,19 +187,47 @@ for (const [file, allowed] of Object.entries(budget)) {
 const unbudgeted = Object.keys(scopedByFile).filter((f) => !(f in budget));
 
 if (AS_JSON) {
-  console.log(JSON.stringify({ total, rawTotal, byFile: scopedByFile, exemptHits, unbudgeted, over, slack, selfRefs, findings: scoped }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        total,
+        rawTotal,
+        byFile: scopedByFile,
+        exemptHits,
+        unbudgeted,
+        over,
+        slack,
+        selfRefs,
+        findings: scoped,
+      },
+      null,
+      2,
+    ),
+  );
   process.exit(GATE && (over.length || unbudgeted.length) ? 1 : 0);
 }
 
 console.log(`硬编码颜色扫描 — ${files.length} 个文件`);
 console.log(`  令牌层（不计入）: ${[...TOKEN_LAYER].map((f) => f.split('/').pop()).join(', ')}`);
-console.log(`  命中总数: ${total} 处 / ${Object.keys(scopedByFile).length} 个文件` +
-  (Object.keys(exemptHits).length ? `（另有 ${rawTotal - total} 处在 ${Object.keys(exemptHits).length} 个豁免文件里，见下）` : '') + '\n');
+console.log(
+  `  命中总数: ${total} 处 / ${Object.keys(scopedByFile).length} 个文件` +
+    (Object.keys(exemptHits).length
+      ? `（另有 ${rawTotal - total} 处在 ${Object.keys(exemptHits).length} 个豁免文件里，见下）`
+      : '') +
+    '\n',
+);
 
 const top = Object.entries(scopedByFile).sort((a, b) => b[1] - a[1]);
 for (const [file, n] of top) {
   const b = budget[file];
-  const tag = b === undefined ? '（无预算）' : b === n ? '' : b > n ? `（预算 ${b}，可下调到 ${n}）` : `（预算 ${b}，**超出 ${n - b}**）`;
+  const tag =
+    b === undefined
+      ? '（无预算）'
+      : b === n
+        ? ''
+        : b > n
+          ? `（预算 ${b}，可下调到 ${n}）`
+          : `（预算 ${b}，**超出 ${n - b}**）`;
   console.log(`  ${String(n).padStart(3)}  ${file}${tag}`);
 }
 
@@ -200,7 +238,8 @@ if (VERBOSE) {
 
 if (Object.keys(exemptHits).length) {
   console.log(`\nℹ️  豁免文件（算法生成颜色，不参与门禁）${Object.keys(exemptHits).length} 个:`);
-  for (const [file, n] of Object.entries(exemptHits)) console.log(`  ${String(n).padStart(3)}  ${file}  — ${exempt[file]}`);
+  for (const [file, n] of Object.entries(exemptHits))
+    console.log(`  ${String(n).padStart(3)}  ${file}  — ${exempt[file]}`);
 }
 
 if (selfRefs.length) {
@@ -216,9 +255,12 @@ if (!GATE) {
 const bad = over.length + unbudgeted.length;
 if (bad) {
   console.log('\n❌ 门禁失败:');
-  for (const o of over) console.log(`   ${o.file}: ${o.actual} > 预算 ${o.allowed}（超出 ${o.actual - o.allowed}）`);
+  for (const o of over)
+    console.log(`   ${o.file}: ${o.actual} > 预算 ${o.allowed}（超出 ${o.actual - o.allowed}）`);
   for (const f of unbudgeted) console.log(`   ${f}: ${scopedByFile[f]} 处，但没有预算条目`);
-  console.log('\n   改法二选一: 把硬编码换成 var(--token)；或（仅当你确实要新增设计自由）把预算调高并说明原因。');
+  console.log(
+    '\n   改法二选一: 把硬编码换成 var(--token)；或（仅当你确实要新增设计自由）把预算调高并说明原因。',
+  );
   process.exit(1);
 }
 console.log('\n✅ 门禁通过: 没有文件超预算');

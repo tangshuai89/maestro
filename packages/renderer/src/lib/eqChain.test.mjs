@@ -159,9 +159,7 @@ async function main() {
     const built = createEqChain(host, EQ_BANDS);
     const gains = [1, -2, 3, 4, 5, 6, 7, 8, 9, 10];
     // 建链时会写一次 gain.value=0（初始化，合理）；这里量的是「push 之后有没有新增阶跃赋值」
-    const assignBefore = filters.map(
-      (f) => f.calls.filter((c) => c.kind === 'value=').length,
-    );
+    const assignBefore = filters.map((f) => f.calls.filter((c) => c.kind === 'value=').length);
     pushEqGains(built, gains, 12.5, true);
     for (let i = 0; i < 10; i++) {
       const ramp = filters[i].calls.filter((c) => c.kind === 'setTargetAtTime');
@@ -207,10 +205,7 @@ async function main() {
       const ramp = filters[i].calls.filter((c) => c.kind === 'setTargetAtTime');
       assert.strictEqual(ramp.length, 1, `第 ${i} 段漏推或越界`);
     }
-    assert.strictEqual(
-      filters[0].calls.find((c) => c.kind === 'setTargetAtTime').v,
-      1,
-    );
+    assert.strictEqual(filters[0].calls.find((c) => c.kind === 'setTargetAtTime').v, 1);
     assert.strictEqual(
       filters[2].calls.find((c) => c.kind === 'setTargetAtTime').v,
       0,

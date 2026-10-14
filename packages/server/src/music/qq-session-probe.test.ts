@@ -218,8 +218,11 @@ async function main() {
     });
     await probeQqSessionUncached(COOKIE, UIN);
     restore();
-    assert.deepStrictEqual(sentMids, [PROBE_A, PROBE_B, PROBE_C],
-      '应一次请求批量打 3 首探针歌（不增请求数）');
+    assert.deepStrictEqual(
+      sentMids,
+      [PROBE_A, PROBE_B, PROBE_C],
+      '应一次请求批量打 3 首探针歌（不增请求数）',
+    );
     ok('11. 单次请求批量携带 3 个探针 songmid');
   }
 

@@ -111,9 +111,14 @@ async function main() {
       const r1 = await client.call('POST', '/auth/spotify/cancel', {});
       assert.strictEqual(r1.status, 401, `POST 无 header 应 401，实际 ${r1.status}`);
       // 正确 header
-      const r2 = await client.call('POST', '/auth/spotify/cancel', {}, {
-        'x-maestro-token': 'test-secret-token-abc',
-      });
+      const r2 = await client.call(
+        'POST',
+        '/auth/spotify/cancel',
+        {},
+        {
+          'x-maestro-token': 'test-secret-token-abc',
+        },
+      );
       assert.strictEqual(r2.status, 201, `POST 正确 header 应放行，实际 ${r2.status}`);
       console.log('✅ 5. POST 端点也受 guard 保护');
     } finally {
@@ -133,7 +138,6 @@ main().catch((e) => {
   console.error('❌ auth-guard.test 失败:', e);
   process.exit(1);
 });
-
 
 // ─────────────────────────────────────────────────────────────────────
 // Audit A1 (consistency-fixes T1): media GET routes are exempt from
@@ -181,9 +185,7 @@ async function mediaRouteRegression() {
         401,
         `/music/cover-proxy 无 token 不应 401，实际 ${r.status}`,
       );
-      console.log(
-        `✅ A1.2 /music/cover-proxy 无 token → ${r.status}（guard 未拦）`,
-      );
+      console.log(`✅ A1.2 /music/cover-proxy 无 token → ${r.status}（guard 未拦）`);
     } finally {
       await app.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -197,14 +199,8 @@ async function mediaRouteRegression() {
     const { app, client } = await createApp(tmpDir);
     try {
       const r = await client.call('GET', '/music/stream/deezer/99999999');
-      assert.notStrictEqual(
-        r.status,
-        401,
-        `/music/stream 无 token 不应 401，实际 ${r.status}`,
-      );
-      console.log(
-        `✅ A1.3 /music/stream 无 token → ${r.status}（guard 未拦）`,
-      );
+      assert.notStrictEqual(r.status, 401, `/music/stream 无 token 不应 401，实际 ${r.status}`);
+      console.log(`✅ A1.3 /music/stream 无 token → ${r.status}（guard 未拦）`);
     } finally {
       await app.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -217,18 +213,9 @@ async function mediaRouteRegression() {
     process.env.MAESTRO_INTERNAL_TOKEN = 'test-secret-token-abc';
     const { app, client } = await createApp(tmpDir);
     try {
-      const r = await client.call(
-        'GET',
-        '/music/lyrics?provider=deezer&trackId=99999999',
-      );
-      assert.notStrictEqual(
-        r.status,
-        401,
-        `/music/lyrics 无 token 不应 401，实际 ${r.status}`,
-      );
-      console.log(
-        `✅ A1.4 /music/lyrics 无 token → ${r.status}（guard 未拦）`,
-      );
+      const r = await client.call('GET', '/music/lyrics?provider=deezer&trackId=99999999');
+      assert.notStrictEqual(r.status, 401, `/music/lyrics 无 token 不应 401，实际 ${r.status}`);
+      console.log(`✅ A1.4 /music/lyrics 无 token → ${r.status}（guard 未拦）`);
     } finally {
       await app.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -242,11 +229,7 @@ async function mediaRouteRegression() {
     const { app, client } = await createApp(tmpDir);
     try {
       const r = await client.call('GET', '/music/liked?provider=qq');
-      assert.strictEqual(
-        r.status,
-        401,
-        `/music/liked 无 token 应仍 401，实际 ${r.status}`,
-      );
+      assert.strictEqual(r.status, 401, `/music/liked 无 token 应仍 401，实际 ${r.status}`);
       console.log('✅ A1.5 /music/liked 无 token → 仍 401（保护未失效）');
     } finally {
       await app.close();

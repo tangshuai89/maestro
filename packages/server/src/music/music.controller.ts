@@ -669,8 +669,7 @@ export class MusicController {
       // 这里保留类型化状态码是为了：不认识 401 的旧客户端能分辨，
       // 以及将来若加 pre-flight 就能直接用。
       const body = (err as { getResponse?: () => unknown })?.getResponse?.() as
-        | { error?: string; message?: string }
-        | undefined;
+        { error?: string; message?: string } | undefined;
       if (body?.error === 'AUTH_EXPIRED') {
         res.status(401).json({ error: 'AUTH_EXPIRED', message: body.message });
         return;

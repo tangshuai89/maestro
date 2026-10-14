@@ -58,11 +58,13 @@ Response: { ok: true }
 ### 前端
 
 设置页（SettingsPanel 或 SidePanel）：
+
 - "DeepSeek API Key" 输入框（type=password），存/改
 - 留 "DeepSeek 平台" 链接：https://platform.deepseek.com
 - key 状态行："已配置（key 末 4 位 ab12）"/ "未配置"
 
 主界面：
+
 - "🎲 推荐" 按钮（搜索按钮旁边）
 - 点击 → POST /api/reco/run → 拿到 UnifiedSearchItem[] → 直接走 P0 的播放队列
 
@@ -107,12 +109,12 @@ Response: { ok: true }
 **问题诊断**（2026-09-20 读全链路后确认）：v1.1 的质量瓶颈不在 prompt 细节，而在
 **输入信号**与**候选来源**两层。prompt 已堆到 11 条硬规则，继续加规则边际收益≈0。
 
-| 根因 | 现状证据 | 后果 |
-| --- | --- | --- |
-| 只有「红心」一种信号 | 全 server 无播放/跳过/完播记录 | 口味是多年红心的平均脸，不知道你**最近**在听什么 |
-| 随机采样打散口味结构 | `sampleLibrary` 全库均匀随机 150 首，每次 run 换样 | 混合库拿到的是风格沙拉；第 3 次 run 起"不像我" |
-| 候选来自模型自由生成 | 产物是 `{title, artist}`，幻觉条目在 fill 阶段被丢 | 白烧 token + 模型只敢推超热门曲，深层口味出不来 |
-| 无多样性控制 | 按模型输出顺序收下，无艺人配额 | 一位歌手可占满整批 |
+| 根因                 | 现状证据                                           | 后果                                             |
+| -------------------- | -------------------------------------------------- | ------------------------------------------------ |
+| 只有「红心」一种信号 | 全 server 无播放/跳过/完播记录                     | 口味是多年红心的平均脸，不知道你**最近**在听什么 |
+| 随机采样打散口味结构 | `sampleLibrary` 全库均匀随机 150 首，每次 run 换样 | 混合库拿到的是风格沙拉；第 3 次 run 起"不像我"   |
+| 候选来自模型自由生成 | 产物是 `{title, artist}`，幻觉条目在 fill 阶段被丢 | 白烧 token + 模型只敢推超热门曲，深层口味出不来  |
+| 无多样性控制         | 按模型输出顺序收下，无艺人配额                     | 一位歌手可占满整批                               |
 
 **v2 架构**：`口味档案 → 目录锚定候选池 → LLM 挑选/排序 → 白名单校验 → 填源`
 
@@ -129,14 +131,14 @@ Response: { ok: true }
   - 平台 FM：QQ / 网易云私人 FM / Deezer 榜单（未登录/失败即跳过，fail-soft）
   - 候选去重（`normalizeKey`）→ 剔除库内 + exclude + 坏版本 → 单艺人在池内上限
 - [x] **LLM 改为挑选 + 排序**：prompt 收短，输出 `{ "picks": [ { "id": 3, "reason": "…" } ] }`；
-  `id` 必须落在候选池下标内（**白名单校验**，幻觉 id/越界一律丢弃）
+      `id` 必须落在候选池下标内（**白名单校验**，幻觉 id/越界一律丢弃）
 - [x] **回退**：候选池不足（< count）或挑选解析失败 → 回退 v1.1 自由生成路径，
-  行为与错误码不变（不因新路径失败而让推荐整体报错）
+      行为与错误码不变（不因新路径失败而让推荐整体报错）
 - [x] **多样性**：同一归一艺人最多 2 首（候选池限 + 最终装配限两道）
 - [x] 保留 v1.1 全部既有保证：版本纯净度 / 时长过滤 / 填源匹配校验 / 封面兜底 /
-  库 + 历史去重 / exclude 避让 / 429 与网络错误 fail loud
+      库 + 历史去重 / exclude 避让 / 429 与网络错误 fail loud
 - [x] `POST /api/reco/run` 响应新增 `mode: 'select' | 'generate'` + `candidateCount`
-  （调试与效果对比用，向后兼容的可选字段）
+      （调试与效果对比用，向后兼容的可选字段）
 
 ## 推荐质量调优（v2.1，2026-09-20）— 延迟包 + 行为信号
 
@@ -196,17 +198,19 @@ Response: { ok: true }
 不切到 batch 2 的前 3 首。
 
 **做法**：
+
 - `usePlayer` 暴露 reactive 的 `queueIdx` + `queueUnifiedItems`——presentTrack
   / switchToProvider / resetForSwitch 都同步写一次（避免 ref 改完没 re-render）
 - `useReco` 删掉内部 `suggestions` state，改 `useMemo` 从队列位置派生：
   `queueUnifiedItems.slice(queueIdx, queueIdx + 3)` → 始终是「**正在播 + 接下来 2**」
 
 **取舍**：
+
 - 视觉：第 4 首开始图鉴翻页（idx 1/2/3 → idx 3 → idx 10 batch 切换）；
 - 失败模式：如果队列突然被切空（resetForSwitch），`queueIdx = -1` → 图鉴空，
   这是预期行为，比「卡在陈旧 batch 1」更直白；
 - 跨平台降级同一首重 presentTrack 不会回放新卡片：`setQueueSnapshot(prev =>
-  prev.idx === newIdx ? prev : ...)` 守门（reco.test #13 同款 closure-trap 风险）。
+prev.idx === newIdx ? prev : ...)` 守门（reco.test #13 同款 closure-trap 风险）。
 
 ## 离线评测基座（v2.2，2026-09-20）
 
@@ -218,10 +222,10 @@ Response: { ok: true }
 
 指标刻意分两层，直接告诉我们损失发生在哪一段：
 
-| 层 | 指标 | 含义 |
-| --- | --- | --- |
-| 检索 | `poolRecall` / `poolRecallTop20` | 藏起来的歌有没有进候选池（候选生成 Problem？） |
-| 选择 | `recallAtK` / `MRR` | 候选里的歌有没有真被推给用户（LLM 挑选 Problem？） |
+| 层   | 指标                             | 含义                                               |
+| ---- | -------------------------------- | -------------------------------------------------- |
+| 检索 | `poolRecall` / `poolRecallTop20` | 藏起来的歌有没有进候选池（候选生成 Problem？）     |
+| 选择 | `recallAtK` / `MRR`              | 候选里的歌有没有真被推给用户（LLM 挑选 Problem？） |
 
 再加一档拆分：**同艺人 / 新艺人**。同艺人的歌我们本来就会搜这位艺人，天然容易
 捞到——**新艺人那一档才反映泛化能力**，看结果时别被同艺人的高分骗了。

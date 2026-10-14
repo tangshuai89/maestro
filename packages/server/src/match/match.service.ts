@@ -137,9 +137,9 @@ export class MatchService {
    *   才算 exact；否则一律 fuzzy 或 none。
    */
   async findEquivalent(seed: Track): Promise<MatchResult> {
-    const otherProviders: MusicProvider[] = (
-      ['qq', 'netease', 'deezer'] as MusicProvider[]
-    ).filter((p) => p !== seed.provider);
+    const otherProviders: MusicProvider[] = (['qq', 'netease', 'deezer'] as MusicProvider[]).filter(
+      (p) => p !== seed.provider,
+    );
 
     const variants = this.generateQueryVariants(seed.title, seed.artist);
     const variantCount = Math.min(variants.length, QUERY_VARIANT_COUNT);
@@ -229,13 +229,15 @@ export class MatchService {
    */
   private stripAllParenContent(s: string): string {
     if (!s) return s;
-    return s
-      // 半角括号
-      .replace(/[(\[][^\])]*[\])]/g, '')
-      // 全角 / 中式 / 日式括号
-      .replace(/[（【〔《〈【［][^）】〕》〉】］]*[）】〕》〉】］]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return (
+      s
+        // 半角括号
+        .replace(/[(\[][^\])]*[\])]/g, '')
+        // 全角 / 中式 / 日式括号
+        .replace(/[（【〔《〈【［][^）】〕》〉】］]*[）】〕》〉】］]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    );
   }
 
   /**
@@ -258,9 +260,7 @@ export class MatchService {
     if (!inDuration.length) return null;
 
     // Tier 1: strict normalizeKey 相等 → score = 1
-    const strict = inDuration.find(
-      (c) => normalizeKey(c.title, c.artist) === seedKey,
-    );
+    const strict = inDuration.find((c) => normalizeKey(c.title, c.artist) === seedKey);
     if (strict) return { track: strict, score: 1 };
 
     // Tier 2: alt-strict fallback（阶段 E3）—— 剥 title 括号内容后的 strict
@@ -268,9 +268,7 @@ export class MatchService {
     if (strippedTitle && strippedTitle !== seed.title) {
       const altSeedKey = normalizeKey(strippedTitle, seed.artist);
       if (altSeedKey && altSeedKey !== seedKey) {
-        const altStrict = inDuration.find(
-          (c) => normalizeKey(c.title, c.artist) === altSeedKey,
-        );
+        const altStrict = inDuration.find((c) => normalizeKey(c.title, c.artist) === altSeedKey);
         if (altStrict) return { track: altStrict, score: ALT_SCORE };
       }
     }
@@ -286,8 +284,7 @@ export class MatchService {
       // Tier 3: Jaro-Winkler（长度门 + 阈值）
       // 长度差硬门：先剔出版本标签引发的"前缀 + 后缀差异"
       const lenDiff =
-        Math.abs(candKey.length - seedKey.length) /
-        Math.max(candKey.length, seedKey.length);
+        Math.abs(candKey.length - seedKey.length) / Math.max(candKey.length, seedKey.length);
       if (lenDiff <= FUZZY_LENGTH_RATIO_GATE) {
         const jwScore = jaroWinkler(seedKey, candKey);
         if (jwScore >= FUZZY_THRESHOLD && (!best || jwScore > best.score)) {
@@ -331,11 +328,7 @@ export class MatchService {
           }
           if (provider === 'netease') {
             try {
-              return await this.netease.search(
-                {},
-                query,
-                limit,
-              );
+              return await this.netease.search({}, query, limit);
             } catch {
               return [];
             }
@@ -346,17 +339,13 @@ export class MatchService {
           // spotify 等需要 token 的平台：findEquivalent 无 session，无法搜。
           return [];
         } catch (err) {
-          this.logger.debug(
-            `${provider} search failed: ${(err as Error).message}`,
-          );
+          this.logger.debug(`${provider} search failed: ${(err as Error).message}`);
           return [];
         }
       },
       SEARCH_TIMEOUT_MS,
       () =>
-        this.logger.warn(
-          `${provider} search timed out (>${SEARCH_TIMEOUT_MS}ms) for "${query}"`,
-        ),
+        this.logger.warn(`${provider} search timed out (>${SEARCH_TIMEOUT_MS}ms) for "${query}"`),
     );
     return result ?? [];
   }

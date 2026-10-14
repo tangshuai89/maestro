@@ -74,35 +74,35 @@
 
 ### 各平台能力
 
-| 能力                       | 网易云 | QQ 音乐 | Spotify | Deezer |
-| -------------------------- | :----: | :-----: | :-----: | :----: |
-| 登录                       | ✅ 扫码 | ✅ cookie（内嵌窗口） | ✅ OAuth PKCE | ✅ 匿名（免登录） |
-| 播放完整曲目               | ✅ | ✅（标准 / 320 / 无损） | ✅ Premium · 🚧 Free = 30 秒预览 | 🚧 仅 30 秒预览 |
-| 电台 / 推荐流              | ✅ 私人 FM | 🚧 关键词伪电台 | 🚧 短预览 | ✅ 编辑精选榜 |
-| 搜索                       | ✅ | ✅ | 🚧 有限 | ✅ |
-| 本地红心 / 不喜欢          | ✅ | ✅ | ✅ | ✅ |
-| 红心回写到平台             | ✅ | ✅ | ✅ | ✅ |
-| 导入你已有的红心歌曲       | ✅ | ✅ | ✅ | ✅ |
+| 能力                 |   网易云   |         QQ 音乐         |             Spotify              |      Deezer       |
+| -------------------- | :--------: | :---------------------: | :------------------------------: | :---------------: |
+| 登录                 |  ✅ 扫码   |  ✅ cookie（内嵌窗口）  |          ✅ OAuth PKCE           | ✅ 匿名（免登录） |
+| 播放完整曲目         |     ✅     | ✅（标准 / 320 / 无损） | ✅ Premium · 🚧 Free = 30 秒预览 |  🚧 仅 30 秒预览  |
+| 电台 / 推荐流        | ✅ 私人 FM |     🚧 关键词伪电台     |            🚧 短预览             |   ✅ 编辑精选榜   |
+| 搜索                 |     ✅     |           ✅            |             🚧 有限              |        ✅         |
+| 本地红心 / 不喜欢    |     ✅     |           ✅            |                ✅                |        ✅         |
+| 红心回写到平台       |     ✅     |           ✅            |                ✅                |        ✅         |
+| 导入你已有的红心歌曲 |     ✅     |           ✅            |                ✅                |        ✅         |
 
 ### 贯穿性产品功能
 
-| 功能                                          | 状态 |
-| --------------------------------------------- | :--: |
-| 多音源播放器骨架（Electron / React / Nest）    | ✅ |
-| 各平台登录与会话持久化                         | ✅ |
-| 服务端音频代理（真实 URL 永不进入前端）        | ✅ |
-| **AETHER 剧场视图**（1440×900 全息轨道封面 + 歌词流 + 能量核心 + 星云背景，Figma 驱动） | ✅ (PR #56) |
-| 明 / 暗 / 系统主题                            | ✅ |
-| **跨源统一搜索与播放回退**                     | ✅ |
-| **跨平台曲目匹配**（ISRC + 标题/艺人/时长模糊；艺人别名经 `@maestro/common` 桥接） | ✅ |
-| **统一红心曲库**（导入 + 去重；徽章数通过共享 normalizer 端到端对齐） | ✅ |
-| **DeepSeek 自带 Key AI 推荐**                 | ✅ |
-| **红心分发到所有有版权的平台**                 | ✅ |
-| **Spotify 适配器**（OAuth PKCE + 读取 + 红心回写 + WPS Premium 全曲） | ⚠️ dev 完成 · **license 500** 在生产 |
-| 前端架构：CSS/tsx 解耦 + SCSS 7-1 + 拆巨石 | ✅ (PR #13) |
-| **castLabs Electron fork**（Widevine CDM + dev VMP — **生产 VMP 走 EVS**） | ✅ (PR #39) / v31→v43 升级 (PR #52) |
-| **Figma 驱动设计管线**（`.superdesign/` 简报 → `scripts/figma-aether-v4-*.mjs` 构建 → `figma-remote` MCP 审计 → PR #56） | ✅ (PR #56) |
-| **生产打包**（NestJS sidecar + prod API 基址 + **Apple Dev + castLabs EVS VMP 签名**） | 🚧 进行中 |
+| 功能                                                                                                                     |                 状态                 |
+| ------------------------------------------------------------------------------------------------------------------------ | :----------------------------------: |
+| 多音源播放器骨架（Electron / React / Nest）                                                                              |                  ✅                  |
+| 各平台登录与会话持久化                                                                                                   |                  ✅                  |
+| 服务端音频代理（真实 URL 永不进入前端）                                                                                  |                  ✅                  |
+| **AETHER 剧场视图**（1440×900 全息轨道封面 + 歌词流 + 能量核心 + 星云背景，Figma 驱动）                                  |             ✅ (PR #56)              |
+| 明 / 暗 / 系统主题                                                                                                       |                  ✅                  |
+| **跨源统一搜索与播放回退**                                                                                               |                  ✅                  |
+| **跨平台曲目匹配**（ISRC + 标题/艺人/时长模糊；艺人别名经 `@maestro/common` 桥接）                                       |                  ✅                  |
+| **统一红心曲库**（导入 + 去重；徽章数通过共享 normalizer 端到端对齐）                                                    |                  ✅                  |
+| **DeepSeek 自带 Key AI 推荐**                                                                                            |                  ✅                  |
+| **红心分发到所有有版权的平台**                                                                                           |                  ✅                  |
+| **Spotify 适配器**（OAuth PKCE + 读取 + 红心回写 + WPS Premium 全曲）                                                    | ⚠️ dev 完成 · **license 500** 在生产 |
+| 前端架构：CSS/tsx 解耦 + SCSS 7-1 + 拆巨石                                                                               |             ✅ (PR #13)              |
+| **castLabs Electron fork**（Widevine CDM + dev VMP — **生产 VMP 走 EVS**）                                               | ✅ (PR #39) / v31→v43 升级 (PR #52)  |
+| **Figma 驱动设计管线**（`.superdesign/` 简报 → `scripts/figma-aether-v4-*.mjs` 构建 → `figma-remote` MCP 审计 → PR #56） |             ✅ (PR #56)              |
+| **生产打包**（NestJS sidecar + prod API 基址 + **Apple Dev + castLabs EVS VMP 签名**）                                   |              🚧 进行中               |
 
 **大致完成度：~85%。** 本产品定义性的核心功能（统一搜索、匹配引擎、统一库、
 DeepSeek 推荐、红心分发）均端到端可用。剩余主要是生产打包 + 一小撮平台对等
@@ -267,17 +267,17 @@ npm test -- --coverage  # c8 行覆盖率门槛（≥60%）
 
 开发时所有变量都可选，服务端会回退到合理默认值。
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `3200` | NestJS 端口 |
-| `RENDERER_BASE` | `http://localhost:5273` | 登录后重定向基址 |
-| `RENDERER_ORIGINS` | `http://localhost:5273,http://localhost:3000` | CORS 白名单 |
-| `SESSION_SECRET` | 开发占位符 | Cookie 签名密钥 —— **生产必须设置** |
-| `SESSION_TTL_MS` | 30 天 | 会话有效期 |
-| `STORAGE_DIR` | `.storage` | `state.json` 存放位置 |
-| `NETEASE_MUSIC_U` | – | 仅开发：注入网易云 `MUSIC_U` cookie |
-| `NETEASE_QR_POLL_MS` | `1500` | 扫码轮询间隔 |
-| `DEEPSEEK_API_KEY` | – | **运行时由你提供**（自带 Key）—— 服务端从 session 里读 |
+| 变量                 | 默认值                                        | 说明                                                   |
+| -------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `PORT`               | `3200`                                        | NestJS 端口                                            |
+| `RENDERER_BASE`      | `http://localhost:5273`                       | 登录后重定向基址                                       |
+| `RENDERER_ORIGINS`   | `http://localhost:5273,http://localhost:3000` | CORS 白名单                                            |
+| `SESSION_SECRET`     | 开发占位符                                    | Cookie 签名密钥 —— **生产必须设置**                    |
+| `SESSION_TTL_MS`     | 30 天                                         | 会话有效期                                             |
+| `STORAGE_DIR`        | `.storage`                                    | `state.json` 存放位置                                  |
+| `NETEASE_MUSIC_U`    | –                                             | 仅开发：注入网易云 `MUSIC_U` cookie                    |
+| `NETEASE_QR_POLL_MS` | `1500`                                        | 扫码轮询间隔                                           |
+| `DEEPSEEK_API_KEY`   | –                                             | **运行时由你提供**（自带 Key）—— 服务端从 session 里读 |
 
 ---
 

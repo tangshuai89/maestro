@@ -132,11 +132,7 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
       const snapshot = this.storage.getAll();
       // 空 store 不值得备份（首启还没任何登录）。
       if (Object.keys(snapshot).length === 0) return null;
-      const stamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, '-')
-        .replace('T', '_')
-        .slice(0, 19);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
       const dest = path.join(this.cfg.backupDir, `backup-${stamp}.json`);
       fs.writeFileSync(dest, JSON.stringify(snapshot, null, 2));
       this.prune();

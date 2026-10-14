@@ -3,21 +3,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { getLibrary, importLibrary } from '../../api';
 import type { LibraryImportResult, UnifiedSearchItem, MusicProvider } from '../../api';
 import { formatDuration, clampText } from '../../lib/format';
-import {
-  groupLibraryItems,
-  itemPlatforms,
-  versionTagLabel,
-} from '../../lib/groupLibrary';
-import {
-  displayKey,
-  titleAliasMatch,
-  type VersionTag,
-} from '@maestro/common';
+import { groupLibraryItems, itemPlatforms, versionTagLabel } from '../../lib/groupLibrary';
+import { displayKey, titleAliasMatch, type VersionTag } from '@maestro/common';
 import { placeholderCover } from '../../lib/placeholderCover';
-import {
-  readCachedLibrary,
-  writeCachedLibrary,
-} from '../../lib/likedCache';
+import { readCachedLibrary, writeCachedLibrary } from '../../lib/likedCache';
 
 /**
  * AETHER Library — 红心库全屏（Figma 03/Screen/Library 还原）。
@@ -62,7 +51,11 @@ function PlatformBadges({
         <span
           key={platform}
           className={`lib-badge lib-badge-${platform}`}
-          title={versionTag && versionTagLabel(versionTag) ? `${platform} · ${versionTagLabel(versionTag)}` : platform}
+          title={
+            versionTag && versionTagLabel(versionTag)
+              ? `${platform} · ${versionTagLabel(versionTag)}`
+              : platform
+          }
         >
           {PLATFORM_BADGE[platform].letter}
           {versionTag && versionTag !== null && versionTag !== 'COVER' && (
@@ -90,7 +83,9 @@ function RefreshingOverlay() {
   return (
     <div className="lib-refresh-overlay" aria-live="polite">
       <div className="lib-refresh-card">
-        <div className="lib-refresh-heart" aria-hidden>♥</div>
+        <div className="lib-refresh-heart" aria-hidden>
+          ♥
+        </div>
         <div className="lib-refresh-title">正在重新导入喜欢的歌曲…</div>
         <div className="lib-refresh-sub">从 QQ / 网易云 / Spotify 同步</div>
       </div>
@@ -104,9 +99,7 @@ export default function LikedLibraryModal({
   refreshSignal,
   onImportSettled,
 }: Props) {
-  const [data, setData] = useState<LibraryImportResult | null>(() =>
-    readCachedLibrary(),
-  );
+  const [data, setData] = useState<LibraryImportResult | null>(() => readCachedLibrary());
   const [loading, setLoading] = useState<boolean>(data == null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +123,9 @@ export default function LikedLibraryModal({
       .finally(() => {
         if (!cancelled) setSyncing(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refreshSignal]);
 
   useEffect(() => {
@@ -148,9 +143,14 @@ export default function LikedLibraryModal({
         setError((e as Error).message);
       })
       .finally(() => {
-        if (!cancelled) { setLoading(false); setSyncing(false); }
+        if (!cancelled) {
+          setLoading(false);
+          setSyncing(false);
+        }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -239,24 +239,21 @@ export default function LikedLibraryModal({
 
   // ESC 关闭
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const renderGroup = (
-    g: ReturnType<typeof groupLibraryItems>[number],
-    isOpen: boolean,
-  ) => {
+  const renderGroup = (g: ReturnType<typeof groupLibraryItems>[number], isOpen: boolean) => {
     const rep = g.representative;
     const multi = g.members.length > 1;
     return (
       <>
         <div
           className={`lib-row${isOpen ? ' is-open' : ''}`}
-          onClick={() =>
-            onPlay(items, filtered[g.representativeIndex].originalIndex)
-          }
+          onClick={() => onPlay(items, filtered[g.representativeIndex].originalIndex)}
         >
           {rep.coverUrl ? (
             <img className="lib-cover" src={rep.coverUrl} alt="" loading="lazy" />
@@ -264,9 +261,7 @@ export default function LikedLibraryModal({
             <div
               className="lib-cover lib-cover-empty"
               style={{
-                backgroundImage: placeholderCover(
-                  `${rep.title}·${rep.artist}`,
-                ).background,
+                backgroundImage: placeholderCover(`${rep.title}·${rep.artist}`).background,
               }}
             >
               ♪
@@ -276,9 +271,7 @@ export default function LikedLibraryModal({
             <div className="lib-track">{clampText(rep.title, 40)}</div>
             <div className="lib-artist">
               {clampText(rep.artist, 30)}
-              {rep.album && (
-                <span className="lib-album"> · {clampText(rep.album, 25)}</span>
-              )}
+              {rep.album && <span className="lib-album"> · {clampText(rep.album, 25)}</span>}
             </div>
           </div>
           <PlatformBadges platforms={g.platforms} />
@@ -288,7 +281,11 @@ export default function LikedLibraryModal({
             </span>
           )}
           {g.hasCover && (
-            <span className="lib-cover-warn" title="组内包含翻唱版本，展开查看" aria-label="含翻唱版本">
+            <span
+              className="lib-cover-warn"
+              title="组内包含翻唱版本，展开查看"
+              aria-label="含翻唱版本"
+            >
               ⚠
             </span>
           )}
@@ -298,7 +295,10 @@ export default function LikedLibraryModal({
               aria-label={isOpen ? '收起' : '展开各平台版本'}
               aria-expanded={isOpen}
               title={`${g.members.length} 个平台版本`}
-              onClick={(e) => { e.stopPropagation(); toggle(g.key); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle(g.key);
+              }}
             >
               <span className="lib-toggle-count">{g.members.length}</span>
               <span className="lib-toggle-chevron">{isOpen ? '▾' : '▸'}</span>
@@ -322,7 +322,9 @@ export default function LikedLibraryModal({
                   <div className="lib-track">
                     {clampText(m.item.title, 40)}
                     {m.versionTag && (
-                      <span className={`lib-version-tag lib-version-tag--${m.versionTag.toLowerCase()}`}>
+                      <span
+                        className={`lib-version-tag lib-version-tag--${m.versionTag.toLowerCase()}`}
+                      >
                         {versionTagLabel(m.versionTag)}
                       </span>
                     )}
@@ -362,11 +364,23 @@ export default function LikedLibraryModal({
             <span className="lib-hud-heart">❤</span>
             <span className="lib-hud-title">LIBRARY // LIKED</span>
             {syncing && (
-              <span className="lib-syncing-dot" aria-label="正在同步新数据" title="正在同步新数据…" />
+              <span
+                className="lib-syncing-dot"
+                aria-label="正在同步新数据"
+                title="正在同步新数据…"
+              />
             )}
           </div>
           <button className="lib-close" onClick={onClose} aria-label="关闭" title="关闭">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
@@ -375,25 +389,41 @@ export default function LikedLibraryModal({
         {/* platform-counts（y=112，4 Badge/Platform + 数字） */}
         <div className="lib-platform-counts" aria-label="各平台红心数">
           {qqCount > 0 && (
-            <span className="lib-platform-stat" style={{ ['--badge' as string]: PLATFORM_BADGE.qq.color }} title={`QQ 音乐 ${qqCount} 首`}>
+            <span
+              className="lib-platform-stat"
+              style={{ ['--badge' as string]: PLATFORM_BADGE.qq.color }}
+              title={`QQ 音乐 ${qqCount} 首`}
+            >
               <span className="lib-platform-letter">Q</span>
               <span className="lib-platform-num">{qqCount.toLocaleString()}</span>
             </span>
           )}
           {neCount > 0 && (
-            <span className="lib-platform-stat" style={{ ['--badge' as string]: PLATFORM_BADGE.netease.color }} title={`网易云 ${neCount} 首`}>
+            <span
+              className="lib-platform-stat"
+              style={{ ['--badge' as string]: PLATFORM_BADGE.netease.color }}
+              title={`网易云 ${neCount} 首`}
+            >
               <span className="lib-platform-letter">N</span>
               <span className="lib-platform-num">{neCount.toLocaleString()}</span>
             </span>
           )}
           {dzCount > 0 && (
-            <span className="lib-platform-stat" style={{ ['--badge' as string]: PLATFORM_BADGE.deezer.color }} title={`Deezer ${dzCount} 首`}>
+            <span
+              className="lib-platform-stat"
+              style={{ ['--badge' as string]: PLATFORM_BADGE.deezer.color }}
+              title={`Deezer ${dzCount} 首`}
+            >
               <span className="lib-platform-letter">D</span>
               <span className="lib-platform-num">{dzCount.toLocaleString()}</span>
             </span>
           )}
           {spCount > 0 && (
-            <span className="lib-platform-stat" style={{ ['--badge' as string]: PLATFORM_BADGE.spotify.color }} title={`Spotify ${spCount} 首`}>
+            <span
+              className="lib-platform-stat"
+              style={{ ['--badge' as string]: PLATFORM_BADGE.spotify.color }}
+              title={`Spotify ${spCount} 首`}
+            >
               <span className="lib-platform-letter">S</span>
               <span className="lib-platform-num">{spCount.toLocaleString()}</span>
             </span>
@@ -404,8 +434,17 @@ export default function LikedLibraryModal({
         {/* search-bar（960×48 @ y=148） */}
         {items.length > 0 && (
           <div className="lib-search-bar">
-            <svg className="lib-search-icon" viewBox="0 0 24 24" width="18" height="18"
-              fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="lib-search-icon"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.35-4.35" />
             </svg>
@@ -418,7 +457,12 @@ export default function LikedLibraryModal({
               aria-label="搜索我的喜欢"
             />
             {query && (
-              <button className="lib-search-clear" onClick={() => setQuery('')} aria-label="清除搜索" title="清除搜索">
+              <button
+                className="lib-search-clear"
+                onClick={() => setQuery('')}
+                aria-label="清除搜索"
+                title="清除搜索"
+              >
                 ×
               </button>
             )}
@@ -438,9 +482,7 @@ export default function LikedLibraryModal({
             </ul>
           )}
 
-          {error && !loading && groups.length === 0 && (
-            <div className="lib-error">⚠ {error}</div>
-          )}
+          {error && !loading && groups.length === 0 && <div className="lib-error">⚠ {error}</div>}
 
           {showEmpty && (
             <div className="lib-empty">

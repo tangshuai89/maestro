@@ -11,13 +11,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import DesktopLyricsOverlay, {
-  type DesktopLyricsOverlayProps,
-} from './DesktopLyricsOverlay';
-import type {
-  DesktopLyricsPrefsPayload,
-  DesktopLyricsState,
-} from '../../../electron/src/preload';
+import DesktopLyricsOverlay, { type DesktopLyricsOverlayProps } from './DesktopLyricsOverlay';
+import type { DesktopLyricsPrefsPayload, DesktopLyricsState } from '../../../electron/src/preload';
 
 const STATE: DesktopLyricsState = {
   playing: true,
@@ -67,7 +62,9 @@ describe('DesktopLyricsOverlay', () => {
 
   it('进度夹到 0..100%', () => {
     render(<DesktopLyricsOverlay {...makeProps({ state: { ...STATE, progress: 3 } })} />);
-    expect((document.querySelector('.lyric-progress__fill') as HTMLElement).style.width).toBe('100%');
+    expect((document.querySelector('.lyric-progress__fill') as HTMLElement).style.width).toBe(
+      '100%',
+    );
   });
 
   it('无歌词：提示文案，不渲染歌词行', () => {

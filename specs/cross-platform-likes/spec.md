@@ -5,6 +5,7 @@
 HUD 右上的 `♥ {数字}` 改为"当前播放曲目在四个平台被收藏的总数"。
 
 数据可得性经实测（见末尾"接口核实"）：
+
 - **QQ**：✅ 公开匿名可拉 `music.musicasset.SongFavRead / GetSongFansNumberById` → `m_numbers` + `m_show`
 - **网易云**：✅ 公开匿名可拉 `/api/song/detail?ids=` → `likedCount`
 - **Deezer**：❌ 无 ❤ 字段（只有 `rank` 热度）
@@ -38,6 +39,7 @@ HUD 右上的 `♥ {数字}` 改为"当前播放曲目在四个平台被收藏�
 ```
 
 上标 `¹` / `²`：
+
 - 鼠标悬停 tooltip 解释"¹ = QQ" / "² = 网易云"（防用户疑惑）
 - 用 `Unicode superscript` 字符（`\u00B9` `\u00B2`），避免 markdown-style 误读
 
@@ -142,10 +144,10 @@ async getTrackLikeCount(
 
 ## 缓存策略
 
-| 场景 | TTL | key |
-|---|---|---|
-| 命中 / 干净缺席（5000）| 1h | `(sessionId, platform, songId)` |
-| 失败 / 超时（>5000ms）| 30s | 同上 |
+| 场景                    | TTL | key                             |
+| ----------------------- | --- | ------------------------------- |
+| 命中 / 干净缺席（5000） | 1h  | `(sessionId, platform, songId)` |
+| 失败 / 超时（>5000ms）  | 30s | 同上                            |
 
 复用 `equivSearchCache` 已有模式（5min TTL 改为上面两档；30s / 1h）。
 不引新缓存基础设施——直接挂 `equivSearchCache` 同名 Map，**复用** `clean` 字段语义。
@@ -202,15 +204,15 @@ POST https://u.y.qq.com/cgi-bin/musicu.fcg
 
 ## 文件改动清单
 
-| # | 文件 | 改动 |
-|---|---|---|
-| 1 | `packages/server/src/music/qq.provider.ts` | 新增 `getTrackFavCount()` |
-| 2 | `packages/server/src/music/netease.provider.ts` | 新增 `getTrackLikeCount()` |
-| 3 | `packages/server/src/music/types.ts` `SourceInfo` | 加 `likeCount?` 字段 |
-| 4 | `packages/server/src/music/types.ts` `UnifiedSearchItem` | 加 `crossPlatformLikeTotal?` 派生字段 |
-| 5 | `packages/server/src/music/search.util.ts` `buildUnifiedItems` | 不变结构；新增可选 `likeCountResolver: (platform, trackId) => Promise<...>` 注入点；具体调用放 `music.service.ts` |
-| 6 | `packages/server/src/music/music.service.ts` | `searchUnified` 异步填充 likeCount；`importLiked` / `patchLibraryWithSources` 同样 |
-| 7 | `packages/renderer/src/components/views/TheaterView.tsx` HUD L286 | 改读 `track.crossPlatformLikeTotal`；D.1 样式 |
-| 8 | `packages/renderer/src/App.tsx` | 派发 `crossPlatformLikeTotal` mutation（与现有 fanOutCount 轮询同链路） |
-| 9 | 测试 | e2e |
-| 10 | 清理 | `packages/server/src/music/_qq-fav-test.ts` |
+| #   | 文件                                                              | 改动                                                                                                              |
+| --- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | `packages/server/src/music/qq.provider.ts`                        | 新增 `getTrackFavCount()`                                                                                         |
+| 2   | `packages/server/src/music/netease.provider.ts`                   | 新增 `getTrackLikeCount()`                                                                                        |
+| 3   | `packages/server/src/music/types.ts` `SourceInfo`                 | 加 `likeCount?` 字段                                                                                              |
+| 4   | `packages/server/src/music/types.ts` `UnifiedSearchItem`          | 加 `crossPlatformLikeTotal?` 派生字段                                                                             |
+| 5   | `packages/server/src/music/search.util.ts` `buildUnifiedItems`    | 不变结构；新增可选 `likeCountResolver: (platform, trackId) => Promise<...>` 注入点；具体调用放 `music.service.ts` |
+| 6   | `packages/server/src/music/music.service.ts`                      | `searchUnified` 异步填充 likeCount；`importLiked` / `patchLibraryWithSources` 同样                                |
+| 7   | `packages/renderer/src/components/views/TheaterView.tsx` HUD L286 | 改读 `track.crossPlatformLikeTotal`；D.1 样式                                                                     |
+| 8   | `packages/renderer/src/App.tsx`                                   | 派发 `crossPlatformLikeTotal` mutation（与现有 fanOutCount 轮询同链路）                                           |
+| 9   | 测试                                                              | e2e                                                                                                               |
+| 10  | 清理                                                              | `packages/server/src/music/_qq-fav-test.ts`                                                                       |

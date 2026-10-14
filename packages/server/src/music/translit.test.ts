@@ -19,8 +19,7 @@ async function main() {
   await warmupJa();
 
   // 归一化模拟：测试直接喂「已 normalizeKey 的」形态（小写、无空格标点）。
-  const norm = (s: string) =>
-    s.toLowerCase().replace(/[\s\-_.,'"()（）]/g, '');
+  const norm = (s: string) => s.toLowerCase().replace(/[\s\-_.,'"()（）]/g, '');
 
   const accept: Array<[string, string, string]> = [
     ['铃木爱理', 'suzukiairi', '简体日文名 → cn2t+kuromoji → suzukiairi'],
@@ -36,7 +35,9 @@ async function main() {
       `应接受: ${cjk} ↔ ${latin}（${why}）| romaji=${romanize(norm(cjk))}`,
     );
   }
-  console.log('✅ 1. kuromoji 桥接规则读音同顺序名（Suzuki Airi / Utada Hikaru / Hatsune Miku / Shiina Ringo）');
+  console.log(
+    '✅ 1. kuromoji 桥接规则读音同顺序名（Suzuki Airi / Utada Hikaru / Hatsune Miku / Shiina Ringo）',
+  );
 
   // 事故核心：同名不同艺人的翻唱链，音译两两对不上 → 必须全拒。
   const reject: Array<[string, string]> = [
@@ -118,7 +119,11 @@ async function main() {
       ['王力宏', 'Wang Leehom', '名前颠倒的拉丁写法'],
       ['張惠妹', 'A-Mei', '繁体输入 → cn2t 统一 key'],
       ['ずっと真夜中でいいのに。', 'ZUTOMAYO', '日语造词型拉丁艺名（kuromoji 桥不了）'],
-      ['ずっと真夜中でいいのに。 (永远是深夜有多好｡)', 'ZUTOMAYO', '艺人名带中文译名括号注释（本次事故：ヒューマノイド）'],
+      [
+        'ずっと真夜中でいいのに。 (永远是深夜有多好｡)',
+        'ZUTOMAYO',
+        '艺人名带中文译名括号注释（本次事故：ヒューマノイド）',
+      ],
       ['サカナクション', 'Sakanaction', '外来语非读音化写法'],
       ['米津玄师', 'Kenshi Yonezu', '艺名不规则读音（げんし≠けんし），别名表策展'],
       ['藤井风', 'Fujii Kaze', '風=かぜ(艺名) vs ふう(通用读)，别名表策展'],
@@ -137,7 +142,11 @@ async function main() {
       // 英語 Phantasia 由来造語。kuromoji カタカナ逐字読み「pan/ta/shi/a」
       // ≠ Spotify "Phantasia"（ph 入り）；拼音「三月=sanyue」≠「sangatsu」。
       // romanize 路线全挂。
-      ['三月のパンタシア', 'Sangatsu no Phantasia', 'バンド名由来造語（バンド名由来——英字表記が音読みと非対応）'],
+      [
+        '三月のパンタシア',
+        'Sangatsu no Phantasia',
+        'バンド名由来造語（バンド名由来——英字表記が音読みと非対応）',
+      ],
       ['三月のパンタシア (三月的幻想)', 'Sangatsu no Phantasia', '别名注释括号注释不影响 key'],
       // 2026-08-07: 「絶対的な関係」跨平台匹配漏。Spotify 长音塌缩 + 连字符
       // 风格化「AKAIKO-EN」=akaikoen，kuromoji「赤い公園」=akaikouen 差一个
@@ -211,7 +220,11 @@ async function main() {
       // 写法无算法可桥（拼音不参与音译判定，必须表兜底）。
       ['aiko', 'aiko', 'aiko 自循环（values 含自身）'],
       ['ヨルシカ', 'YORUSHIKA', '日文乐队名 ↔ Spotify 大写'],
-      ['YOASOBI', ['ヨアソビ', 'YOASOBI'].includes('YOASOBI') ? 'YOASOBI' : 'x', '网易云带假名 ↔ Spotify 纯拉丁'],
+      [
+        'YOASOBI',
+        ['ヨアソビ', 'YOASOBI'].includes('YOASOBI') ? 'YOASOBI' : 'x',
+        '网易云带假名 ↔ Spotify 纯拉丁',
+      ],
       ['李荣浩', 'Li Ronghao', '中文 ↔ 拼音（pinyin 不参与音译判定）'],
       ['李荣浩', 'Ronghao Li', '中文 ↔ 名字前置拼音'],
       ['华晨宇', 'Hua Chenyu', '中文 ↔ 拼音'],
@@ -221,10 +234,7 @@ async function main() {
       ['大原櫻子', 'Sakurako Ohara', '繁体侧同样命中'],
     ];
     for (const [a, b, why] of acceptAlias) {
-      assert.ok(
-        artistTransliterationMatch(a, b),
-        `应接受: ${a} ↔ ${b}（${why}）`,
-      );
+      assert.ok(artistTransliterationMatch(a, b), `应接受: ${a} ↔ ${b}（${why}）`);
     }
     console.log('✅ 6. 英文艺名别名表：周杰伦↔Jay Chou 等非音译艺名（精确整串）');
   }
@@ -239,11 +249,7 @@ async function main() {
       ['真夜中', 'ZUTOMAYO', '表 key 取全名：只留「真夜中」不算同人'],
     ];
     for (const [a, b, why] of rejectAlias) {
-      assert.strictEqual(
-        artistTransliterationMatch(a, b),
-        false,
-        `应拒绝: ${a} ↔ ${b}（${why}）`,
-      );
+      assert.strictEqual(artistTransliterationMatch(a, b), false, `应拒绝: ${a} ↔ ${b}（${why}）`);
     }
     console.log('✅ 7. 别名表防误并：整串匹配 + 表外名不搭表内 key');
   }

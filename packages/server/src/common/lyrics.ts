@@ -324,9 +324,7 @@ function mergePlainText(bundles: LyricSourceBundle[]): MergedLyrics {
  * @param bundles 来源包，顺序任意；内部按 priority 升序（小的优先）
  * @returns 合并结果；没有任何可用行时返回 null
  */
-export function mergeLyricSources(
-  bundles: LyricSourceBundle[],
-): MergedLyrics | null {
+export function mergeLyricSources(bundles: LyricSourceBundle[]): MergedLyrics | null {
   const usable = bundles
     .filter((b) => b && Array.isArray(b.lines) && b.lines.length > 0)
     .map((b) => ({
@@ -334,9 +332,7 @@ export function mergeLyricSources(
       priority: Number.isFinite(b.priority) ? b.priority : 99,
       // 丢空文本行 + 防御外部 API 的脏 text（非字符串）
       lines: b.lines
-        .filter(
-          (l) => l && typeof l.text === 'string' && l.text.trim().length > 0,
-        )
+        .filter((l) => l && typeof l.text === 'string' && l.text.trim().length > 0)
         .map((l) => ({
           time: Number.isFinite(Number(l.time)) ? Number(l.time) : 0,
           text: l.text.trim(),

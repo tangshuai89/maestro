@@ -1,7 +1,4 @@
-- [x] 1. 抽 `QqMusicProvider.detectVipLocked(pay, qqVip)` 私有方法：
-      - pay_album===1 / pay_track===1 / fee>0 任一命中 → true
-      - 仅 pay_play=1 → qqVip!==true
-      - 其余 → false
+- [x] 1. 抽 `QqMusicProvider.detectVipLocked(pay, qqVip)` 私有方法：- pay_album===1 / pay_track===1 / fee>0 任一命中 → true - 仅 pay_play=1 → qqVip!==true - 其余 → false
       实现为模块顶层 `detectQqVipLocked` 函数（更便于单测，spec 写法是 private method，
       但顶层函数可达同样目的且不需要实例化 QqMusicProvider）
 - [x] 2. 扩 `SearchResponse.pay` interface（qq.provider.ts）加

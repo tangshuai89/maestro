@@ -25,8 +25,20 @@ const { MatchService } = require('../match/match.service');
 
 const quietProviders = () => ({
   qq: { fetchLikedMidSet: async () => new Set(), like: async () => true, unlike: async () => true },
-  netease: { fetchLiked: async () => [], like: async () => true, unlike: async () => true, fmTrash: async () => true, search: async () => [] },
-  spotify: { fetchLiked: async () => [], like: async () => ({ success: true }), unlike: async () => ({ success: true }), bindSessionId: () => {}, search: async () => [] },
+  netease: {
+    fetchLiked: async () => [],
+    like: async () => true,
+    unlike: async () => true,
+    fmTrash: async () => true,
+    search: async () => [],
+  },
+  spotify: {
+    fetchLiked: async () => [],
+    like: async () => ({ success: true }),
+    unlike: async () => ({ success: true }),
+    bindSessionId: () => {},
+    search: async () => [],
+  },
   deezer: { getEditorials: () => [], search: async () => [] },
   search: { searchUnified: async () => [] },
   lyricsOvh: { fetch: async () => null },
@@ -53,9 +65,7 @@ async function makeService() {
   const qs = quietProviders();
   const match = new MatchService(qs);
   const { LikeSyncQueue } = require('./like-sync.queue');
-  const lyricsService = new LyricsService(
-    qs.netease, qs.deezer, qs.qq, qs.lyricsOvh,
-  );
+  const lyricsService = new LyricsService(qs.netease, qs.deezer, qs.qq, qs.lyricsOvh);
   const ms = new MusicService(
     sharedStorage,
     qs.qq,
@@ -134,10 +144,14 @@ async function test1_resolveEquivalents_discardsOnStale() {
   // state 也不应有新 ❤
   const finalState = (ms as any).loadState(s);
   assert.ok(!finalState.fanOut['m1'], 'discarded 后 fanOut[m1] 仍不存在');
-  assert.ok(!finalState.providers.netease.liked.has('t-netease-match'),
-    'discarded 后不应点亮 netease');
-  assert.ok(!finalState.providers.spotify.liked.has('t-spotify-match'),
-    'discarded 后不应点亮 spotify');
+  assert.ok(
+    !finalState.providers.netease.liked.has('t-netease-match'),
+    'discarded 后不应点亮 netease',
+  );
+  assert.ok(
+    !finalState.providers.spotify.liked.has('t-spotify-match'),
+    'discarded 后不应点亮 spotify',
+  );
 
   (ms as any).searchEquivalent = origSearch;
   console.log('✅ 1. resolveEquivalents: stale canonicalId → 丢弃');

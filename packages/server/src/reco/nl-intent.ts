@@ -166,9 +166,18 @@ export function extractJsonBlock(raw: string): string {
     let esc = false;
     for (let i = start; i < trimmed.length; i++) {
       const ch = trimmed[i];
-      if (esc) { esc = false; continue; }
-      if (ch === '\\') { esc = true; continue; }
-      if (ch === '"') { inStr = !inStr; continue; }
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === '\\') {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') {
+        inStr = !inStr;
+        continue;
+      }
       if (inStr) continue;
       if (ch === '{') depth++;
       else if (ch === '}') {
@@ -212,9 +221,7 @@ export function parseIntentResponse(raw: string): { intent: NLIntent; raw: strin
  *  8-20、数组裁剪、era 单边。LLM 输出与客户端入参共用这一套。 */
 function toIntent(b: Record<string, unknown>): NLIntent {
   // tempo / language enum 校验（不合法 → 降级 'any'，不阻塞）
-  const tempo = TEMPO_VALUES.has(b.tempo as string)
-    ? (b.tempo as NLIntent['tempo'])
-    : 'any';
+  const tempo = TEMPO_VALUES.has(b.tempo as string) ? (b.tempo as NLIntent['tempo']) : 'any';
   const language = LANGUAGE_VALUES.has(b.language as string)
     ? (b.language as NLIntent['language'])
     : 'any';
@@ -268,7 +275,11 @@ const INTENT_ARRAY_FIELDS = [
 export function normalizeIntentInput(v: unknown): NLIntent {
   if (!v || typeof v !== 'object' || Array.isArray(v)) {
     throw new HttpException(
-      { statusCode: HttpStatus.BAD_REQUEST, error: 'intent_not_object', message: 'intent 必须是对象' },
+      {
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'intent_not_object',
+        message: 'intent 必须是对象',
+      },
       HttpStatus.BAD_REQUEST,
     );
   }
@@ -276,14 +287,25 @@ export function normalizeIntentInput(v: unknown): NLIntent {
   for (const f of INTENT_ARRAY_FIELDS) {
     if (b[f] !== undefined && !Array.isArray(b[f])) {
       throw new HttpException(
-        { statusCode: HttpStatus.BAD_REQUEST, error: 'intent_field_invalid', message: `intent.${f} 必须是数组` },
+        {
+          statusCode: HttpStatus.BAD_REQUEST,
+          error: 'intent_field_invalid',
+          message: `intent.${f} 必须是数组`,
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
   }
-  if (b.era !== undefined && (typeof b.era !== 'object' || b.era === null || Array.isArray(b.era))) {
+  if (
+    b.era !== undefined &&
+    (typeof b.era !== 'object' || b.era === null || Array.isArray(b.era))
+  ) {
     throw new HttpException(
-      { statusCode: HttpStatus.BAD_REQUEST, error: 'intent_field_invalid', message: 'intent.era 必须是对象' },
+      {
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'intent_field_invalid',
+        message: 'intent.era 必须是对象',
+      },
       HttpStatus.BAD_REQUEST,
     );
   }
@@ -292,12 +314,21 @@ export function normalizeIntentInput(v: unknown): NLIntent {
 
 function toStrArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean);
+  return v
+    .filter((x): x is string => typeof x === 'string')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /** 取最近 50 首 ❤ 作为库上下文（去重 + normalizeKey）。 */
 export function pickLibrarySample(
-  library: { items?: Array<{ sources?: Array<{ platform: string; trackId: string }>; title: string; artist: string }> } | null,
+  library: {
+    items?: Array<{
+      sources?: Array<{ platform: string; trackId: string }>;
+      title: string;
+      artist: string;
+    }>;
+  } | null,
   limit = 50,
 ): Array<{ title: string; artist: string }> {
   if (!library?.items?.length) return [];
@@ -317,13 +348,22 @@ export function pickLibrarySample(
 export function validateParseIntentInput(text: unknown): string {
   if (typeof text !== 'string' || !text.trim()) {
     throw new HttpException(
-      { statusCode: HttpStatus.BAD_REQUEST, error: 'parse_intent_text_required', message: 'text 必填' },
+      {
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'parse_intent_text_required',
+        message: 'text 必填',
+      },
       HttpStatus.BAD_REQUEST,
     );
   }
   if (text.length > MAX_TEXT_LEN) {
     throw new HttpException(
-      { statusCode: HttpStatus.BAD_REQUEST, error: 'parse_intent_text_too_long', max: MAX_TEXT_LEN, len: text.length },
+      {
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'parse_intent_text_too_long',
+        max: MAX_TEXT_LEN,
+        len: text.length,
+      },
       HttpStatus.BAD_REQUEST,
     );
   }

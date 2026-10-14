@@ -3,10 +3,12 @@
 ## 做什么
 
 目前 `npm run pack`（electron-builder mac dmg）出来的包**不能跑**：
+
 1. NestJS 没在桌面包里 → renderer 找不到 API
 2. Prod renderer 用 `http://localhost:3200/api/...`，但桌面用户不会本地跑 server
 
 修两件事：
+
 1. tsc 编译 NestJS → dist/；electron-builder 把 `packages/server/dist` 复制为 extraResources
 2. Electron main 在 packaged 模式 spawn `node resources/server/main.js` 当 sidecar，
    等端口就绪再 loadFile（renderer）。端口由 NestJS 自己选（PORT env，默认 3200），
@@ -39,7 +41,7 @@ tsc 编译 + 整 dist/ 走 sidecar 是更稳的方案。
 - ❌ Windows / Linux pack（只 mac 走通；electron-builder config 已有 mac 段）
 - ❌ 完整 installer / auto-update（electron-builder 有但本轮不验）
 - ❌ node_modules sidecar 装包（当前走 assumption：dev 模式 renderer 走 vite proxy，
-      prod 模式 NestJS 起在自己 dist/，不需要 node_modules 重新装——见下方"已知限制"）
+  prod 模式 NestJS 起在自己 dist/，不需要 node_modules 重新装——见下方"已知限制"）
 
 ## 不做什么
 
@@ -62,4 +64,3 @@ tsc 编译 + 整 dist/ 走 sidecar 是更稳的方案。
 - sidecar 进程注册到 app.on('before-quit') / window-all-closed 时 kill
 - preload 用 contextBridge.exposeInMainWorld 暴露 apiBase
 - api.ts 优先读 window.electronAPI?.apiBase → '' (走 same-origin) → http://localhost:3200
-

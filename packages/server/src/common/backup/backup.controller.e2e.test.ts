@@ -78,11 +78,7 @@ async function main() {
     // ── 1. GET /storage/state 空 store → 200, stateJson={} ─────────
     {
       const r = await call('GET', '/storage/state');
-      expect(
-        '1. GET /storage/state → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('1. GET /storage/state → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { stateJson?: Record<string, unknown> };
       expect(
         '1b. /storage/state 返回 stateJson 对象',
@@ -94,11 +90,7 @@ async function main() {
     // ── 2. GET /storage/info → 200, backupDir + backupCount ────────
     {
       const r = await call('GET', '/storage/info');
-      expect(
-        '2. GET /storage/info → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('2. GET /storage/info → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { backupDir?: string; backupCount?: number };
       expect(
         '2b. /storage/info 返回 backupDir + backupCount',
@@ -110,11 +102,7 @@ async function main() {
     // ── 3. POST /storage/import 缺 stateJson → 400 ────────────────
     {
       const r = await call('POST', '/storage/import', {});
-      expect(
-        '3. POST /storage/import 缺 stateJson → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('3. POST /storage/import 缺 stateJson → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 4. POST /storage/import stateJson 是数组 → 400 ────────────
@@ -142,11 +130,7 @@ async function main() {
       const r = await call('POST', '/storage/import', {
         stateJson: { 'test:key': { value: 42 } },
       });
-      expect(
-        '6. POST /storage/import 合法 → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('6. POST /storage/import 合法 → 201', r.status === 201, `实际 ${r.status}`);
       const json = r.json as { merged?: string[] };
       expect(
         '6b. /storage/import 返回 merged 数组',
@@ -172,11 +156,7 @@ async function main() {
       // 当前 store 有 test:key（非空），所以 backup 会成功。
       // 测试空 store 的 400 路径需要新 app + 空 tmpDir。
       const r = await call('POST', '/storage/backup', {});
-      expect(
-        '8. POST /storage/backup 非空 store → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('8. POST /storage/backup 非空 store → 201', r.status === 201, `实际 ${r.status}`);
       const json = r.json as { path?: string; count?: number };
       expect(
         '8b. /storage/backup 返回 path + count',

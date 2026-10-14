@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  fetchSourceHealth,
-  type MusicProvider,
-  PROVIDER_LABELS,
-} from '../../api';
+import { fetchSourceHealth, type MusicProvider, PROVIDER_LABELS } from '../../api';
 
 /**
  * §5 Settings「源连接健康」：每平台近 24h 成功率 + 横向进度条。

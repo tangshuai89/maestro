@@ -62,9 +62,7 @@ const likeSync = {
   enqueue: () => {},
 };
 
-const lyricsService = new LyricsService(
-  qq as any, netease as any, deezer as any, lyricsOvh as any,
-);
+const lyricsService = new LyricsService(qq as any, netease as any, deezer as any, lyricsOvh as any);
 const svc = new MusicService(
   fakeStorage,
   qq,

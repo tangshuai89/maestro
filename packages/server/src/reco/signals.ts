@@ -10,13 +10,7 @@
  */
 import { normalizeKey } from '@maestro/common';
 
-export type RecoSignalType =
-  | 'play'
-  | 'complete'
-  | 'skip'
-  | 'like'
-  | 'dislike'
-  | 'seed';
+export type RecoSignalType = 'play' | 'complete' | 'skip' | 'like' | 'dislike' | 'seed';
 
 export const RECO_SIGNAL_TYPES: readonly RecoSignalType[] = [
   'play',
@@ -37,10 +31,7 @@ export interface RecoSignal {
 }
 
 export function isRecoSignalType(value: unknown): value is RecoSignalType {
-  return (
-    typeof value === 'string' &&
-    (RECO_SIGNAL_TYPES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (RECO_SIGNAL_TYPES as readonly string[]).includes(value);
 }
 
 /** 各信号的权重。跳过/踩是负的，完播/红心/主动点"像这首"是正的。 */
@@ -86,10 +77,7 @@ export function signalDecay(at: number, now = Date.now()): number {
  * 艺人维度的信号分（带时间衰减）。key 用 `normalizeKey(artist,'')` 与库内
  * 归一一致。
  */
-export function artistSignalScores(
-  signals: RecoSignal[],
-  now = Date.now(),
-): Map<string, number> {
+export function artistSignalScores(signals: RecoSignal[], now = Date.now()): Map<string, number> {
   const out = new Map<string, number>();
   // 只看最近的 N 条：老信号已经通过半衰期自然变轻，没必要为它们多算。
   const recent = signals.slice(-SIGNAL_SCORE_LIMIT);

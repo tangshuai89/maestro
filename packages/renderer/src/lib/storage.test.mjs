@@ -84,7 +84,10 @@ function reset() {
 {
   // 7 个：provider / volume / quality / deezerPreset / theme / playerMode / audioFx
   expect('1. STORAGE_KEYS 有 7 个 key', Object.keys(STORAGE_KEYS).length === 7);
-  expect('1b. STORAGE_KEYS.provider = "music-provider"', STORAGE_KEYS.provider === 'music-provider');
+  expect(
+    '1b. STORAGE_KEYS.provider = "music-provider"',
+    STORAGE_KEYS.provider === 'music-provider',
+  );
   expect('1c. STORAGE_KEYS.volume = "maestro:volume"', STORAGE_KEYS.volume === 'maestro:volume');
   expect('1d. STORAGE_KEYS.theme = "maestro:theme"', STORAGE_KEYS.theme === 'maestro:theme');
   expect('1e. STORAGE_KEYS.playerMode = "player-mode"', STORAGE_KEYS.playerMode === 'player-mode');
@@ -158,7 +161,7 @@ reset();
 // ── 10. readStoredVolume：非 number → 默认 1 ──────────────────
 reset();
 {
-  lsStore.set(STORAGE_KEYS.volume, JSON.stringify({ volume: "loud", muted: false }));
+  lsStore.set(STORAGE_KEYS.volume, JSON.stringify({ volume: 'loud', muted: false }));
   expect('10. readStoredVolume 非 number → 默认 1', readStoredVolume() === 1);
 }
 
@@ -231,7 +234,10 @@ reset();
 reset();
 {
   writeStoredDeezerPreset('rock');
-  expect('19. writeStoredDeezerPreset → LS 有值', lsStore.get(STORAGE_KEYS.deezerPreset) === 'rock');
+  expect(
+    '19. writeStoredDeezerPreset → LS 有值',
+    lsStore.get(STORAGE_KEYS.deezerPreset) === 'rock',
+  );
   expect('19b. readStoredDeezerPreset 读回', readStoredDeezerPreset() === 'rock');
 }
 
@@ -342,7 +348,10 @@ reset();
     lsStore.delete(oldKey);
   }
   expect('29. migration: musicbox:volume → maestro:volume', lsStore.has(STORAGE_KEYS.volume));
-  expect('29b. migration: musicbox:theme → maestro:theme', lsStore.get(STORAGE_KEYS.theme) === 'dark');
+  expect(
+    '29b. migration: musicbox:theme → maestro:theme',
+    lsStore.get(STORAGE_KEYS.theme) === 'dark',
+  );
   expect('29c. migration: 旧 key 已删', !lsStore.has('musicbox:volume'));
   expect('29d. migration: 旧 theme key 已删', !lsStore.has('musicbox:theme'));
 }
@@ -366,9 +375,15 @@ reset();
 reset();
 {
   const origSetItem = lsStore.set;
-  lsStore.set = () => { throw new Error('QuotaExceeded'); };
+  lsStore.set = () => {
+    throw new Error('QuotaExceeded');
+  };
   let threw = false;
-  try { writeStoredVolume(0.5, false); } catch { threw = true; }
+  try {
+    writeStoredVolume(0.5, false);
+  } catch {
+    threw = true;
+  }
   expect('31. writeStoredVolume LS 异常 → 不崩', !threw);
   lsStore.set = origSetItem;
 }
@@ -377,11 +392,15 @@ reset();
 reset();
 {
   const origSetItem = lsStore.set;
-  lsStore.set = () => { throw new Error('QuotaExceeded'); };
+  lsStore.set = () => {
+    throw new Error('QuotaExceeded');
+  };
   let threw = false;
   try {
     restoreLocalStorage({ [STORAGE_KEYS.provider]: 'qq' });
-  } catch { threw = true; }
+  } catch {
+    threw = true;
+  }
   expect('32. restoreLocalStorage LS 异常 → 不崩', !threw);
   lsStore.set = origSetItem;
 }
@@ -422,9 +441,15 @@ reset();
 reset();
 {
   const origSetItem = lsStore.set;
-  lsStore.set = () => { throw new Error('QuotaExceeded'); };
+  lsStore.set = () => {
+    throw new Error('QuotaExceeded');
+  };
   let threw = false;
-  try { writeStoredPlayerMode('lite'); } catch { threw = true; }
+  try {
+    writeStoredPlayerMode('lite');
+  } catch {
+    threw = true;
+  }
   expect('34e. writeStoredPlayerMode LS 异常 → 不崩', !threw);
   lsStore.set = origSetItem;
 }
@@ -438,7 +463,6 @@ reset();
   expect('35. round-trip playerMode', readStoredPlayerMode() === 'lite');
 }
 
-
 // ── Audio FX（specs/audio-fx）─────────────────────────────────
 console.log('── audioFx 偏好 ──');
 {
@@ -446,7 +470,10 @@ console.log('── audioFx 偏好 ──');
     const p = readAudioFx();
     assert.strictEqual(p.eqEnabled, false);
     assert.strictEqual(p.eqGains.length, 10);
-    assert.strictEqual(p.eqGains.every((g) => g === 0), true);
+    assert.strictEqual(
+      p.eqGains.every((g) => g === 0),
+      true,
+    );
     assert.strictEqual(p.presetId, null);
     assert.strictEqual(p.crossfadeSec, 0);
   });

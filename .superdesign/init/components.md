@@ -61,11 +61,7 @@ export default function ErrorPanel({ message, onClose }: Props) {
         <div className="error-detail">
           <pre className="error-pre">{message}</pre>
           <div className="error-actions">
-            <button
-              className="error-action"
-              onClick={handleCopy}
-              title="复制完整错误信息"
-            >
+            <button className="error-action" onClick={handleCopy} title="复制完整错误信息">
               {copied ? '已复制 ✓' : '复制'}
             </button>
             <button className="error-action" onClick={onClose} title="关闭">
@@ -106,10 +102,7 @@ export default function Modal({ onClose, panelClassName, children }: Props) {
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
-        className={`modal-panel${panelClassName ? ` ${panelClassName}` : ''}`}
-        onClick={stop}
-      >
+      <div className={`modal-panel${panelClassName ? ` ${panelClassName}` : ''}`} onClick={stop}>
         {children}
       </div>
     </div>
@@ -179,22 +172,18 @@ export default function AuthErrorPanel({
           重新登录
         </button>
         {showPaste && (
-          <button
-            className="auth-error-btn"
-            onClick={onPasteCookie}
-            title="手动粘贴 cookie 登录"
-          >
+          <button className="auth-error-btn" onClick={onPasteCookie} title="手动粘贴 cookie 登录">
             粘贴 cookie
           </button>
         )}
-        <button
-          className="auth-error-btn"
-          onClick={onSwitch}
-          title="回到音源选择页"
-        >
+        <button className="auth-error-btn" onClick={onSwitch} title="回到音源选择页">
           切换音源
         </button>
-        <button className="auth-error-btn auth-error-btn-ghost" onClick={onDismiss} title="关闭错误">
+        <button
+          className="auth-error-btn auth-error-btn-ghost"
+          onClick={onDismiss}
+          title="关闭错误"
+        >
           关闭
         </button>
       </div>
@@ -230,12 +219,7 @@ interface Props {
  * fill width is fed via the --progress custom property (0–100) so the width
  * rule stays in SCSS.
  */
-export default function ProgressBar({
-  currentTime,
-  duration,
-  onSeek,
-  children,
-}: Props) {
+export default function ProgressBar({ currentTime, duration, onSeek, children }: Props) {
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleBarClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -285,12 +269,7 @@ interface Props {
  * the --volume custom property (0–100) rather than an inline gradient rule —
  * the styling lives in SCSS, tsx only feeds the value.
  */
-export default function VolumeControl({
-  volume,
-  muted,
-  onVolumeChange,
-  onToggleMute,
-}: Props) {
+export default function VolumeControl({ volume, muted, onVolumeChange, onToggleMute }: Props) {
   return (
     <div className="volume-group">
       <button
@@ -332,13 +311,7 @@ Key props: `volume: number`, `muted: boolean`.
  * because the icon must stay readable at 14×14px. SVG paths from Material
  * Design Icons, to match the transport buttons' visual vocabulary.
  */
-export default function VolumeIcon({
-  volume,
-  muted,
-}: {
-  volume: number;
-  muted: boolean;
-}) {
+export default function VolumeIcon({ volume, muted }: { volume: number; muted: boolean }) {
   if (muted || volume === 0) {
     return (
       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
@@ -442,7 +415,15 @@ export default function TransportBar({
       >
         {loading ? (
           <svg className="spinner" viewBox="0 0 24 24" width="28" height="28">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="31.4 31.4" />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="2"
+              fill="none"
+              strokeDasharray="31.4 31.4"
+            />
           </svg>
         ) : playing ? (
           <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
@@ -455,12 +436,7 @@ export default function TransportBar({
         )}
       </button>
 
-      <button
-        className="control-btn skip-btn"
-        onClick={onSkip}
-        disabled={loading}
-        title="下一首"
-      >
+      <button className="control-btn skip-btn" onClick={onSkip} disabled={loading} title="下一首">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
           <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
         </svg>

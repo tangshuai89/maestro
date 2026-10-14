@@ -24,18 +24,18 @@ W3 spec-first 落地：先钉死意图 schema 与接口，再写实现。复
 
 ```ts
 interface NLIntent {
-  mood: string;                    // 自由文本 ≤ 50 字
-  genres: string[];                 // 0–6 个
+  mood: string; // 自由文本 ≤ 50 字
+  genres: string[]; // 0–6 个
   tempo: 'slow' | 'medium' | 'fast' | 'any';
   language: 'zh' | 'en' | 'ja' | 'ko' | 'any';
-  era?: { from?: number; to?: number };  // 发行年份范围
-  similar_artists: string[];        // 0–4 个（"更多像 X"）
-  similar_tracks: string[];         // 0–4 个（"类似这首歌"）
-  exclude_artists: string[];        // 0–8 个（"排除 X"）
-  exclude_genres: string[];         // 0–4 个
-  target_count: number;             // 8–20，默认 12
+  era?: { from?: number; to?: number }; // 发行年份范围
+  similar_artists: string[]; // 0–4 个（"更多像 X"）
+  similar_tracks: string[]; // 0–4 个（"类似这首歌"）
+  exclude_artists: string[]; // 0–8 个（"排除 X"）
+  exclude_genres: string[]; // 0–4 个
+  target_count: number; // 8–20，默认 12
   /** 解释给用户看：「我理解你的需求是 ...」 */
-  rationale: string;                // ≤ 80 字
+  rationale: string; // ≤ 80 字
 }
 ```
 
@@ -43,12 +43,12 @@ interface NLIntent {
 
 ```ts
 interface Playlist {
-  id: string;                       // crypto.randomUUID()
-  name: string;                     // ≤ 60 字（用户可改名）
-  tracks: UnifiedSearchItem[];      // 与 LibraryItem 同结构
+  id: string; // crypto.randomUUID()
+  name: string; // ≤ 60 字（用户可改名）
+  tracks: UnifiedSearchItem[]; // 与 LibraryItem 同结构
   source: 'nl' | 'manual';
-  prompt?: string;                  // NL 创建时保留 intent / 原始 prompt（debug + 一键再生）
-  createdAt: number;                // epoch ms
+  prompt?: string; // NL 创建时保留 intent / 原始 prompt（debug + 一键再生）
+  createdAt: number; // epoch ms
   updatedAt: number;
 }
 ```
@@ -102,10 +102,12 @@ PATCH  /library/playlists/:id       → Playlist（改 name / append / remove）
 ## UI 行为
 
 入口：
+
 - **lite 模式**：✨ 按钮复用 —— 点开 shadcn `Dialog` 弹 NL 输入
 - **theater 模式**：search 框上方一个 `✨` 按钮入口（不破坏 theater 视觉）
 
 弹窗（shadcn 组件）：
+
 - `Textarea` 自由文本输入（autoFocus，placeholder 给出 3–5 个示例）
 - `Button` "生成" 触发 → 显示 loading（disable + spinner）
 - 解析结果：`Card` 列表显示 `UnifiedSearchItem`，点击单首立即播（沿用 SearchPanel 行为）
@@ -144,7 +146,8 @@ Playlist 列表落 `state.json` 的 `playlists:{sessionId}` key（沿用 Storage
 ## 文件改动清单
 
 ### 新增
-- `packages/server/src/reco/nl-intent.ts`           — prompt 模板 + JSON 解析 + 重试
+
+- `packages/server/src/reco/nl-intent.ts` — prompt 模板 + JSON 解析 + 重试
 - `packages/server/src/reco/nl-playlist.controller.ts` — POST /parse-intent + POST /library/playlists 系列
 - `packages/server/src/library/playlist.service.ts` — Playlist 增删改查（StorageService 上）
 - `packages/renderer/src/components/modals/NLPlaylistModal.tsx` — shadcn Dialog
@@ -152,28 +155,30 @@ Playlist 列表落 `state.json` 的 `playlists:{sessionId}` key（沿用 Storage
 - `specs/nl-playlist/tasks.md`
 
 ### 改动
-- `packages/server/src/reco/reco.controller.ts`        — `reco.run` 加 intent / exclude_* 字段 + schema 校验 400
-- `packages/server/src/reco/reco.service.ts`          — intent 折进 select/generate 两条路径 + 排除艺人硬过滤
+
+- `packages/server/src/reco/reco.controller.ts` — `reco.run` 加 intent / exclude_* 字段 + schema 校验 400
+- `packages/server/src/reco/reco.service.ts` — intent 折进 select/generate 两条路径 + 排除艺人硬过滤
 - `packages/renderer/src/components/search/SearchPanel.tsx` — 加 ✨ 入口（theater）
 - `packages/renderer/src/components/mini/MiniPlayer.tsx` — lite 模式 ✨ 入口
-- `packages/renderer/src/hooks/usePlayer.ts`           — `appendToQueue`（追加模式）
+- `packages/renderer/src/hooks/usePlayer.ts` — `appendToQueue`（追加模式）
 - `packages/renderer/src/hooks/usePlaylist.ts`（新） — 拉 / 存 / 删 / 改
 
 ### 不动
+
 - 既有 `reco.run` 在没传 `intent` 时行为完全不变（向后兼容）
 - 既有 library 数据结构
 
 ## 排期（commit 切分）
 
-| # | 内容 | 估时 |
-|---|---|---|
-| 1 | `parse-intent` controller + service + prompt 模板 + 单测 | 0.5d |
-| 2 | `reco.run` 扩展（intent / exclude_* 字段）+ 回归 | 0.5d |
-| 3 | `Playlist` 数据模型 + storage + 4 个 CRUD endpoint + 单测 | 0.5d |
-| 4 | shadcn `Textarea` 复制 + `NLPlaylistModal`（Dialog） + ✨ 入口 | 1d |
-| 5 | `usePlaylist` hook + 歌单列表 UI（最简版） | 0.5d |
-| 6 | prompt 调试（5–10 个真实场景调一遍） + e2e（输入 → 队列 → 播放）| 1d |
-| **总** | | **4d** / 6 commit / 1 PR |
+| #      | 内容                                                             | 估时                     |
+| ------ | ---------------------------------------------------------------- | ------------------------ |
+| 1      | `parse-intent` controller + service + prompt 模板 + 单测         | 0.5d                     |
+| 2      | `reco.run` 扩展（intent / exclude_* 字段）+ 回归                 | 0.5d                     |
+| 3      | `Playlist` 数据模型 + storage + 4 个 CRUD endpoint + 单测        | 0.5d                     |
+| 4      | shadcn `Textarea` 复制 + `NLPlaylistModal`（Dialog） + ✨ 入口   | 1d                       |
+| 5      | `usePlaylist` hook + 歌单列表 UI（最简版）                       | 0.5d                     |
+| 6      | prompt 调试（5–10 个真实场景调一遍） + e2e（输入 → 队列 → 播放） | 1d                       |
+| **总** |                                                                  | **4d** / 6 commit / 1 PR |
 
 ## 风险
 

@@ -64,15 +64,60 @@ const TARGETS: Array<{
   platform: string;
   trackId: string;
 }> = [
-  { mergedId: 'merged-spotify-6kRTLXO3ybmjzdCT9TU8CI', desc: '#7 廻廻奇譚 歌っちゃ王(卡拉OK)', platform: 'spotify', trackId: '6kRTLXO3ybmjzdCT9TU8CI' },
-  { mergedId: 'merged-spotify-0ZTOWj55EDAiXrC6RcmSAj', desc: '#50 奏(かなで) 歌っちゃ王(卡拉OK)', platform: 'spotify', trackId: '0ZTOWj55EDAiXrC6RcmSAj' },
-  { mergedId: 'merged-spotify-5qrpm6a7leqinXsuYfLy1u', desc: '#14 ドラマツルギー 星乃一歌', platform: 'spotify', trackId: '5qrpm6a7leqinXsuYfLy1u' },
-  { mergedId: 'merged-netease-1909023198', desc: '#22 신호등(LIVE) 李茂珍/华莎', platform: 'netease', trackId: '1909023198' },
-  { mergedId: 'merged-netease-1974341758', desc: '#10 Attention 翻唱', platform: 'netease', trackId: '1974341758' },
-  { mergedId: 'merged-netease-2086765376', desc: '#13 3D 翻唱', platform: 'netease', trackId: '2086765376' },
-  { mergedId: 'merged-netease-1328692786', desc: '#15 天真有邪 翻唱', platform: 'netease', trackId: '1328692786' },
-  { mergedId: 'merged-netease-27770542', desc: '#33 说好的幸福呢 翻唱', platform: 'netease', trackId: '27770542' },
-  { mergedId: 'merged-netease-3349885273', desc: '#5 恒星不忘 钢琴版', platform: 'netease', trackId: '3349885273' },
+  {
+    mergedId: 'merged-spotify-6kRTLXO3ybmjzdCT9TU8CI',
+    desc: '#7 廻廻奇譚 歌っちゃ王(卡拉OK)',
+    platform: 'spotify',
+    trackId: '6kRTLXO3ybmjzdCT9TU8CI',
+  },
+  {
+    mergedId: 'merged-spotify-0ZTOWj55EDAiXrC6RcmSAj',
+    desc: '#50 奏(かなで) 歌っちゃ王(卡拉OK)',
+    platform: 'spotify',
+    trackId: '0ZTOWj55EDAiXrC6RcmSAj',
+  },
+  {
+    mergedId: 'merged-spotify-5qrpm6a7leqinXsuYfLy1u',
+    desc: '#14 ドラマツルギー 星乃一歌',
+    platform: 'spotify',
+    trackId: '5qrpm6a7leqinXsuYfLy1u',
+  },
+  {
+    mergedId: 'merged-netease-1909023198',
+    desc: '#22 신호등(LIVE) 李茂珍/华莎',
+    platform: 'netease',
+    trackId: '1909023198',
+  },
+  {
+    mergedId: 'merged-netease-1974341758',
+    desc: '#10 Attention 翻唱',
+    platform: 'netease',
+    trackId: '1974341758',
+  },
+  {
+    mergedId: 'merged-netease-2086765376',
+    desc: '#13 3D 翻唱',
+    platform: 'netease',
+    trackId: '2086765376',
+  },
+  {
+    mergedId: 'merged-netease-1328692786',
+    desc: '#15 天真有邪 翻唱',
+    platform: 'netease',
+    trackId: '1328692786',
+  },
+  {
+    mergedId: 'merged-netease-27770542',
+    desc: '#33 说好的幸福呢 翻唱',
+    platform: 'netease',
+    trackId: '27770542',
+  },
+  {
+    mergedId: 'merged-netease-3349885273',
+    desc: '#5 恒星不忘 钢琴版',
+    platform: 'netease',
+    trackId: '3349885273',
+  },
 ];
 
 async function likedIds(platform: string): Promise<string[]> {
@@ -98,7 +143,9 @@ async function main() {
     const ids = await likedIds(p);
     const missing = TARGETS.filter((t) => t.platform === p && !ids.includes(t.trackId));
     if (missing.length) {
-      console.log(`⚠️ ${p} liked 中缺 ${missing.length} 个（可能已被取消或从未红心）: ${missing.map((m) => m.desc).join('; ')}`);
+      console.log(
+        `⚠️ ${p} liked 中缺 ${missing.length} 个（可能已被取消或从未红心）: ${missing.map((m) => m.desc).join('; ')}`,
+      );
     } else {
       console.log(`[pre] ${p} liked 共 ${ids.length} 首，目标全部在列 ✓`);
     }
@@ -114,7 +161,9 @@ async function main() {
     } catch {
       /* ignore */
     }
-    console.log(`${r.status === 201 ? '✅' : '❌'} ${t.desc} → HTTP ${r.status} liked=${String(liked)}`);
+    console.log(
+      `${r.status === 201 ? '✅' : '❌'} ${t.desc} → HTTP ${r.status} liked=${String(liked)}`,
+    );
   }
 
   // 2) 轮询本地 liked 集合，直到 9 个全部消失
@@ -129,7 +178,9 @@ async function main() {
       break;
     }
     if (round === 19) {
-      console.log(`❌ 本地 liked 仍有 ${remaining.length} 个未清除: ${remaining.map((r) => r.desc).join('; ')}`);
+      console.log(
+        `❌ 本地 liked 仍有 ${remaining.length} 个未清除: ${remaining.map((r) => r.desc).join('; ')}`,
+      );
       process.exit(1);
     }
     await sleep(500);
@@ -153,7 +204,9 @@ async function main() {
     console.log(`  import → ${items.length} items，仍有 ${remaining.length} 个目标在库`);
     if (remaining.length === 0) break;
     if (round === 3) {
-      console.log(`\n⚠️ 3 轮后仍有 ${remaining.length} 个在库（远端 unlike 可能失败）: ${remaining.map((r) => r.desc).join('; ')}`);
+      console.log(
+        `\n⚠️ 3 轮后仍有 ${remaining.length} 个在库（远端 unlike 可能失败）: ${remaining.map((r) => r.desc).join('; ')}`,
+      );
     }
   }
 

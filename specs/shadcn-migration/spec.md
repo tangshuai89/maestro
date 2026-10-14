@@ -5,6 +5,7 @@
 把 shadcn/ui + Tailwind CSS 接入 renderer，建立"组件库底座"，让后续 component-heavy 工作（toast / 复杂 modal / 桌面歌词浮窗 / NL 歌单 chat UI）有可复用的高 a11y 组件层。
 
 按 [ADR-001](../adr/ADR-001-shadcn-migration.md) 决策：
+
 - **shadcn/ui ownership 模式**：CLI 复制源码到 `packages/renderer/src/components/ui/`
 - **Tailwind CSS** 装到 `packages/renderer`（Electron 主进程 / Extension 不动）
 - **AETHER 令牌桥接**：shadcn 用 HSL 三元组（`--accent: 195 100% 50%`），AETHER 用 hex（`--accent: #00E5FF`）—— 桥接 `tokens-bridge.scss` 一层映射
@@ -13,6 +14,7 @@
 ## 验收标准
 
 ### Phase 1：基础设施（必须本 PR 通过）
+
 - [ ] `packages/renderer/package.json` 加 `tailwindcss` / `postcss` / `autoprefixer` / `class-variance-authority` / `clsx` / `tailwind-merge` / `tailwindcss-animate` / `@radix-ui/react-*`
 - [ ] `tailwind.config.js` 生成（AETHER 令牌 + HSL 三元组）
 - [ ] `postcss.config.js` 接 Tailwind 编译链
@@ -26,11 +28,13 @@
 - [ ] `scripts/check-token-drift.mjs` ✅（不引入新漂移）+ `scripts/scan-hardcoded-colors.mjs --gate` ✅（不引入新硬编码）
 
 ### Phase 2：组件迁移（按模块分批，本 PR 仅批 1）
+
 - [ ] 批 1：迁移 `_liked-modal.scss` 的 45 处硬编码颜色到 shadcn theme（如 Liked / Search / SettingsModal 各保留原风格）
 - [ ] 每批一个 commit，D11 视觉回归 baseline 兜底
 - [ ] 每批下调 `scripts/token-adoption-budget.json` 对应数字
 
 ### Phase 3：桥接清理（远期）
+
 - [ ] SCSS 全面迁移后，移除 `tokens-bridge.scss` 间接层
 - [ ] shadcn 主题切换（dark/light）原生支持（AETHER 本身已 dark，v2 暂不切）
 
@@ -38,22 +42,22 @@
 
 ### AETHER 现有令牌 → shadcn tokens 映射表
 
-| AETHER 令牌 | AETHER 值 | shadcn token | shadcn 值（HSL 三元组） |
-|---|---|---|---|
-| `--accent` | `#00E5FF` | `--primary` / `--ring` / `--chart-1` | `195 100% 50%` |
-| `--status-error` | `#FF3B5C` | `--destructive` | `349 100% 67%` |
-| `--status-success` | `#3DFFA2` | `--success`（**新增 shadcn 命名**）| `151 100% 62%` |
-| `--status-warning` | `#FFD93D` | `--warning`（**新增**）| `50 100% 62%` |
-| `--status-info` | `#3D9BFF` | `--info`（**新增**）| `214 100% 62%` |
-| `--text-main` | `#F5F0E8` | `--foreground` | `38 50% 93%` |
-| `--text-dim` | `#94A3B8` | `--muted-foreground` | `215 16% 65%` |
-| `--surface-deep` | `#02020A` | `--background` | `240 65% 4%` |
-| `--surface-mid` | `#0E0B1F` | `--card` / `--popover` | `252 67% 8%` |
-| `--surface-raised` | `#1A1A2E` | `--secondary` | `240 23% 14%` |
-| `--border-subtle` | `rgba(255,255,255,0.1)` | `--border` | `0 0% 100% / 0.1` |
-| `--accent-warm`（C4 新增）| `#FF3D1A` | `--accent-warm`（**新增**）| `9 100% 55%` |
-| `--accent-blue`（C4 新增）| `#3B82F6` | `--accent-blue`（**新增**）| `217 91% 60%` |
-| `--accent-purple`（C4 新增）| `#A855F7` | `--accent-purple`（**新增**）| `271 91% 65%` |
+| AETHER 令牌                  | AETHER 值               | shadcn token                         | shadcn 值（HSL 三元组） |
+| ---------------------------- | ----------------------- | ------------------------------------ | ----------------------- |
+| `--accent`                   | `#00E5FF`               | `--primary` / `--ring` / `--chart-1` | `195 100% 50%`          |
+| `--status-error`             | `#FF3B5C`               | `--destructive`                      | `349 100% 67%`          |
+| `--status-success`           | `#3DFFA2`               | `--success`（**新增 shadcn 命名**）  | `151 100% 62%`          |
+| `--status-warning`           | `#FFD93D`               | `--warning`（**新增**）              | `50 100% 62%`           |
+| `--status-info`              | `#3D9BFF`               | `--info`（**新增**）                 | `214 100% 62%`          |
+| `--text-main`                | `#F5F0E8`               | `--foreground`                       | `38 50% 93%`            |
+| `--text-dim`                 | `#94A3B8`               | `--muted-foreground`                 | `215 16% 65%`           |
+| `--surface-deep`             | `#02020A`               | `--background`                       | `240 65% 4%`            |
+| `--surface-mid`              | `#0E0B1F`               | `--card` / `--popover`               | `252 67% 8%`            |
+| `--surface-raised`           | `#1A1A2E`               | `--secondary`                        | `240 23% 14%`           |
+| `--border-subtle`            | `rgba(255,255,255,0.1)` | `--border`                           | `0 0% 100% / 0.1`       |
+| `--accent-warm`（C4 新增）   | `#FF3D1A`               | `--accent-warm`（**新增**）          | `9 100% 55%`            |
+| `--accent-blue`（C4 新增）   | `#3B82F6`               | `--accent-blue`（**新增**）          | `217 91% 60%`           |
+| `--accent-purple`（C4 新增） | `#A855F7`               | `--accent-purple`（**新增**）        | `271 91% 65%`           |
 
 > **shadcn 主题未定义 `--success` / `--warning` / `--info` / `--accent-warm` / `--accent-blue` / `--accent-purple`**——本 spec 在桥接层补齐（即 `tokens-bridge.scss` 输出 `--success: 151 100% 62%`，shadcn 组件直接消费）。
 
@@ -62,20 +66,20 @@
 ```scss
 // AETHER 既有 hex 令牌（不动命名）
 :root {
-  --accent: #00E5FF;
-  --status-error: #FF3B5C;
-  --status-success: #3DFFA2;
-  --status-warning: #FFD93D;
-  --status-info: #3D9BFF;
-  --text-main: #F5F0E8;
-  --text-dim: #94A3B8;
-  --surface-deep: #02020A;
-  --surface-mid: #0E0B1F;
-  --surface-raised: #1A1A2E;
+  --accent: #00e5ff;
+  --status-error: #ff3b5c;
+  --status-success: #3dffa2;
+  --status-warning: #ffd93d;
+  --status-info: #3d9bff;
+  --text-main: #f5f0e8;
+  --text-dim: #94a3b8;
+  --surface-deep: #02020a;
+  --surface-mid: #0e0b1f;
+  --surface-raised: #1a1a2e;
   --border-subtle: rgba(255, 255, 255, 0.1);
-  --accent-warm: #FF3D1A;
-  --accent-blue: #3B82F6;
-  --accent-purple: #A855F7;
+  --accent-warm: #ff3d1a;
+  --accent-blue: #3b82f6;
+  --accent-purple: #a855f7;
 }
 
 // shadcn HSL 三元组（从 AETHER 派生）
@@ -97,12 +101,12 @@
     --accent-foreground: 240 65% 4%;
     --destructive: 349 100% 67%;
     --destructive-foreground: 38 50% 93%;
-    --success: 151 100% 62%;   // AETHER 派生
-    --warning: 50 100% 62%;     // AETHER 派生
-    --info: 214 100% 62%;      // AETHER 派生
+    --success: 151 100% 62%; // AETHER 派生
+    --warning: 50 100% 62%; // AETHER 派生
+    --info: 214 100% 62%; // AETHER 派生
     --accent-warm: 9 100% 55%; // AETHER 派生
-    --accent-blue: 217 91% 60%;// AETHER 派生
-    --accent-purple: 271 91% 65%;// AETHER 派生
+    --accent-blue: 217 91% 60%; // AETHER 派生
+    --accent-purple: 271 91% 65%; // AETHER 派生
     --border: 0 0% 100% / 0.1;
     --input: 0 0% 100% / 0.15;
     --ring: 195 100% 50%;
@@ -114,6 +118,7 @@
 ## 接入步骤（顺序敏感）
 
 ### Step 1：Tailwind + PostCSS 装包
+
 ```bash
 cd packages/renderer
 npm i -D tailwindcss postcss autoprefixer
@@ -123,6 +128,7 @@ npx tailwindcss init -p
 ```
 
 ### Step 2：shadcn 初始化
+
 ```bash
 npx shadcn@latest init
 # base color: neutral
@@ -131,21 +137,25 @@ npx shadcn@latest init
 ```
 
 ### Step 3：复制 3 件套验证
+
 ```bash
 npx shadcn@latest add button dialog tooltip
 # 验证：src/components/ui/{button,dialog,tooltip}.tsx 落地
 ```
 
 ### Step 4：tokens-bridge.scss 落地
+
 - 文件：`packages/renderer/src/styles/base/tokens-bridge.scss`
 - 内容：见上 §数据模型 / 结构
 - main.scss 加 `@use 'base/tokens-bridge'`
 
 ### Step 5：TheaterView 烟雾测试
+
 - 加一行 `<Button>test</Button>` 截图断言（D11 visual:test）
 - 6/6 绿 + 零 baseline 漂移
 
 ### Step 6：SCSS 模块批 1（PR #91+ 单独立 PR）
+
 - `_liked-modal.scss` 的 45 处硬编码颜色 → shadcn theme
 - budget 下调（24 处 + 它引用的组件同步换）
 
@@ -194,9 +204,13 @@ export default {
         accentBlue: 'hsl(var(--accent-blue))',
         accentPurple: 'hsl(var(--accent-purple))',
       },
-      borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
-      keyframes: { /* tailwindcss-animate defaults */ },
-      animation: { /* tailwindcss-animate defaults */ },
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
+      },
+      keyframes: {/* tailwindcss-animate defaults */},
+      animation: {/* tailwindcss-animate defaults */},
     },
   },
   plugins: [require('tailwindcss-animate')],
@@ -242,8 +256,8 @@ export default {
 ### `src/lib/utils.ts`（shadcn CLI 输出，cn helper）
 
 ```ts
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -259,29 +273,32 @@ export function cn(...inputs: ClassValue[]) {
 ## 文件改动清单
 
 ### 新增文件
-| 文件 | 内容 | 来源 |
-|---|---|---|
-| `packages/renderer/tailwind.config.js` | Tailwind 配置 | 新 |
-| `packages/renderer/postcss.config.js` | PostCSS 配置 | 新 |
-| `packages/renderer/components.json` | shadcn CLI 配置 | `npx shadcn init` |
-| `packages/renderer/src/styles/base/tokens-bridge.scss` | AETHER → shadcn HSL 桥接 | 新 |
-| `packages/renderer/src/components/ui/Button.tsx` | shadcn Button（ownership 复制）| `npx shadcn add button` |
-| `packages/renderer/src/components/ui/Dialog.tsx` | shadcn Dialog（Radix Primitives）| `npx shadcn add dialog` |
-| `packages/renderer/src/components/ui/Tooltip.tsx` | shadcn Tooltip（Radix Primitives）| `npx shadcn add tooltip` |
-| `packages/renderer/src/lib/utils.ts` | shadcn `cn()` helper | `npx shadcn init` |
-| `packages/renderer/src/components/__sandbox/ButtonSmoke.tsx` | 烟雾测试组件（不进任何 baseline 页面）| 新 |
+
+| 文件                                                         | 内容                                   | 来源                     |
+| ------------------------------------------------------------ | -------------------------------------- | ------------------------ |
+| `packages/renderer/tailwind.config.js`                       | Tailwind 配置                          | 新                       |
+| `packages/renderer/postcss.config.js`                        | PostCSS 配置                           | 新                       |
+| `packages/renderer/components.json`                          | shadcn CLI 配置                        | `npx shadcn init`        |
+| `packages/renderer/src/styles/base/tokens-bridge.scss`       | AETHER → shadcn HSL 桥接               | 新                       |
+| `packages/renderer/src/components/ui/Button.tsx`             | shadcn Button（ownership 复制）        | `npx shadcn add button`  |
+| `packages/renderer/src/components/ui/Dialog.tsx`             | shadcn Dialog（Radix Primitives）      | `npx shadcn add dialog`  |
+| `packages/renderer/src/components/ui/Tooltip.tsx`            | shadcn Tooltip（Radix Primitives）     | `npx shadcn add tooltip` |
+| `packages/renderer/src/lib/utils.ts`                         | shadcn `cn()` helper                   | `npx shadcn init`        |
+| `packages/renderer/src/components/__sandbox/ButtonSmoke.tsx` | 烟雾测试组件（不进任何 baseline 页面） | 新                       |
 
 ### 改动文件
-| 文件 | 改动 |
-|---|---|
-| `packages/renderer/package.json` | 加 deps / devDeps；scripts 加 `tokens:tailwind:check` |
-| `packages/renderer/src/styles/base/_base.scss` | 加 `@tailwind base/components/utilities` 三层 |
-| `packages/renderer/src/styles/main.scss` | 加 `@use 'base/tokens-bridge'` |
-| `scripts/figma-tokens-dump.json` | 加 6 个新 token（`Color/semantic/{status-warning,status-info,accent-warm,accent-blue,accent-purple,success}`）|
-| `scripts/figma-tokens-dump-seg.js` | 新增 6 token 的 Figma mock 段（CI 离线腿）|
-| `packages/renderer/src/styles/base/_tokens.generated.scss` | 自动同步生成 6 个新 hex + HSL 三元组（CI 跑 `tokens:export`）|
+
+| 文件                                                       | 改动                                                                                                           |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `packages/renderer/package.json`                           | 加 deps / devDeps；scripts 加 `tokens:tailwind:check`                                                          |
+| `packages/renderer/src/styles/base/_base.scss`             | 加 `@tailwind base/components/utilities` 三层                                                                  |
+| `packages/renderer/src/styles/main.scss`                   | 加 `@use 'base/tokens-bridge'`                                                                                 |
+| `scripts/figma-tokens-dump.json`                           | 加 6 个新 token（`Color/semantic/{status-warning,status-info,accent-warm,accent-blue,accent-purple,success}`） |
+| `scripts/figma-tokens-dump-seg.js`                         | 新增 6 token 的 Figma mock 段（CI 离线腿）                                                                     |
+| `packages/renderer/src/styles/base/_tokens.generated.scss` | 自动同步生成 6 个新 hex + HSL 三元组（CI 跑 `tokens:export`）                                                  |
 
 ### 不动（**强约束**）
+
 - `docs/adr/ADR-001-shadcn-migration.md` —— ADR 已拍板，spec 不能改
 - `packages/server/**` —— Tailwind/shadcn 只在 renderer
 - `packages/electron/**` —— 同上
@@ -291,16 +308,16 @@ export function cn(...inputs: ClassValue[]) {
 
 ## 排期（commit 切分）
 
-| commit | 内容 | 估时 |
-|---|---|---|
-| 1 | `chore(renderer): install tailwind + radix + cva` | 30min |
-| 2 | `feat(tokens): add 6 new tokens (status-warning/info, accent-warm/blue/purple, success)` | 30min |
-| 3 | `feat(tokens): add tokens-bridge.scss mapping AETHER → shadcn HSL` | 1h |
-| 4 | `chore(renderer): init shadcn + copy button/dialog/tooltip` | 1h |
-| 5 | `feat(ui): add ButtonSmoke sandbox component` | 30min |
-| 6 | `test(visual): add button-smoke screenshot to D11 baseline` | 30min |
-| 7 | `docs(spec): shadcn-migration spec.md`（本文件）| — |
-| **总** | | **~4h 工作** / 6 提交 / 1 PR |
+| commit | 内容                                                                                     | 估时                         |
+| ------ | ---------------------------------------------------------------------------------------- | ---------------------------- |
+| 1      | `chore(renderer): install tailwind + radix + cva`                                        | 30min                        |
+| 2      | `feat(tokens): add 6 new tokens (status-warning/info, accent-warm/blue/purple, success)` | 30min                        |
+| 3      | `feat(tokens): add tokens-bridge.scss mapping AETHER → shadcn HSL`                       | 1h                           |
+| 4      | `chore(renderer): init shadcn + copy button/dialog/tooltip`                              | 1h                           |
+| 5      | `feat(ui): add ButtonSmoke sandbox component`                                            | 30min                        |
+| 6      | `test(visual): add button-smoke screenshot to D11 baseline`                              | 30min                        |
+| 7      | `docs(spec): shadcn-migration spec.md`（本文件）                                         | —                            |
+| **总** |                                                                                          | **~4h 工作** / 6 提交 / 1 PR |
 
 **PR merge 后**：status `proposed` → `accepted`，ADR-001 拍板。
 
@@ -313,13 +330,13 @@ export function cn(...inputs: ClassValue[]) {
 
 ## 风险与兜底
 
-| 风险 | 兜底 |
-|---|---|
-| Tailwind bundle size 超预算 | PurgeCSS 配置 + `content: ['./src/**/*.{ts,tsx}']` 严格限定 → 估计 +20KB gzip |
-| Radix 增加 bundle | Radix Primitives tree-shakable，Dialog/Tooltip 各自 ~5KB gzip |
-| HSL 桥接失效（颜色不对）| D11 visual:test 加 button-smoke baseline 验证；失败即阻塞修 |
-| shadcn 升级破坏 ownership 组件 | 锁定 shadcn 版本（不 `npx shadcn@latest` 升级）→ 半年手动同步 |
-| SCSS ↔ Tailwind 混用期代码风格分裂 | ESLint 规则禁止 `<div className="...">` + SCSS `className` 混用强制选一 |
+| 风险                               | 兜底                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| Tailwind bundle size 超预算        | PurgeCSS 配置 + `content: ['./src/**/*.{ts,tsx}']` 严格限定 → 估计 +20KB gzip |
+| Radix 增加 bundle                  | Radix Primitives tree-shakable，Dialog/Tooltip 各自 ~5KB gzip                 |
+| HSL 桥接失效（颜色不对）           | D11 visual:test 加 button-smoke baseline 验证；失败即阻塞修                   |
+| shadcn 升级破坏 ownership 组件     | 锁定 shadcn 版本（不 `npx shadcn@latest` 升级）→ 半年手动同步                 |
+| SCSS ↔ Tailwind 混用期代码风格分裂 | ESLint 规则禁止 `<div className="...">` + SCSS `className` 混用强制选一       |
 
 ## 相关文档
 

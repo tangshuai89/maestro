@@ -17,15 +17,15 @@
 
 ## 1. 范围
 
-| 工作 | 文件 | 类型 |
-|---|---|---|
-| D5 spec + tasks | `specs/d5-code-connect/{spec,tasks}.md` | 新 |
-| 自动化校验脚本（reactPath 存在 + props 完整 + 一致性） | `scripts/figma-code-connect-validate.mjs` | 新 |
-| 5 个 D1 映射 props 补全（基于 React 组件 Props） | `figma-code-connect.json` | 改 |
-| 5 个 modal/full 屏映射 `_d1Status` 字段标注「nodeId 待 D1 跑完替换」 | `figma-code-connect.json` | 改 |
-| 加 `npm run test:code-connect` 脚本 | `package.json` | 改 |
-| 接 `test:ci`（自动跑 validate） | `package.json` | 改 |
-| v4-audit 的 SKIP 字段说明 | `scripts/figma-aether-v4-audit.mjs` | 改（注释） |
+| 工作                                                                 | 文件                                      | 类型       |
+| -------------------------------------------------------------------- | ----------------------------------------- | ---------- |
+| D5 spec + tasks                                                      | `specs/d5-code-connect/{spec,tasks}.md`   | 新         |
+| 自动化校验脚本（reactPath 存在 + props 完整 + 一致性）               | `scripts/figma-code-connect-validate.mjs` | 新         |
+| 5 个 D1 映射 props 补全（基于 React 组件 Props）                     | `figma-code-connect.json`                 | 改         |
+| 5 个 modal/full 屏映射 `_d1Status` 字段标注「nodeId 待 D1 跑完替换」 | `figma-code-connect.json`                 | 改         |
+| 加 `npm run test:code-connect` 脚本                                  | `package.json`                            | 改         |
+| 接 `test:ci`（自动跑 validate）                                      | `package.json`                            | 改         |
+| v4-audit 的 SKIP 字段说明                                            | `scripts/figma-aether-v4-audit.mjs`       | 改（注释） |
 
 ## 2. 不在 D5 范围
 
@@ -64,10 +64,12 @@
 ```
 
 可选字段：
+
 - `_d1Status`: string (D1 占位标记, 跑完后删)
 - `_description`: string (备注)
 
 Validate 检查项：
+
 1. **路径存在**：`reactPath` 指向的 `.tsx` 文件实际存在
 2. **组件导出**：文件内有 `export default function Xxx` 或 `export { Xxx }`
 3. **Props 提取**：用 TypeScript compiler API 解析 interface Props，列出 prop 列表；校验 mapping.props 至少覆盖 80% 关键 prop（必填 prop 100% 覆盖）

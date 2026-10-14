@@ -1,11 +1,6 @@
 export type MusicProvider = 'qq' | 'netease' | 'deezer' | 'spotify';
 
-export const MUSIC_PROVIDERS: MusicProvider[] = [
-  'qq',
-  'netease',
-  'deezer',
-  'spotify',
-];
+export const MUSIC_PROVIDERS: MusicProvider[] = ['qq', 'netease', 'deezer', 'spotify'];
 
 export function normalizeProvider(value: string | undefined): MusicProvider {
   if (value === 'netease') return 'netease';

@@ -40,18 +40,33 @@ for (const line of scss.split('\n')) {
 
 test('generated tokens file is non-empty', () => {
   assert(Object.keys(tokens).length > 0, 'no tokens parsed');
-  assert(Object.keys(tokens).length >= 30, `expected >=30 tokens, got ${Object.keys(tokens).length}`);
+  assert(
+    Object.keys(tokens).length >= 30,
+    `expected >=30 tokens, got ${Object.keys(tokens).length}`,
+  );
 });
 
 test('color semantic tokens present', () => {
-  const required = ['accent', 'text-main', 'text-dim', 'glass-fill', 'glass-stroke', 'status-liked'];
+  const required = [
+    'accent',
+    'text-main',
+    'text-dim',
+    'glass-fill',
+    'glass-stroke',
+    'status-liked',
+  ];
   for (const k of required) {
     assert(k in tokens, `missing --${k}`);
   }
 });
 
 test('color primitive tokens present', () => {
-  const required = ['primitive-bg-top', 'primitive-bg-bottom', 'primitive-neon-cyan', 'primitive-heart-red'];
+  const required = [
+    'primitive-bg-top',
+    'primitive-bg-bottom',
+    'primitive-neon-cyan',
+    'primitive-heart-red',
+  ];
   for (const k of required) {
     assert(k in tokens, `missing --${k}`);
   }
@@ -87,7 +102,15 @@ test('platform colors present', () => {
 
 test('color values are valid format', () => {
   for (const [k, v] of Object.entries(tokens)) {
-    if (k.startsWith('primitive-') || k === 'accent' || k === 'accent-purple' || k === 'ai' || k === 'text-main' || k.startsWith('status-') || k.startsWith('platform-')) {
+    if (
+      k.startsWith('primitive-') ||
+      k === 'accent' ||
+      k === 'accent-purple' ||
+      k === 'ai' ||
+      k === 'text-main' ||
+      k.startsWith('status-') ||
+      k.startsWith('platform-')
+    ) {
       assert(/^#[0-9a-f]{6}$/i.test(v) || /^rgba?\(/.test(v), `--${k} has invalid color: ${v}`);
     }
   }

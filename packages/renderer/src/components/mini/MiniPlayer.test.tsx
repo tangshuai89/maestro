@@ -58,9 +58,7 @@ describe('MiniPlayer', () => {
   it('有 track：渲染标题 / 歌手—专辑 / 封面 / 时间', () => {
     const { container } = render(<MiniPlayer {...makeProps()} />);
     expect(screen.getByText('你应该对我说谎')).toBeInTheDocument();
-    expect(
-      screen.getByText('张宇 — 男人的好（新歌+精选）'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('张宇 — 男人的好（新歌+精选）')).toBeInTheDocument();
     const img = container.querySelector<HTMLImageElement>('.mini-cover img');
     expect(img?.src).toBe('https://y.gtimg.cn/cover.jpg');
     expect(screen.getByText('0:30')).toBeInTheDocument();
@@ -124,9 +122,7 @@ describe('MiniPlayer', () => {
   });
 
   it('liked → is-liked + aria-pressed；播放中 → is-playing + 暂停语义', () => {
-    const { container, rerender } = render(
-      <MiniPlayer {...makeProps({ liked: true })} />,
-    );
+    const { container, rerender } = render(<MiniPlayer {...makeProps({ liked: true })} />);
     const like = screen.getByLabelText('取消红心');
     expect(like).toHaveAttribute('aria-pressed', 'true');
     expect(like.className).toContain('is-liked');

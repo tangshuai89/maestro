@@ -106,9 +106,7 @@ function parseArgs(argv: string[]): CliArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const storageDir = args.storage
-    ? path.resolve(args.storage)
-    : path.resolve('.storage');
+  const storageDir = args.storage ? path.resolve(args.storage) : path.resolve('.storage');
   // 必须在 NestFactory.create **之前**设定：ConfigService 的 storageDir 是类字段，
   // 在实例化那一刻读 env（不是 import 时），所以这里设还来得及。
   process.env.STORAGE_DIR = storageDir;

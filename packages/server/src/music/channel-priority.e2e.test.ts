@@ -113,8 +113,7 @@ async function main() {
       const json = r.json as { ok?: boolean; priority?: string[] };
       expect(
         '2b. PUT 持久化 ok + 返回 cleaned priority',
-        json.ok === true &&
-          JSON.stringify(json.priority) === JSON.stringify(next),
+        json.ok === true && JSON.stringify(json.priority) === JSON.stringify(next),
         JSON.stringify(json),
       );
     }
@@ -125,8 +124,7 @@ async function main() {
       const json = r.json as { priority?: string[] };
       expect(
         '3. GET 持久化后 priority=["spotify","netease","deezer"]',
-        JSON.stringify(json.priority) ===
-          JSON.stringify(['spotify', 'netease', 'deezer']),
+        JSON.stringify(json.priority) === JSON.stringify(['spotify', 'netease', 'deezer']),
         JSON.stringify(json),
       );
     }
@@ -190,8 +188,7 @@ async function main() {
       const json = r.json as { ok?: boolean; priority?: string[] };
       expect(
         '8b. DELETE 返回 ok=true + priority=PLAY_PRIORITY',
-        json.ok === true &&
-          JSON.stringify(json.priority) === JSON.stringify(PLAY_PRIORITY),
+        json.ok === true && JSON.stringify(json.priority) === JSON.stringify(PLAY_PRIORITY),
         JSON.stringify(json),
       );
     }
@@ -225,18 +222,14 @@ async function main() {
       };
       expect(
         '10b. source-health items 长度 = MUSIC_PROVIDERS.length',
-        Array.isArray(json.items) &&
-          json.items.length === MUSIC_PROVIDERS.length,
+        Array.isArray(json.items) && json.items.length === MUSIC_PROVIDERS.length,
         JSON.stringify(json),
       );
       // 全部 total=0 + successRate=1（未跑过搜索）
       expect(
         '10c. 全部平台 total=0 + successRate=1 + lastFailureAt=null',
         json.items!.every(
-          (it) =>
-            it.total === 0 &&
-            it.successRate === 1 &&
-            it.lastFailureAt === null,
+          (it) => it.total === 0 && it.successRate === 1 && it.lastFailureAt === null,
         ),
         JSON.stringify(json.items?.[0]),
       );
@@ -261,11 +254,7 @@ async function main() {
         `实际 ${r.status}: ${r.text.slice(0, 100)}`,
       );
       const json = r.json as { ok?: boolean; removed?: number };
-      expect(
-        '12b. 空库 removed=0',
-        json.ok === true && json.removed === 0,
-        JSON.stringify(json),
-      );
+      expect('12b. 空库 removed=0', json.ok === true && json.removed === 0, JSON.stringify(json));
     }
 
     // ── 13. POST /music/library/:provider/clear 未知 provider → 400
@@ -326,9 +315,7 @@ async function main() {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
-  console.log(
-    `\n🎉 channel-priority.e2e: ${passed} passed, ${failed} failed`,
-  );
+  console.log(`\n🎉 channel-priority.e2e: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }
 

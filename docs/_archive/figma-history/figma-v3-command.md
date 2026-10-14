@@ -9,11 +9,13 @@
 目标 frame：`AETHER — Canvas`（node-id 1-2，若不存在则创建 1440×900）
 
 ## 任务
+
 把「AETHER ENGINE v3.0 | Professional Cosmic HUD」设计（参考 /tmp/sd-skill/aether-v3-pro.html 的结构与视觉）用 use_figma 在 Figma 中重建为**设计师级专业稿**。
 
 ## 设计规格（v3 Professional，克制高级版）
 
 ### 设计令牌（先创建 Figma Variables，组名 AETHER）
+
 - bg #02020A（深空黑）
 - neon-cyan #00E5FF（主强调）
 - glass-bg rgba(255,255,255,0.06)（玻璃填充）
@@ -50,6 +52,7 @@
 6. **右下角**：`NEURAL.SYNC // AES.ENGINE v3.0`（9px mono 白 10%）
 
 ### 执行要求
+
 - 先用 use_figma 创建变量组 AETHER（含上述颜色变量），再逐段构建（背景→顶部→左栏→右栏→底部），每段一个 use_figma 调用，代码保持 <10KB
 - 全部用 auto-layout（间距 8pt 网格：8/16/24/32/40）
 - 字体：标题/正文 Inter（Semi Bold/Regular），HUD 标签 JetBrains Mono（若 Figma 无此字体用 Menlo/Monaco，保持等宽即可）

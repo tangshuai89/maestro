@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
-  fetchRecoStatus,
-  importLibrary,
-  runReco,
-  saveRecoKey,
-  PROVIDER_LABELS,
-} from '../api';
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import { fetchRecoStatus, importLibrary, runReco, saveRecoKey, PROVIDER_LABELS } from '../api';
 import type { UnifiedSearchItem } from '../api';
 
 interface RecoStatus {
@@ -58,78 +59,81 @@ export function useReco(
    * 跑一次推荐。`seed` 非空时以某首歌为种子（"放点像这首的"）——候选项会围绕
    * 它的艺人展开，服务端还会把这次点击记成一条强正信号（seed）。
    */
-  const runRecoFlow = useCallback(async (seed?: { title: string; artist: string }) => {
-    setError(null);
-    // Re-fetch status (guard against stale).
-    let status = recoStatus;
-    try {
-      status = await fetchRecoStatus();
-      setRecoStatus(status);
-    } catch (e) {
-      setError(`推荐状态查询失败：${(e as Error).message}`);
-      return;
-    }
-    if (!status.configured) {
-      setRecoKeyOpen(true);
-      return;
-    }
-    setRecoRunning(true);
-    try {
-      // Empty library → auto-import each platform's "my likes" (currently
-      // NetEase / Spotify, both requiring login).
-      if (status.librarySize === 0) {
-        const lib = await importLibrary();
-        const imported = lib.sources.reduce((n, s) => n + s.count, 0);
-        if (imported === 0) {
-          const hints = lib.sources
-            .filter((s) => s.error)
-            .map((s) => `${PROVIDER_LABELS[s.provider]}: ${s.error}`)
-            .join('；');
-          setError(
-            `没有可导入的"我的喜欢"，先登录网易云或 Spotify 再试${
-              hints ? `（${hints}）` : ''
-            }`,
-          );
-          return;
-        }
-        status = { ...status, librarySize: lib.items.length };
+  const runRecoFlow = useCallback(
+    async (seed?: { title: string; artist: string }) => {
+      setError(null);
+      // Re-fetch status (guard against stale).
+      let status = recoStatus;
+      try {
+        status = await fetchRecoStatus();
         setRecoStatus(status);
-      }
-      const result = await runReco({ count: 10, ...(seed ? { seed } : {}) });
-      if (result.items.length === 0) {
-        setError('推荐没拿到结果，换个心情/语言试试？');
+      } catch (e) {
+        setError(`推荐状态查询失败：${(e as Error).message}`);
         return;
       }
-      // Track everything recommended this session so the auto-continue batches
-      // don't replay songs (the server dedups against the library but not
-      // across reco runs). Seeded with this first batch.
-      const recommended: Array<{ title: string; artist: string }> =
-        result.items.map((it) => ({ title: it.title, artist: it.artist }));
-      const loadMore = async (): Promise<UnifiedSearchItem[]> => {
-        const next = await runReco({
-          count: 10,
-          // Cap the exclude list so the prompt/request stays bounded on long
-          // listening sessions; the most recent picks matter most.
-          exclude: recommended.slice(-100),
-          // 种子模式续播时继续带着种子，保持"更多这种"的方向。
-          ...(seed ? { seed } : {}),
-        });
-        for (const it of next.items) {
-          recommended.push({ title: it.title, artist: it.artist });
+      if (!status.configured) {
+        setRecoKeyOpen(true);
+        return;
+      }
+      setRecoRunning(true);
+      try {
+        // Empty library → auto-import each platform's "my likes" (currently
+        // NetEase / Spotify, both requiring login).
+        if (status.librarySize === 0) {
+          const lib = await importLibrary();
+          const imported = lib.sources.reduce((n, s) => n + s.count, 0);
+          if (imported === 0) {
+            const hints = lib.sources
+              .filter((s) => s.error)
+              .map((s) => `${PROVIDER_LABELS[s.provider]}: ${s.error}`)
+              .join('；');
+            setError(
+              `没有可导入的"我的喜欢"，先登录网易云或 Spotify 再试${hints ? `（${hints}）` : ''}`,
+            );
+            return;
+          }
+          status = { ...status, librarySize: lib.items.length };
+          setRecoStatus(status);
         }
-        return next.items;
-      };
-      // Reuse the same playback link as the search queue, plus the next-batch
-      // loader so playback continues past the last recommendation.
-      // (suggestions 现在从 queueIdx + queueUnifiedItems useMemo 派生 —
-      // 见 runRecoFlow 外面的 suggestions —— 不再需要在跑 batch 时手动同步。)
-      playSearch(result.items, 0, loadMore);
-    } catch (e) {
-      setError(`推荐失败：${(e as Error).message}`);
-    } finally {
-      setRecoRunning(false);
-    }
-  }, [recoStatus, playSearch, setError]);
+        const result = await runReco({ count: 10, ...(seed ? { seed } : {}) });
+        if (result.items.length === 0) {
+          setError('推荐没拿到结果，换个心情/语言试试？');
+          return;
+        }
+        // Track everything recommended this session so the auto-continue batches
+        // don't replay songs (the server dedups against the library but not
+        // across reco runs). Seeded with this first batch.
+        const recommended: Array<{ title: string; artist: string }> = result.items.map((it) => ({
+          title: it.title,
+          artist: it.artist,
+        }));
+        const loadMore = async (): Promise<UnifiedSearchItem[]> => {
+          const next = await runReco({
+            count: 10,
+            // Cap the exclude list so the prompt/request stays bounded on long
+            // listening sessions; the most recent picks matter most.
+            exclude: recommended.slice(-100),
+            // 种子模式续播时继续带着种子，保持"更多这种"的方向。
+            ...(seed ? { seed } : {}),
+          });
+          for (const it of next.items) {
+            recommended.push({ title: it.title, artist: it.artist });
+          }
+          return next.items;
+        };
+        // Reuse the same playback link as the search queue, plus the next-batch
+        // loader so playback continues past the last recommendation.
+        // (suggestions 现在从 queueIdx + queueUnifiedItems useMemo 派生 —
+        // 见 runRecoFlow 外面的 suggestions —— 不再需要在跑 batch 时手动同步。)
+        playSearch(result.items, 0, loadMore);
+      } catch (e) {
+        setError(`推荐失败：${(e as Error).message}`);
+      } finally {
+        setRecoRunning(false);
+      }
+    },
+    [recoStatus, playSearch, setError],
+  );
 
   const handleReco = useCallback(() => runRecoFlow(), [runRecoFlow]);
 

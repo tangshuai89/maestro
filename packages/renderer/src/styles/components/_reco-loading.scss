@@ -64,7 +64,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .rl-close:hover {
@@ -102,8 +105,15 @@
 }
 
 @keyframes rl-card-pulse {
-  0%, 100% { opacity: 0.4; border-color: color-mix(in srgb, var(--ai) 10%, transparent); }
-  50% { opacity: 0.8; border-color: color-mix(in srgb, var(--ai) 30%, transparent); }
+  0%,
+  100% {
+    opacity: 0.4;
+    border-color: color-mix(in srgb, var(--ai) 10%, transparent);
+  }
+  50% {
+    opacity: 0.8;
+    border-color: color-mix(in srgb, var(--ai) 30%, transparent);
+  }
 }
 
 .rl-card-art {
@@ -121,8 +131,13 @@
 }
 
 @keyframes rl-art-shimmer {
-  0%, 100% { background-position: 0% 0%; }
-  50% { background-position: 100% 100%; }
+  0%,
+  100% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
 }
 
 .rl-card-line {
@@ -132,12 +147,22 @@
   animation: rl-line-pulse 1.6s ease-in-out infinite;
 }
 
-.rl-card-line--title { width: 80%; }
-.rl-card-line--artist { width: 55%; height: 8px; }
+.rl-card-line--title {
+  width: 80%;
+}
+.rl-card-line--artist {
+  width: 55%;
+  height: 8px;
+}
 
 @keyframes rl-line-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.7; }
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .rl-card-match {
@@ -179,8 +204,12 @@
 }
 
 @keyframes rl-progress-sweep {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
 }
 
 .rl-progress-text {
@@ -250,5 +279,9 @@
   border-color: color-mix(in srgb, var(--ai) 20%, transparent);
 }
 
-.rl-stat--accent .rl-stat-label { color: color-mix(in srgb, var(--ai) 50%, transparent); }
-.rl-stat--accent .rl-stat-value { color: #b57bff; }
+.rl-stat--accent .rl-stat-label {
+  color: color-mix(in srgb, var(--ai) 50%, transparent);
+}
+.rl-stat--accent .rl-stat-value {
+  color: #b57bff;
+}

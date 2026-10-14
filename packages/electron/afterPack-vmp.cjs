@@ -38,9 +38,7 @@ const path = require('node:path');
  */
 function resolveEvsVmpBin() {
   if (process.env.EVS_VMP_BIN) {
-    return fs.existsSync(process.env.EVS_VMP_BIN)
-      ? process.env.EVS_VMP_BIN
-      : null;
+    return fs.existsSync(process.env.EVS_VMP_BIN) ? process.env.EVS_VMP_BIN : null;
   }
   const home = os.homedir();
   const candidates = [

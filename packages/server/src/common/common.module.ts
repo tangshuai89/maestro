@@ -6,12 +6,7 @@ import { RequireInternalTokenGuard } from './guards/require-internal-token.guard
 
 @Global()
 @Module({
-  providers: [
-    ConfigService,
-    StorageService,
-    SessionService,
-    RequireInternalTokenGuard,
-  ],
+  providers: [ConfigService, StorageService, SessionService, RequireInternalTokenGuard],
   exports: [ConfigService, StorageService, SessionService, RequireInternalTokenGuard],
 })
 export class CommonModule {}

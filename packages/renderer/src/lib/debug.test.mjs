@@ -36,8 +36,12 @@ let locationSearch = '';
 let reloadCalled = false;
 
 const locationMock = {
-  get search() { return locationSearch; },
-  reload: () => { reloadCalled = true; },
+  get search() {
+    return locationSearch;
+  },
+  reload: () => {
+    reloadCalled = true;
+  },
 };
 
 const consoleLogSpy = [];
@@ -110,10 +114,7 @@ reset();
 {
   locationSearch = '?wpsDebug=0';
   lsStore.set('maestro:debug-wps', '1');
-  expect(
-    '2. URL ?wpsDebug=0 → false（URL 优先于 LS=1）',
-    isWpsDebug() === false,
-  );
+  expect('2. URL ?wpsDebug=0 → false（URL 优先于 LS=1）', isWpsDebug() === false);
 }
 
 // ── 3. isWpsDebug：URL 无 flag + LS=1 → true ──────────────────
@@ -150,7 +151,9 @@ reset();
 {
   locationSearch = '';
   const origGetItem = localStorageMock.getItem;
-  localStorageMock.getItem = () => { throw new Error('SecurityError'); };
+  localStorageMock.getItem = () => {
+    throw new Error('SecurityError');
+  };
   expect('7. localStorage 抛异常 → false', isWpsDebug() === false);
   localStorageMock.getItem = origGetItem;
 }
@@ -232,20 +235,23 @@ reset();
   lsStore.set('maestro:debug-wps', '1');
   reloadCalled = false;
   __wpsDebugOff();
-  expect(
-    '14. __wpsDebugOff → LS 删除 + reload',
-    !lsStore.has('maestro:debug-wps') && reloadCalled,
-  );
+  expect('14. __wpsDebugOff → LS 删除 + reload', !lsStore.has('maestro:debug-wps') && reloadCalled);
 }
 
 // ── 15. __wpsDebugOn：localStorage 抛异常不崩 ─────────────────
 reset();
 {
   const origSetItem = localStorageMock.setItem;
-  localStorageMock.setItem = () => { throw new Error('QuotaExceeded'); };
+  localStorageMock.setItem = () => {
+    throw new Error('QuotaExceeded');
+  };
   reloadCalled = false;
   let threw = false;
-  try { __wpsDebugOn(); } catch { threw = true; }
+  try {
+    __wpsDebugOn();
+  } catch {
+    threw = true;
+  }
   expect('15. __wpsDebugOn LS 抛异常 → 不崩（仍 reload）', !threw && reloadCalled);
   localStorageMock.setItem = origSetItem;
 }

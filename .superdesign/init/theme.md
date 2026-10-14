@@ -21,27 +21,27 @@ Source: `packages/renderer/src/styles/` (SCSS via `sass`, no Tailwind). Single e
 
 ### `:root` (in `base/_tokens.scss`) — always-on brand + runtime tokens
 
-| Token | Value | Purpose |
-|---|---|---|
-| `--accent` | `#6b8cff` | Brand accent — cool iOS blue-violet (visionOS-style) |
-| `--accent-soft` | `rgba(107, 140, 255, 0.18)` | |
-| `--accent-hover` | `#5678ee` | |
-| `--accent-deep` | `#3f5bd0` | |
-| `--accent-bright` | `#8aa4ff` | |
-| `--cosmic-near` | `#f5f0e8` | Cosmic gradient stops |
-| `--cosmic-far` | `#fafaf9` | |
-| `--error-fg` | `#c62828` | Error (light default; overridden per theme) |
-| `--error-fg-soft` | `rgba(198, 40, 40, 0.7)` | |
-| `--error-bg` | `rgba(198, 40, 40, 0.06)` | |
-| `--error-border` | `rgba(198, 40, 40, 0.18)` | |
-| `--error-action-bg` | `rgba(198, 40, 40, 0.08)` | |
-| `--cover-accent` | `#8a93a8` (default) | **Runtime**: cover art main colour, JS-written per track |
-| `--accent-live` | `color-mix(in oklab, var(--cover-accent, #d97757) 68%, white 32%)` | Live playback accent (progress/volume fill) |
-| `--cover-glow` | `rgba(0, 0, 0, 0)` | Runtime: cover outer halo |
-| `--bass-intensity` | `0` | Runtime 0..1: bass RAF loop → cover breathing |
-| `--bass-period` | `1.4s` | Breathing animation period |
-| `--plx-accent-purple` | `#b14bff` | Legacy Plexamp palette (unused in active UI) |
-| `--plx-accent-pink` | `#ff3d8c` | |
+| Token                 | Value                                                              | Purpose                                                  |
+| --------------------- | ------------------------------------------------------------------ | -------------------------------------------------------- |
+| `--accent`            | `#6b8cff`                                                          | Brand accent — cool iOS blue-violet (visionOS-style)     |
+| `--accent-soft`       | `rgba(107, 140, 255, 0.18)`                                        |                                                          |
+| `--accent-hover`      | `#5678ee`                                                          |                                                          |
+| `--accent-deep`       | `#3f5bd0`                                                          |                                                          |
+| `--accent-bright`     | `#8aa4ff`                                                          |                                                          |
+| `--cosmic-near`       | `#f5f0e8`                                                          | Cosmic gradient stops                                    |
+| `--cosmic-far`        | `#fafaf9`                                                          |                                                          |
+| `--error-fg`          | `#c62828`                                                          | Error (light default; overridden per theme)              |
+| `--error-fg-soft`     | `rgba(198, 40, 40, 0.7)`                                           |                                                          |
+| `--error-bg`          | `rgba(198, 40, 40, 0.06)`                                          |                                                          |
+| `--error-border`      | `rgba(198, 40, 40, 0.18)`                                          |                                                          |
+| `--error-action-bg`   | `rgba(198, 40, 40, 0.08)`                                          |                                                          |
+| `--cover-accent`      | `#8a93a8` (default)                                                | **Runtime**: cover art main colour, JS-written per track |
+| `--accent-live`       | `color-mix(in oklab, var(--cover-accent, #d97757) 68%, white 32%)` | Live playback accent (progress/volume fill)              |
+| `--cover-glow`        | `rgba(0, 0, 0, 0)`                                                 | Runtime: cover outer halo                                |
+| `--bass-intensity`    | `0`                                                                | Runtime 0..1: bass RAF loop → cover breathing            |
+| `--bass-period`       | `1.4s`                                                             | Breathing animation period                               |
+| `--plx-accent-purple` | `#b14bff`                                                          | Legacy Plexamp palette (unused in active UI)             |
+| `--plx-accent-pink`   | `#ff3d8c`                                                          |                                                          |
 
 ### Spacing scale
 
@@ -68,6 +68,7 @@ Source: `packages/renderer/src/styles/` (SCSS via `sass`, no Tailwind). Single e
 --font-ui: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
            'PingFang SC', 'Hiragino Sans GB', sans-serif
 ```
+
 - Loaded at runtime via `@fontsource/fredoka` (400/600/700) in `main.tsx`; Fredoka is the round cartoon font of the Monster Beats design.
 - ⚠ Caveat: `--font-display` and `--font-mono` are **referenced** in SCSS (`_cover-card.scss`, `_side-cards.scss`, `_progress.scss`, `_settings-modal.scss`) but **not defined** in `_tokens.scss` — they fall through to inherit (`--font-mono` gets a `monospace` fallback only in `_settings-modal.scss`). Time codes in `_progress.scss` and `_monster-beats.scss` use a hardcoded mono stack instead.
 
@@ -75,51 +76,51 @@ Source: `packages/renderer/src/styles/` (SCSS via `sass`, no Tailwind). Single e
 
 ### Dark tokens (via `@media (prefers-color-scheme: dark)` for `:root:not([data-theme='light'])` and `[data-theme='dark']`)
 
-| Token | Value |
-|---|---|
-| `--bg-base` / `--bg-primary` | `#14161a` (cool blue-black, never pure black) |
-| `--bg-secondary` | `#1c1f26` |
-| `--bg-elevated` | `rgba(40, 44, 54, 0.55)` |
-| `--bg-overlay` | `rgba(230, 238, 255, 0.06)` |
-| `--bg-overlay-strong` | `rgba(230, 238, 255, 0.12)` |
-| `--text-primary` | `#eef1f7` |
-| `--text-secondary` | `rgba(238, 241, 247, 0.66)` |
-| `--text-tertiary` | `rgba(238, 241, 247, 0.34)` |
-| `--border` | `rgba(230, 238, 255, 0.1)` |
-| `--border-strong` | `rgba(230, 238, 255, 0.18)` |
-| `--shadow` | `rgba(8, 10, 16, 0.6)` |
-| `--heart-active` | `#ff5470` |
-| `--heart-inactive` | `rgba(238, 241, 247, 0.5)` |
-| `--shadow-sm` | `0 1px 2px rgba(8, 10, 16, 0.5)` |
-| `--shadow-md` | `0 4px 16px rgba(8, 10, 16, 0.55)` |
-| `--shadow-lg` | `0 18px 48px rgba(8, 10, 16, 0.7), 0 6px 16px rgba(8, 10, 16, 0.55)` |
-| `--glass-bg` | `rgba(40, 44, 54, 0.5)` |
-| `--glass-blur` | `saturate(180%) blur(40px)` |
-| `--glass-border` | `1px solid rgba(230, 238, 255, 0.1)` |
-| `--error-*` | `#ff8a8a` family (softer than light mode) |
+| Token                        | Value                                                                |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `--bg-base` / `--bg-primary` | `#14161a` (cool blue-black, never pure black)                        |
+| `--bg-secondary`             | `#1c1f26`                                                            |
+| `--bg-elevated`              | `rgba(40, 44, 54, 0.55)`                                             |
+| `--bg-overlay`               | `rgba(230, 238, 255, 0.06)`                                          |
+| `--bg-overlay-strong`        | `rgba(230, 238, 255, 0.12)`                                          |
+| `--text-primary`             | `#eef1f7`                                                            |
+| `--text-secondary`           | `rgba(238, 241, 247, 0.66)`                                          |
+| `--text-tertiary`            | `rgba(238, 241, 247, 0.34)`                                          |
+| `--border`                   | `rgba(230, 238, 255, 0.1)`                                           |
+| `--border-strong`            | `rgba(230, 238, 255, 0.18)`                                          |
+| `--shadow`                   | `rgba(8, 10, 16, 0.6)`                                               |
+| `--heart-active`             | `#ff5470`                                                            |
+| `--heart-inactive`           | `rgba(238, 241, 247, 0.5)`                                           |
+| `--shadow-sm`                | `0 1px 2px rgba(8, 10, 16, 0.5)`                                     |
+| `--shadow-md`                | `0 4px 16px rgba(8, 10, 16, 0.55)`                                   |
+| `--shadow-lg`                | `0 18px 48px rgba(8, 10, 16, 0.7), 0 6px 16px rgba(8, 10, 16, 0.55)` |
+| `--glass-bg`                 | `rgba(40, 44, 54, 0.5)`                                              |
+| `--glass-blur`               | `saturate(180%) blur(40px)`                                          |
+| `--glass-border`             | `1px solid rgba(230, 238, 255, 0.1)`                                 |
+| `--error-*`                  | `#ff8a8a` family (softer than light mode)                            |
 
 ### Light tokens (via `@media (prefers-color-scheme: light)` and `[data-theme='light']`)
 
-| Token | Value |
-|---|---|
-| `--bg-base` / `--bg-primary` | `#fafaf9` |
-| `--bg-secondary` | `#f5f5f4` |
-| `--bg-elevated` | `rgba(255, 255, 255, 0.72)` |
-| `--bg-overlay` | `rgba(0, 0, 0, 0.04)` |
-| `--bg-overlay-strong` | `rgba(0, 0, 0, 0.08)` |
-| `--text-primary` | `#1c1917` |
-| `--text-secondary` | `rgba(28, 25, 23, 0.6)` |
-| `--text-tertiary` | `rgba(28, 25, 23, 0.35)` |
-| `--border` | `rgba(0, 0, 0, 0.08)` |
-| `--border-strong` | `rgba(0, 0, 0, 0.16)` |
-| `--heart-active` | `#ef4444` (@media) / `#ff2d55` ([data-theme='light']) |
-| `--heart-inactive` | `rgba(28, 25, 23, 0.4)` |
-| `--shadow-sm` | `0 1px 2px rgba(0, 0, 0, 0.06)` |
-| `--shadow-md` | `0 4px 12px rgba(0, 0, 0, 0.08)` |
-| `--shadow-lg` | `0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08)` |
-| `--glass-bg` | `rgba(255, 255, 255, 0.55)` |
-| `--glass-blur` | `saturate(180%) blur(40px)` |
-| `--glass-border` | `1px solid rgba(0, 0, 0, 0.06)` |
+| Token                        | Value                                                             |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `--bg-base` / `--bg-primary` | `#fafaf9`                                                         |
+| `--bg-secondary`             | `#f5f5f4`                                                         |
+| `--bg-elevated`              | `rgba(255, 255, 255, 0.72)`                                       |
+| `--bg-overlay`               | `rgba(0, 0, 0, 0.04)`                                             |
+| `--bg-overlay-strong`        | `rgba(0, 0, 0, 0.08)`                                             |
+| `--text-primary`             | `#1c1917`                                                         |
+| `--text-secondary`           | `rgba(28, 25, 23, 0.6)`                                           |
+| `--text-tertiary`            | `rgba(28, 25, 23, 0.35)`                                          |
+| `--border`                   | `rgba(0, 0, 0, 0.08)`                                             |
+| `--border-strong`            | `rgba(0, 0, 0, 0.16)`                                             |
+| `--heart-active`             | `#ef4444` (@media) / `#ff2d55` ([data-theme='light'])             |
+| `--heart-inactive`           | `rgba(28, 25, 23, 0.4)`                                           |
+| `--shadow-sm`                | `0 1px 2px rgba(0, 0, 0, 0.06)`                                   |
+| `--shadow-md`                | `0 4px 12px rgba(0, 0, 0, 0.08)`                                  |
+| `--shadow-lg`                | `0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08)` |
+| `--glass-bg`                 | `rgba(255, 255, 255, 0.55)`                                       |
+| `--glass-blur`               | `saturate(180%) blur(40px)`                                       |
+| `--glass-border`             | `1px solid rgba(0, 0, 0, 0.06)`                                   |
 
 Theme selection: `<html data-theme="dark|light">` written by `useTheme`; `system` leaves it to `prefers-color-scheme`.
 
@@ -273,14 +274,14 @@ Also: creature element types (`wild` #FFD60A, `fire` #FF3B3B, `water` #2D7FFF, `
 // z-index layering. One map, one source of truth — no more guessing which
 // magic number sits above which. Read via z('name') (see _functions.scss).
 $z-layers: (
-  'bg-layer':       -1,
-  'base':            0,
-  'sheen':           5,
-  'menu-backdrop':  55,
-  'menu':           56,
+  'bg-layer': -1,
+  'base': 0,
+  'sheen': 5,
+  'menu-backdrop': 55,
+  'menu': 56,
   'search-overlay': 60,
-  'titlebar':      100,
-  'modal':        1000,
+  'titlebar': 100,
+  'modal': 1000,
 );
 
 // The only breakpoint in the app: below this height the side column
@@ -292,32 +293,41 @@ $bp-short: 520px;
 // theme, so their text must stay light. Centralised here instead of scattered
 // as magic hex through the partials. (The NetEase modal, by contrast, is
 // theme-aware and uses the CSS tokens.)
-$scrim:                    rgba(0, 0, 0, 0.45);
-$overlay-bg:               rgba(24, 24, 28, 0.96);
-$overlay-border:           rgba(255, 255, 255, 0.08);
-$overlay-divider:          rgba(255, 255, 255, 0.06);
-$overlay-hover:            rgba(255, 255, 255, 0.06);
-$overlay-field-bg:         rgba(255, 255, 255, 0.04);
-$overlay-field-border:     rgba(255, 255, 255, 0.12);
-$overlay-field-border-hi:  rgba(255, 255, 255, 0.3);
-$overlay-text:             #f2f2f5;
-$overlay-text-dim:         #9a9aa2;
-$overlay-text-mute:        #888;
-$overlay-text-faint:       #777;
-$overlay-icon:             #aaa;
-$overlay-error:            #ff8080;
-$overlay-ph-solid:         #333;
-$overlay-ph-a:             #3a3a42;
-$overlay-ph-b:             #24242a;
-$accent-green:             #31c27c; // search spinner / play icon / links
+$scrim: rgba(0, 0, 0, 0.45);
+$overlay-bg: rgba(24, 24, 28, 0.96);
+$overlay-border: rgba(255, 255, 255, 0.08);
+$overlay-divider: rgba(255, 255, 255, 0.06);
+$overlay-hover: rgba(255, 255, 255, 0.06);
+$overlay-field-bg: rgba(255, 255, 255, 0.04);
+$overlay-field-border: rgba(255, 255, 255, 0.12);
+$overlay-field-border-hi: rgba(255, 255, 255, 0.3);
+$overlay-text: #f2f2f5;
+$overlay-text-dim: #9a9aa2;
+$overlay-text-mute: #888;
+$overlay-text-faint: #777;
+$overlay-icon: #aaa;
+$overlay-error: #ff8080;
+$overlay-ph-solid: #333;
+$overlay-ph-a: #3a3a42;
+$overlay-ph-b: #24242a;
+$accent-green: #31c27c; // search spinner / play icon / links
 
 // Search "source chip" per-platform accent, used by an @each in
 // components/_search-panel.scss to generate the .source-chip--best.*
 // rules instead of hand-writing one block per platform.
 $platform-colors: (
-  'qq':      (bg: rgba(49, 194, 124, 0.18), fg: #31c27c),
-  'netease': (bg: rgba(217, 68, 68, 0.18),  fg: #ff7b7b),
-  'deezer':  (bg: rgba(108, 75, 195, 0.22), fg: #b39dff),
+  'qq': (
+    bg: rgba(49, 194, 124, 0.18),
+    fg: #31c27c,
+  ),
+  'netease': (
+    bg: rgba(217, 68, 68, 0.18),
+    fg: #ff7b7b,
+  ),
+  'deezer': (
+    bg: rgba(108, 75, 195, 0.22),
+    fg: #b39dff,
+  ),
 );
 ```
 
@@ -471,8 +481,9 @@ $platform-colors: (
   // Mono for digits (time codes). The font files are loaded via a <link>
   // in index.html; these variables just point at them with system
   // fallbacks so the app is usable offline.
-  --font-ui: 'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont,
-    'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-ui:
+    'Fredoka', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+    'Hiragino Sans GB', sans-serif;
 
   // Animated period (in seconds) for the cover-card breathing shadow.
   --bass-period: 1.4s;
@@ -682,11 +693,7 @@ body {
       color-mix(in oklab, var(--cover-accent) 12%, transparent) 0%,
       transparent 70%
     ),
-    radial-gradient(
-      ellipse 100% 80% at 50% 50%,
-      transparent 35%,
-      rgba(0, 0, 0, 0.35) 100%
-    ),
+    radial-gradient(ellipse 100% 80% at 50% 50%, transparent 35%, rgba(0, 0, 0, 0.35) 100%),
     var(--bg-base);
   // NB: no `background-attachment: fixed`. The app never scrolls, so fixed
   // gave zero benefit but forced the background into a viewport-sized
@@ -696,7 +703,9 @@ body {
   color: var(--text-primary);
 
   // Theme transitions — short so the change feels responsive, not laggy.
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 
   user-select: none;
   // NB: drag is set on the titlebar only. Putting it on body would swallow
@@ -802,11 +811,7 @@ body {
 // behind the cover card even though they're coplanar.
 .glass-card {
   position: relative;
-  background: color-mix(
-    in oklab,
-    var(--cover-accent) 6%,
-    rgba(255, 255, 255, 0.045)
-  );
+  background: color-mix(in oklab, var(--cover-accent) 6%, rgba(255, 255, 255, 0.045));
   border: 1px solid color-mix(in oklab, var(--cover-accent) 14%, var(--border));
   border-radius: var(--radius-xl);
   @include backdrop-blur(30px, 160%);
@@ -877,7 +882,10 @@ body {
   background: var(--bg-overlay);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -904,7 +912,10 @@ body {
   padding: 3px 10px;
   cursor: pointer;
   outline: none;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .preset-select:hover {
@@ -1012,7 +1023,9 @@ body {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .source-menu-item:hover:not(.source-menu-item--disabled) {
@@ -1067,13 +1080,8 @@ body {
   position: relative;
   display: block;
   padding: 16px;
-  background: color-mix(
-    in oklab,
-    var(--cover-accent) 12%,
-    rgba(255, 255, 255, 0.1)
-  );
-  border: 1px solid
-    color-mix(in oklab, var(--cover-accent) 30%, var(--border-strong));
+  background: color-mix(in oklab, var(--cover-accent) 12%, rgba(255, 255, 255, 0.1));
+  border: 1px solid color-mix(in oklab, var(--cover-accent) 30%, var(--border-strong));
   border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow:
@@ -1092,11 +1100,7 @@ body {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: color-mix(
-    in oklab,
-    var(--cover-accent) 6%,
-    rgba(255, 255, 255, 0.04)
-  );
+  background: color-mix(in oklab, var(--cover-accent) 6%, rgba(255, 255, 255, 0.04));
   @include backdrop-blur(44px, 190%);
 }
 
@@ -1194,16 +1198,8 @@ body {
   transform: scaleY(-1);
   filter: blur(8px);
   opacity: 0.5;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(0, 0, 0, 0) 100%
-  );
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0) 100%);
   pointer-events: none;
 }
 
@@ -1214,7 +1210,9 @@ body {
     0 22px 55px rgba(0, 0, 0, 0.5),
     0 0 100px 4px var(--cover-glow),
     0 0 0 1px rgba(255, 255, 255, 0.08);
-  transition: transform 0.09s linear, box-shadow 0.8s var(--ease-out);
+  transition:
+    transform 0.09s linear,
+    box-shadow 0.8s var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1300,7 +1298,9 @@ body {
   font-family: var(--font-display);
   font-size: clamp(28px, 3.6vw, 40px);
   font-weight: 500;
-  font-variation-settings: 'opsz' 144, 'SOFT' 30;
+  font-variation-settings:
+    'opsz' 144,
+    'SOFT' 30;
   letter-spacing: -0.022em;
   color: var(--text-primary);
   line-height: 1.05;
@@ -1490,7 +1490,9 @@ body {
   line-height: 1;
   padding: 2px 5px;
   border-radius: 4px;
-  transition: color 0.2s ease, background 0.2s ease;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
 
   &:hover {
     color: var(--text-primary);
@@ -1519,7 +1521,9 @@ body {
   padding: 2px 4px;
   border-radius: 4px;
   opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
 }
 
 .lyrics-line-row:hover .lyrics-line-copy,
@@ -1570,7 +1574,9 @@ body {
   border: 1px solid var(--border);
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
 
   &:hover {
     background: var(--surface-2);
@@ -1758,7 +1764,9 @@ body {
   color: var(--text-tertiary);
   cursor: pointer;
   padding: 0;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .volume-btn:hover {
@@ -1798,7 +1806,9 @@ body {
   background: var(--text-primary);
   cursor: pointer;
   box-shadow: 0 0 0 0 transparent;
-  transition: transform 0.12s var(--ease-spring), box-shadow 0.15s ease;
+  transition:
+    transform 0.12s var(--ease-spring),
+    box-shadow 0.15s ease;
 }
 
 .volume-slider:hover::-webkit-slider-thumb {
@@ -1877,7 +1887,9 @@ body {
   box-shadow:
     0 6px 20px rgba(0, 0, 0, 0.4),
     0 0 0 5px color-mix(in oklab, var(--cover-accent) 18%, transparent);
-  transition: transform 0.2s var(--ease-spring), box-shadow 0.4s ease;
+  transition:
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.4s ease;
 }
 
 .play-btn:hover:not(:disabled) {
@@ -2094,7 +2106,10 @@ body {
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .search-source-toggle__chip:hover:not(.is-active) {
@@ -2752,31 +2767,50 @@ body {
 // 折叠行用 ⚠ 标记，展开子行看斜体「翻唱」字样。
 .liked-modal-badges {
   &--live {
-    .liked-modal-badge { border-top: 2px solid #3b82f6; }
+    .liked-modal-badge {
+      border-top: 2px solid #3b82f6;
+    }
   }
   &--acoustic {
-    .liked-modal-badge { border-top: 2px solid #a855f7; }
+    .liked-modal-badge {
+      border-top: 2px solid #a855f7;
+    }
   }
   &--remix {
-    .liked-modal-badge { border-top: 2px solid #f97316; }
+    .liked-modal-badge {
+      border-top: 2px solid #f97316;
+    }
   }
   &--instrumental {
-    .liked-modal-badge { border-top: 2px solid #94a3b8; }
+    .liked-modal-badge {
+      border-top: 2px solid #94a3b8;
+    }
   }
   &--karaoke {
-    .liked-modal-badge { border-top: 2px solid #64748b; }
+    .liked-modal-badge {
+      border-top: 2px solid #64748b;
+    }
   }
   &--demo {
-    .liked-modal-badge { border-top: 2px solid #cbd5e1; }
+    .liked-modal-badge {
+      border-top: 2px solid #cbd5e1;
+    }
   }
   &--edit {
-    .liked-modal-badge { border-top: 2px solid #fbbf24; }
+    .liked-modal-badge {
+      border-top: 2px solid #fbbf24;
+    }
   }
   &--cover {
     // 翻唱：边框 + 内部字染色为「灰 + 斜体」，区别于录音版本。
     .liked-modal-badge {
       border-top: 2px solid #64748b;
-      background-image: linear-gradient(135deg, transparent 45%, rgba(100,116,139,0.4) 50%, transparent 55%);
+      background-image: linear-gradient(
+        135deg,
+        transparent 45%,
+        rgba(100, 116, 139, 0.4) 50%,
+        transparent 55%
+      );
       font-style: italic;
     }
   }
@@ -2796,14 +2830,39 @@ body {
   font-weight: 500;
   vertical-align: middle;
 
-  &--live { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-  &--acoustic { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
-  &--remix { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
-  &--instrumental { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
-  &--cover { background: rgba(100, 116, 139, 0.18); color: #94a3b8; font-style: italic; }
-  &--karaoke { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
-  &--demo { background: rgba(203, 213, 225, 0.15); color: #cbd5e1; }
-  &--edit { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+  &--live {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+  }
+  &--acoustic {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+  }
+  &--remix {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+  }
+  &--instrumental {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+  }
+  &--cover {
+    background: rgba(100, 116, 139, 0.18);
+    color: #94a3b8;
+    font-style: italic;
+  }
+  &--karaoke {
+    background: rgba(100, 116, 139, 0.15);
+    color: #94a3b8;
+  }
+  &--demo {
+    background: rgba(203, 213, 225, 0.15);
+    color: #cbd5e1;
+  }
+  &--edit {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+  }
 }
 
 // 折叠行末尾的「含翻唱」⚠ 提示
@@ -2816,14 +2875,30 @@ body {
 
 // 子行配色：子行的左侧 2px 描边让版本类型一眼可辨
 .liked-modal-subrow {
-  &--live { border-left: 2px solid rgba(59, 130, 246, 0.5); }
-  &--acoustic { border-left: 2px solid rgba(168, 85, 247, 0.5); }
-  &--remix { border-left: 2px solid rgba(249, 115, 22, 0.5); }
-  &--instrumental { border-left: 2px solid rgba(148, 163, 184, 0.4); }
-  &--cover { border-left: 2px solid rgba(100, 116, 139, 0.5); }
-  &--karaoke { border-left: 2px solid rgba(100, 116, 139, 0.4); }
-  &--demo { border-left: 2px solid rgba(203, 213, 225, 0.4); }
-  &--edit { border-left: 2px solid rgba(251, 191, 36, 0.4); }
+  &--live {
+    border-left: 2px solid rgba(59, 130, 246, 0.5);
+  }
+  &--acoustic {
+    border-left: 2px solid rgba(168, 85, 247, 0.5);
+  }
+  &--remix {
+    border-left: 2px solid rgba(249, 115, 22, 0.5);
+  }
+  &--instrumental {
+    border-left: 2px solid rgba(148, 163, 184, 0.4);
+  }
+  &--cover {
+    border-left: 2px solid rgba(100, 116, 139, 0.5);
+  }
+  &--karaoke {
+    border-left: 2px solid rgba(100, 116, 139, 0.4);
+  }
+  &--demo {
+    border-left: 2px solid rgba(203, 213, 225, 0.4);
+  }
+  &--edit {
+    border-left: 2px solid rgba(251, 191, 36, 0.4);
+  }
 }
 
 .liked-modal-footer {
@@ -2883,7 +2958,7 @@ body {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.1) 50%,
     rgba(255, 255, 255, 0.04) 100%
   );
   background-size: 200% 100%;
@@ -2896,7 +2971,7 @@ body {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.1) 50%,
     rgba(255, 255, 255, 0.04) 100%
   );
   background-size: 200% 100%;
@@ -2947,9 +3022,9 @@ body {
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(49, 194, 124, 0.0) 0%,
+      rgba(49, 194, 124, 0) 0%,
       $accent-green 50%,
-      rgba(49, 194, 124, 0.0) 100%
+      rgba(49, 194, 124, 0) 100%
     );
     animation: liked-syncbar-slide 1.4s ease-in-out infinite;
   }
@@ -3250,7 +3325,9 @@ body {
 .source-arrow {
   color: var(--text-tertiary);
   flex-shrink: 0;
-  transition: transform 0.25s var(--ease-spring), color 0.25s ease;
+  transition:
+    transform 0.25s var(--ease-spring),
+    color 0.25s ease;
 }
 
 .source-card:hover .source-arrow {
@@ -3836,21 +3913,24 @@ body {
 
 @use '../abstracts' as *;
 
-$sky-top: #5BC0FF;
-$sky-bot: #8FE4FF;
-$cream: #FFF8E7;
-$navy: #0A1F3C;
-$navy-soft: #1F3252;
-$red: #FF3B3B;
-$yellow: #FFD60A;
-$blue: #2D7FFF;
-$green: #4CD964;
-$pink: #FF2D87;
-$orange: #FF8C2A;
+$sky-top: #5bc0ff;
+$sky-bot: #8fe4ff;
+$cream: #fff8e7;
+$navy: #0a1f3c;
+$navy-soft: #1f3252;
+$red: #ff3b3b;
+$yellow: #ffd60a;
+$blue: #2d7fff;
+$green: #4cd964;
+$pink: #ff2d87;
+$orange: #ff8c2a;
 
 .mb-root {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: linear-gradient(135deg, $sky-top 0%, $sky-bot 100%);
   overflow: hidden;
 
@@ -3867,20 +3947,27 @@ $orange: #FF8C2A;
     z-index: 0;
   }
 
-  > * { position: absolute; }
+  > * {
+    position: absolute;
+  }
   // 设计稿 1440x900 固定画布 → 舞台整体缩放适配任意窗口（--mb-scale 由 React 写入）
   .mb-stage {
-    left: 50%; top: 110px; // 顶栏之下固定（Titlebar 40 + 设计条 70）
-    width: 1440px; height: 900px;
+    left: 50%;
+    top: 110px; // 顶栏之下固定（Titlebar 40 + 设计条 70）
+    width: 1440px;
+    height: 900px;
     transform: translateX(-50%) scale(var(--mb-scale, 1));
     transform-origin: top center;
     z-index: 1;
-    > * { position: absolute; }
+    > * {
+      position: absolute;
+    }
   }
 
   // ── 四角星闪烁（设计稿 .sparkle） ────────────────────────
   .mb-sparkle {
-    width: 12px; height: 12px;
+    width: 12px;
+    height: 12px;
     background: #fff;
     clip-path: polygon(50% 0%, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0% 50%, 40% 40%);
     animation: mb-twinkle 3s infinite ease-in-out;
@@ -3888,15 +3975,24 @@ $orange: #FF8C2A;
     pointer-events: none;
   }
   @keyframes mb-twinkle {
-    0%, 100% { opacity: 0.3; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1.2); }
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
   //  TOP STRIP — 黑底黄边，雷达半挂 + HUD 图标条 + 同步/收藏
   // ═══════════════════════════════════════════════════════════════
   .mb-top-strip {
-    top: 0; left: 0; right: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: 110px; // 40px Electron Titlebar 区（透明按钮浮于其上）+ 70px 设计条
     background: rgba(0, 0, 0, 0.92);
     border-bottom: 4px solid $yellow;
@@ -3912,83 +4008,132 @@ $orange: #FF8C2A;
     position: absolute;
     left: 24px;
     bottom: -50px; // 半挂：20px 留在顶栏内，视觉上从顶栏下缘长出
-    width: 140px; height: 140px;
+    width: 140px;
+    height: 140px;
     flex-shrink: 0;
     border: 4px solid #334155;
     border-radius: 50%;
-    background: #0F172A;
+    background: #0f172a;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     overflow: hidden;
     z-index: 6;
-    &::before, &::after {
-      content: ''; position: absolute; inset: 0;
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
     }
     &::before {
-      background: linear-gradient(90deg, transparent 49.5%, rgba(76, 217, 100, 0.35) 50%, transparent 50.5%);
+      background: linear-gradient(
+        90deg,
+        transparent 49.5%,
+        rgba(76, 217, 100, 0.35) 50%,
+        transparent 50.5%
+      );
     }
     &::after {
-      background: linear-gradient(0deg, transparent 49.5%, rgba(76, 217, 100, 0.25) 50%, transparent 50.5%);
+      background: linear-gradient(
+        0deg,
+        transparent 49.5%,
+        rgba(76, 217, 100, 0.25) 50%,
+        transparent 50.5%
+      );
     }
   }
   .mb-radar-ring {
     position: absolute;
     border: 1px solid rgba(76, 217, 100, 0.4);
     border-radius: 50%;
-    left: 50%; top: 50%;
+    left: 50%;
+    top: 50%;
     transform: translate(-50%, -50%);
-    &--1 { width: 30%; height: 30%; }
-    &--2 { width: 58%; height: 58%; }
-    &--3 { width: 88%; height: 88%; }
+    &--1 {
+      width: 30%;
+      height: 30%;
+    }
+    &--2 {
+      width: 58%;
+      height: 58%;
+    }
+    &--3 {
+      width: 88%;
+      height: 88%;
+    }
   }
   .mb-radar-sweep {
-    position: absolute; inset: 0;
-    background: conic-gradient(from 0deg, transparent 0deg, rgba(76, 217, 100, 0.5) 30deg, transparent 60deg);
+    position: absolute;
+    inset: 0;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(76, 217, 100, 0.5) 30deg,
+      transparent 60deg
+    );
     animation: mb-radar-spin 3s linear infinite;
     border-radius: 50%;
   }
   .mb-radar-blip {
     position: absolute;
-    width: 5px; height: 5px;
-    background: $green; border-radius: 50%;
-    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 5px;
+    height: 5px;
+    background: $green;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     box-shadow: 0 0 10px $green;
   }
   .mb-radar-label {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    color: $green; font-size: 11px; font-weight: 700;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $green;
+    font-size: 11px;
+    font-weight: 700;
     letter-spacing: 0.15em;
     text-shadow: 0 0 4px rgba(76, 217, 100, 0.8);
     z-index: 2;
   }
   @keyframes mb-radar-spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   // ── HUD 图标条（❤/⚡/🗡/🛡 圆形图标 + 进度条） ──────────
   .mb-hud-stats {
     flex: 1;
-    display: flex; flex-direction: row; // 设计稿：4 组水平一行
+    display: flex;
+    flex-direction: row; // 设计稿：4 组水平一行
     align-items: center;
     gap: 20px;
   }
   .mb-hud-stat {
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex-shrink: 0;
   }
   .mb-hud-stat-icon {
-    width: 28px; height: 28px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: 2px solid #fff;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
     box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
   }
   .mb-hud-stat-track {
     width: 110px; // 设计稿 w-24
     height: 12px;
-    background: #1E293B;
+    background: #1e293b;
     border-radius: 5px;
     overflow: hidden;
     border: 2px solid #475569;
@@ -4000,97 +4145,144 @@ $orange: #FF8C2A;
   }
 
   .mb-top-right {
-    display: flex; align-items: center; gap: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
     margin-left: auto;
   }
   .mb-sync-bar {
-    display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
   }
   .mb-sync-bar-text {
-    color: $yellow; font-size: 10px; font-weight: 700;
+    color: $yellow;
+    font-size: 10px;
+    font-weight: 700;
     letter-spacing: 0.12em;
   }
   .mb-sync-bar-track {
     position: relative;
-    width: 160px; height: 10px;
-    background: #1E293B;
+    width: 160px;
+    height: 10px;
+    background: #1e293b;
     border-radius: 999px;
     border: 2px solid rgba(255, 214, 10, 0.5);
   }
   .mb-sync-bar-fill {
-    position: absolute; left: 1px; top: 1px; bottom: 1px;
-    background: $yellow; border-radius: 999px;
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    bottom: 1px;
+    background: $yellow;
+    border-radius: 999px;
     transition: width 0.5s ease;
   }
   .mb-sync-ball {
     position: absolute;
-    width: 8px; height: 8px; border-radius: 50%;
-    top: 50%; transform: translateY(-50%);
-    &--start { left: 2px;  background: $red;   box-shadow: 0 0 6px $red; }
-    &--end   { right: 2px; background: $green; box-shadow: 0 0 6px $green; }
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    &--start {
+      left: 2px;
+      background: $red;
+      box-shadow: 0 0 6px $red;
+    }
+    &--end {
+      right: 2px;
+      background: $green;
+      box-shadow: 0 0 6px $green;
+    }
   }
 
   .mb-bag {
-    display: flex; align-items: center; gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 4px 14px;
-    background: #1E293B;
+    background: #1e293b;
     border: 2px solid $yellow;
     border-radius: 12px;
     color: #fff;
     cursor: default;
   }
   .mb-bag-count {
-    font-weight: 700; font-size: 15px;
+    font-weight: 700;
+    font-size: 15px;
   }
 
   // ═══════════════════════════════════════════════════════════════
   //  4 大 source badge — 右上角独立大圆
   // ═══════════════════════════════════════════════════════════════
   .mb-source-badges {
-    top: 92px; right: 24px;
-    display: flex; gap: 16px;
+    top: 92px;
+    right: 24px;
+    display: flex;
+    gap: 16px;
     z-index: 4;
   }
   .mb-source-badge {
     --badge-color: #{$navy};
     position: relative;
-    width: 96px; height: 96px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
     background: var(--badge-color);
     border: 3px solid $navy;
     box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.25);
     color: $cream;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s;
-    &:hover { transform: scale(1.08); }
+    transition:
+      transform 0.15s,
+      box-shadow 0.15s;
+    &:hover {
+      transform: scale(1.08);
+    }
     &.is-active {
-      box-shadow: 0 0 0 4px $yellow, 0 0 0 10px rgba(255, 214, 10, 0.25);
+      box-shadow:
+        0 0 0 4px $yellow,
+        0 0 0 10px rgba(255, 214, 10, 0.25);
       transform: scale(1.1);
     }
   }
   .mb-source-badge-star {
     position: absolute;
-    top: -6px; right: -6px;
-    width: 24px; height: 24px;
+    top: -6px;
+    right: -6px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     background: $yellow;
     border: 2px solid $navy;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .mb-source-badge-letter {
-    font-size: 44px; font-weight: 900;
+    font-size: 44px;
+    font-weight: 900;
     font-style: italic;
     line-height: 1;
     text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
   }
   .mb-source-badge-heart {
     position: absolute;
-    bottom: -8px; left: 50%; transform: translateX(-50%);
-    display: flex; align-items: center; gap: 3px;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 3px;
     background: $red;
     color: #fff;
-    font-size: 9px; font-weight: 900;
+    font-size: 9px;
+    font-weight: 900;
     padding: 2px 8px;
     border-radius: 999px;
     border: 2px solid $navy;
@@ -4101,7 +4293,8 @@ $orange: #FF8C2A;
   //  CREATURE CARD (left) — 白底黄边 -3° 全息卡
   // ═══════════════════════════════════════════════════════════════
   .mb-creature-card {
-    top: 96px; left: 24px;
+    top: 96px;
+    left: 24px;
     width: 360px;
     background: #fff;
     border: 4px solid $yellow;
@@ -4111,12 +4304,19 @@ $orange: #FF8C2A;
     transform-origin: center;
     animation: mb-card-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     z-index: 3;
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
   @keyframes mb-card-pop {
-    from { transform: rotate(-3deg) scale(0.85); opacity: 0; }
-    to   { transform: rotate(-3deg) scale(1);    opacity: 1; }
+    from {
+      transform: rotate(-3deg) scale(0.85);
+      opacity: 0;
+    }
+    to {
+      transform: rotate(-3deg) scale(1);
+      opacity: 1;
+    }
   }
   .mb-creature-banner {
     background: #000;
@@ -4139,46 +4339,71 @@ $orange: #FF8C2A;
     box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
   }
   .mb-creature-art-img {
-    position: absolute; inset: 0;
-    background-size: cover; background-position: center;
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
   }
   .mb-creature-art-placeholder {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     color: $cream;
     font-size: 64px;
     line-height: 1;
   }
   .mb-creature-art-shine {
-    position: absolute; inset: 0;
-    background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      115deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.35) 50%,
+      transparent 70%
+    );
     background-size: 200% 200%;
     animation: mb-shine 3s linear infinite;
     pointer-events: none;
   }
   @keyframes mb-shine {
-    from { background-position: 200% 0; }
-    to   { background-position: -200% 0; }
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
   }
   // 全息流动（设计稿 .holographic-card）
   .mb-creature-art-holo {
-    position: absolute; inset: 0;
-    background: linear-gradient(135deg,
-      rgba(255,255,255,0.22) 0%,
-      rgba(255,0,255,0.10) 25%,
-      rgba(0,255,255,0.10) 50%,
-      rgba(255,255,0,0.10) 75%,
-      rgba(255,255,255,0.22) 100%);
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 0, 255, 0.1) 25%,
+      rgba(0, 255, 255, 0.1) 50%,
+      rgba(255, 255, 0, 0.1) 75%,
+      rgba(255, 255, 255, 0.22) 100%
+    );
     background-size: 200% 200%;
     animation: mb-holo 5s linear infinite;
     pointer-events: none;
   }
   @keyframes mb-holo {
-    0%   { background-position: 0% 0%; }
-    100% { background-position: 200% 200%; }
+    0% {
+      background-position: 0% 0%;
+    }
+    100% {
+      background-position: 200% 200%;
+    }
   }
   .mb-creature-nameplate {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin: 0 14px 12px;
     padding: 8px 14px;
     background: $navy;
@@ -4187,25 +4412,34 @@ $orange: #FF8C2A;
     flex-shrink: 0;
   }
   .mb-creature-name-block {
-    display: flex; flex-direction: column; gap: 1px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
     min-width: 0;
   }
   .mb-creature-album {
-    color: #7DD3FC;
+    color: #7dd3fc;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.06em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .mb-creature-name {
     color: #fff;
     font-weight: 700;
     font-size: 18px;
     letter-spacing: 0.02em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     min-width: 0;
   }
-  .mb-creature-name-star { color: $yellow; display: flex; }
+  .mb-creature-name-star {
+    color: $yellow;
+    display: flex;
+  }
 
   .mb-creature-stats {
     display: grid;
@@ -4222,7 +4456,9 @@ $orange: #FF8C2A;
     gap: 6px;
   }
   .mb-creature-stat-label {
-    font-size: 10px; font-weight: 700; color: $navy;
+    font-size: 10px;
+    font-weight: 700;
+    color: $navy;
   }
   .mb-creature-stat-track {
     height: 8px;
@@ -4236,14 +4472,16 @@ $orange: #FF8C2A;
     transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .mb-creature-stat-value {
-    font-size: 10px; font-weight: 700;
+    font-size: 10px;
+    font-weight: 700;
     text-align: right;
   }
 
   // ── Type 徽章：彩虹渐变描边 + 白底黑字（设计稿 ULTRA-ELEMENTAL） ──
   .mb-creature-type {
     padding: 0 14px 14px;
-    display: flex; justify-content: flex-end;
+    display: flex;
+    justify-content: flex-end;
     flex-shrink: 0;
   }
   .mb-creature-type-badge {
@@ -4251,7 +4489,8 @@ $orange: #FF8C2A;
     --type-fg: #{$navy};
     display: inline-block;
     padding: 4px 12px;
-    font-size: 10px; font-weight: 900;
+    font-size: 10px;
+    font-weight: 900;
     letter-spacing: 0.08em;
     border-radius: 8px;
     background: var(--type-bg, #fff);
@@ -4267,7 +4506,8 @@ $orange: #FF8C2A;
   //  BATTLE DIALOG (right, below source badges)
   // ═══════════════════════════════════════════════════════════════
   .mb-battle-dialog {
-    top: 224px; right: 24px;
+    top: 224px;
+    right: 24px;
     width: 560px;
     max-height: 380px; // 长歌词内部滚动，底部与 battle-menu（≈640）保持间距
     background: $cream;
@@ -4279,11 +4519,14 @@ $orange: #FF8C2A;
     // 已经由内层 .mb-battle-body（overflow-y: auto）独立负责，不依赖此层
     // hidden 裁圆角。children 都没独立 background，cream 同色也不会透出。
     overflow: visible;
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     padding-bottom: 14px; // 给半挂 NEXT 让出空间
   }
   .mb-battle-status {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
     padding: 8px 16px;
     background: $cream;
@@ -4294,43 +4537,63 @@ $orange: #FF8C2A;
     // border-bottom 装饰线）。
     border-radius: 28px 28px 0 0;
     border-bottom: 2px solid rgba(10, 31, 60, 0.1);
-    font-size: 10px; font-weight: 700;
+    font-size: 10px;
+    font-weight: 700;
     color: $navy;
     letter-spacing: 0.08em;
     flex-shrink: 0;
   }
   .mb-battle-status-left {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
   .mb-battle-status-item {
-    background: #E2E8F0;
+    background: #e2e8f0;
     color: $navy;
     padding: 2px 10px;
     border-radius: 999px;
     font-weight: 700;
     font-size: 10px;
-    & + & { margin-left: 0; }
+    & + & {
+      margin-left: 0;
+    }
   }
-  .mb-battle-status-item.dim { opacity: 0.55; }
+  .mb-battle-status-item.dim {
+    opacity: 0.55;
+  }
   // TYPE 胶囊黄色（设计稿：LV 深蓝 / YEAR 灰 / TYPE 黄）
   .mb-battle-status-left .mb-battle-status-item:nth-child(3) {
     background: $yellow;
   }
   .mb-battle-status-left .mb-battle-status-item:first-child {
-    background: $navy; color: #fff;
+    background: $navy;
+    color: #fff;
   }
   .mb-battle-dots {
-    display: flex; align-items: center; gap: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .mb-battle-dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
     border: 1px solid rgba(10, 31, 60, 0.2);
-    &--red    { background: $red; }
-    &--yellow { background: $yellow; }
-    &--green  { background: $green; }
+    &--red {
+      background: $red;
+    }
+    &--yellow {
+      background: $yellow;
+    }
+    &--green {
+      background: $green;
+    }
   }
   .mb-battle-body {
-    display: flex; gap: 18px;
+    display: flex;
+    gap: 18px;
     padding: 22px 24px 44px;
     flex: 1;
     min-height: 0; // flex 内允许收缩 → overflow 生效
@@ -4339,27 +4602,45 @@ $orange: #FF8C2A;
   }
   .mb-speaker-portrait {
     flex-shrink: 0;
-    width: 72px; height: 72px;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
     background: #fff;
     border: 4px solid $navy;
-    box-shadow: inset 0 0 0 2px $cream, 0 4px 0 rgba(0, 0, 0, 0.15);
-    display: flex; align-items: center; justify-content: center;
+    box-shadow:
+      inset 0 0 0 2px $cream,
+      0 4px 0 rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     align-self: flex-start;
   }
-  .mb-battle-text { flex: 1; min-width: 0; padding-top: 4px; }
+  .mb-battle-text {
+    flex: 1;
+    min-width: 0;
+    padding-top: 4px;
+  }
   .mb-battle-line {
     color: $navy;
     line-height: 1.5;
     font-weight: 700;
-    &--prev { font-size: 16px; opacity: 0.45; min-height: 1.5em; }
+    &--prev {
+      font-size: 16px;
+      opacity: 0.45;
+      min-height: 1.5em;
+    }
     &--current {
-      font-size: 34px; font-weight: 900;
+      font-size: 34px;
+      font-weight: 900;
       color: $navy;
       margin: 6px 0;
       letter-spacing: -0.01em;
     }
-    &--next { font-size: 16px; opacity: 0.6; min-height: 1.5em; }
+    &--next {
+      font-size: 16px;
+      opacity: 0.6;
+      min-height: 1.5em;
+    }
   }
   .mb-battle-cursor {
     color: $red;
@@ -4367,7 +4648,9 @@ $orange: #FF8C2A;
     animation: mb-blink 1s steps(2) infinite;
   }
   @keyframes mb-blink {
-    50% { opacity: 0; }
+    50% {
+      opacity: 0;
+    }
   }
   .mb-battle-source,
   .mb-battle-account {
@@ -4378,21 +4661,27 @@ $orange: #FF8C2A;
   }
   .mb-battle-next {
     position: absolute;
-    bottom: -22px; right: 48px;
+    bottom: -22px;
+    right: 48px;
     z-index: 5; // 2026-08-14: 显式抬高层级——按钮挂在 dialog 底边外，可能压
-                 // 上方被 encounter log / battle menu 的高 z-index 元素遮。
-                 // dialog 自身 z 默认 0，下方元素若设了 z-index > 0 会盖按钮。
-    display: flex; align-items: center; gap: 6px;
+    // 上方被 encounter log / battle menu 的高 z-index 元素遮。
+    // dialog 自身 z 默认 0，下方元素若设了 z-index > 0 会盖按钮。
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 10px 26px;
     background: $red;
     color: $cream;
     border: 3px solid $navy;
     border-bottom-width: 6px;
     border-radius: 16px;
-    font-weight: 900; font-size: 14px;
+    font-weight: 900;
+    font-size: 14px;
     letter-spacing: 0.1em;
     cursor: pointer;
-    transition: transform 0.1s, border-bottom-width 0.1s;
+    transition:
+      transform 0.1s,
+      border-bottom-width 0.1s;
     &:hover:not(:disabled) {
       transform: translateY(2px);
       border-bottom-width: 4px;
@@ -4401,17 +4690,22 @@ $orange: #FF8C2A;
       transform: translateY(5px);
       border-bottom-width: 1px;
     }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
   //  ENCOUNTER LOG (bottom-left)
   // ═══════════════════════════════════════════════════════════════
   .mb-encounter {
-    bottom: 110px; left: 24px;
+    bottom: 110px;
+    left: 24px;
     width: 480px;
     z-index: 2;
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
   }
   .mb-encounter-banner {
     background: $red;
@@ -4423,10 +4717,16 @@ $orange: #FF8C2A;
     border: 3px solid $navy;
     border-bottom: none;
     border-radius: 14px 14px 0 0;
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex-shrink: 0;
-    &-prefix { font-size: 14px; }
-    &-sep { opacity: 0.55; }
+    &-prefix {
+      font-size: 14px;
+    }
+    &-sep {
+      opacity: 0.55;
+    }
   }
   .mb-encounter-grid {
     display: grid;
@@ -4456,41 +4756,61 @@ $orange: #FF8C2A;
     border: 2px solid $navy;
     border-radius: 12px;
     padding: 10px 6px 8px;
-    display: flex; flex-direction: column; align-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 4px;
     min-width: 0;
     &.is-active {
       border-color: $yellow;
       border-width: 3px;
-      box-shadow: 0 0 0 3px rgba(255, 214, 10, 0.35), 0 0 12px rgba(255, 214, 10, 0.6);
-      .mb-mini-card-match { background: $yellow; color: $navy; }
+      box-shadow:
+        0 0 0 3px rgba(255, 214, 10, 0.35),
+        0 0 12px rgba(255, 214, 10, 0.6);
+      .mb-mini-card-match {
+        background: $yellow;
+        color: $navy;
+      }
     }
   }
   .mb-mini-card-creature {
-    width: 64px; height: 64px;
-    display: flex; align-items: center; justify-content: center;
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
   }
   .mb-mini-card-check {
     position: absolute;
-    top: -8px; right: -8px;
-    width: 22px; height: 22px;
+    top: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: $yellow;
     border: 2px solid $navy;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .mb-mini-card-name {
-    font-size: 10px; font-weight: 700; color: $navy;
+    font-size: 10px;
+    font-weight: 700;
+    color: $navy;
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-top: 2px;
     max-width: 100%;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .mb-mini-card-type {
-    font-size: 8px; font-weight: 700; color: $navy-soft;
+    font-size: 8px;
+    font-weight: 700;
+    color: $navy-soft;
     text-align: center;
     letter-spacing: 0.1em;
     margin-bottom: 2px;
@@ -4498,7 +4818,8 @@ $orange: #FF8C2A;
   .mb-mini-card-match {
     align-self: stretch;
     text-align: center;
-    font-size: 9px; font-weight: 900;
+    font-size: 9px;
+    font-weight: 900;
     color: $navy;
     background: rgba(10, 31, 60, 0.08);
     padding: 2px 4px;
@@ -4508,7 +4829,8 @@ $orange: #FF8C2A;
   .mb-encounter-foot {
     align-self: center;
     margin-top: 8px;
-    font-size: 11px; font-weight: 700;
+    font-size: 11px;
+    font-weight: 700;
     color: $navy;
     background: $yellow;
     padding: 3px 10px;
@@ -4521,7 +4843,8 @@ $orange: #FF8C2A;
   //  BATTLE MENU (bottom-right) — 设计稿对称布局：左2×2 + 中▶ + 右2×2
   // ═══════════════════════════════════════════════════════════════
   .mb-battle-menu {
-    bottom: 110px; right: 24px;
+    bottom: 110px;
+    right: 24px;
     display: flex;
     align-items: flex-end;
     gap: 20px;
@@ -4539,14 +4862,19 @@ $orange: #FF8C2A;
     border-radius: 14px;
     background: var(--btn-color);
     color: $cream;
-    font-size: 14px; font-weight: 900;
+    font-size: 14px;
+    font-weight: 900;
     letter-spacing: 0.1em;
     cursor: pointer;
     box-shadow: 0 5px 0 $navy;
-    transition: transform 0.08s, box-shadow 0.08s;
+    transition:
+      transform 0.08s,
+      box-shadow 0.08s;
     height: 70px;
     min-width: 0;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 4px;
     &:hover:not(:disabled) {
       transform: translateY(2px);
@@ -4556,25 +4884,51 @@ $orange: #FF8C2A;
       transform: translateY(5px);
       box-shadow: 0 0 0 $navy;
     }
-    &:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: 0 5px 0 rgba(10, 31, 60, 0.4); }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: 0 5px 0 rgba(10, 31, 60, 0.4);
+    }
 
-    &--red    { --btn-color: #{$red}; }
-    &--yellow { --btn-color: #{$yellow}; color: $navy; }
-    &--yellow.is-on { --btn-color: #{$red}; color: #fff; }
-    &--green  { --btn-color: #{$green}; }
-    &--blue   { --btn-color: #{$blue}; }
-    &--pink   { --btn-color: #{$pink}; }
-    &--white  { --btn-color: #fff; color: $navy; }
+    &--red {
+      --btn-color: #{$red};
+    }
+    &--yellow {
+      --btn-color: #{$yellow};
+      color: $navy;
+    }
+    &--yellow.is-on {
+      --btn-color: #{$red};
+      color: #fff;
+    }
+    &--green {
+      --btn-color: #{$green};
+    }
+    &--blue {
+      --btn-color: #{$blue};
+    }
+    &--pink {
+      --btn-color: #{$pink};
+    }
+    &--white {
+      --btn-color: #fff;
+      color: $navy;
+    }
   }
   // 巨型播放键（设计稿 mega play：红圆白边 + 光晕）
   .mb-mega-play {
     position: relative;
-    width: 96px; height: 96px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
     background: $red;
     border: 6px solid #fff;
-    box-shadow: 0 0 0 8px rgba(10, 31, 60, 0.08), 0 10px 24px rgba(0, 0, 0, 0.35);
-    display: flex; align-items: center; justify-content: center;
+    box-shadow:
+      0 0 0 8px rgba(10, 31, 60, 0.08),
+      0 10px 24px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
     transition: transform 0.15s;
@@ -4588,14 +4942,30 @@ $orange: #FF8C2A;
       animation: mb-pulse 2.4s ease-in-out infinite;
       z-index: -1;
     }
-    &:hover:not(:disabled) { transform: scale(1.06); }
-    &:active:not(:disabled) { transform: scale(0.95); }
-    &:disabled { opacity: 0.5; cursor: not-allowed; }
-    svg { margin-left: 2px; }
+    &:hover:not(:disabled) {
+      transform: scale(1.06);
+    }
+    &:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    svg {
+      margin-left: 2px;
+    }
   }
   @keyframes mb-pulse {
-    0%, 100% { opacity: 0.4; transform: scale(1); }
-    50%      { opacity: 0.9; transform: scale(1.15); }
+    0%,
+    100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.9;
+      transform: scale(1.15);
+    }
   }
   .mb-mega-play-spinner {
     color: #fff;
@@ -4608,11 +4978,14 @@ $orange: #FF8C2A;
   //  PROGRESS BAR (bottom)
   // ═══════════════════════════════════════════════════════════════
   .mb-progress {
-    bottom: 24px; left: 50%;
+    bottom: 24px;
+    left: 50%;
     transform: translateX(-50%);
     width: 720px;
     height: 44px;
-    display: flex; align-items: center; gap: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     background: $navy;
     border: 3px solid $yellow;
     border-radius: 999px;
@@ -4620,7 +4993,9 @@ $orange: #FF8C2A;
     z-index: 3;
   }
   .mb-progress-time {
-    color: $yellow; font-size: 11px; font-weight: 700;
+    color: $yellow;
+    font-size: 11px;
+    font-weight: 700;
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
     min-width: 36px;
   }
@@ -4633,7 +5008,10 @@ $orange: #FF8C2A;
     cursor: pointer;
   }
   .mb-progress-fill {
-    position: absolute; left: 0; top: 0; bottom: 0;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
     background: linear-gradient(90deg, $yellow 0%, $orange 100%);
     border-radius: 4px;
     transition: width 0.2s linear;
@@ -4641,7 +5019,8 @@ $orange: #FF8C2A;
   .mb-progress-handle {
     position: absolute;
     top: 50%;
-    width: 14px; height: 14px;
+    width: 14px;
+    height: 14px;
     background: $cream;
     border: 2px solid $yellow;
     border-radius: 50%;
@@ -4653,7 +5032,9 @@ $orange: #FF8C2A;
   //  BOTTOM RAINBOW STRIP（设计稿 .bottom-rainbow 8px）
   // ═══════════════════════════════════════════════════════════════
   .mb-bottom-rainbow {
-    left: 0; right: 0; bottom: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     height: 8px;
     background: linear-gradient(to right, $red, $yellow, $green, $blue, $pink);
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);

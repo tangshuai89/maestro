@@ -51,4 +51,6 @@ ${JSON.stringify({ MOTION_SPEC: spec.version, spec: fullSpec }, null, 0)}
 };
 
 writeFileSync(process.argv[2] || '/tmp/d10.json', JSON.stringify(fixture, null, 2));
-console.log(`Fixture written to ${process.argv[2] || '/tmp/d10.json'}（共 ${fullSpec.length} spec，1 条负面用例缺 driver）`);
+console.log(
+  `Fixture written to ${process.argv[2] || '/tmp/d10.json'}（共 ${fullSpec.length} spec，1 条负面用例缺 driver）`,
+);

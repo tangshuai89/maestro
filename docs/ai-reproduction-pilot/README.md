@@ -32,11 +32,11 @@ REST 导出的组件子树（`/tmp/aether-segments/pilot-input.json`，46KB）+ 
 
 ## 试点暴露的问题（已修复/已记录）
 
-| # | 问题 | 影响 | 状态 |
-|---|---|---|---|
-| 1 | `figma-export-tokens.mjs` 把 ease STRING 变量导出成带引号字符串（`"cubic-bezier(...)"`） | `var(--ease-out)` 在 transition 里整条失效（renderer `_cover-card.scss` 等真实在用） | ✅ 已修复（ease-* 裸输出）并重新生成 tokens |
-| 2 | 试点初版依赖 `lucide-react`，renderer 未安装该包 | 编译不过 | ✅ 已改为内联 SVG（与 MonsterBeatsView 同款 heart path，零依赖） |
-| 3 | REST 导出不含节点绝对坐标 | 徽章右上角偏移只能估算 | 📝 已知限制：设计稿以 auto-layout 为准，坐标由布局推导 |
+| #   | 问题                                                                                     | 影响                                                                                 | 状态                                                             |
+| --- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| 1   | `figma-export-tokens.mjs` 把 ease STRING 变量导出成带引号字符串（`"cubic-bezier(...)"`） | `var(--ease-out)` 在 transition 里整条失效（renderer `_cover-card.scss` 等真实在用） | ✅ 已修复（ease-* 裸输出）并重新生成 tokens                      |
+| 2   | 试点初版依赖 `lucide-react`，renderer 未安装该包                                         | 编译不过                                                                             | ✅ 已改为内联 SVG（与 MonsterBeatsView 同款 heart path，零依赖） |
+| 3   | REST 导出不含节点绝对坐标                                                                | 徽章右上角偏移只能估算                                                               | 📝 已知限制：设计稿以 auto-layout 为准，坐标由布局推导           |
 
 ## 结论
 

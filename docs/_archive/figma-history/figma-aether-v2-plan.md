@@ -6,7 +6,9 @@
 ## v2 核心升级点
 
 ### 1. 设计令牌（Figma Variables）
+
 创建变量组：
+
 - `AETHER/Color/*`：bg-top #0A0518 / bg-bottom #02020A / neon-cyan #00E5FF /
   electric-purple #5B2BFF / acid-purple #B57BFF / off-white #F5F0E8 /
   heart-red #FF3B5C / neon-green #3DFFA2 / warning-yellow #FFD93D / info-blue #3D9BFF
@@ -36,7 +38,9 @@
 ```
 
 ### 3. 控制菜单语义化（v1 的 FIGHT/BAG/PKMN/RUN 是宝可梦语义，设计师会否）
+
 改为播放器语义按钮：
+
 - ⏮ 上一首（skipprevious）
 - ♥ 收藏（heart，红心色，可点亮）
 - ▶ 中央播放（72px 霓虹青，发光）
@@ -45,6 +49,7 @@
 - ⇄ 切换来源（platform swap）
 
 ### 4. 视觉细节（设计师关注点）
+
 - **间距节奏**：统一用 8pt 网格（4/8/16/24/32/48），拒绝随机间距
 - **文字层级**：标题/正文/说明/等宽四档，字重和字距精确（display 用 -2% 字距）
 - **玻璃层次**：卡片 6% 白 + 12% 描边 + 24 圆角；浮层 8% + 16% 描边 + 16 圆角
@@ -71,7 +76,13 @@ const col = figma.variables.variableCollections[figma.variables.variableCollecti
 const modeId = col.modes[0].modeId;
 async function addVar(name, value) {
   const v = figma.variables.createVariable(name, col, 'COLOR');
-  v.setValueForMode(modeId, { type: 'COLOR', r: value[0]/255, g: value[1]/255, b: value[2]/255, a: 1 });
+  v.setValueForMode(modeId, {
+    type: 'COLOR',
+    r: value[0] / 255,
+    g: value[1] / 255,
+    b: value[2] / 255,
+    a: 1,
+  });
 }
 await addVar('bg-top', [10, 5, 24]);
 // ... 等
@@ -81,7 +92,8 @@ const { createAutoLayout } = await import('@figma/plugin-api/helpers');
 // 或直接用 figma API
 function frame(name, w, h, opts = {}) {
   const f = figma.createFrame();
-  f.name = name; f.resize(w, h);
+  f.name = name;
+  f.resize(w, h);
   f.fills = opts.fills ?? [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
   f.layoutMode = opts.layoutMode ?? 'NONE';
   return f;
