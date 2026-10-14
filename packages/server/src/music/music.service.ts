@@ -1225,6 +1225,23 @@ export class MusicService {
     if (!ps?.qqCookie || ps.qqVip !== undefined) return;
     const vip = await this.qq.probeVipAccess(ps);
     if (vip === undefined) return;
+    // ⚠️ vip=false 不能直接落库：cookie 失效 / 探针故障都会让 VIP 曲返回
+    // 空 purl，把「登录过期」误记成「非会员」。后果是后续搜索把 QQ 全部标
+    // vipLocked → selectBestSource 直接选 Deezer/Spotify 30s 预览 ——
+    // 永远走不到 getStreamPath 的 AUTH_EXPIRED 分支，用户看不到重登提示。
+    // 所以 vip=false 时必须先用登录态探针复核：确认会话还活着才写 false；
+    // 探针判死则返回不写（保持 qqVip=undefined，下次搜索重试），把过期的
+    // 暴露留给 getStreamPath / validate=1 两条主链路。
+    if (vip === false) {
+      const probe = await this.qq.probeSession(ps);
+      if (!probe.alive) {
+        this.logger.warn(
+          `qq vip probe → false 但登录态探针判死（reason=${probe.reason}），` +
+            `不写 qqVip=false（避免把登录过期误记成非会员）`,
+        );
+        return;
+      }
+    }
     if (this.sessions) {
       this.sessions.setProvider(session, 'qq', { qqVip: vip });
     } else {

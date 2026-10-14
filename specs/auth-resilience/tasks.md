@@ -187,3 +187,41 @@
       `stageNameAliasMatch('周杰伦','Jue Wang') === false`
 - [x] 11.9 `npm run typecheck && npm run lint && npm test` 全绿（lint 0 error /
       14 条存量 warning 与本次无关）
+
+## Phase 12 — 30s 试听吞掉 AUTH_EXPIRED（2026-10-14）
+
+> 报障：QQ 登录掉线 → 播放变 30s 预览 → 主界面仍显示登录名 → 无任何重登
+> 提示；手动 logout+login 后恢复。根因是 Phase 10 部署的过期检测挂在
+> **播放失败**路径上，但 QQ 掉线的实际表现往往是**播放"成功"但拿到
+> 30s 试听流**（`onLoadedMetadata`，不走 `onError`），两条漏检路径：
+
+### 新发现的断链（Phase 10 未覆盖）
+
+| #   | 路径                                                   | 断点                                                                                                                                                                                               |
+| --- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | `onLoadedMetadata` → `isTrial` → `handleTrialDetected` | 只走「降标准音质 / 跨平台换源」，**从不调 `validate=1`**——QQ 掉线被当成 VIP 试听处理                                                                                                               |
+| B   | `onError` → `tryFallbackSource()` → **切换成功**       | `ok===true` 直接跳过 `reportPlayFailure`，过期检测被静默吞掉（切到 Deezer/Spotify 30s 预览时用户只看到"还在播"）                                                                                   |
+| C   | `music.service.ensureQqVip`                            | cookie 失效时 `probeVipAccess` 返 false → `qqVip:false` **落库** → 后续搜索把全部 QQ 标 `vipLocked` → `selectBestSource` 直接选 Deezer/Spotify → 永远走不到 `getStreamPath` 的 `AUTH_EXPIRED` 分支 |
+
+- [x] 12.1 `music.service.ensureQqVip`：`vip=false` 时先调 `qq.probeSession`
+      复核；探针判死 → **不写** `qqVip=false`（保持 undefined，让过期状态沿
+      `getStreamPath` / `validate=1` 主链路暴露），只在探针确认 alive 时才
+      持久化「非会员」结论
+- [x] 12.2 `usePlayer` 新增 `checkProviderAuthExpired(provider)`：异步跑
+      `getAuthStatusValidated`，`expired===true` → `onAuthExpiredRef` 弹重登；
+      失败静默降级（不误伤正常试听/fallback）
+- [x] 12.3 `usePlayer.onError`：fallback **成功**且原 provider 是 qq →
+      补调 `checkProviderAuthExpired`（堵 B 路）
+- [x] 12.4 `usePlayer.handleTrialDetected`：`cur.provider === 'qq'` →
+      先补 `checkProviderAuthExpired`（堵 A 路），再走原有降质/换源逻辑
+- [x] 12.5 新增 `qq-vip-probe-guard.test.ts`：6 用例（vip=false+判死不写 /
+      vip=false+alive 正常写 / vip=true 不跑登录探针 / undefined 不写 /
+      qqVip 已知跳过 / 无 cookie 跳过）
+- [x] 12.6 `npm run typecheck && npm run lint && npm test` 全绿
+
+### 仍有意识不修的部分
+
+- **「30s 试听 → 探针 → 真有效 → 保持试听」**：用户正在听的确实是非 VIP 曲
+  库，试听是正确行为，提示会误伤——保持现状
+- **非 QQ 平台同理补探针**：netease/spotify 的 `probeSession` 仍是
+  `alive:true` stub（Phase 11 留的扩展点），本次只接 QQ
