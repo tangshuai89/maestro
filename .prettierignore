@@ -19,3 +19,8 @@ scripts/alias-entries.ts-snippet
 # Figma 导出的生成物 —— 由 `npm run tokens:pull` 重新生成，格式化会在下次拉取时
 # 被原样覆盖，制造 453 行无意义 diff
 scripts/figma-tokens-dump.json
+# Figma token 生成物（node scripts/figma-export-tokens.mjs 的输出）——它必须与
+# scripts/figma-tokens-dump.json 渲染结果**逐字符**一致，否则
+# `npm run test:ci` 里的 check-token-drift.mjs 会报「生成物被手改过」。
+# prettier 会把 cubic-bezier(0.16,1,0.3,1) 规范成带空格形式，直接把它改挂。
+packages/renderer/src/styles/base/_tokens.generated.scss
