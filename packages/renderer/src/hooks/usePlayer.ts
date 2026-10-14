@@ -467,6 +467,34 @@ export function usePlayer(
    */
 
   /**
+   * 对指定 provider 跑一次「是否登录过期」的服务端校验（spec: specs/auth-resilience Phase 10）。
+   *
+   * **调用前提**：已经观察到该 provider 的播放异常（取流失败 / 30s 试听），
+   * 怀疑是登录态掉了，不是"这首歌没版权"。若 `validate=1` 返回
+   * `expired:true` → 通知上层弹重登（onAuthExpiredRef）。只对 QQ 有意义
+   * （目前只有 QQ 实现了探针），其它 provider 调用直接 no-op。
+   *
+   * ⚠️ 这是**异步后台补查**：当前源的降级/试听流程不阻塞，避免打断"切到
+   *   Deezer 30s 预览先能听"的体验。命中过期才弹窗。
+   */
+  const checkProviderAuthExpired = useCallback(
+    (provider: MusicProvider): void => {
+      if (provider !== 'qq') return; // 目前只有 QQ 探针；netease/spotify 另立 Phase 11
+      void (async () => {
+        try {
+          const st = await getAuthStatusValidated(provider);
+          if (st.expired === true) {
+            onAuthExpiredRef?.current?.(provider);
+          }
+        } catch {
+          /* 探不通就当作没过期 —— 宁可少提示，不要误伤正常降级 */
+        }
+      })();
+    },
+    [onAuthExpiredRef],
+  );
+
+  /**
    * 播放彻底失败后的收尾（spec: specs/auth-resilience Phase 10）。
    *
    * 「重试 + 跨平台 fallback 都试过」之后仍失败，原因有多种，从 `<audio>` 的
@@ -620,10 +648,21 @@ export function usePlayer(
    *     还留在用户选的平台。每首歌只降一次（forcedStandardRef）。
    *  2. **跨平台换完整曲流源**：标准也被锁成试听（整首 VIP）→ 去别的完整平台。
    * 换源/重载后新音源的 onLoadedMetadata 会再判一次，形成"标准→跨平台"的接力。
+   *
+   * ⚠️ 2026-10-14 报障：QQ 掉线后 GetVkey 直接返 30s 试听流（HTTP 200，
+   * 不走 onError）。此刻 onLoadedMetadata 判定 isTrial 进到这里——若不在
+   * 此处顺手补一次登录态探针，用户永远只会看到"30s 试听"而不是"请重新登录"。
    */
   const handleTrialDetected = useCallback(async () => {
     const cur = trackRef.current;
     if (!cur) return;
+    // QQ 出现试听片段有两种可能：「这首歌是 VIP 独占」或「登录态掉了被降权」。
+    // 无法从时长分辨，所以**异步**跑一次 validate=1 探针：过期 → 立即弹重登；
+    // 有效 → 当普通 VIP 处理继续走音质降级/跨平台升级。netease 的等价探针
+    // 还没做（Phase 11），这里只对 qq 补查。
+    if (cur.provider === 'qq') {
+      checkProviderAuthExpired('qq');
+    }
     // 1) 同平台降标准音质重试。
     if (
       (cur.provider === 'qq' || cur.provider === 'netease') &&
@@ -650,7 +689,7 @@ export function usePlayer(
     }
     // 2) 跨平台换完整曲流源。
     await tryUpgradeFromTrial();
-  }, [tryUpgradeFromTrial]);
+  }, [tryUpgradeFromTrial, checkProviderAuthExpired]);
 
   /**
    * 切歌后的红心检测：查这首统一 track 在各平台的红心情况；任一平台已 ❤ →
@@ -1098,7 +1137,18 @@ export function usePlayer(
       // 无版权 / 真没源：先自动降级到同一首歌的其它平台源（含向服务端实时
       // 匹配），全都失败才把报错弹给用户。
       void tryFallbackSource().then((ok) => {
-        if (!ok) reportPlayFailure(failedProvider, code);
+        if (!ok) {
+          reportPlayFailure(failedProvider, code);
+          return;
+        }
+        // ⚠️ fallback 成功 ≠ 原 provider 没问题：切到 Deezer/Spotify 30s 预览
+        // 后 tryFallbackSource 返回 true，整条"失败上报"路径被跳过 —— QQ 真实
+        // 掉线会被静默吞掉（2026-10-14 报障）。fallback 成功后**异步**给原
+        // provider 补一次 validate=1 探针，过期 → mark_expired 弹重登；非过期
+        // → 什么都不做（当前 30s 预览继续播，用户感知不受影响）。
+        if (ok && failedProvider === 'qq') {
+          checkProviderAuthExpired(failedProvider);
+        }
       });
     };
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -1128,6 +1178,7 @@ export function usePlayer(
     tryFallbackSource,
     handleTrialDetected,
     reportPlayFailure,
+    checkProviderAuthExpired,
   ]);
 
   // Sync play/pause — but only call play() once the audio is actually ready
