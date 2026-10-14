@@ -1,0 +1,20 @@
+# lefthook —— 本地 git hooks
+#
+# ⚠️ 本仓库**不设** core.hooksPath。原因是全局 ~/.gitconfig 里已有
+#    `hooksPath = /Users/admin/.git-hooks`（一套 prehooks v12 框架，负责写
+#    /tmp/<repo>_change_notify 给外部进程轮询，且它本身会 call_lefthook()）。
+#    若用 husky，它会设仓库级 core.hooksPath=.husky/_ 把上面那套整个顶掉。
+#    所以这里只提供 lefthook.yml，由全局 hook 委托进来——零冲突。
+#
+# 仓库根目录会被 hook 脚本解析成 $repo，故 lefthook 二进制必须装在 devDependencies
+# （hook 的查找路径是 $repo/node_modules/lefthook-<os>-<arch>/bin/lefthook）。
+
+pre-commit:
+  parallel: false
+  commands:
+    prettier:
+      # 只对**暂存区**的文件跑，且只格式化 git 已跟踪的类型。
+      # lint-staged 会在格式化后自动重新 add（v15+ 不再需要显式 git add）。
+      # 目的是「增量不再恶化」——存量已由 PR #103 一次性对齐，这里只管新改动。
+      glob: '*.{ts,tsx,mjs,js,json,md,scss,html,yml,yaml}'
+      run: npx lint-staged
