@@ -15,3 +15,7 @@ package-lock.json
 scripts/alias-entries.json
 scripts/qq-liked-artists.md
 scripts/alias-entries.ts-snippet
+
+# Figma 导出的生成物 —— 由 `npm run tokens:pull` 重新生成，格式化会在下次拉取时
+# 被原样覆盖，制造 453 行无意义 diff
+scripts/figma-tokens-dump.json

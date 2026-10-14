@@ -19,21 +19,53 @@
  * 用户不会想循环。补「铃声 / 来电铃声 / 闹钟」等"非歌"形态。
  */
 export const VERSION_BAD: readonly RegExp[] = [
-  /\bdj\b/i, /re-?mix/i, /mash-?up/i, /bootleg/i, /nightcore/i,
-  /sped ?-?up/i, /slowed/i, /8-?bit/i, /\b[38]d\b/i,
-  /伴奏/, /纯音乐|純音樂/, /off ?vocal/i, /instrumental/i, /karaoke/i, /\bktv\b/i,
-  /加速/, /减速|減速/, /慢摇|慢搖/, /抖音/, /tik ?tok/i, /钢琴(版|曲)|鋼琴(版|曲)/,
-  /八音盒/, /翻唱|翻自|\bcover\b/i, /清唱|a-?ca?pella/i, /\bdemo\b/i, /重混/,
+  /\bdj\b/i,
+  /re-?mix/i,
+  /mash-?up/i,
+  /bootleg/i,
+  /nightcore/i,
+  /sped ?-?up/i,
+  /slowed/i,
+  /8-?bit/i,
+  /\b[38]d\b/i,
+  /伴奏/,
+  /纯音乐|純音樂/,
+  /off ?vocal/i,
+  /instrumental/i,
+  /karaoke/i,
+  /\bktv\b/i,
+  /加速/,
+  /减速|減速/,
+  /慢摇|慢搖/,
+  /抖音/,
+  /tik ?tok/i,
+  /钢琴(版|曲)|鋼琴(版|曲)/,
+  /八音盒/,
+  /翻唱|翻自|\bcover\b/i,
+  /清唱|a-?ca?pella/i,
+  /\bdemo\b/i,
+  /重混/,
   // 中文二次加工标签（用户实测常见）
-  /串烧|串燒/, /夜店|夜場|club ?mix/i, /车载|車載/, /劲爆|勁爆|劲嗨|慢嗨/,
-  /连音|連音/, /慢四|快三|快四/, /铃声|鈴聲|来电铃声|鬧鐘|闹钟/,
+  /串烧|串燒/,
+  /夜店|夜場|club ?mix/i,
+  /车载|車載/,
+  /劲爆|勁爆|劲嗨|慢嗨/,
+  /连音|連音/,
+  /慢四|快三|快四/,
+  /铃声|鈴聲|来电铃声|鬧鐘|闹钟/,
   // 网易云/QQ 特殊标签
-  /纯享版|純享版/, /无损|無損|flac/i,
+  /纯享版|純享版/,
+  /无损|無損|flac/i,
 ];
 
 /** "可接受但非首选"：live/现场/acoustic。用户认可，但有录音室原版时让原版优先。 */
 export const VERSION_SOFT: readonly RegExp[] = [
-  /\blive\b/i, /现场|現場/, /\bacoustic\b/i, /演唱会|演唱會/, /concert/i, /unplugged/i,
+  /\blive\b/i,
+  /现场|現場/,
+  /\bacoustic\b/i,
+  /演唱会|演唱會/,
+  /concert/i,
+  /unplugged/i,
 ];
 
 export const PEN_BAD = 100;
@@ -55,8 +87,7 @@ export const DURATION_NORMAL_MAX = 360;
 /** 模型侧标题里明确点名要长/短版本的关键词（豁免上面的硬约束）。 */
 export const LONG_HINT =
   /\b(long ?ver(?:sion)?|extended|全长|加长|完整版?|演唱会|concert|live ?album|现场专辑|medley)/i;
-export const SHORT_HINT =
-  /\b(edit|radio ?edit|single ?edit|剪辑|副歌|hook|抖音|60s|30s)/i;
+export const SHORT_HINT = /\b(edit|radio ?edit|single ?edit|剪辑|副歌|hook|抖音|60s|30s)/i;
 
 /** 版本纯净度惩罚：录音室原版 0 < live/现场 10 << DJ/remix/伴奏… 100。 */
 export function versionPenalty(title: string): number {

@@ -24,7 +24,9 @@
       (function () {
         var m = location.search.match(/[?&]demo=([a-z]+)/);
         if (m) {
-          try { localStorage.setItem('music-provider', m[1]); } catch (_) {}
+          try {
+            localStorage.setItem('music-provider', m[1]);
+          } catch (_) {}
         }
       })();
       window.onSpotifyWebPlaybackSDKReady = function () {

@@ -30,7 +30,12 @@ export default function LibraryManager() {
   }, []);
 
   // 每个平台的 liked 计数（按 sources[] 算）
-  const countByProvider: Record<MusicProvider, number> = { qq: 0, netease: 0, deezer: 0, spotify: 0 };
+  const countByProvider: Record<MusicProvider, number> = {
+    qq: 0,
+    netease: 0,
+    deezer: 0,
+    spotify: 0,
+  };
   if (lib) {
     for (const item of lib.items) {
       for (const s of item.sources) {
@@ -73,9 +78,7 @@ export default function LibraryManager() {
         const count = countByProvider[p];
         return (
           <div key={p} className="set-row">
-            <span className={`set-row-platform set-row-platform--${p}`}>
-              {PROVIDER_LABELS[p]}
-            </span>
+            <span className={`set-row-platform set-row-platform--${p}`}>{PROVIDER_LABELS[p]}</span>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}>
               <div className="set-row-name">{count} 首</div>
               <div className="set-row-meta">
@@ -123,10 +126,7 @@ export default function LibraryManager() {
               <button className="set-btn" onClick={() => setShowClearAll(false)}>
                 取消
               </button>
-              <button
-                className="set-btn set-btn--danger"
-                onClick={() => void handleClearAll()}
-              >
+              <button className="set-btn set-btn--danger" onClick={() => void handleClearAll()}>
                 确认清空
               </button>
             </div>

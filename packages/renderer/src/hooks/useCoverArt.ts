@@ -88,13 +88,7 @@ export function useCoverArt() {
 
   const presentCover = useCallback((url: string) => {
     coverEpochRef.current += 1;
-    void applyCoverImage(
-      url,
-      bgLayerRef,
-      coverBackdropRef,
-      coverEpochRef.current,
-      coverEpochRef,
-    );
+    void applyCoverImage(url, bgLayerRef, coverBackdropRef, coverEpochRef.current, coverEpochRef);
   }, []);
 
   /**

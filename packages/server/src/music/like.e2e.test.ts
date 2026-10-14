@@ -47,7 +47,11 @@ async function main() {
     method: string,
     pathname: string,
     body?: unknown,
-  ): Promise<{ status: number; json: unknown; headers: Record<string, string | string[] | undefined> }> => {
+  ): Promise<{
+    status: number;
+    json: unknown;
+    headers: Record<string, string | string[] | undefined>;
+  }> => {
     const r = await client.call(method, pathname, body);
     let json: unknown = null;
     try {
@@ -162,7 +166,9 @@ async function main() {
     // ── 7. 输入校验：liked 非 bool → 400 ─────────────────────
     {
       const r = await call('POST', '/music/like/merged', {
-        mergedId: 'm', sources: [{ platform: 'qq', trackId: 'x' }], liked: 'yes',
+        mergedId: 'm',
+        sources: [{ platform: 'qq', trackId: 'x' }],
+        liked: 'yes',
       });
       assert.strictEqual(r.status, 400, 'liked 非 bool 应 400');
       console.log('✅ 7. liked 非 bool → 400');
@@ -259,11 +265,7 @@ async function main() {
         0,
         '漂移 unlike 后 qq liked 应清空（用记录里的代表 trackId 定位）',
       );
-      assert.strictEqual(
-        (ne.json as unknown[]).length,
-        0,
-        '漂移 unlike 后 netease liked 应清空',
-      );
+      assert.strictEqual((ne.json as unknown[]).length, 0, '漂移 unlike 后 netease liked 应清空');
       console.log('✅ 12. mergedId 漂移归一（#6）：重合 source 复用旧记录 + 跨漂移 unlike');
     }
 

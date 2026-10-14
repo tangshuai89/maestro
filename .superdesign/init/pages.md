@@ -105,6 +105,7 @@ Dependencies:
 ```
 
 The view is fully self-contained — it has **no component imports** other than `api.ts`. It renders (all inside `.mb-root` → `.mb-stage`):
+
 - top strip: radar + `.mb-hud-stats` (4× HUDStat) + sync bar + bag
 - 4 circular source badges
 - creature card (cover art via `coverBackdropRef`, stats, type badge)

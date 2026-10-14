@@ -66,10 +66,7 @@ export interface TasteProfileOptions {
 
 /** 库签名：规模 + 导入时间。库内容变化（合并/自愈）不改签名——口味主干对
  *  平台来源漂移不敏感，没必要为此重算。 */
-export function librarySignature(
-  items: UnifiedSearchItem[],
-  importedAt?: number,
-): string {
+export function librarySignature(items: UnifiedSearchItem[], importedAt?: number): string {
   return `${items.length}:${importedAt ?? 0}`;
 }
 
@@ -108,8 +105,7 @@ export function artistAffinity(
   // 权重降序；同分按 key 的码点排序保证**稳定**（同一份库 → 同一份主干）。
   // 刻意不用 localeCompare——它随 ICU/locale 变，会让 anchors 在不同机器上漂。
   return [...byKey.values()].sort(
-    (a, b) =>
-      b.weight - a.weight || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    (a, b) => b.weight - a.weight || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
   );
 }
 

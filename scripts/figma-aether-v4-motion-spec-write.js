@@ -78,7 +78,12 @@ return JSON.stringify({
 
   return {
     code,
-    expected: { charsLen: chars.length, djb2: djb2(chars), specCount: spec.spec.length, version: spec.version },
+    expected: {
+      charsLen: chars.length,
+      djb2: djb2(chars),
+      specCount: spec.spec.length,
+      version: spec.version,
+    },
   };
 }
 
@@ -93,7 +98,9 @@ if (require.main === module) {
   if (process.argv.includes('--check')) {
     console.log(summary);
   } else {
-    process.stderr.write(`# ${summary}\n# 把下面整段作为 use_figma 的 code 参数（fileKey=FtbRZXvzlCp4Sq9e322cQQ）\n`);
+    process.stderr.write(
+      `# ${summary}\n# 把下面整段作为 use_figma 的 code 参数（fileKey=FtbRZXvzlCp4Sq9e322cQQ）\n`,
+    );
     process.stdout.write(code);
   }
 }

@@ -91,9 +91,9 @@
 
 - [x] **T6** usePlayer 红心/切歌竞态守护
   - `handleLike`（~1185）：进入时 `const ticket = ++likeTicketRef.current`
-    + `const startedTrackId = track.id`；await 后
-    `ticket === likeTicketRef.current && trackRef.current?.id === startedTrackId`
-    才 setTrack/setFanOutCount；setTrack 用 id 守护形式
+    - `const startedTrackId = track.id`；await 后
+      `ticket === likeTicketRef.current && trackRef.current?.id === startedTrackId`
+      才 setTrack/setFanOutCount；setTrack 用 id 守护形式
   - `handleLike` / `handleDislike` 开头 `++likedRefreshGenRef.current`
     （作废在途轮询，防止取消后旧 detect 复活红心）
   - `detectAndApplyLiked`（~629）：轮询调用路径传入 expectedLiked
@@ -180,4 +180,4 @@
 - [x] `npm run typecheck && npm run lint && npm test` 全绿
 - [ ] 打包冒烟：打包版能出声、能显示封面（T1 验收，条件允许时）
 - [ ] 回归确认：#75 场景（推荐歌曲点红心）+ radio 点红心 + 取消红心
-  三个手工场景在修复后行为正确
+      三个手工场景在修复后行为正确

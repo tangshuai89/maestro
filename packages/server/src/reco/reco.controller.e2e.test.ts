@@ -74,11 +74,7 @@ async function main() {
     // ── 1. GET /reco/status 未设 key → 200, configured=false ──────
     {
       const r = await call('GET', '/reco/status');
-      expect(
-        '1. GET /reco/status → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('1. GET /reco/status → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { configured?: boolean; librarySize?: number };
       expect(
         '1b. /reco/status configured=false, librarySize=0',
@@ -90,21 +86,13 @@ async function main() {
     // ── 2. POST /reco/key 缺 apiKey → 400 ─────────────────────────
     {
       const r = await call('POST', '/reco/key', {});
-      expect(
-        '2. POST /reco/key 缺 apiKey → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('2. POST /reco/key 缺 apiKey → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 3. POST /reco/key 太短 → 400 ──────────────────────────────
     {
       const r = await call('POST', '/reco/key', { apiKey: 'ab' });
-      expect(
-        '3. POST /reco/key 太短 → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('3. POST /reco/key 太短 → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 4. POST /reco/key 合法 → 201 ──────────────────────────────
@@ -112,11 +100,7 @@ async function main() {
       const r = await call('POST', '/reco/key', {
         apiKey: 'sk-test-deepseek-key-1234567890',
       });
-      expect(
-        '4. POST /reco/key 合法 → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('4. POST /reco/key 合法 → 201', r.status === 201, `实际 ${r.status}`);
       const json = r.json as { ok?: boolean; tail?: string };
       expect(
         '4b. /reco/key 返回 ok=true + tail',
@@ -156,10 +140,10 @@ async function main() {
       const r = await call('POST', '/reco/run', {
         count: 3,
         exclude: [
-          { title: 'Song', artist: 'X' },     // 合法
-          { title: 'Bad' },                    // 缺 artist → 丢弃
-          null,                                // null → 丢弃
-          { artist: 'NoTitle' },               // 缺 title → 丢弃
+          { title: 'Song', artist: 'X' }, // 合法
+          { title: 'Bad' }, // 缺 artist → 丢弃
+          null, // null → 丢弃
+          { artist: 'NoTitle' }, // 缺 title → 丢弃
         ],
       });
       // 400 是 library_empty，不是 exclude 校验错。验证错误消息不含 exclude。
@@ -174,11 +158,7 @@ async function main() {
     // ── 8. POST /reco/key 不是字符串 → 400 ────────────────────────
     {
       const r = await call('POST', '/reco/key', { apiKey: 123 });
-      expect(
-        '8. POST /reco/key apiKey 不是字符串 → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('8. POST /reco/key apiKey 不是字符串 → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 9. POST /reco/signal 脏数据 → 200 且 stored=0 ─────────────
@@ -242,7 +222,6 @@ async function main() {
         `实际 ${r.status}: ${r.text.slice(0, 100)}`,
       );
     }
-
   } finally {
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });

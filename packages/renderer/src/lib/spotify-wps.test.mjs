@@ -82,7 +82,7 @@ class MockSpotifyPlayer {
   _fire(event, payload) {
     const arr = this._listeners[event];
     if (!arr) return;
-    for (const cb of (Array.isArray(arr) ? arr : [arr])) cb(payload);
+    for (const cb of Array.isArray(arr) ? arr : [arr]) cb(payload);
   }
   // Count active listeners (for T8 E4 test)
   _listenerCount() {
@@ -623,7 +623,10 @@ await testAsync('resume/pause/seek delegate to player methods', async () => {
   await w.pause();
   assert(capturedPlayer._paused === true, 'player.pause() should have been called');
   await w.seek(42000);
-  assert(capturedPlayer._seekedTo === 42000, `player.seek(42000) should have been called, got ${capturedPlayer._seekedTo}`);
+  assert(
+    capturedPlayer._seekedTo === 42000,
+    `player.seek(42000) should have been called, got ${capturedPlayer._seekedTo}`,
+  );
   globalThis.Spotify = { Player: OriginalPlayer };
 });
 
@@ -695,8 +698,10 @@ await testAsync('SDK 超时后 sdkPromise 置 null，下次 waitForSdk 重试', 
     caught = e;
   }
   assert(caught !== null, 'connect 应因 SDK 未 ready 而抛错');
-  assert(/SDK 未在 5s 内 ready|timeout-test-budget/.test(String(caught.message)),
-    `应抛 SDK 超时错（实际 ${caught.message}）`);
+  assert(
+    /SDK 未在 5s 内 ready|timeout-test-budget/.test(String(caught.message)),
+    `应抛 SDK 超时错（实际 ${caught.message}）`,
+  );
   // 关键：wrapper 不应被永久 disable。再次尝试（这次把 flag 置 true）
   // 应能成功。
   globalThis.__wpsSdkReady = true;
@@ -727,7 +732,13 @@ await testAsync('disconnect 后旧 player listener 全部移除', async () => {
   // 同时验证：旧 listener 触发不再 emit 状态。
   // _fire 调用前已无 callback，不会崩；但要确保不污染。
   captured._fire('player_state_changed', {
-    track: { uri: 'spotify:track:1', name: 'X', artists: [{name: 'A'}], album: {name: 'B'}, duration_ms: 1000 },
+    track: {
+      uri: 'spotify:track:1',
+      name: 'X',
+      artists: [{ name: 'A' }],
+      album: { name: 'B' },
+      duration_ms: 1000,
+    },
     paused: false,
     position: 0,
   });
@@ -758,8 +769,10 @@ await testAsync('旧 player 的 ready 事件不覆盖新 deviceId', async () => 
   oldPlayer._fire('ready', { device_id: 'OLD-DEVICE' });
   // 新 player 已先 fire 了 ready 事件 → deviceId 已被设为新 device id
   // 现在用新 player 的 _deviceId 看一眼：
-  assert(newPlayer._deviceId !== 'OLD-DEVICE',
-    `旧 ready 不应覆盖新 deviceId（实际 ${newPlayer._deviceId}）`);
+  assert(
+    newPlayer._deviceId !== 'OLD-DEVICE',
+    `旧 ready 不应覆盖新 deviceId（实际 ${newPlayer._deviceId}）`,
+  );
   globalThis.Spotify = { Player: OriginalPlayer };
 });
 
@@ -780,7 +793,9 @@ await testAsync('refreshToken 让 getOAuthToken 拿到新 token', async () => {
   await w.connect('token-old');
   // 模拟 SDK 触发 getOAuthToken 拿到旧 token
   let lastSeen = null;
-  const cb = (t) => { lastSeen = t; };
+  const cb = (t) => {
+    lastSeen = t;
+  };
   capturedPlayer.opts.getOAuthToken(cb);
   assert(lastSeen === 'token-old', `应拿到 token-old（实际 ${lastSeen}）`);
 

@@ -31,11 +31,15 @@ const { toRomaji } = require('wanakana');
 let cn2t;
 try {
   cn2t = Converter({ from: 'cn', to: 'tw' });
-} catch { cn2t = (s) => s; }
+} catch {
+  cn2t = (s) => s;
+}
 let tw2cn;
 try {
   tw2cn = Converter({ from: 'tw', to: 'cn' });
-} catch { tw2cn = (s) => s; }
+} catch {
+  tw2cn = (s) => s;
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -107,7 +111,11 @@ function guessKey(name) {
   let hanziBuf = '';
   function flushHanzi() {
     if (hanziBuf) {
-      try { key += cn2t(hanziBuf); } catch { key += hanziBuf; }
+      try {
+        key += cn2t(hanziBuf);
+      } catch {
+        key += hanziBuf;
+      }
       hanziBuf = '';
     }
   }
@@ -176,7 +184,7 @@ function guessAliases(name) {
   }
 
   // Remove duplicates, empty, and short strings
-  return [...aliases].filter(a => a && a.length >= 2);
+  return [...aliases].filter((a) => a && a.length >= 2);
 }
 
 /**
@@ -190,7 +198,7 @@ function needsWebSearch(name, aliases) {
   if (!core) return false;
 
   // Latin annotation already captured → maybe no
-  if (aliases.some(a => isLatin(a) && a.length > 4)) return false;
+  if (aliases.some((a) => isLatin(a) && a.length > 4)) return false;
 
   // Hanzi-only Chinese artist → YES (can't guess Jay Chou from 周杰伦)
   if (core && HAN.test(core) && !KANA.test(core) && !HANGUL.test(core)) {
@@ -288,8 +296,8 @@ function main() {
   entries.sort((a, b) => b.count - a.count);
 
   // Stats
-  const needWS = entries.filter(e => e.needsWebSearch);
-  const noWS = entries.filter(e => !e.needsWebSearch);
+  const needWS = entries.filter((e) => e.needsWebSearch);
+  const noWS = entries.filter((e) => !e.needsWebSearch);
   console.log(`\nTotal unmapped CJK entries: ${entries.length}`);
   console.log(`  Need WebSearch: ${needWS.length}`);
   console.log(`  Algorithmic only: ${noWS.length}`);
@@ -304,9 +312,8 @@ function main() {
 
   for (const entry of entries) {
     const allAliases = [...new Set([...entry.aliases])];
-    const aliasStr = allAliases.length > 0
-      ? allAliases.map(a => `'${a}'`).join(', ')
-      : '/* TODO */';
+    const aliasStr =
+      allAliases.length > 0 ? allAliases.map((a) => `'${a}'`).join(', ') : '/* TODO */';
     const comment = entry.needsWebSearch ? ' // TODO: verify English name' : '';
     aliasSnippet.push(`  '${entry.key}': [${aliasStr}],${comment}`);
   }

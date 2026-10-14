@@ -84,8 +84,8 @@ describe('AccountsList', () => {
     });
     // deezer 的登出按钮 disabled（其它 3 个 enabled，因为未登录也 disabled）
     const logoutBtns = screen.getAllByTitle(/登出|匿名/);
-    const deezerBtn = logoutBtns.find((b) =>
-      b.textContent === '登出' && (b as HTMLButtonElement).disabled,
+    const deezerBtn = logoutBtns.find(
+      (b) => b.textContent === '登出' && (b as HTMLButtonElement).disabled,
     );
     expect(deezerBtn).toBeDefined();
   });

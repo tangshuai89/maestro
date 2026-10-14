@@ -54,25 +54,16 @@ async function main() {
   // ── 2. Wrong passphrase → throws ─────────────────────────────────────
   await checkAsync('2. wrong passphrase → throws', async () => {
     const blob = await encryptBundle(sampleBundle, 'correct-pass');
-    await assert.rejects(
-      () => decryptBundle(blob, 'wrong-pass'),
-      /解密失败/,
-    );
+    await assert.rejects(() => decryptBundle(blob, 'wrong-pass'), /解密失败/);
   });
 
   // ── 3. Empty passphrase → throws ─────────────────────────────────────
   await checkAsync('3a. encrypt with empty passphrase → throws', async () => {
-    await assert.rejects(
-      () => encryptBundle(sampleBundle, ''),
-      /口令不能为空/,
-    );
+    await assert.rejects(() => encryptBundle(sampleBundle, ''), /口令不能为空/);
   });
   await checkAsync('3b. decrypt with empty passphrase → throws', async () => {
     const blob = await encryptBundle(sampleBundle, 'pass');
-    await assert.rejects(
-      () => decryptBundle(blob, ''),
-      /口令不能为空/,
-    );
+    await assert.rejects(() => decryptBundle(blob, ''), /口令不能为空/);
   });
 
   // ── 4. Tampered ciphertext → throws ──────────────────────────────────
@@ -83,12 +74,12 @@ async function main() {
     const parts = blob.split('.');
     const packed = atob(parts[2]);
     const off = 4 + 16 + 12; // magic + salt + iv
-    const tampered = packed.slice(0, off) + String.fromCharCode(packed.charCodeAt(off) ^ 0xff) + packed.slice(off + 1);
+    const tampered =
+      packed.slice(0, off) +
+      String.fromCharCode(packed.charCodeAt(off) ^ 0xff) +
+      packed.slice(off + 1);
     const tamperedBlob = `${parts[0]}.${parts[1]}.${btoa(tampered)}`;
-    await assert.rejects(
-      () => decryptBundle(tamperedBlob, 'pass'),
-      /解密失败/,
-    );
+    await assert.rejects(() => decryptBundle(tamperedBlob, 'pass'), /解密失败/);
   });
 
   // ── 5. Tampered manifest (AAD) → throws ──────────────────────────────
@@ -99,10 +90,7 @@ async function main() {
     const manifest = JSON.parse(atob(parts[1]));
     manifest.appVersion = '99.0.0';
     const tamperedBlob = `${parts[0]}.${btoa(JSON.stringify(manifest))}.${parts[2]}`;
-    await assert.rejects(
-      () => decryptBundle(tamperedBlob, 'pass'),
-      /解密失败/,
-    );
+    await assert.rejects(() => decryptBundle(tamperedBlob, 'pass'), /解密失败/);
   });
 
   // ── 6. Invalid format → throws ───────────────────────────────────────
@@ -126,10 +114,7 @@ async function main() {
     const manifest = JSON.parse(atob(parts[1]));
     manifest.version = 99;
     const v99Blob = `${parts[0]}.${btoa(JSON.stringify(manifest))}.${parts[2]}`;
-    await assert.rejects(
-      () => decryptBundle(v99Blob, 'pass'),
-      /不兼容的备份版本/,
-    );
+    await assert.rejects(() => decryptBundle(v99Blob, 'pass'), /不兼容的备份版本/);
   });
 
   // ── 9. Corrupt manifest JSON → throws ────────────────────────────────
@@ -137,10 +122,7 @@ async function main() {
     const blob = await encryptBundle(sampleBundle, 'pass');
     const parts = blob.split('.');
     const corruptBlob = `${parts[0]}.${btoa('not-json')}.${parts[2]}`;
-    await assert.rejects(
-      () => decryptBundle(corruptBlob, 'pass'),
-      /备份文件头损坏/,
-    );
+    await assert.rejects(() => decryptBundle(corruptBlob, 'pass'), /备份文件头损坏/);
   });
 
   // ── 10. Different bundles with same passphrase are distinct ──────────

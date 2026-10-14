@@ -97,10 +97,7 @@ async function waitForSidecar(port: number, timeoutMs = 30_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/music/deezer/editorials`,
-        { headers },
-      );
+      const res = await fetch(`http://127.0.0.1:${port}/music/deezer/editorials`, { headers });
       if (res.ok) return;
     } catch {
       // not ready yet
@@ -118,11 +115,7 @@ function startSidecar(): Promise<void> {
       resolve();
       return;
     }
-    const serverEntry = path.join(
-      process.resourcesPath,
-      'server',
-      'main.js',
-    );
+    const serverEntry = path.join(process.resourcesPath, 'server', 'main.js');
     logger.log(`spawning sidecar: ${serverEntry}`);
     // Persist under Electron's userData (~/Library/Application Support/Maestro
     // on macOS) so state + backups survive app updates and live in a stable,
@@ -228,9 +221,7 @@ function sendTrayCommand(command: 'playpause' | 'next' | 'prev'): void {
 function refreshTray(): void {
   if (!tray) return;
   const { isPlaying, title, artist } = playbackState;
-  const nowPlaying = title
-    ? `${title}${artist ? ` — ${artist}` : ''}`
-    : '未在播放';
+  const nowPlaying = title ? `${title}${artist ? ` — ${artist}` : ''}` : '未在播放';
   const menu = Menu.buildFromTemplate([
     { label: nowPlaying, enabled: false },
     { type: 'separator' },
@@ -639,7 +630,8 @@ async function readNeteaseCookies(win: BrowserWindow): Promise<{
 function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
   // T9 (consistency-fixes F1)：同 QQ —— 每次点击登录就清缓存，避免换账号失败。
   if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
-    (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult = undefined;
+    (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult =
+      undefined;
   }
   if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
     activeNeteaseLoginWindow.show();
@@ -708,7 +700,6 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
   });
   return neteaseLoginInFlight;
 }
-
 
 /** Renderer → main: current playback state, so the tray label/tooltip reflect
  * what's actually playing. Fire-and-forget (ipcRenderer.send). */
@@ -846,8 +837,9 @@ function registerDesktopLyricsIpc(): void {
   });
 
   /** 主窗口首帧读一次开关态（避免图标闪一下未激活的样子）。 */
-  ipcMain.handle('desktop-lyrics:status', () =>
-    desktopLyrics?.snapshot() ?? { enabled: false, locked: false },
+  ipcMain.handle(
+    'desktop-lyrics:status',
+    () => desktopLyrics?.snapshot() ?? { enabled: false, locked: false },
   );
 
   /**
@@ -858,16 +850,12 @@ function registerDesktopLyricsIpc(): void {
    * 不校验 sender 就等于把「关掉 / 锁死用户浮窗」的权限开给了任意 renderer。
    * 判据是 webContents 引用相等：浮窗自己发的照常通过（同一 webContents）。
    */
-  const fromOverlay = (sender: unknown): boolean =>
-    desktopLyrics?.isOverlaySender(sender) ?? false;
+  const fromOverlay = (sender: unknown): boolean => desktopLyrics?.isOverlaySender(sender) ?? false;
 
   /** 浮窗 → main：关闭 / 锁定 / 改样式。 */
   ipcMain.on(
     'desktop-lyrics:overlay:control',
-    (
-      event,
-      msg: { action?: string; locked?: boolean; prefs?: Record<string, unknown> },
-    ) => {
+    (event, msg: { action?: string; locked?: boolean; prefs?: Record<string, unknown> }) => {
       if (!fromOverlay(event.sender)) return;
       if (!msg || typeof msg.action !== 'string') return;
       if (msg.action !== 'close' && msg.action !== 'lock' && msg.action !== 'prefs') return;
@@ -895,9 +883,7 @@ function registerDesktopLyricsIpc(): void {
 // Spotify OAuth：注册 maestro:// 自定义协议，回调时 macOS / Windows 调起 app
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient('maestro', process.execPath, [
-      path.resolve(process.argv[1]),
-    ]);
+    app.setAsDefaultProtocolClient('maestro', process.execPath, [path.resolve(process.argv[1])]);
   }
 } else {
   app.setAsDefaultProtocolClient('maestro');
@@ -990,13 +976,13 @@ app.whenReady().then(async () => {
     // 组件加载失败不阻塞启动——非 Spotify 源照常用，Spotify 自动退回 30s 预览。
     // 把 detail 也 stringify 出来（默认 devtools 只显示 [Object]）。
     const safeStr = (v: unknown): string => {
-      try { return JSON.stringify(v, (_k, val) => typeof val === 'bigint' ? String(val) : val); }
-      catch { return String(v); }
+      try {
+        return JSON.stringify(v, (_k, val) => (typeof val === 'bigint' ? String(val) : val));
+      } catch {
+        return String(v);
+      }
     };
-    logger.error(
-      'widevine components failed (Spotify 全曲不可用，退回 30s 预览):',
-      safeStr(err),
-    );
+    logger.error('widevine components failed (Spotify 全曲不可用，退回 30s 预览):', safeStr(err));
   }
   // Renderer 端 WPS 初始化失败时（"No supported keysystem was found"）用来
   // 排查：Widevine CDM 在本机到底 ready 没。让 renderer 也能看到 main 端
@@ -1028,8 +1014,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('consume-oauth-callback', () => {
     // 诊断：handler invoke 时间 + buffer 状态，确认 IPC 真的到达 main 端。
     const peeked = oauthBuffer.peek();
-    logger.log(`[consume-oauth-callback] invoked, hasPending=${peeked !== null}` +
-      (peeked ? `, kind=${'code' in peeked ? 'code' : 'error'}` : ', no pending'));
+    logger.log(
+      `[consume-oauth-callback] invoked, hasPending=${peeked !== null}` +
+        (peeked ? `, kind=${'code' in peeked ? 'code' : 'error'}` : ', no pending'),
+    );
     return oauthBuffer.consume();
   });
 

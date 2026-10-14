@@ -36,10 +36,10 @@
 
 ## 常用命令
 
-| 命令 | 用途 |
-|---|---|
-| `npm run dev` | 启动完整开发环境（server + renderer + electron） |
-| `npm run build` | 构建全部三个包 |
-| `npm test` | 跑测试 |
-| `npm run lint` | 跑 lint |
-| `npm run typecheck` | TypeScript 类型检查 |
+| 命令                | 用途                                             |
+| ------------------- | ------------------------------------------------ |
+| `npm run dev`       | 启动完整开发环境（server + renderer + electron） |
+| `npm run build`     | 构建全部三个包                                   |
+| `npm test`          | 跑测试                                           |
+| `npm run lint`      | 跑 lint                                          |
+| `npm run typecheck` | TypeScript 类型检查                              |

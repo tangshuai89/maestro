@@ -41,14 +41,20 @@ register('data:text/javascript,' + encodeURIComponent(loaderCode), import.meta.u
 // Minimal document/document.documentElement for coverColor.ts + useCoverArt.ts
 const _styleMap = {};
 const _rootStyle = {
-  setProperty: (k, v) => { _styleMap[k] = v; },
+  setProperty: (k, v) => {
+    _styleMap[k] = v;
+  },
   getPropertyValue: (k) => _styleMap[k] ?? '',
-  removeProperty: (k) => { delete _styleMap[k]; },
+  removeProperty: (k) => {
+    delete _styleMap[k];
+  },
 };
 const _elementProto = {
   style: {},
   _bgImage: null,
-  get backgroundImage() { return this._bgImage; },
+  get backgroundImage() {
+    return this._bgImage;
+  },
   set backgroundImage(v) {
     this.style.backgroundImage = v;
     this._bgImage = v;
@@ -84,10 +90,13 @@ globalThis.__import_meta_env = { DEV: false, PROD: true };
 
 // Mock fetch
 let _fetchImpl = null;
-globalThis.fetch = (...args) => _fetchImpl ? _fetchImpl(...args) : Promise.resolve({
-  ok: true,
-  blob: async () => new Blob(['fake']),
-});
+globalThis.fetch = (...args) =>
+  _fetchImpl
+    ? _fetchImpl(...args)
+    : Promise.resolve({
+        ok: true,
+        blob: async () => new Blob(['fake']),
+      });
 
 // ── Import the module under test ──────────────────────────────────────
 const mod = await import('./useCoverArt.ts');
@@ -97,13 +106,14 @@ const { applyCoverImage } = mod;
 let passed = 0;
 let failed = 0;
 function check(label, actual, expected) {
-  const ok = actual === expected ||
-    JSON.stringify(actual) === JSON.stringify(expected);
+  const ok = actual === expected || JSON.stringify(actual) === JSON.stringify(expected);
   if (ok) {
     console.log(`✅ ${label}`);
     passed++;
   } else {
-    console.log(`❌ ${label}\n   expected: ${JSON.stringify(expected)}\n   actual:   ${JSON.stringify(actual)}`);
+    console.log(
+      `❌ ${label}\n   expected: ${JSON.stringify(expected)}\n   actual:   ${JSON.stringify(actual)}`,
+    );
     failed++;
   }
 }
@@ -129,9 +139,23 @@ async function main() {
       ok: true,
       blob: async () => new Blob(['fake']),
     });
-    await applyCoverImage('https://example.com/cover.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
-    check('1. 成功路径 bgLayer.backgroundImage', refs.bgLayerRef.current.style.backgroundImage, 'url(https://example.com/cover.jpg)');
-    check('1. 成功路径 coverBackdrop.backgroundImage', refs.coverBackdropRef.current.style.backgroundImage, 'url(https://example.com/cover.jpg)');
+    await applyCoverImage(
+      'https://example.com/cover.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
+    check(
+      '1. 成功路径 bgLayer.backgroundImage',
+      refs.bgLayerRef.current.style.backgroundImage,
+      'url(https://example.com/cover.jpg)',
+    );
+    check(
+      '1. 成功路径 coverBackdrop.backgroundImage',
+      refs.coverBackdropRef.current.style.backgroundImage,
+      'url(https://example.com/cover.jpg)',
+    );
     // cover-accent should be set from sampled color (10,20,30)
     check('1. 成功路径 cover-accent set', _styleMap['--cover-accent'], 'rgb(10, 20, 30)');
   }
@@ -147,10 +171,20 @@ async function main() {
       refs.epochRef.current = epoch + 1;
       return { ok: true, blob: async () => new Blob(['fake']) };
     };
-    await applyCoverImage('https://example.com/stale.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
+    await applyCoverImage(
+      'https://example.com/stale.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
     // DOM should NOT be touched (backgroundImage stays '')
     check('2. epoch 变化 → bgLayer 不写', refs.bgLayerRef.current.style.backgroundImage, '');
-    check('2. epoch 变化 → coverBackdrop 不写', refs.coverBackdropRef.current.style.backgroundImage, '');
+    check(
+      '2. epoch 变化 → coverBackdrop 不写',
+      refs.coverBackdropRef.current.style.backgroundImage,
+      '',
+    );
   }
 
   // ── 3. blob 期间 epoch 变化 → bail ──────────────────────────────
@@ -165,8 +199,18 @@ async function main() {
         return new Blob(['fake']);
       },
     });
-    await applyCoverImage('https://example.com/stale2.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
-    check('3. blob 期间 epoch 变化 → bgLayer 不写', refs.bgLayerRef.current.style.backgroundImage, '');
+    await applyCoverImage(
+      'https://example.com/stale2.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
+    check(
+      '3. blob 期间 epoch 变化 → bgLayer 不写',
+      refs.bgLayerRef.current.style.backgroundImage,
+      '',
+    );
   }
 
   // ── 4. fetch 失败 → fallback 到原始 URL + resetCoverColor ────────
@@ -175,9 +219,23 @@ async function main() {
     const epoch = 1;
     refs.epochRef.current = epoch;
     _fetchImpl = async () => ({ ok: false, status: 500 });
-    await applyCoverImage('https://cdn.example.com/cover.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
-    check('4. fetch 失败 → bgLayer fallback URL', refs.bgLayerRef.current.style.backgroundImage, 'url(https://cdn.example.com/cover.jpg)');
-    check('4. fetch 失败 → coverBackdrop fallback URL', refs.coverBackdropRef.current.style.backgroundImage, 'url(https://cdn.example.com/cover.jpg)');
+    await applyCoverImage(
+      'https://cdn.example.com/cover.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
+    check(
+      '4. fetch 失败 → bgLayer fallback URL',
+      refs.bgLayerRef.current.style.backgroundImage,
+      'url(https://cdn.example.com/cover.jpg)',
+    );
+    check(
+      '4. fetch 失败 → coverBackdrop fallback URL',
+      refs.coverBackdropRef.current.style.backgroundImage,
+      'url(https://cdn.example.com/cover.jpg)',
+    );
     // resetCoverColor sets --cover-accent to #1a1a1f
     check('4. fetch 失败 → cover-accent reset', _styleMap['--cover-accent'], '#1a1a1f');
   }
@@ -187,9 +245,21 @@ async function main() {
     const refs = makeRefs();
     const epoch = 1;
     refs.epochRef.current = epoch;
-    _fetchImpl = async () => { throw new Error('network error'); };
-    await applyCoverImage('https://cdn.example.com/cover2.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
-    check('5. fetch 抛异常 → bgLayer fallback URL', refs.bgLayerRef.current.style.backgroundImage, 'url(https://cdn.example.com/cover2.jpg)');
+    _fetchImpl = async () => {
+      throw new Error('network error');
+    };
+    await applyCoverImage(
+      'https://cdn.example.com/cover2.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
+    check(
+      '5. fetch 抛异常 → bgLayer fallback URL',
+      refs.bgLayerRef.current.style.backgroundImage,
+      'url(https://cdn.example.com/cover2.jpg)',
+    );
   }
 
   // ── 6. fetch 失败 + epoch 变化 → 不写 DOM（epoch 优先）────────────
@@ -201,8 +271,18 @@ async function main() {
       refs.epochRef.current = epoch + 1;
       return { ok: false, status: 500 };
     };
-    await applyCoverImage('https://example.com/should-not-apply.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
-    check('6. fetch 失败 + epoch 变化 → bgLayer 不写', refs.bgLayerRef.current.style.backgroundImage, '');
+    await applyCoverImage(
+      'https://example.com/should-not-apply.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
+    check(
+      '6. fetch 失败 + epoch 变化 → bgLayer 不写',
+      refs.bgLayerRef.current.style.backgroundImage,
+      '',
+    );
   }
 
   // ── 7. proxy URL 包含 encodeURIComponent ─────────────────────────
@@ -215,7 +295,13 @@ async function main() {
       capturedUrl = url;
       return { ok: true, blob: async () => new Blob(['fake']) };
     };
-    await applyCoverImage('https://y.gtimg.cn/cover?special=chars & stuff', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
+    await applyCoverImage(
+      'https://y.gtimg.cn/cover?special=chars & stuff',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
     check('7. proxy URL 含 encoded 参数', capturedUrl.includes('cover-proxy?url='), true);
     check('7. proxy URL 编码特殊字符', capturedUrl.includes('special%3Dchars'), true);
   }
@@ -226,7 +312,13 @@ async function main() {
     const epoch = 1;
     refs.epochRef.current = epoch;
     _fetchImpl = async () => ({ ok: true, blob: async () => new Blob(['fake']) });
-    await applyCoverImage('https://example.com/glow.jpg', refs.bgLayerRef, refs.coverBackdropRef, epoch, refs.epochRef);
+    await applyCoverImage(
+      'https://example.com/glow.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      epoch,
+      refs.epochRef,
+    );
     check('8. 成功路径 cover-glow set', _styleMap['--cover-glow'], 'rgba(10, 20, 30, 0.32)');
   }
 
@@ -235,10 +327,26 @@ async function main() {
     const refs = makeRefs();
     refs.epochRef.current = 1;
     _fetchImpl = async () => ({ ok: true, blob: async () => new Blob(['fake']) });
-    await applyCoverImage('https://example.com/first.jpg', refs.bgLayerRef, refs.coverBackdropRef, 1, refs.epochRef);
+    await applyCoverImage(
+      'https://example.com/first.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      1,
+      refs.epochRef,
+    );
     refs.epochRef.current = 2;
-    await applyCoverImage('https://example.com/second.jpg', refs.bgLayerRef, refs.coverBackdropRef, 2, refs.epochRef);
-    check('9. 连续调用 → 第二次覆盖第一次', refs.bgLayerRef.current.style.backgroundImage, 'url(https://example.com/second.jpg)');
+    await applyCoverImage(
+      'https://example.com/second.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      2,
+      refs.epochRef,
+    );
+    check(
+      '9. 连续调用 → 第二次覆盖第一次',
+      refs.bgLayerRef.current.style.backgroundImage,
+      'url(https://example.com/second.jpg)',
+    );
   }
 
   // ── 10. bitmap.close() 被调用（资源清理）──────────────────────────
@@ -246,9 +354,21 @@ async function main() {
     const refs = makeRefs();
     refs.epochRef.current = 1;
     let closed = false;
-    globalThis.createImageBitmap = async () => ({ close: () => { closed = true; }, width: 100, height: 100 });
+    globalThis.createImageBitmap = async () => ({
+      close: () => {
+        closed = true;
+      },
+      width: 100,
+      height: 100,
+    });
     _fetchImpl = async () => ({ ok: true, blob: async () => new Blob(['fake']) });
-    await applyCoverImage('https://example.com/close-test.jpg', refs.bgLayerRef, refs.coverBackdropRef, 1, refs.epochRef);
+    await applyCoverImage(
+      'https://example.com/close-test.jpg',
+      refs.bgLayerRef,
+      refs.coverBackdropRef,
+      1,
+      refs.epochRef,
+    );
     check('10. bitmap.close() 被调用', closed, true);
   }
 

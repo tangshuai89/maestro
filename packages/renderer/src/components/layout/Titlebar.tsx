@@ -74,8 +74,7 @@ export default function Titlebar({
   desktopLyricsOn,
   onToggleDesktopLyrics,
 }: Props) {
-  const showQuality =
-    (provider === 'qq' || provider === 'netease') && loggedIn;
+  const showQuality = (provider === 'qq' || provider === 'netease') && loggedIn;
 
   return (
     <div className="titlebar">
@@ -126,16 +125,10 @@ export default function Titlebar({
         )}
       </button>
 
-      {showQuality && (
-        <QualityMenu quality={qqQuality} onSelect={onChangeQuality} />
-      )}
+      {showQuality && <QualityMenu quality={qqQuality} onSelect={onChangeQuality} />}
 
       {loggedIn ? null : (
-        <button
-          className="titlebar-btn login-btn"
-          onClick={onLogin}
-          disabled={loggingIn}
-        >
+        <button className="titlebar-btn login-btn" onClick={onLogin} disabled={loggingIn}>
           {loggingIn ? '登录中…' : '登录'}
         </button>
       )}

@@ -45,7 +45,7 @@
 - [x] **S3-5a** **配方是量出来的，不是猜的**：浏览器 canvas 读回像素比对
       （`/tmp/check-color-mix.mjs`）——
       · `in oklab`：8/9 等价，**饱和色会漂**（`rgba(0,229,255,.3)` = `[0,229,255,77]`，
-        oklab 版 `[0,232,255,76]`，G 差 3）；而青色 alpha 在仓库里有 33 处
+      oklab 版 `[0,232,255,76]`，G 差 3）；而青色 alpha 在仓库里有 33 处
       · `in srgb`：**9/9 全等**（含青色）→ 采用
       ⚠️ 注意这跟"混两个颜色取感知中点"是两回事 —— 那种场景 oklab 才对（`_base.scss` 的
       封面渐变仍在用 oklab，不要动）。**派生 alpha 一律用 srgb。**
@@ -55,10 +55,7 @@
       语义双关的 `255,59,92`（红心=错误）与平台色 `61,255,162 / 255,217,61 / 61,155,255`
       **故意不收**，留给 S3-8 人工过（合计不到 10 处）
 - [x] **S3-7** 遗留色板归属决策 —— **2026-09-24 决议**：legacy overlay palette 走方案 B —— 留在 `_variables.scss` 作为 SCSS 编译期常量（与 AETHER 运行时 `--sh-*` 令牌解耦；platform brand 颜色单独走 budget `exempt`，见 S3-8）。文件已挂 `exempt`（PR #92 batch 4），hex 计数不再纳入门禁。
-- [x] **S3-8** TSX/TS 里的语义色 —— **2026-09-24 决议**：
-      - platform brand 颜色（4 处 × 3 文件 = 12 处：`LikedLibraryModal/SearchPanel/SourceSelect` 里的 `#FFD93D/#FF3B5C/#3D9BFF/#3DFFA2`）→ 走 budget `exempt`（与 `providerLogos.tsx` 12 处同源，品牌识别不是设计令牌）。
-      - 状态色（4 处 `AuthErrorPanel.tsx`）→ 已用新加的 `--status-error/--status-warning/--status-info` token（PR #92 batch 5）。
-      - `TheaterView.tsx` 剩余 9 处：4 处是 platform brand（letter color）已含在上文豁免里；其余为 SVG `stopColor` / 装饰用 `--white` / alpha rgba，本轮不替换。
+- [x] **S3-8** TSX/TS 里的语义色 —— **2026-09-24 决议**：- platform brand 颜色（4 处 × 3 文件 = 12 处：`LikedLibraryModal/SearchPanel/SourceSelect` 里的 `#FFD93D/#FF3B5C/#3D9BFF/#3DFFA2`）→ 走 budget `exempt`（与 `providerLogos.tsx` 12 处同源，品牌识别不是设计令牌）。- 状态色（4 处 `AuthErrorPanel.tsx`）→ 已用新加的 `--status-error/--status-warning/--status-info` token（PR #92 batch 5）。- `TheaterView.tsx` 剩余 9 处：4 处是 platform brand（letter color）已含在上文豁免里；其余为 SVG `stopColor` / 装饰用 `--white` / alpha rgba，本轮不替换。
       关闭 S3-8。
 - [x] **S3-8b** SCSS 机械尾巴 —— **2026-09-24 决议**：仓库无对应语义 token（这些色都用在 gradient stop / load icon 描边 / 装饰边框等无主语义位置），保留为字面量；"基线不许动"理解为不引入新差异。S3-8b 关闭。
 - [x] **S3-8c** 无对应令牌的值 —— **2026-09-24 决议**：`rgba(0,0,0,*)` 是功能性 scrim/shadow（modal backdrop、box-shadow halo），`#94a3b8`（slate-400）专用于 `_liked-modal.scss` 的 VersionType 角标色（instrumental/karaoke）—— 都不通用化，保留字面量。S3-8c 关闭。

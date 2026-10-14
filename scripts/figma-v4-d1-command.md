@@ -9,6 +9,7 @@
 ## 任务
 
 在 v4-ABC 剧场稿基础上，**给 03 · Screens 补 6 个 frame**：
+
 - `Screen/Search/Modal`（modal 弹层）
 - `Screen/Liked/Modal`（modal 列表）
 - `Screen/Settings/Full`（全屏）
@@ -49,20 +50,22 @@ node scripts/figma-v4-smoke-d1.mjs
 ## Step 3 — 喂 use_figma（6 次独立调用）
 
 每次调用：
+
 - `currentPage` 不需要手切（脚本内自定位 `03 · Screens`）
 - `code` 参数 = `scripts/figma-aether-v4-screens-d1.js` 里 `SEG{N}` 模板字符串内容（去掉外层 `` ` `` 包装）
 - 每次调用 ≤10 逻辑操作（D1 每段 40-60 节点，单段可能触沙箱 50KB 上限；若报操作数/超时错，按 SPEC 段内分区拆 2 段重跑）
 
-| 步骤 | SEG | 目标 page | 创建 frame | 完成后验证 |
-|---|---|---|---|---|
-| 1 | SEG1 | 03 · Screens | Screen/Search/Modal | 截图 modal 弹层 + 确认 x=1480 |
-| 2 | SEG2 | 03 · Screens | Screen/Liked/Modal | 截图 列表行 + 确认 x=2960 |
-| 3 | SEG3 | 03 · Screens | Screen/Settings/Full | 截图 3 section + 确认 x=4440 |
-| 4 | SEG4 | 03 · Screens | Screen/RecoKey/Modal | 截图 表单 + 确认 x=5920 |
-| 5 | SEG5 | 03 · Screens | Screen/AuthError/Full | 截图 错误码 tag + 5 按钮 + 确认 x=7400 |
-| 6 | SEG6 | 03 · Screens | Screen/EmptyState/Full | 截图 居中 illustration + CTA + 确认 x=8880 |
+| 步骤 | SEG  | 目标 page    | 创建 frame             | 完成后验证                                 |
+| ---- | ---- | ------------ | ---------------------- | ------------------------------------------ |
+| 1    | SEG1 | 03 · Screens | Screen/Search/Modal    | 截图 modal 弹层 + 确认 x=1480              |
+| 2    | SEG2 | 03 · Screens | Screen/Liked/Modal     | 截图 列表行 + 确认 x=2960                  |
+| 3    | SEG3 | 03 · Screens | Screen/Settings/Full   | 截图 3 section + 确认 x=4440               |
+| 4    | SEG4 | 03 · Screens | Screen/RecoKey/Modal   | 截图 表单 + 确认 x=5920                    |
+| 5    | SEG5 | 03 · Screens | Screen/AuthError/Full  | 截图 错误码 tag + 5 按钮 + 确认 x=7400     |
+| 6    | SEG6 | 03 · Screens | Screen/EmptyState/Full | 截图 居中 illustration + CTA + 确认 x=8880 |
 
 每步完成后：
+
 - 用 get_screenshot 验证视觉与 v4-ABC 一致
 - 保留返回的 createdNodeIds 供后续引用
 
@@ -75,6 +78,7 @@ FIGMA_TOKEN=<token> node scripts/figma-aether-v4-audit-d1.mjs
 全 PASS 才算完成。FAIL 项按报告修。
 
 **D1 阈值**（与原 v4-audit 不同）：
+
 - 03 页自有填充变量绑定率 ≥ **70%**（modal 屏更简单，阈值比 v4 高）
 - 03 页实例内填充变量绑定率 ≥ **30%**（与 v4 一致）
 - 6 屏都含 `AI_CONTRACT` TEXT 子节点（`visible=false`），内容含 `AI_CONTRACT:` / `react:` / `a11y:`

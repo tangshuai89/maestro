@@ -9,21 +9,11 @@ export interface MinimalSession {
   cookies: {
     on(
       event: 'changed',
-      listener: (
-        event: unknown,
-        cookie: Cookie,
-        cause: string,
-        removed: boolean,
-      ) => void,
+      listener: (event: unknown, cookie: Cookie, cause: string, removed: boolean) => void,
     ): void;
     off(
       event: 'changed',
-      listener: (
-        event: unknown,
-        cookie: Cookie,
-        cause: string,
-        removed: boolean,
-      ) => void,
+      listener: (event: unknown, cookie: Cookie, cause: string, removed: boolean) => void,
     ): void;
   };
 }
@@ -113,9 +103,7 @@ const DEFAULT_POLL_MS = 1_500;
  *   - 'LOGIN_CANCELLED' — window 'closed' before capture
  *   - 'LOGIN_FAILED'    — any other error from the capture / window path
  */
-export async function runLoginWindow<T>(
-  cfg: LoginWindowConfig<T>,
-): Promise<T> {
+export async function runLoginWindow<T>(cfg: LoginWindowConfig<T>): Promise<T> {
   const deadline = cfg.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const pollMs = cfg.pollIntervalMs ?? DEFAULT_POLL_MS;
   // eslint-disable-next-line no-console
@@ -126,7 +114,8 @@ export async function runLoginWindow<T>(
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
   let resolved = false;
-  let cookieListener: ((e: unknown, c: Cookie, cause: string, removed: boolean) => void) | null = null;
+  let cookieListener: ((e: unknown, c: Cookie, cause: string, removed: boolean) => void) | null =
+    null;
   // T9 (consistency-fixes F3)：capture() 是否在途。用户关窗时如果
   // capture() 已拿到结果但 resolve 还没跑（microtask 间隙），旧实现
   // 直接 fail('LOGIN_CANCELLED') 把已捕到的 cookie 丢弃。capturing
@@ -201,12 +190,7 @@ export async function runLoginWindow<T>(
       }
     };
 
-    cookieListener = (
-      _e: unknown,
-      cookie: Cookie,
-      _cause: string,
-      removed: boolean,
-    ) => {
+    cookieListener = (_e: unknown, cookie: Cookie, _cause: string, removed: boolean) => {
       if (resolved) return;
       if (removed) return;
       const domain = cookie.domain ?? '';

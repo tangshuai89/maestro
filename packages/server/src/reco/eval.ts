@@ -60,9 +60,7 @@ export function holdoutBreakdown(
   holdout: UnifiedSearchItem[],
   train: UnifiedSearchItem[],
 ): { sameArtist: UnifiedSearchItem[]; newArtist: UnifiedSearchItem[] } {
-  const trainArtists = new Set(
-    train.map((t) => normalizeKey(t.artist ?? '', '')).filter(Boolean),
-  );
+  const trainArtists = new Set(train.map((t) => normalizeKey(t.artist ?? '', '')).filter(Boolean));
   const sameArtist: UnifiedSearchItem[] = [];
   const newArtist: UnifiedSearchItem[] = [];
   for (const h of holdout) {
@@ -74,10 +72,7 @@ export function holdoutBreakdown(
 }
 
 /** 第一个命中在排名里的位置（1-based）。没命中 → Infinity。 */
-export function rankOfFirstHit(
-  holdout: Rankable[],
-  ranked: Rankable[],
-): number {
+export function rankOfFirstHit(holdout: Rankable[], ranked: Rankable[]): number {
   const want = new Set(holdout.map(keyOf).filter(Boolean));
   for (let i = 0; i < ranked.length; i++) {
     if (want.has(keyOf(ranked[i]))) return i + 1;
@@ -99,10 +94,7 @@ export function recall(holdout: Rankable[], ranked: Rankable[], k?: number): num
 }
 
 /** MRR（只看第一个命中的倒数排名）；没命中记 0。 */
-export function meanReciprocalRank(
-  holdout: Rankable[],
-  ranked: Rankable[],
-): number {
+export function meanReciprocalRank(holdout: Rankable[], ranked: Rankable[]): number {
   if (!holdout.length) return 0;
   const rank = rankOfFirstHit(holdout, ranked);
   return Number.isFinite(rank) ? 1 / rank : 0;
@@ -136,9 +128,7 @@ export function diversityMetrics(items: Rankable[]): {
   uniqueArtists: number;
   artistCoverage: number;
 } {
-  const artists = new Set(
-    items.map((i) => normalizeKey(i.artist ?? '', '')).filter(Boolean),
-  );
+  const artists = new Set(items.map((i) => normalizeKey(i.artist ?? '', '')).filter(Boolean));
   return {
     items: items.length,
     uniqueArtists: artists.size,
@@ -190,7 +180,13 @@ export interface EvalReport {
 
 export function averageRuns(
   runs: EvalRunResult[],
-  meta: { mode: 'pool' | 'llm'; count: number; librarySize: number; holdoutSize: number; model?: string },
+  meta: {
+    mode: 'pool' | 'llm';
+    count: number;
+    librarySize: number;
+    holdoutSize: number;
+    model?: string;
+  },
 ): EvalReport {
   const mean = (pick: (r: EvalRunResult) => number): number =>
     runs.length ? runs.reduce((s, r) => s + pick(r), 0) / runs.length : 0;
@@ -245,31 +241,55 @@ export function formatEvalReport(report: EvalReport): string {
 }
 
 /** 与基线对比（同一模式、同一留出规模才有意义）。 */
-export function compareEvalReports(
-  baseline: EvalReport,
-  current: EvalReport,
-): string {
+export function compareEvalReports(baseline: EvalReport, current: EvalReport): string {
   // MRR 不是百分比（是 1/rank 的均值），单独用三位小数格式化，别混进 pct()。
   const rows: Array<{ name: string; base: number; cur: number; ratio: boolean }> = [
-    { name: '池内召回', base: baseline.average.poolRecall, cur: current.average.poolRecall, ratio: true },
-    { name: '前 20 条召回', base: baseline.average.poolRecallTop20, cur: current.average.poolRecallTop20, ratio: true },
-    { name: 'Top-K 召回', base: baseline.average.recallAtK, cur: current.average.recallAtK, ratio: true },
+    {
+      name: '池内召回',
+      base: baseline.average.poolRecall,
+      cur: current.average.poolRecall,
+      ratio: true,
+    },
+    {
+      name: '前 20 条召回',
+      base: baseline.average.poolRecallTop20,
+      cur: current.average.poolRecallTop20,
+      ratio: true,
+    },
+    {
+      name: 'Top-K 召回',
+      base: baseline.average.recallAtK,
+      cur: current.average.recallAtK,
+      ratio: true,
+    },
     { name: 'MRR', base: baseline.average.mrr, cur: current.average.mrr, ratio: false },
-    { name: '同艺人召回', base: baseline.average.sameArtistRecall, cur: current.average.sameArtistRecall, ratio: true },
-    { name: '新艺人召回', base: baseline.average.newArtistRecall, cur: current.average.newArtistRecall, ratio: true },
-    { name: '艺人覆盖', base: baseline.average.artistCoverage, cur: current.average.artistCoverage, ratio: true },
+    {
+      name: '同艺人召回',
+      base: baseline.average.sameArtistRecall,
+      cur: current.average.sameArtistRecall,
+      ratio: true,
+    },
+    {
+      name: '新艺人召回',
+      base: baseline.average.newArtistRecall,
+      cur: current.average.newArtistRecall,
+      ratio: true,
+    },
+    {
+      name: '艺人覆盖',
+      base: baseline.average.artistCoverage,
+      cur: current.average.artistCoverage,
+      ratio: true,
+    },
   ];
-  const fmt = (v: number, ratio: boolean): string =>
-    ratio ? pct(v) : v.toFixed(3);
+  const fmt = (v: number, ratio: boolean): string => (ratio ? pct(v) : v.toFixed(3));
   const lines = [`与基线对比（基线 ${new Date(baseline.at).toLocaleString()}）：`];
   for (const { name, base: b, cur: c, ratio } of rows) {
     const delta = c - b;
     const sign = delta > 0 ? '+' : '';
     const tolerance = ratio ? 0.005 : 0.002;
     const flag = Math.abs(delta) < tolerance ? '  ' : delta > 0 ? '✅' : '⚠️';
-    const deltaText = ratio
-      ? `${sign}${(delta * 100).toFixed(1)}pt`
-      : `${sign}${delta.toFixed(3)}`;
+    const deltaText = ratio ? `${sign}${(delta * 100).toFixed(1)}pt` : `${sign}${delta.toFixed(3)}`;
     lines.push(
       `  ${flag} ${name.padEnd(10)} ${fmt(b, ratio).padStart(7)} → ${fmt(c, ratio).padStart(7)}  (${deltaText})`,
     );

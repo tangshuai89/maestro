@@ -6,12 +6,7 @@
  *
  * 命名冲突：同名自动追加 `-2`、`-3`（spec §风险）。
  */
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { StorageService } from '../common/storage';
 import type { UnifiedSearchItem } from '../music/types';
 
@@ -92,9 +87,7 @@ export class PlaylistService {
 
   // ── CRUD ──────────────────────────────────────────────
   list(sessionId: string): Playlist[] {
-    return [...this.readAll(sessionId)].sort(
-      (a, b) => b.updatedAt - a.updatedAt,
-    );
+    return [...this.readAll(sessionId)].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   get(sessionId: string, id: string): Playlist {
@@ -167,14 +160,15 @@ export class PlaylistService {
 
     // name 改名
     if (body?.name !== undefined) {
-      cur.name = this.normalizeName(body.name, list.filter((p) => p.id !== id));
+      cur.name = this.normalizeName(
+        body.name,
+        list.filter((p) => p.id !== id),
+      );
     }
     // append 追加曲目（去重 by UnifiedSearchItem.id + sources[0]）
     if (body?.append !== undefined) {
       const add = this.validateTracks(body.append);
-      const seen = new Set(
-        cur.tracks.map((t) => this.trackKey(t)),
-      );
+      const seen = new Set(cur.tracks.map((t) => this.trackKey(t)));
       let added = 0;
       for (const t of add) {
         const k = this.trackKey(t);
@@ -194,7 +188,8 @@ export class PlaylistService {
       const drop = new Set(body.remove as string[]);
       const before = cur.tracks.length;
       cur.tracks = cur.tracks.filter(
-        (t) => !drop.has(t.id) && !drop.has(`${t.sources?.[0]?.platform}:${t.sources?.[0]?.trackId}`),
+        (t) =>
+          !drop.has(t.id) && !drop.has(`${t.sources?.[0]?.platform}:${t.sources?.[0]?.trackId}`),
       );
       this.logger.log(`patch: ${id} remove ${before - cur.tracks.length} tracks`);
     }

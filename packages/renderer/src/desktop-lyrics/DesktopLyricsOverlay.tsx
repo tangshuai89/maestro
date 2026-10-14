@@ -1,8 +1,5 @@
 import { useState } from 'react';
-import type {
-  DesktopLyricsPrefsPayload,
-  DesktopLyricsState,
-} from '../../../electron/src/preload';
+import type { DesktopLyricsPrefsPayload, DesktopLyricsState } from '../../../electron/src/preload';
 
 /**
  * 桌面歌词浮窗的展示组件（NEXT-ITERATION §7.2）。
@@ -37,7 +34,9 @@ export interface DesktopLyricsOverlayProps {
   /** 当前曲目有歌词吗？没有就显示提示而不是空白 */
   hasLyrics: boolean;
   onToggleLock: (locked: boolean) => void;
-  onPrefs: (patch: Partial<Pick<DesktopLyricsPrefsPayload, 'fontScale' | 'stroke' | 'palette'>>) => void;
+  onPrefs: (
+    patch: Partial<Pick<DesktopLyricsPrefsPayload, 'fontScale' | 'stroke' | 'palette'>>,
+  ) => void;
   onClose: () => void;
 }
 

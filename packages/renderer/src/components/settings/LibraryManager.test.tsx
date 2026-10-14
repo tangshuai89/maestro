@@ -37,7 +37,9 @@ vi.mock('../../api', () => ({
 vi.mock('../common/Modal', () => ({
   default: ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
     <div data-testid="modal-mock">
-      <button data-testid="modal-close" onClick={onClose}>×</button>
+      <button data-testid="modal-close" onClick={onClose}>
+        ×
+      </button>
       {children}
     </div>
   ),
@@ -78,9 +80,7 @@ const sampleLib = {
       album: '',
       coverUrl: '',
       duration: 0,
-      sources: [
-        { platform: 'netease' as const, trackId: '1', hasCopyright: true, url: '' },
-      ],
+      sources: [{ platform: 'netease' as const, trackId: '1', hasCopyright: true, url: '' }],
       bestSource: 'netease' as const,
       versionType: 'studio' as const,
       versions: [],
@@ -96,9 +96,7 @@ describe('LibraryManager', () => {
     mockClearOne.mockClear();
     mockClearAll.mockClear();
     mockGet.mockResolvedValue(sampleLib);
-    mockClearOne.mockImplementation(() =>
-      Promise.resolve({ ok: true as const, removed: 2 }),
-    );
+    mockClearOne.mockImplementation(() => Promise.resolve({ ok: true as const, removed: 2 }));
     mockClearAll.mockResolvedValue({ ok: true as const });
   });
 

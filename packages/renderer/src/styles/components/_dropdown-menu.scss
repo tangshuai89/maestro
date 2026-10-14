@@ -58,7 +58,9 @@
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .source-menu-item:hover:not(.source-menu-item--disabled) {

@@ -38,4 +38,5 @@ D5_NEW 建完 10 个组件集后按要求跑了 `FIGMA_TOKEN=xxx node scripts/fi
 
 **还没修**（本轮范围是 D5_NEW）：修法照 audit-d1 的现成模式 ——
 `const carrierOf = (n) => n.description || (n.children || []).find(c => c.type === 'TEXT' && /AI_CONTRACT|README|MOTION_SPEC/.test(c.name))?.characters || ''`
-+ `walk()` 里对 `COMPONENT` 加 `parentIsSet` 判断。修完再跑，才是 C2/C3 的可信门禁。
+
+- `walk()` 里对 `COMPONENT` 加 `parentIsSet` 判断。修完再跑，才是 C2/C3 的可信门禁。

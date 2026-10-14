@@ -14,66 +14,74 @@ const ALIAS_PATH = path.resolve(__dirname, '..', 'packages', 'common', 'src', 'a
 // ── All WebSearch-verified English names (cumulative) ──────────────────
 const VERIFIED = {
   // Chinese
-  '林韓星': ['Lim Han-byul', 'Onestar', '林韩星'],
-  '李素羅': ['Lee So-ra', 'Lee Sora', '李素罗'],
-  '阿杜': ['A-Do', 'A-do', 'Andy', '阿杜'],
-  '楊坤': ['Kane Yang', 'Yang Kun', '杨坤'],
-  '許靖韻': ['Angela Hui', 'Angela', '许靖韵'],
-  '新褲子': ['New Pants', '新裤子'],
-  '許慧欣': ['Evonne Hsu', '许慧欣'],
-  '謝安琪': ['Kay Tse', '谢安琪'],
-  '周傳雄': ['Steve Chou', 'Xiao Gang', '小刚', '周传雄'],
-  '品冠': ['Victor Wong', '品冠'],
-  '逃跑計劃': ['Escape Plan', 'Perdel', '逃跑计划'],
-  '易烊千璽': ['Jackson Yee', 'Yi Yangqianxi', '易烊千玺'],
-  '顏人中': ['Ele Yan', 'Ele', '颜人中'],
-  '張傑': ['Jason Zhang', '张杰'],
-  '陳致逸': ['Yu-Peng Chen', '陈致逸'],
-  '趙方婧': ['Zhao Fangjing', '赵方婧'],
-  '音闕詩聽': ['Interesting', '音阙诗听'],
-  '石璽彤': ['Shi Xitong', '石玺彤'],
-  '白靜晨': ['Bai Jingchen', '白静晨'],
-  '鍾凱琳': ['Zhong Kailin', '钟凯琳'],
-  '董書含': ['Dong Shuhan', '董书含'],
-  '曾溯恕': ['Zeng Sushu', '曾溯恕'],
-  '許哲珮': ['Peggy Hsu', '许哲珮'],
-  '施文斌': ['Shi Wenbin', '施文斌'],
-  '楊楚驍': ['Yang Chuxiao', '杨楚骁'],
-  '閆澤歡': ['Yan Zehuan', '闫泽欢'],
-  '譚晶': ['Tan Jing', '谭晶'],
-  '三Z': ['3Z-STUDIO', '三Z-STUDIO', 'San Z Studio'],
-  '梁凡': ['Liang Fan', '梁凡'],
-  '王心如': ['Wang Xinru', 'Cynthia Wang', '王心如'],
-  '於梓貝': ['Yu Zibei', '于梓贝'],
-  '李嘉格': ['Li Jiage', '李嘉格'],
-  '野田洋次郎': ['Yojiro Noda', '野田洋次郎'],
-  '黃霄雲': ['Huang Xiaoyun', '黄霄雲'],
-  '戴荃': ['Dai Quan', '戴荃'],
-  '金海心': ['Jin Haixin', 'Hannah Jin', '金海心'],
-  '何維健': ['Derrick Hoh', '何维健'],
+  林韓星: ['Lim Han-byul', 'Onestar', '林韩星'],
+  李素羅: ['Lee So-ra', 'Lee Sora', '李素罗'],
+  阿杜: ['A-Do', 'A-do', 'Andy', '阿杜'],
+  楊坤: ['Kane Yang', 'Yang Kun', '杨坤'],
+  許靖韻: ['Angela Hui', 'Angela', '许靖韵'],
+  新褲子: ['New Pants', '新裤子'],
+  許慧欣: ['Evonne Hsu', '许慧欣'],
+  謝安琪: ['Kay Tse', '谢安琪'],
+  周傳雄: ['Steve Chou', 'Xiao Gang', '小刚', '周传雄'],
+  品冠: ['Victor Wong', '品冠'],
+  逃跑計劃: ['Escape Plan', 'Perdel', '逃跑计划'],
+  易烊千璽: ['Jackson Yee', 'Yi Yangqianxi', '易烊千玺'],
+  顏人中: ['Ele Yan', 'Ele', '颜人中'],
+  張傑: ['Jason Zhang', '张杰'],
+  陳致逸: ['Yu-Peng Chen', '陈致逸'],
+  趙方婧: ['Zhao Fangjing', '赵方婧'],
+  音闕詩聽: ['Interesting', '音阙诗听'],
+  石璽彤: ['Shi Xitong', '石玺彤'],
+  白靜晨: ['Bai Jingchen', '白静晨'],
+  鍾凱琳: ['Zhong Kailin', '钟凯琳'],
+  董書含: ['Dong Shuhan', '董书含'],
+  曾溯恕: ['Zeng Sushu', '曾溯恕'],
+  許哲珮: ['Peggy Hsu', '许哲珮'],
+  施文斌: ['Shi Wenbin', '施文斌'],
+  楊楚驍: ['Yang Chuxiao', '杨楚骁'],
+  閆澤歡: ['Yan Zehuan', '闫泽欢'],
+  譚晶: ['Tan Jing', '谭晶'],
+  三Z: ['3Z-STUDIO', '三Z-STUDIO', 'San Z Studio'],
+  梁凡: ['Liang Fan', '梁凡'],
+  王心如: ['Wang Xinru', 'Cynthia Wang', '王心如'],
+  於梓貝: ['Yu Zibei', '于梓贝'],
+  李嘉格: ['Li Jiage', '李嘉格'],
+  野田洋次郎: ['Yojiro Noda', '野田洋次郎'],
+  黃霄雲: ['Huang Xiaoyun', '黄霄雲'],
+  戴荃: ['Dai Quan', '戴荃'],
+  金海心: ['Jin Haixin', 'Hannah Jin', '金海心'],
+  何維健: ['Derrick Hoh', '何维健'],
 
   // Japanese
-  '悠木碧': ['Aoi Yūki', 'Aoi Yuki', 'Aoi Yuuki', '悠木碧'],
-  '藤田恵美': ['Emi Fujita', '藤田惠美'],
-  'コシュニエ': ['Cö shu Nie', 'Cö Shu Nie'],
-  '三浦透子': ['Toko Miura', '三浦透子'],
-  '松原正樹': ['Masaki Matsubara', '松原正樹'],
-  '神山羊': ['Yoh Kamiyama', 'Yukisan', 'uki3', '神山羊'],
+  悠木碧: ['Aoi Yūki', 'Aoi Yuki', 'Aoi Yuuki', '悠木碧'],
+  藤田恵美: ['Emi Fujita', '藤田惠美'],
+  コシュニエ: ['Cö shu Nie', 'Cö Shu Nie'],
+  三浦透子: ['Toko Miura', '三浦透子'],
+  松原正樹: ['Masaki Matsubara', '松原正樹'],
+  神山羊: ['Yoh Kamiyama', 'Yukisan', 'uki3', '神山羊'],
 
   // Korean
-  '이무진': ['Lee Mu-jin', 'Lee Mujin', '李茂珍'],
+  이무진: ['Lee Mu-jin', 'Lee Mujin', '李茂珍'],
 
   // Cross-language
-  'シンガー': ['SING', 'SING女团'],
-  '飛狗': ['Fei Gou', '飞狗MOCO'],
-  '白靜晨': ['Bai Jingchen', '白静晨'],
+  シンガー: ['SING', 'SING女团'],
+  飛狗: ['Fei Gou', '飞狗MOCO'],
+  白靜晨: ['Bai Jingchen', '白静晨'],
 };
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
 let s2t, t2s;
-try { s2t = Converter({ from: 'cn', to: 'tw' }); } catch { s2t = s => s; }
-try { t2s = Converter({ from: 'tw', to: 'cn' }); } catch { t2s = s => s; }
+try {
+  s2t = Converter({ from: 'cn', to: 'tw' });
+} catch {
+  s2t = (s) => s;
+}
+try {
+  t2s = Converter({ from: 'tw', to: 'cn' });
+} catch {
+  t2s = (s) => s;
+}
 
 function main() {
   const src = fs.readFileSync(ALIAS_PATH, 'utf8');
@@ -88,10 +96,10 @@ function main() {
     const comment = m[3] || '';
     const aliases = aliasStr
       .split(',')
-      .map(s => s.trim())
-      .filter(s => s && s.startsWith("'"))
-      .map(s => s.slice(1, -1).replace(/\\'/g, "'"))
-      .filter(s => s.length > 0);
+      .map((s) => s.trim())
+      .filter((s) => s && s.startsWith("'"))
+      .map((s) => s.slice(1, -1).replace(/\\'/g, "'"))
+      .filter((s) => s.length > 0);
     entries.push({ key, aliases, comment });
   }
 
@@ -113,7 +121,7 @@ function main() {
   // Fill any entry that only has CJK aliases with at least s2t/t2s
   let filled = 0;
   for (const e of entries) {
-    const hasEnglish = e.aliases.some(a => /[A-Za-z]{3,}/.test(a));
+    const hasEnglish = e.aliases.some((a) => /[A-Za-z]{3,}/.test(a));
     if (!hasEnglish) {
       // Try s2t/t2s
       try {
@@ -127,14 +135,14 @@ function main() {
       filled++;
     }
     // Remove self-referential aliases
-    e.aliases = e.aliases.filter(a => a !== e.key);
+    e.aliases = e.aliases.filter((a) => a !== e.key);
     // Deduplicate
     e.aliases = [...new Set(e.aliases)];
   }
   console.log(`Filled ${filled} s2t-only entries`);
 
   // Remove entries with zero aliases
-  const final = entries.filter(e => e.aliases.length > 0);
+  const final = entries.filter((e) => e.aliases.length > 0);
   console.log(`Removed ${entries.length - final.length} empty entries`);
   console.log(`Final: ${final.length} entries`);
 
@@ -145,7 +153,7 @@ function main() {
     if (seen.has(e.key)) {
       const existing = seen.get(e.key);
       if (e.aliases.length > existing.aliases.length) {
-        const idx = deduped.findIndex(x => x.key === e.key);
+        const idx = deduped.findIndex((x) => x.key === e.key);
         deduped[idx] = e;
         seen.set(e.key, e);
       }
@@ -161,16 +169,17 @@ function main() {
   const before = src.slice(0, braceStart + 1);
   const objEndMarker = '};\n\n/**\n * 艺人名 → 别名表 key';
   const afterIdx = src.indexOf(objEndMarker);
-  const after = afterIdx !== -1
-    ? src.slice(afterIdx)
-    : '\n};\n\n' + src.slice(src.lastIndexOf('export function stageNameAliasMatch'));
+  const after =
+    afterIdx !== -1
+      ? src.slice(afterIdx)
+      : '\n};\n\n' + src.slice(src.lastIndexOf('export function stageNameAliasMatch'));
 
   // Ensure after starts clean
   const cleanAfter = after.replace(/^\};?\s*\n*/, '');
 
   const entriesBlock = deduped
-    .map(e => {
-      const aliasArr = e.aliases.map(a => `'${a.replace(/'/g, "\\'")}'`).join(', ');
+    .map((e) => {
+      const aliasArr = e.aliases.map((a) => `'${a.replace(/'/g, "\\'")}'`).join(', ');
       const commentStr = e.comment ? ` // ${e.comment}` : '';
       return `  '${e.key}': [${aliasArr}],${commentStr}`;
     })
@@ -185,7 +194,7 @@ function main() {
   let withEng = 0;
   const stillNoEng = [];
   for (const e of deduped) {
-    if (e.aliases.some(a => /[A-Za-z]{3,}/.test(a))) {
+    if (e.aliases.some((a) => /[A-Za-z]{3,}/.test(a))) {
       withEng++;
     } else {
       stillNoEng.push(e);
@@ -193,7 +202,7 @@ function main() {
   }
   console.log(`With English: ${withEng}`);
   console.log(`Without English: ${stillNoEng.length}`);
-  stillNoEng.slice(0, 10).forEach(e => console.log(`  - ${e.key}: [${e.aliases.join(', ')}]`));
+  stillNoEng.slice(0, 10).forEach((e) => console.log(`  - ${e.key}: [${e.aliases.join(', ')}]`));
 }
 
 main();

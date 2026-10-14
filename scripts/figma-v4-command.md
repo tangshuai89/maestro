@@ -22,22 +22,22 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
 
 ## 执行顺序（每段 = 一次 use_figma 调用，code 参数从对应 JS 文件复制）
 
-| 步骤 | 当前页面 | 脚本段 | 内容 | 完成后验证 |
-|---|---|---|---|---|
-| 1 | 任意 | foundations `SEG0` | 归档当前页 + 新建 4 页 | 截图 4 页 |
-| 2 | `01 · Foundations` | foundations `SEG1` | AETHER 变量集合（primitive/semantic/Spacing/Radius/Motion） | 返回变量数 ≥ 49（primitive 10 + semantic 17 + Spacing 10 + Radius 5 + Motion 7） |
-| 3 | `01 · Foundations` | foundations `SEG2` | Text Styles ×8 + Effect Styles ×4 | 样式面板可见 |
-| 4 | `01 · Foundations` | foundations `SEG3` | 01 页 README — AI CONTRACT | 截图 README |
-| 5 | `02 · Components` | icons `SEG1` | SVG 线性图标 ×8（Icon/Prev…Icon/Search） | 截图图标行 |
-| 14 | `02 · Components` | components `SEG1` | Scene/Backdrop + Ring/Sound(2) + Ring/Progress(3) | 截图变体网格 |
-| 14 | `02 · Components` | components `SEG2` | Hologram/Cover(3) + Lyrics/Line(3) + Core/Play(4) | 截图 |
-| 14 | `02 · Components` | components `SEG3` | Button/Icon(8) + Badge/Platform(8) + Tag/Stat(12) | 截图 |
-| 14 | `02 · Components` | components `SEG4` | Card/Neural(2) + Controls/Transport(2) | 截图 |
-| 14 | `03 · Screens` | screens `SEG1` | Screen/NowPlaying/Playing（全实例组装） | 截图对比 v3 |
-| 14 | `03 · Screens` | screens `SEG2` | Paused + Buffering | 截图 |
-| 14 | `03 · Screens` | screens `SEG3` | Screen/SourceSelect | 截图 |
-| 14 | `02 · Components` | motion `SEG1` | 组件变体原型连线（Smart Animate） | 原型面板检查 |
-| 14 | `03 · Screens` | motion `SEG2` | 屏幕状态流转 + 04 页 MOTION SPEC 表 | 截图 SPEC 表 |
+| 步骤 | 当前页面           | 脚本段             | 内容                                                        | 完成后验证                                                                       |
+| ---- | ------------------ | ------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 1    | 任意               | foundations `SEG0` | 归档当前页 + 新建 4 页                                      | 截图 4 页                                                                        |
+| 2    | `01 · Foundations` | foundations `SEG1` | AETHER 变量集合（primitive/semantic/Spacing/Radius/Motion） | 返回变量数 ≥ 49（primitive 10 + semantic 17 + Spacing 10 + Radius 5 + Motion 7） |
+| 3    | `01 · Foundations` | foundations `SEG2` | Text Styles ×8 + Effect Styles ×4                           | 样式面板可见                                                                     |
+| 4    | `01 · Foundations` | foundations `SEG3` | 01 页 README — AI CONTRACT                                  | 截图 README                                                                      |
+| 5    | `02 · Components`  | icons `SEG1`       | SVG 线性图标 ×8（Icon/Prev…Icon/Search）                    | 截图图标行                                                                       |
+| 14   | `02 · Components`  | components `SEG1`  | Scene/Backdrop + Ring/Sound(2) + Ring/Progress(3)           | 截图变体网格                                                                     |
+| 14   | `02 · Components`  | components `SEG2`  | Hologram/Cover(3) + Lyrics/Line(3) + Core/Play(4)           | 截图                                                                             |
+| 14   | `02 · Components`  | components `SEG3`  | Button/Icon(8) + Badge/Platform(8) + Tag/Stat(12)           | 截图                                                                             |
+| 14   | `02 · Components`  | components `SEG4`  | Card/Neural(2) + Controls/Transport(2)                      | 截图                                                                             |
+| 14   | `03 · Screens`     | screens `SEG1`     | Screen/NowPlaying/Playing（全实例组装）                     | 截图对比 v3                                                                      |
+| 14   | `03 · Screens`     | screens `SEG2`     | Paused + Buffering                                          | 截图                                                                             |
+| 14   | `03 · Screens`     | screens `SEG3`     | Screen/SourceSelect                                         | 截图                                                                             |
+| 14   | `02 · Components`  | motion `SEG1`      | 组件变体原型连线（Smart Animate）                           | 原型面板检查                                                                     |
+| 14   | `03 · Screens`     | motion `SEG2`      | 屏幕状态流转 + 04 页 MOTION SPEC 表                         | 截图 SPEC 表                                                                     |
 
 每次 use_figma 调用：`code` 参数 = 对应 JS 文件里该 SEGMENT 的模板字符串内容（不含
 `module.exports` 行），脚本本身已含幂等清理与返回节点 ID，直接执行即可。
@@ -48,15 +48,15 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
 > 详见 `scripts/figma-v4-d1-command.md`（独立执行手册）与 `specs/d1-screens/spec.md`
 > 范围：Search / Liked / Settings / RecoKey / AuthError / EmptyState 共 6 屏，全部用 02 页 11 组件集 + 8 SVG icon + Scene/Backdrop 实例组装，**不引新组件**。每个 frame 带 `AI_CONTRACT:` description 段。
 
-| 步骤 | 当前页面 | 脚本段 | 内容 | 完成后验证 |
-|---|---|---|---|---|
-| D1-1 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG1` | Screen/Search/Modal（x=1480） | 截图 + `figma-v4-smoke-d1.mjs` |
-| D1-2 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG2` | Screen/Liked/Modal（x=2960） | 截图 |
-| D1-3 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG3` | Screen/Settings/Full（x=4440） | 截图 |
-| D1-4 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG4` | Screen/RecoKey/Modal（x=5920） | 截图 |
-| D1-5 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG5` | Screen/AuthError/Full（x=7400） | 截图 |
-| D1-6 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG6` | Screen/EmptyState/Full（x=8880） | 截图 |
-| D1-7 | 全部 | 验收 | `figma-aether-v4-audit-d1.mjs`（≥17 项 PASS） + 原 v4-audit 回归 |
+| 步骤 | 当前页面       | 脚本段                               | 内容                                                             | 完成后验证                     |
+| ---- | -------------- | ------------------------------------ | ---------------------------------------------------------------- | ------------------------------ |
+| D1-1 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG1` | Screen/Search/Modal（x=1480）                                    | 截图 + `figma-v4-smoke-d1.mjs` |
+| D1-2 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG2` | Screen/Liked/Modal（x=2960）                                     | 截图                           |
+| D1-3 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG3` | Screen/Settings/Full（x=4440）                                   | 截图                           |
+| D1-4 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG4` | Screen/RecoKey/Modal（x=5920）                                   | 截图                           |
+| D1-5 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG5` | Screen/AuthError/Full（x=7400）                                  | 截图                           |
+| D1-6 | `03 · Screens` | `figma-aether-v4-screens-d1.js SEG6` | Screen/EmptyState/Full（x=8880）                                 | 截图                           |
+| D1-7 | 全部           | 验收                                 | `figma-aether-v4-audit-d1.mjs`（≥17 项 PASS） + 原 v4-audit 回归 |
 
 执行前置：先跑 `node scripts/figma-v4-smoke-d1.mjs`（无需 FIGMA_TOKEN）确认 6 段逻辑无 error。
 
@@ -73,8 +73,6 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
    - 完整模板见 `specs/d6-description-template/template.md`
    - 审计：`npm run test:description`（REST 模式，需 FIGMA_TOKEN）或 `node scripts/figma-aether-v4-audit-d6.mjs --fixture /tmp/d6`（fixture 模式，无需 token）
 
-
-
 1. **不要改动 `99 · Archive` 页**（v3 画布原样保留，改造完成后由用户决定是否删除）。
 2. **屏幕必须用组件实例组装**（02 页的组件集），禁止在 03 页画"裸"交互元素；
    面板内容放进 Card/Glass 实例的 `Content` 槽位（实例 → findAllWithCriteria SLOT → appendChild）。
@@ -85,7 +83,7 @@ MOTION SPEC 表。原型连线受平台限制需 UI 手动完成（见「完成�
 6. **改脚本后必跑两道验证**：
    - `node scripts/figma-v4-typecheck.mjs`（@figma/plugin-typings 全量类型校验，含枚举/结构/属性名）
    - `node scripts/figma-v4-smoke.mjs`（mock 运行时冒烟：14 段按真实顺序执行 + 结构/绑定断言）
-   全绿才能再喂给 use_figma。
+     全绿才能再喂给 use_figma。
 
 ## 沙箱实测规则（2026-08 实弹执行确认，已固化到 smoke 校验）
 

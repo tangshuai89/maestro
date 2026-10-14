@@ -16,11 +16,7 @@
 export {};
 const assert = require('node:assert');
 const crypto = require('node:crypto');
-const {
-  encryptRequest,
-  decryptResponse,
-  zzcSign,
-} = require('./qq-crypto');
+const { encryptRequest, decryptResponse, zzcSign } = require('./qq-crypto');
 
 let passed = 0;
 let failed = 0;
@@ -37,10 +33,7 @@ function check(label: string, fn: () => void) {
 
 // AES-128-GCM key (same as production, read from source for round-trip)
 const REQUEST_KEY = Buffer.from('bd305f10d0ff74b6ef54dab835b5e1cf', 'hex');
-const RESPONSE_KEY = Buffer.from(
-  '7a3f8c1d5e9b2f0a6c4d7e8b1f3a5c9d0e2b6f4a81',
-  'hex',
-);
+const RESPONSE_KEY = Buffer.from('7a3f8c1d5e9b2f0a6c4d7e8b1f3a5c9d0e2b6f4a81', 'hex');
 
 // ── 1. encryptRequest → base64 字符串 ──────────────────────────
 check('1. encryptRequest → 非空 base64 字符串', () => {
@@ -97,9 +90,13 @@ check('5. 篡改密文 → GCM authTag 校验失败', () => {
   const ct = raw.subarray(12, raw.length - 16);
   const decipher = crypto.createDecipheriv('aes-128-gcm', REQUEST_KEY, iv);
   decipher.setAuthTag(tag);
-  assert.throws(() => {
-    Buffer.concat([decipher.update(ct), decipher.final()]);
-  }, /Unsupported state or unable to authenticate data/, 'GCM 应拒绝篡改');
+  assert.throws(
+    () => {
+      Buffer.concat([decipher.update(ct), decipher.final()]);
+    },
+    /Unsupported state or unable to authenticate data/,
+    'GCM 应拒绝篡改',
+  );
 });
 
 // ── 6. decryptResponse：循环 XOR 解密 ─────────────────────────

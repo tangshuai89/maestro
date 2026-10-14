@@ -73,11 +73,7 @@ export class AuthController {
       });
     }
     const session = this.sessionService.resolve(req, res);
-    const profile = await this.qq.loginWithCookie(
-      body.cookie,
-      body.uin,
-      body.extraCookies,
-    );
+    const profile = await this.qq.loginWithCookie(body.cookie, body.uin, body.extraCookies);
     this.sessionService.setProvider(session, 'qq', profile);
     this.sessionService.setLastValidatedAt(session, 'qq', Date.now());
     // T3 (consistency-fixes B4)：登录 → 失效 likedCache
@@ -165,10 +161,7 @@ export class AuthController {
       });
     }
     const session = this.sessionService.resolve(req, res);
-    const profile = await this.netease.loginWithCookie(
-      body.musicU,
-      body.csrfToken,
-    );
+    const profile = await this.netease.loginWithCookie(body.musicU, body.csrfToken);
     this.sessionService.setProvider(session, 'netease', profile);
     this.sessionService.setLastValidatedAt(session, 'netease', Date.now());
     // T3 (consistency-fixes B4)：登录 → 失效 likedCache
@@ -253,9 +246,7 @@ export class AuthController {
           out['loggedIn'] = false;
           return out;
         }
-        this.logger.warn(
-          `auth status validate: ${p} 登录态已失效（reason=${probe.reason}）`,
-        );
+        this.logger.warn(`auth status validate: ${p} 登录态已失效（reason=${probe.reason}）`);
         out['loggedIn'] = false;
         out['expired'] = true;
         out['error'] = 'AUTH_EXPIRED';
@@ -302,10 +293,7 @@ export class AuthController {
    * 额外带 tier（'premium' / 'free' / 'open' / null）—— WPS 路由用。
    */
   @Get('spotify/status')
-  async spotifyStatus(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async spotifyStatus(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     const stored = this.storage.get<{ clientId?: string }>(SPOTIFY_CLIENT_ID_KEY);
     const clientId = stored?.clientId ?? process.env.SPOTIFY_CLIENT_ID;
@@ -333,10 +321,7 @@ export class AuthController {
    * 重新拉一次以避免 WPS WebSocket 静默断连。
    */
   @Get('spotify/token')
-  async spotifyToken(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async spotifyToken(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     const ps = session.providers.spotify;
     if (!ps) {
@@ -354,10 +339,7 @@ export class AuthController {
    * 渲染端用的 /me 信息（id / displayName / tier）。tier 缺省时懒查一次。
    */
   @Get('spotify/me')
-  async spotifyMe(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async spotifyMe(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     const ps = session.providers.spotify;
     if (!ps) {
@@ -404,8 +386,7 @@ export class AuthController {
       throw new BadRequestException('spotify_client_id_not_set：先去 /auth/spotify/client-id 设置');
     }
     const session = this.sessionService.resolve(req, res);
-    const redirectUri =
-      body?.redirectUri ?? this.config.rendererBase + '/auth/spotify/callback';
+    const redirectUri = body?.redirectUri ?? this.config.rendererBase + '/auth/spotify/callback';
     return this.spotify.startAuth(clientId, redirectUri, session.id);
   }
 

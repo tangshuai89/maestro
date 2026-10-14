@@ -11,11 +11,7 @@
  * 实际合并的平台集合）。
  */
 import type { Track } from './types';
-import type {
-  SourceInfo,
-  UnifiedSearchItem,
-  VersionEntry,
-} from './types';
+import type { SourceInfo, UnifiedSearchItem, VersionEntry } from './types';
 import type { MusicProvider } from '../common/provider';
 
 // Re-export 给 server 模块用——music.service.ts 等不需要改 import 路径。
@@ -60,9 +56,7 @@ export type RawSearchEntry = { track: Track; platform: MusicProvider };
  *   - platforms[] 按 sources 出现序（用于上标 ¹/² 渲染）
  *   - 全部 source 都没数 → 整个字段 undefined（避免和"0"混淆）
  */
-export function recomputeCrossPlatformLikeTotal(
-  item: UnifiedSearchItem,
-): void {
+export function recomputeCrossPlatformLikeTotal(item: UnifiedSearchItem): void {
   const buckets: Array<{ source: 'qq' | 'netease'; count: number; display: string }> = [];
   for (const s of item.sources) {
     if ((s.platform === 'qq' || s.platform === 'netease') && s.likeCount) {
@@ -93,20 +87,12 @@ export function dedupTracks(all: RawSearchEntry[]): Map<string, Track> {
 /** 播放优先级: qq > netease > deezer > spotify。只有 hasCopyright 的才可选。
  *  Spotify 排最后——30s 预览是它的硬限制，能用但不优；QQ/网易云通常有完整曲流。
  *  ⚠️ 加新 provider 时务必在这里 append，否则 unified 永远拿不到它当 bestSource。 */
-export const PLAY_PRIORITY: MusicProvider[] = [
-  'qq',
-  'netease',
-  'deezer',
-  'spotify',
-];
+export const PLAY_PRIORITY: MusicProvider[] = ['qq', 'netease', 'deezer', 'spotify'];
 
 /** 能出「全曲」的平台。Deezer 匿名 / Spotify 非 Premium 本身就是 30s 预览，
  *  不算全曲源——所以"优先非 VIP 锁"这一档只在它们之间挑，别让一个 Deezer 预览
  *  仅因为"没被标 VIP 锁"就顶掉一个 QQ 源。 */
-const FULL_SONG_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
-  'qq',
-  'netease',
-]);
+const FULL_SONG_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>(['qq', 'netease']);
 
 /**
  * 录音版本分类（Phase 1 of unified-search dedup redesign）：
@@ -118,12 +104,7 @@ const FULL_SONG_PROVIDERS: ReadonlySet<MusicProvider> = new Set<MusicProvider>([
  * 优先级：live > acoustic > remix > instrumental > studio。
  * 如果 title 和 album 同时带多个关键字（如"晴天 (Live Acoustic)"），高优先级胜出。
  */
-export type VersionType =
-  | 'studio'
-  | 'live'
-  | 'acoustic'
-  | 'remix'
-  | 'instrumental';
+export type VersionType = 'studio' | 'live' | 'acoustic' | 'remix' | 'instrumental';
 
 // 英文 keyword 用 \b 包围（避免 "live" 误匹配 "deliver"）；中文 keyword 不用
 // \b（JS regex \b 基于 \w，中文字符两侧不是 \b 边界）。中文 keyword 直接 substring 匹配。
@@ -131,10 +112,10 @@ const VERSION_PATTERNS: ReadonlyArray<{
   type: VersionType;
   pattern: RegExp;
 }> = [
-  { type: 'live',          pattern: /(\b(live|live版|concert)\b|现场|演唱会|实况)/i },
-  { type: 'acoustic',      pattern: /(\b(acoustic|unplugged)\b|不插电|原声)/i },
-  { type: 'remix',         pattern: /(\b(remix|extended|remaster)\b|混音)/i },
-  { type: 'instrumental',  pattern: /(\b(instrumental|karaoke)\b|纯音乐|伴奏|卡拉ok)/i },
+  { type: 'live', pattern: /(\b(live|live版|concert)\b|现场|演唱会|实况)/i },
+  { type: 'acoustic', pattern: /(\b(acoustic|unplugged)\b|不插电|原声)/i },
+  { type: 'remix', pattern: /(\b(remix|extended|remaster)\b|混音)/i },
+  { type: 'instrumental', pattern: /(\b(instrumental|karaoke)\b|纯音乐|伴奏|卡拉ok)/i },
 ];
 
 /** Classify a search result entry into a version bucket. Title and album are
@@ -151,11 +132,16 @@ export function classifyVersion(title: string, album: string): VersionType {
 /** UI 角标文字。`studio` 返回 null（不显示角标——专辑原版是默认形态）。 */
 export function versionTypeBadge(type: VersionType): string | null {
   switch (type) {
-    case 'live':         return '[LIVE]';
-    case 'acoustic':     return '[ACOUSTIC]';
-    case 'remix':        return '[REMIX]';
-    case 'instrumental': return '[INSTRUMENTAL]';
-    case 'studio':       return null;
+    case 'live':
+      return '[LIVE]';
+    case 'acoustic':
+      return '[ACOUSTIC]';
+    case 'remix':
+      return '[REMIX]';
+    case 'instrumental':
+      return '[INSTRUMENTAL]';
+    case 'studio':
+      return null;
   }
 }
 
@@ -186,9 +172,7 @@ export function selectBestSource(
   const byPriority = (pred: (s: SourceInfo) => boolean): MusicProvider | null =>
     priority.find((p) => sources.some((s) => s.platform === p && pred(s))) ?? null;
   return (
-    byPriority(
-      (s) => s.hasCopyright && !s.vipLocked && FULL_SONG_PROVIDERS.has(s.platform),
-    ) ??
+    byPriority((s) => s.hasCopyright && !s.vipLocked && FULL_SONG_PROVIDERS.has(s.platform)) ??
     byPriority((s) => s.hasCopyright && !s.vipLocked) ??
     byPriority((s) => s.hasCopyright)
   );
@@ -229,10 +213,7 @@ function clusterByDuration(entries: RawSearchEntry[]): RawSearchEntry[][] {
   const clusters: { anchor: number; items: RawSearchEntry[] }[] = [];
   for (const e of withDur) {
     const last = clusters[clusters.length - 1];
-    if (
-      last &&
-      e.track.duration - last.anchor <= VERSION_DURATION_TOLERANCE_SEC
-    ) {
+    if (last && e.track.duration - last.anchor <= VERSION_DURATION_TOLERANCE_SEC) {
       last.items.push(e);
     } else {
       clusters.push({ anchor: e.track.duration, items: [e] });
@@ -332,8 +313,7 @@ function pickCanonicalVersion(versions: VersionEntry[]): VersionEntry {
 function isSameRecording(v: VersionEntry, canonical: VersionEntry): boolean {
   if (!(canonical.duration > 0) || !(v.duration > 0)) return true;
   return (
-    Math.abs(v.duration - canonical.duration) / canonical.duration <=
-    VERSION_DURATION_SPREAD_RATIO
+    Math.abs(v.duration - canonical.duration) / canonical.duration <= VERSION_DURATION_SPREAD_RATIO
   );
 }
 
@@ -365,15 +345,14 @@ function toVersionEntry(
     noPreview: track.noPreview,
   }));
   const main =
-    priority.map((p) =>
-      cluster.find((e) => e.track.provider === p),
-    ).find(Boolean)?.track ?? cluster[0].track;
+    priority.map((p) => cluster.find((e) => e.track.provider === p)).find(Boolean)?.track ??
+    cluster[0].track;
   return {
     id: `ver-${group.key}-${group.versionType}-${idx}`,
     duration: main.duration,
     sources,
     bestSource: selectBestSource(sources, priority),
-    label: undefined,  // Phase 3 可加：从 main.album/title 提取"短版"/"长版"
+    label: undefined, // Phase 3 可加：从 main.album/title 提取"短版"/"长版"
     // 该版本的原始元数据（main = cluster 内 priority 代表 track）。
     // UI 展开后每行显示真实歌名/歌手/专辑，而不是 "v2 / 2:35"。
     title: main.title,
@@ -397,9 +376,7 @@ function toUnifiedItem(
 ): UnifiedSearchItem {
   const ordered = [
     canonical,
-    ...versions
-      .filter((v) => v !== canonical)
-      .sort((a, b) => a.duration - b.duration),
+    ...versions.filter((v) => v !== canonical).sort((a, b) => a.duration - b.duration),
   ];
   const rep =
     priority.map((p) => canonical.sources.find((s) => s.platform === p)).find(Boolean) ??
@@ -531,10 +508,7 @@ function groupMergeEvidence(a: Group, b: Group): boolean {
     // 若也按拼音判等，「异地」↔「一地」这类同音异形会误并（比 includes
     // 更松的事故面），故仅对真正跨脚本的标题启用音译佐证。
     (isCrossScript(ka, kb) &&
-      titleTransliterationMatch(
-        stripParensContent(ta),
-        stripParensContent(tb),
-      ));
+      titleTransliterationMatch(stripParensContent(ta), stripParensContent(tb)));
   if (!titleOk) return false;
 
   // 3) artist：策展别名表/段段配对 OR 音译佐证——与 mergeCrossScript 同口径。
@@ -560,8 +534,7 @@ export function buildUnifiedItems(
     const key = normalizeKey(e.track.title, e.track.artist);
     const versionType = classifyVersion(e.track.title, e.track.album);
     const groupKey = `${key}\u0001${versionType}`; // \u0001 = 不会出现在 normalizeKey 里
-    const g =
-      byGroup.get(groupKey) ?? { key, versionType, entries: [] };
+    const g = byGroup.get(groupKey) ?? { key, versionType, entries: [] };
     g.entries.push(e);
     byGroup.set(groupKey, g);
   }
@@ -615,9 +588,7 @@ export function buildUnifiedItems(
     // 保留 `versions: VersionEntry[]`（每个 cluster = 1 个录音版本）。默认折叠
     // 视图只显示 1 行（播放 versions[0]）；toggle ON 后展开所有 versions 给用户选。
     const clusters = clusterByDuration(group.entries);
-    const versions = clusters.map((cluster, idx) =>
-      toVersionEntry(cluster, group, idx, priority),
-    );
+    const versions = clusters.map((cluster, idx) => toVersionEntry(cluster, group, idx, priority));
 
     // Phase 3（2026-09-20）：主版本 = 跨平台共识最多（并列取最长）的那条，不再是
     // "最短"。用户搜"盲选"时折叠行原本显示 1:20 的片段（最短 cluster），点开就播它。
@@ -648,8 +619,7 @@ export function buildUnifiedItems(
  * 注意：不对内容做翻译/映射——只判定"是同一首歌的两个不同写法，应该合"。
  */
 export function isCrossScript(a: string, b: string): boolean {
-  const hasCjk = (s: string) =>
-    /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(s);
+  const hasCjk = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff]/.test(s);
   const hasLatin = (s: string) => /[a-z]/i.test(s);
   const aCjk = hasCjk(a);
   const bCjk = hasCjk(b);

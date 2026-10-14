@@ -48,9 +48,7 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
 
 // ── 2. 响应解析：{ items: [...] } 包裹 ──────────────────
 {
-  const items = svc['parseRecommendations'](
-    '{"items":[{"title":"X","artist":"Y"}]}',
-  );
+  const items = svc['parseRecommendations']('{"items":[{"title":"X","artist":"Y"}]}');
   assert.strictEqual(items.length, 1);
   assert.strictEqual(items[0].title, 'X');
   console.log('✅ 2. 响应解析: 包裹对象 { items: [...] }');
@@ -96,10 +94,10 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
     { title: '七里香', artist: '周杰伦' } as any,
   ];
   const raw = [
-    { title: '晴天', artist: '周杰伦' },          // 在库里 → 去掉
-    { title: '夜曲', artist: '周杰伦' },          // 不在库 → 保留
-    { title: '夜曲', artist: '周杰伦' },          // 内部重复 → 去掉
-    { title: '稻香', artist: '周杰伦' },          // 不在库 → 保留
+    { title: '晴天', artist: '周杰伦' }, // 在库里 → 去掉
+    { title: '夜曲', artist: '周杰伦' }, // 不在库 → 保留
+    { title: '夜曲', artist: '周杰伦' }, // 内部重复 → 去掉
+    { title: '稻香', artist: '周杰伦' }, // 不在库 → 保留
   ];
   const dedup = svc['dedupAgainstLibrary'](raw, lib);
   assert.deepStrictEqual(
@@ -114,8 +112,8 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
 {
   const lib = [{ title: 'Hello!', artist: 'Adele' } as any];
   const raw = [
-    { title: 'hello', artist: 'adele' },   // 应该被视为重复
-    { title: 'HELLO', artist: 'Adele.' },  // 重复
+    { title: 'hello', artist: 'adele' }, // 应该被视为重复
+    { title: 'HELLO', artist: 'Adele.' }, // 重复
   ];
   const dedup = svc['dedupAgainstLibrary'](raw, lib);
   assert.strictEqual(dedup.length, 0, '大小写 + 标点差异应归一为同首');
@@ -168,7 +166,9 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
   const stored: Record<string, unknown> = {};
   const realStorage = {
     get: (k: string) => stored[k],
-    set: (k: string, v: unknown) => { stored[k] = v; },
+    set: (k: string, v: unknown) => {
+      stored[k] = v;
+    },
   };
   const svc2 = new RecoService(fakeConfig, realStorage, fakeSessionService, fakeMusic);
   const r = svc2.setApiKey('sk-1234567890abcdef');
@@ -188,7 +188,9 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
   const stored: Record<string, unknown> = {};
   const realStorage = {
     get: (k: string) => stored[k],
-    set: (k: string, v: unknown) => { stored[k] = v; },
+    set: (k: string, v: unknown) => {
+      stored[k] = v;
+    },
   };
   const svc3 = new RecoService(fakeConfig, realStorage, fakeSessionService, fakeMusic);
   const saved = process.env.DEEPSEEK_API_KEY;
@@ -251,8 +253,7 @@ const svc = new RecoService(fakeConfig, fakeStorage, fakeSessionService, fakeMus
   // exclude 也要进 prompt 的"请勿再推荐"清单。
   const messages = svc['buildPrompt'](lib, { count: 5, exclude });
   assert.ok(
-    messages[1].content.includes('不要再推荐') &&
-      messages[1].content.includes('夜曲'),
+    messages[1].content.includes('不要再推荐') && messages[1].content.includes('夜曲'),
     'exclude 应进 user prompt 的避让清单',
   );
   console.log('✅ 13. 推荐去重: exclude 排除续播复读 + 进 prompt 避让');
@@ -313,25 +314,18 @@ void (async () => {
     for (const status of [401, 403]) {
       stub(status);
       await assert.rejects(
-        () =>
-          svc5.callDeepSeekForParse('sk-bad-key-0123456789', [
-            { role: 'user', content: 'x' },
-          ]),
+        () => svc5.callDeepSeekForParse('sk-bad-key-0123456789', [{ role: 'user', content: 'x' }]),
         (e: any) =>
           (e?.status ?? e?.response?.statusCode) === 502 &&
           e?.response?.error === 'deepseek_auth_failed' &&
-          e?.response?.message ===
-            'DeepSeek API key 已失效或无权限，请到设置里更新',
+          e?.response?.message === 'DeepSeek API key 已失效或无权限，请到设置里更新',
         `${status} 应抛 502 deepseek_auth_failed + 中文文案（不能是机器码 deepseek_${status}）`,
       );
     }
     // 其它 4xx 仍走原兜底机器码，别被新分支吞掉
     stub(400);
     await assert.rejects(
-      () =>
-        svc5.callDeepSeekForParse('sk-x-0123456789', [
-          { role: 'user', content: 'x' },
-        ]),
+      () => svc5.callDeepSeekForParse('sk-x-0123456789', [{ role: 'user', content: 'x' }]),
       (e: any) => e?.response === 'deepseek_400',
       '非 401/403 的 4xx 仍应是 deepseek_400',
     );
@@ -415,11 +409,7 @@ void (async () => {
       }
       return { items: [] };
     };
-    const filled = await svc['fillPlatforms'](
-      {} as any,
-      [{ title: '晴天', artist: '周杰伦' }],
-      5,
-    );
+    const filled = await svc['fillPlatforms']({} as any, [{ title: '晴天', artist: '周杰伦' }], 5);
     assert.strictEqual(filled.length, 1);
     assert.strictEqual(filled[0].id, 'studio', '有正常版应优先，即使 DJ 版排前面');
     console.log('✅ 17. 版本偏好: 录音室原版优先于 DJ 版');
@@ -428,14 +418,8 @@ void (async () => {
   // ── 18. 版本偏好：只有 DJ 版且用户没点名 → 丢弃，让上层补位 ────
   {
     (fakeMusic as any).searchUnified = async (_s: any, q: string) =>
-      q.includes('晴天')
-        ? { items: [uItem('dj', '晴天 (DJ加速版)', '周杰伦')] }
-        : { items: [] };
-    const filled = await svc['fillPlatforms'](
-      {} as any,
-      [{ title: '晴天', artist: '周杰伦' }],
-      5,
-    );
+      q.includes('晴天') ? { items: [uItem('dj', '晴天 (DJ加速版)', '周杰伦')] } : { items: [] };
+    const filled = await svc['fillPlatforms']({} as any, [{ title: '晴天', artist: '周杰伦' }], 5);
     assert.strictEqual(filled.length, 0, '只有 DJ 版且没点名 → 丢弃，不塞 DJ 版');
     console.log('✅ 18. 版本偏好: 只有坏版本则丢弃');
   }
@@ -443,9 +427,7 @@ void (async () => {
   // ── 19. 版本偏好：rec 自己点名要 Remix → 豁免惩罚，照给 ────────
   {
     (fakeMusic as any).searchUnified = async (_s: any, q: string) =>
-      q.includes('某歌')
-        ? { items: [uItem('rmx', '某歌 (Remix)', 'X')] }
-        : { items: [] };
+      q.includes('某歌') ? { items: [uItem('rmx', '某歌 (Remix)', 'X')] } : { items: [] };
     const filled = await svc['fillPlatforms'](
       {} as any,
       [{ title: '某歌 (Remix)', artist: 'X' }],
@@ -461,13 +443,13 @@ void (async () => {
   // 不浪费一次 search 才被扔。sanitize 阶段按 VERSION_BAD 直接打掉。
   {
     const items = [
-      { title: '晴天', artist: '周杰伦' },          // 正常 → 留
-      { title: '晴天 (DJ版)', artist: '周杰伦' },   // DJ → 丢
+      { title: '晴天', artist: '周杰伦' }, // 正常 → 留
+      { title: '晴天 (DJ版)', artist: '周杰伦' }, // DJ → 丢
       { title: '海阔天空 (伴奏)', artist: 'Beyond' }, // 伴奏 → 丢
-      { title: '海阔天空', artist: 'Beyond' },     // 正常 → 留
+      { title: '海阔天空', artist: 'Beyond' }, // 正常 → 留
       { title: '光年之外 (抖音版)', artist: 'G.E.M.' }, // 抖音 → 丢
-      { title: '光年之外', artist: 'G.E.M.' },     // 正常 → 留
-      { title: '夜曲 (Cover)', artist: '某翻唱' },  // 翻唱 → 丢
+      { title: '光年之外', artist: 'G.E.M.' }, // 正常 → 留
+      { title: '夜曲 (Cover)', artist: '某翻唱' }, // 翻唱 → 丢
     ];
     const out = svc['sanitizeBadVersions'](items);
     assert.deepStrictEqual(
@@ -493,25 +475,13 @@ void (async () => {
       return { items: [] };
     };
     // 长现场：模型没点名要长版 → 强丢
-    let filled = await svc['fillPlatforms'](
-      {} as any,
-      [{ title: '长现场', artist: 'X' }],
-      5,
-    );
+    let filled = await svc['fillPlatforms']({} as any, [{ title: '长现场', artist: 'X' }], 5);
     assert.strictEqual(filled.length, 0, '720s 长现场没点名 → 丢');
     // 短铃声：模型没点名要短版 → 强丢
-    filled = await svc['fillPlatforms'](
-      {} as any,
-      [{ title: '短铃声', artist: 'Y' }],
-      5,
-    );
+    filled = await svc['fillPlatforms']({} as any, [{ title: '短铃声', artist: 'Y' }], 5);
     assert.strictEqual(filled.length, 0, '30s 短铃声没点名 → 丢');
     // 正常时长 → 照给
-    filled = await svc['fillPlatforms'](
-      {} as any,
-      [{ title: '正常', artist: 'Z' }],
-      5,
-    );
+    filled = await svc['fillPlatforms']({} as any, [{ title: '正常', artist: 'Z' }], 5);
     assert.strictEqual(filled.length, 1, '240s 正常 → 照给');
     assert.strictEqual(filled[0].id, 'ok');
     console.log('✅ 21. durationPenalty: 720s 长现场/30s 短铃声强丢，240s 正常通过');
@@ -548,52 +518,61 @@ void (async () => {
             ],
           }
         : { items: [] };
-    const filled = await svc['fillPlatforms'](
-      {} as any,
-      [{ title: '晴天', artist: '周杰伦' }],
-      5,
-    );
+    const filled = await svc['fillPlatforms']({} as any, [{ title: '晴天', artist: '周杰伦' }], 5);
     assert.strictEqual(filled.length, 1, '长 live 排前也优先 studio');
     assert.strictEqual(filled[0].id, 'studio');
     console.log('✅ 23. durationPenalty: 长 live 排前被压后，studio 优先');
   }
 
+  // ── 24. 封面兜底：候选无封面 → 跨平台抽取 + 缓存 ──
+  {
+    const music = {
+      getLibrary: () => null,
+      searchUnified: async () => ({
+        items: [
+          {
+            title: '晴天',
+            artist: '周杰伦',
+            album: '',
+            coverUrl: '',
+            duration: 269,
+            bestSource: 'qq',
+            sources: [],
+          },
+        ],
+      }),
+      fetchCoverFallback: async () => 'https://cover.example/sunny.jpg',
+    };
+    const svc2 = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+    const item = await (svc2 as any).searchAndMatch(
+      {},
+      { title: '晴天', artist: '周杰伦', reason: '' },
+    );
+    assert.ok(item, '应匹配到晴天');
+    assert.strictEqual(
+      item.coverUrl,
+      'https://cover.example/sunny.jpg',
+      '候选无封面时应从平台抽取封面（fetchCoverFallback）',
+    );
+    console.log('✅ 24. 封面兜底：跨平台抽取');
+  }
 
-// ── 24. 封面兜底：候选无封面 → 跨平台抽取 + 缓存 ──
-{
-  const music = {
-    getLibrary: () => null,
-    searchUnified: async () => ({
-      items: [
-        { title: '晴天', artist: '周杰伦', album: '', coverUrl: '', duration: 269, bestSource: 'qq', sources: [] },
-      ],
-    }),
-    fetchCoverFallback: async () => 'https://cover.example/sunny.jpg',
-  };
-  const svc2 = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
-  const item = await (svc2 as any).searchAndMatch({}, { title: '晴天', artist: '周杰伦', reason: '' });
-  assert.ok(item, '应匹配到晴天');
-  assert.strictEqual(
-    item.coverUrl,
-    'https://cover.example/sunny.jpg',
-    '候选无封面时应从平台抽取封面（fetchCoverFallback）',
-  );
-  console.log('✅ 24. 封面兜底：跨平台抽取');
-}
-
-// ── 25. 封面缓存：同歌不重复探测 ──
-{
-  let calls = 0;
-  const music = {
-    getLibrary: () => null,
-    fetchCoverFallback: async () => { calls++; return 'https://cover.example/x.jpg'; },
-  };
-  const svc3 = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
-  await (svc3 as any).fetchCoverCached({}, { title: '晴天', artist: '周杰伦' });
-  await (svc3 as any).fetchCoverCached({}, { title: '晴天', artist: '周杰伦' });
-  assert.strictEqual(calls, 1, '缓存命中后不再跨平台探测');
-  console.log('✅ 25. 封面缓存');
-}
+  // ── 25. 封面缓存：同歌不重复探测 ──
+  {
+    let calls = 0;
+    const music = {
+      getLibrary: () => null,
+      fetchCoverFallback: async () => {
+        calls++;
+        return 'https://cover.example/x.jpg';
+      },
+    };
+    const svc3 = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+    await (svc3 as any).fetchCoverCached({}, { title: '晴天', artist: '周杰伦' });
+    await (svc3 as any).fetchCoverCached({}, { title: '晴天', artist: '周杰伦' });
+    assert.strictEqual(calls, 1, '缓存命中后不再跨平台探测');
+    console.log('✅ 25. 封面缓存');
+  }
 
   // ── P0-a 口味档案（taste-profile）────────────────────────
   const {
@@ -619,16 +598,8 @@ void (async () => {
     const byName = new Map(aff.map((a: any) => [a.key, a.songs]));
     assert.strictEqual(aff[0].name, '周杰伦', '曲目数最多的艺人排第一');
     assert.strictEqual(aff[0].songs, 3);
-    assert.strictEqual(
-      byName.get('adele'),
-      2,
-      'ADELE / Adele 跨大小写应归一成同一位艺人',
-    );
-    assert.strictEqual(
-      aff.length,
-      4,
-      '多艺人歌应拆成两位（周杰伦/费玉清），合计 4 位',
-    );
+    assert.strictEqual(byName.get('adele'), 2, 'ADELE / Adele 跨大小写应归一成同一位艺人');
+    assert.strictEqual(aff.length, 4, '多艺人歌应拆成两位（周杰伦/费玉清），合计 4 位');
     console.log('✅ 26. artistAffinity: 多艺人拆分 + 跨写法归一 + 排序');
   }
 
@@ -654,9 +625,7 @@ void (async () => {
       rng: mulberry32(42),
     });
     assert.strictEqual(exploitOnly.length, 10);
-    const hotCount = exploitOnly.filter(
-      (s: any) => s.artist === '常听歌手',
-    ).length;
+    const hotCount = exploitOnly.filter((s: any) => s.artist === '常听歌手').length;
     assert.ok(
       hotCount >= 8,
       `亲和度加权下种子应绝大多数来自常听艺人（实际 ${hotCount}/10，均匀随机期望 5/10）`,
@@ -665,11 +634,7 @@ void (async () => {
     // exploreRatio = 0.5：一半坑位留给长尾 → 冷门歌也能进来
     const mixed = pickTasteSeeds(lib, aff, { count: 10, exploreRatio: 0.5 });
     assert.strictEqual(mixed.length, 10);
-    assert.strictEqual(
-      new Set(mixed.map((s: any) => s.id)).size,
-      10,
-      '种子不应重复',
-    );
+    assert.strictEqual(new Set(mixed.map((s: any) => s.id)).size, 10, '种子不应重复');
     assert.ok(
       mixed.some((s: any) => s.artist !== '常听歌手'),
       '长尾探索位应放进非头部艺人的歌',
@@ -730,10 +695,7 @@ void (async () => {
     assert.strictEqual(pool.dropped.badVersion, 1);
     assert.strictEqual(pool.dropped.duration, 1);
     assert.strictEqual(pool.dropped.overCap, 1);
-    assert.ok(
-      !artistMatches('翻唱歌手', '目标歌手'),
-      '翻唱歌手不应被认成目标艺人',
-    );
+    assert.ok(!artistMatches('翻唱歌手', '目标歌手'), '翻唱歌手不应被认成目标艺人');
     console.log('✅ 29. 候选池: 剔库/坏版本/时长/非目标艺人/超配额');
   }
 
@@ -794,10 +756,14 @@ void (async () => {
       ],
       '越界/负数/重复 id 都应丢弃，字符串数字要认',
     );
-    assert.deepStrictEqual(svc['parseSelection']('[0,3]', 4), [
-      { id: 0, reason: '' },
-      { id: 3, reason: '' },
-    ], '裸数字数组也认');
+    assert.deepStrictEqual(
+      svc['parseSelection']('[0,3]', 4),
+      [
+        { id: 0, reason: '' },
+        { id: 3, reason: '' },
+      ],
+      '裸数字数组也认',
+    );
     assert.deepStrictEqual(
       svc['parseSelection']('```json\n{"picks":[{"index":2}]}\n```', 3),
       [{ id: 2, reason: '' }],
@@ -882,10 +848,7 @@ void (async () => {
 
   // ── 35. run() 主路径：目录锚定候选池 → 挑选 → 填源 ────────
   {
-    const libItems = [
-      uItem('l1', '库里的歌', '甲'),
-      uItem('l2', '库里第二首', '甲'),
-    ];
+    const libItems = [uItem('l1', '库里的歌', '甲'), uItem('l2', '库里第二首', '甲')];
     const music = {
       getLibrary: () => ({ items: libItems, sources: [], importedAt: 7 }),
       searchUnified: async (_s: any, q: string) => {
@@ -928,29 +891,14 @@ void (async () => {
     const realKey = process.env.DEEPSEEK_API_KEY;
     process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
     try {
-      const svcRun = new RecoService(
-        fakeConfig,
-        fakeStorage,
-        fakeSessionService,
-        music as any,
-      );
+      const svcRun = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
       const res = await svcRun.run({ id: 'sess-select' } as any, { count: 2 });
       assert.strictEqual(res.mode, 'select', '候选池够大应走挑选模式');
       assert.strictEqual(res.candidateCount, 2, '候选池应含 2 首库外曲目');
       assert.strictEqual(res.items.length, 2, '填源后应产出 2 首');
-      assert.strictEqual(
-        res.items[0].title,
-        '甲的新歌',
-        '模型挑中的候选应排在最前',
-      );
-      assert.ok(
-        sentPrompt.includes('[0] 甲的新歌 - 甲'),
-        'prompt 里应带上带下标的候选清单',
-      );
-      assert.ok(
-        sentPrompt.includes('库里共 2 首'),
-        'prompt 里应交代口味档案规模',
-      );
+      assert.strictEqual(res.items[0].title, '甲的新歌', '模型挑中的候选应排在最前');
+      assert.ok(sentPrompt.includes('[0] 甲的新歌 - 甲'), 'prompt 里应带上带下标的候选清单');
+      assert.ok(sentPrompt.includes('库里共 2 首'), 'prompt 里应交代口味档案规模');
       assert.ok(
         !/^\[\d+\] 库里的歌/m.test(sentPrompt),
         '库内曲目不应出现在候选清单里（口味采样节选里出现是正常的）',
@@ -1002,20 +950,12 @@ void (async () => {
     const realKey = process.env.DEEPSEEK_API_KEY;
     process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
     try {
-      const svcRun = new RecoService(
-        fakeConfig,
-        fakeStorage,
-        fakeSessionService,
-        music as any,
-      );
+      const svcRun = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
       const res = await svcRun.run({ id: 'sess-fallback' } as any, { count: 2 });
       assert.strictEqual(res.mode, 'generate', '候选池不足应回退自由生成');
       assert.strictEqual(res.candidateCount, 0);
       assert.strictEqual(res.items[0].title, '自由生成的歌');
-      assert.ok(
-        sentPrompt.includes('我的口味库'),
-        '回退路径用的是 v1.1 的自由生成 prompt',
-      );
+      assert.ok(sentPrompt.includes('我的口味库'), '回退路径用的是 v1.1 的自由生成 prompt');
       console.log('✅ 36. run(): 候选池为空回退自由生成，推荐不报错');
     } finally {
       global.fetch = realFetch;
@@ -1032,8 +972,7 @@ void (async () => {
           if (artist === '慢') await new Promise((r) => setTimeout(r, 40));
           return [uItem(`i-${artist}`, `${artist}的歌`, artist)];
         },
-        findRelatedArtists: async (artist: string) =>
-          artist === '慢' ? ['邻'] : [],
+        findRelatedArtists: async (artist: string) => (artist === '慢' ? ['邻'] : []),
       },
       {
         anchors: ['慢', '快'],
@@ -1103,19 +1042,11 @@ void (async () => {
     const realKey = process.env.DEEPSEEK_API_KEY;
     process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
     try {
-      const svcRun = new RecoService(
-        fakeConfig,
-        fakeStorage,
-        fakeSessionService,
-        music as any,
-      );
+      const svcRun = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
       const first = await svcRun.run({ id: 'sess-cache' } as any, { count: 2 });
       const searchesAfterFirst = artistSearches;
       assert.strictEqual(first.timings.cachedPool, false, '首次要现建池');
-      assert.ok(
-        searchesAfterFirst > 0,
-        '首次 run 应发生艺人搜索（候选池构建）',
-      );
+      assert.ok(searchesAfterFirst > 0, '首次 run 应发生艺人搜索（候选池构建）');
       assert.ok(
         bodies[0].max_tokens === 900,
         `挑选调用应带 max_tokens=900（实际 ${bodies[0].max_tokens}）`,
@@ -1123,11 +1054,7 @@ void (async () => {
 
       const second = await svcRun.run({ id: 'sess-cache' } as any, { count: 2 });
       assert.strictEqual(second.timings.cachedPool, true, '第二次应命中池缓存');
-      assert.strictEqual(
-        artistSearches,
-        searchesAfterFirst,
-        '命中缓存不应再发艺人搜索',
-      );
+      assert.strictEqual(artistSearches, searchesAfterFirst, '命中缓存不应再发艺人搜索');
       assert.ok(
         typeof second.timings.totalMs === 'number' &&
           typeof second.timings.llmMs === 'number' &&
@@ -1145,14 +1072,8 @@ void (async () => {
         true,
         '新增 play 信号后主干未变 → 池缓存仍应命中',
       );
-      assert.strictEqual(
-        artistSearches,
-        searchesAfterFirst,
-        '信号变动不该触发重新搜艺人',
-      );
-      console.log(
-        '✅ 38. 候选池缓存: 复用池（含信号变动后仍命中）+ timings + max_tokens',
-      );
+      assert.strictEqual(artistSearches, searchesAfterFirst, '信号变动不该触发重新搜艺人');
+      console.log('✅ 38. 候选池缓存: 复用池（含信号变动后仍命中）+ timings + max_tokens');
     } finally {
       global.fetch = realFetch;
       if (realKey === undefined) delete process.env.DEEPSEEK_API_KEY;
@@ -1200,18 +1121,11 @@ void (async () => {
 
     const now = Date.now();
     const t0 = now;
-    let history = appendSignals(
-      [],
-      [{ title: 'A', artist: 'X', type: 'play', at: t0 }],
-    );
+    let history = appendSignals([], [{ title: 'A', artist: 'X', type: 'play', at: t0 }]);
     // 同一首歌同一类型 30s 内重复上报 → 只记一次
-    history = appendSignals(history, [
-      { title: 'A', artist: 'X', type: 'play', at: t0 + 1_000 },
-    ]);
+    history = appendSignals(history, [{ title: 'A', artist: 'X', type: 'play', at: t0 + 1_000 }]);
     assert.strictEqual(history.length, 1, '30s 内同曲同类型只记一次');
-    history = appendSignals(history, [
-      { title: 'A', artist: 'X', type: 'play', at: t0 + 60_000 },
-    ]);
+    history = appendSignals(history, [{ title: 'A', artist: 'X', type: 'play', at: t0 + 60_000 }]);
     assert.strictEqual(history.length, 2, '超过窗口视为新信号');
 
     const scores = artistSignalScores(
@@ -1228,10 +1142,7 @@ void (async () => {
     const keyY = require('@maestro/common').normalizeKey('Y', '');
     assert.ok(scores.get(keyX)! < 0, '连续跳过 → 该艺人负分');
     assert.ok(scores.get(keyY)! > 0, '红心 → 正分');
-    assert.ok(
-      bannedArtistKeys(scores).has(keyX),
-      '被反复跳过的艺人应进拉黑名单',
-    );
+    assert.ok(bannedArtistKeys(scores).has(keyX), '被反复跳过的艺人应进拉黑名单');
     assert.deepStrictEqual(
       negativeTracks([
         { title: 'A', artist: 'X', type: 'skip', at: now },
@@ -1301,9 +1212,7 @@ void (async () => {
   {
     const pool = await buildCandidatePool(
       {
-        searchArtist: async (artist: string) => [
-          uItem(`i-${artist}`, `${artist}的歌`, artist),
-        ],
+        searchArtist: async (artist: string) => [uItem(`i-${artist}`, `${artist}的歌`, artist)],
         findRelatedArtists: async () => [],
       },
       {
@@ -1382,10 +1291,10 @@ void (async () => {
         fakeSessionService,
         music as any,
       );
-      const res = await svcRun.run(
-        { id: 'sess-seed' } as any,
-        { count: 1, seed: { title: '种子歌', artist: '种子歌手' } },
-      );
+      const res = await svcRun.run({ id: 'sess-seed' } as any, {
+        count: 1,
+        seed: { title: '种子歌', artist: '种子歌手' },
+      });
       assert.deepStrictEqual(
         seenArtists,
         ['种子歌手'],
@@ -1431,12 +1340,7 @@ void (async () => {
       fetchRecoRadioCandidates: async () => [],
       fetchCoverFallback: async () => '',
     };
-    const svcEval = new RecoService(
-      fakeConfig,
-      fakeStorage,
-      fakeSessionService,
-      music as any,
-    );
+    const svcEval = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
     const report = await svcEval.evaluate({ id: 'sess-eval' } as any, {
       holdoutSize: 2,
       count: 10,
@@ -1452,10 +1356,7 @@ void (async () => {
       '藏起来的歌都应进候选池（工具链没问题才谈得上调优）',
     );
     assert.strictEqual(report.average.recallAtK, 1, 'Top-10 应该把它们推回来');
-    assert.ok(
-      report.details[0].hits.length === 2,
-      '明细里应记录找回的歌与名次',
-    );
+    assert.ok(report.details[0].hits.length === 2, '明细里应记录找回的歌与名次');
     // 可复现：同 seed → 同留出集
     const again = await svcEval.evaluate({ id: 'sess-eval' } as any, {
       holdoutSize: 2,
@@ -1481,12 +1382,7 @@ void (async () => {
       fetchRecoRadioCandidates: async () => [],
       fetchCoverFallback: async () => '',
     };
-    const svcEval = new RecoService(
-      fakeConfig,
-      fakeStorage,
-      fakeSessionService,
-      music as any,
-    );
+    const svcEval = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
     const report = await svcEval.evaluate({ id: 'sess-eval-empty' } as any, {
       holdoutSize: 1,
       count: 10,

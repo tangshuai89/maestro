@@ -13,17 +13,18 @@
 ## 当前状态（基线）
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）
-+ **版本标签 + 别名表合并**（PR #52：castLabs fork v31.7.7→v43.2.0+wvcus、QA 全绿、
-80+ 个测试）+ **WPS 诊断 + 设备 404 重试 + WPS 优先 Spotify 源 + EME 探测**（PR #53）
-+ **❤ 角标按歌数显示**（PR #54：慢 discover 时 ❤ 计数仍正确）+ **红心合并修复 +
-艺人/歌名归一 + 松散匹配收紧**（PR #55）+ **AETHER 剧场视图**（PR #56：Figma-driven
-酸性赛博宇宙风主界面，替换原 visionOS Bento 玻璃风；新增 `.superdesign/` 简报 +
-`scripts/figma-aether-v4-*.mjs` 构建脚本 + `.mcp.json` figma-remote 通道 +
-`docs/aether-theater-v4-spec.md` + `docs/figma-driven-frontend.md`）+ **歌词解析修复**
-（`d014cf4`：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 白盒覆盖）
-均已合入 `master` / `fix/fanout`。四大平台能力**端到端可用**：登录、搜索、radio、
-跨平台 match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、**AETHER 剧场主界面**、
-Spotify WPS 路径完整。
+
+- **版本标签 + 别名表合并**（PR #52：castLabs fork v31.7.7→v43.2.0+wvcus、QA 全绿、
+  80+ 个测试）+ **WPS 诊断 + 设备 404 重试 + WPS 优先 Spotify 源 + EME 探测**（PR #53）
+- **❤ 角标按歌数显示**（PR #54：慢 discover 时 ❤ 计数仍正确）+ **红心合并修复 +
+  艺人/歌名归一 + 松散匹配收紧**（PR #55）+ **AETHER 剧场视图**（PR #56：Figma-driven
+  酸性赛博宇宙风主界面，替换原 visionOS Bento 玻璃风；新增 `.superdesign/` 简报 +
+  `scripts/figma-aether-v4-*.mjs` 构建脚本 + `.mcp.json` figma-remote 通道 +
+  `docs/aether-theater-v4-spec.md` + `docs/figma-driven-frontend.md`）+ **歌词解析修复**
+  （`d014cf4`：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 白盒覆盖）
+  均已合入 `master` / `fix/fanout`。四大平台能力**端到端可用**：登录、搜索、radio、
+  跨平台 match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、**AETHER 剧场主界面**、
+  Spotify WPS 路径完整。
 
 **已知阻塞**：Spotify Premium 全曲播放卡在 **Widevine license server 500**——
 castLabs fork 的免费 `+wvcus` 构建是 **dev VMP 签名**（README 原话：
@@ -61,10 +62,10 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
       `pip3 install castlabs-evs` 会撞 PEP 668（homebrew python3.14 外部管理环境），
       且 `python3 -m castlabs_evs...` **根本不存在该入口**。实际可用的是 venv +
       两个 CLI：
-      ```bash
-      python3 -m venv ~/.castlabs-evs-venv
-      ~/.castlabs-evs-venv/bin/pip install --upgrade castlabs-evs   # → 1.3.2 ✅ 已装
-      ```
+      `bash
+python3 -m venv ~/.castlabs-evs-venv
+~/.castlabs-evs-venv/bin/pip install --upgrade castlabs-evs   # → 1.3.2 ✅ 已装
+`
       装完 `bin/` 下是 `evs-account`（账户）/ `evs-vmp`（签名），**没有** `castlabs-evs` 这个命令
 - [ ] **买 Apple Developer Account**：[developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/)
       $99/年，1–3 天批。现状核查 2026-09-28：`security find-identity -v -p codesigning`
@@ -157,9 +158,9 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
   - ✅ renderer `api.ts` 优先读 `electronAPI.apiBase`（#8）
   - ✅ electron-builder extraResources：renderer / server / build 都进 `.app/Contents/Resources/`（#9、#13、#14）
   - ✅ macOS 应用图标（`.icns`）+ Dock 图标 + macOS Tray（播放/暂停/上下首/显示/退出）
-    + 关窗到托盘、Cmd+Q 真退出并 kill sidecar（#15）
+    - 关窗到托盘、Cmd+Q 真退出并 kill sidecar（#15）
   - ✅ Spotify Widevine 路径：castLabs Electron fork **升级到 `v43.2.0+wvcus`**（PR #52）
-    + `components.whenReady()` 接入 + Widevine CDM v4.10.3050.0 装好（PR #52，specs/spotify v2.1）
+    - `components.whenReady()` 接入 + Widevine CDM v4.10.3050.0 装好（PR #52，specs/spotify v2.1）
   - ✅ WPS 调试链：`?wpsDebug=1` 开关 + `[wps-debug]` 日志覆盖 wpsEnabled/tier/SDK/connect/
     ready/fatal/widevine/transfer/play/presentTrack/transferHere（PR #53）
   - ✅ 设备 404 重试：Spotify Connect 设备注册延迟 → 退避 0.5s/1.5s/3s（PR #53）
@@ -171,11 +172,11 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
     指本地 castLabs dist（PR #39）
 - **仍剩**：
   - [ ] **task 16**：`npm run pack` 端到端冒烟出 macOS dmg（packaging spec 16）——
-    需要 `npm install`（环境曾缺 7zip-bin 传递依赖，应已随 PR #39 lock 重生成恢复）
+        需要 `npm install`（环境曾缺 7zip-bin 传递依赖，应已随 PR #39 lock 重生成恢复）
   - [ ] **本机一次性**：`pip install castlabs-evs`（venv）+ `evs-account signup`
-    跑通 VMP 签名（无 EVS 账号也可用 `SKIP_VMP=1 npm run pack` 跳签名，仅验打包管线）
+        跑通 VMP 签名（无 EVS 账号也可用 `SKIP_VMP=1 npm run pack` 跳签名，仅验打包管线）
   - [ ] **Premium 手动验收**：装 dmg → 登录 Premium → 播完整曲目 + Spotify 桌面端可见
-    "maestro-xxxx" 设备 + transport 生效 + token 1h 重连不掉播
+        "maestro-xxxx" 设备 + transport 生效 + token 1h 重连不掉播
 - **风险**：
   - 本机 iOA 拦 Widevine CDM 运行时下载（CDN `redirector.gvt1.com` 被 TLS 拦截——
     直连返 567B HTML 拦截页）。已在无 iOA 网络 + 已装 CDM 的机器上绕开。
@@ -320,6 +321,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 > （无"勾了没做"），「lite 只做展示层裁剪、不复制播放逻辑」这条风险守住
 > （`LiteView` 零 `useState`/零 `<audio>`，`<audio>` 在 App 常驻不重建）。
 > 审查发现的洞**已全部修掉**：
+>
 > 1. 🔴→✅ **lite 下点 ✨ 被全屏 `RecoLoading` 接管**（`z-index:150` + `inset:0`）——
 >    「lite 只留三类元素」在功能主路径上失效，`LiteView` 自己的 `recoRunning`
 >    分支还变成生产不可达死代码。修法：渲染条件加 `playerMode !== 'lite'`，
@@ -334,7 +336,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 >    契约（已做变异验证：注入一个多余按钮 → 测试变红）
 > 5. ⚪→✅ 无 DeepSeek key 时 ✨ 加 `is-unset` 虚线态（原只进了 `title` 属性，
 >    视觉上毫无差别）；⛶ 退出键 `pointer-events` 随显隐切
-> ⏳ **待手测**：`specs/lite-mode/tasks.md` P5-5b（480×300 收窗 / 回 theater 还原
+>    ⏳ **待手测**：`specs/lite-mode/tasks.md` P5-5b（480×300 收窗 / 回 theater 还原
 >    bounds / mini ⇄ lite 不丢存档 / ✨ 真跑 DeepSeek / 切换不中断音频）
 
 - **目标**：新增极简播放模式。当前完整界面定为 `normal`；`lite` 模式播放器只显示：
@@ -444,6 +446,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 > 2026-09-29：spec `specs/audio-fx/`。范围从「EQ + crossfade + ReplayGain」
 > **收敛成 EQ + crossfade**。
+>
 > - ✅ **EQ 已落地**：10 段 peaking（31Hz–16kHz，Q=1）+ 8 预置 + 总开关，存本地，
 >   Settings「② 音频」节。链构建/参数推送抽成纯函数 `lib/eqChain.ts`（可脱离 React
 >   测连接顺序与"用 setTargetAtTime 而非 .value="这类写错不报错的细节）。
@@ -560,7 +563,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
   直接生成可播队列。Spotify（DJ Requests / Prompted Playlists）、Apple（Playlist Playground）、
   YouTube 2025–2026 全在抢这能力，而开源聚合器一个都没有，你手里正好有 DeepSeek。
 - **现状 / 复用点**：`specs/reco-deepseek` 已有 `POST /api/reco/run`（吃 {count, language, mood}）
-  + 统一搜索回填 bestSource 的完整链路。本需求 = 在它上面加"自由文本 intent 解析"。
+  - 统一搜索回填 bestSource 的完整链路。本需求 = 在它上面加"自由文本 intent 解析"。
 - **范围**：
   - 输入入口：播放器里一个文本框（lite 模式的 ✨ 复用它）；（可选）语音输入
   - DeepSeek 解析自由文本 → 结构化意图（mood/genre/tempo/语言/年代/相似艺人/排除项）
@@ -579,27 +582,28 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 
 ## 8. 长期（≥ 一季度）
 
-| 方向 | 描述 | 触发条件 |
-| --- | --- | --- |
+| 方向             | 描述                                                         | 触发条件                  |
+| ---------------- | ------------------------------------------------------------ | ------------------------- |
 | iOS / Android 端 | React Native 重用 renderer 业务层；audio / OAuth 桥到 native | 桌面版稳定运行 1 个月以上 |
-| 协同 / 共享库 | 多人 share 一个 unified 库；本地为主 + P2P 同步 | 用户反馈有需求 |
-| 插件 / 自定义源 | MusicProvider interface 暴露给用户写自定义 adapter | 有用户写 issues 想要 |
-| 多模态推荐 | DeepSeek 不止用 liked 库，还用播放历史、跳过的歌 | DeepSeek 给出更准的推荐 |
+| 协同 / 共享库    | 多人 share 一个 unified 库；本地为主 + P2P 同步              | 用户反馈有需求            |
+| 插件 / 自定义源  | MusicProvider interface 暴露给用户写自定义 adapter           | 有用户写 issues 想要      |
+| 多模态推荐       | DeepSeek 不止用 liked 库，还用播放历史、跳过的歌             | DeepSeek 给出更准的推荐   |
 
 ---
 
 ## 排期建议（下期，按"什么时候能用上"的优先级）
 
-| 周 | 内容 |
-| --- | --- |
+| 周               | 内容                                                                                                                                                                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ 装 EVS 客户端 + 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
-| **W1** | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播） |
-| **W2** | ✅ #5 Settings + #6.2 渠道优先级（PR #88 已合）。下期不再排 |
-| **W3** | ✅ #6.3 Lite 模式已交付（`specs/lite-mode`，三态 + ✨ 入口接 reco-deepseek）+ 7.4 NL 歌单 spec 已先行 |
-| **W4** | ✅ 多源聚合 + #4 share + 6.3 Lite + 7.2 桌面歌词 + 7.1 EQ。剩：7.1 crossfade（C 组，src 绑定要改造，建议独立一轮） |
-| **W5** | 7.4 NL 歌单落地 + 7.3 媒体键/全局热键收尾 + bug bash + 发版 |
+| **W1**           | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播）                                                                                                   |
+| **W2**           | ✅ #5 Settings + #6.2 渠道优先级（PR #88 已合）。下期不再排                                                                                                                                                                                                      |
+| **W3**           | ✅ #6.3 Lite 模式已交付（`specs/lite-mode`，三态 + ✨ 入口接 reco-deepseek）+ 7.4 NL 歌单 spec 已先行                                                                                                                                                            |
+| **W4**           | ✅ 多源聚合 + #4 share + 6.3 Lite + 7.2 桌面歌词 + 7.1 EQ。剩：7.1 crossfade（C 组，src 绑定要改造，建议独立一轮）                                                                                                                                               |
+| **W5**           | 7.4 NL 歌单落地 + 7.3 媒体键/全局热键收尾 + bug bash + 发版                                                                                                                                                                                                      |
 
 > **本轮（已发）**：
+>
 > - ✅ #1 包装主体 + #6.4 Tray/图标（packaging spec task 1–15）
 > - ✅ #2 Spotify v2 全部应用层（task 1–24）+ v2.1 Widevine 路径（task 26–31，castLabs fork **已升级到 v43.2.0+wvcus**）
 > - ✅ **v2.2 调试链**（PR #53）：`?wpsDebug=1` 日志 + 设备 404 退避重试 + WPS 优先 Spotify 源 + EME 探测——定位到 **license 500** 是 castLabs dev VMP 签名被 Spotify 生产 license server 拒
@@ -624,6 +628,7 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 > - ✅ **CI 视觉回归门禁真绿化**（`ee14874` · `f3f1f71`）：visual 跳过判据改读 `package.json`（原判据跑在 npm ci 前永远假绿）；容差从 0.1% 调到 0.5%（实测跨机器文字 AA 噪声 0.29–0.39%，真漂移 0.69% 仍能命中）
 >
 > **不在本期范围**：
+>
 > - 6.x 全部不再做独立 PR（6.2 并入 #5、6.3 单做、6.4 已合、6.1 已合）
 > - 7.x 除 7.3 媒体键外都属于"打磨批次"，发版前不必全做完
 > - 7.4 NL 歌单要 W3 起 spec 先行（避免重蹈 6.4 一次性写大段发现的延迟）
@@ -644,10 +649,10 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立�
 **本轮（已发）的踩坑**还没沉淀到 `~/knowledge/maestro/`——下期开工前**优先**做：
 
 - `~/knowledge/maestro/packaging.md`：sidecar 启动 + waitForSidecar + 关窗到托盘 + Cmd+Q kill
-  + electron-builder extraResources / electronDist / afterPack（EVS VMP 签名 + codesign 时序）
+  - electron-builder extraResources / electronDist / afterPack（EVS VMP 签名 + codesign 时序）
 - `~/knowledge/maestro/spotify.md`：OAuth PKCE + tier 缓存 + WPS 包装（spotify-wps.ts
   模式：window.__wpsSdkReady 旗位 + wpsFatal/emeOk/hasDeviceId 三态）
-  + **Widevine + VMP 铁四角**（**新加 license 500 教训**）：
+  - **Widevine + VMP 铁四角**（**新加 license 500 教训**）：
     - vanilla Electron 无 CDM、无 VMP
     - castLabs fork 是唯一同版 drop-in（**v43.2.0+wvcus**，v31.7.7 旧版太老 + 协议变更下载 CDM 失败）
     - **license 500 = dev VMP 签名被 Spotify 生产 server 拒**——必须走 **EVS（免费）**

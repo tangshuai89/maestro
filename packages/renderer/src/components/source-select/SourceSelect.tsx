@@ -77,9 +77,9 @@ const SOURCES: SourceDef[] = [
 ];
 
 export default function SourceSelect({ onSelect }: SourceSelectProps) {
-  const [spotifyTier, setSpotifyTier] = useState<
-    'premium' | 'free' | 'open' | 'unknown'
-  >('unknown');
+  const [spotifyTier, setSpotifyTier] = useState<'premium' | 'free' | 'open' | 'unknown'>(
+    'unknown',
+  );
   useEffect(() => {
     void getSpotifyStatus()
       .then((s) => {

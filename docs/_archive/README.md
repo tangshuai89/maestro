@@ -11,11 +11,11 @@
 
 ## 子目录
 
-| 目录 | 用途 |
-|---|---|
-| [`audit-snapshots/`](./audit-snapshots/) | 全仓审计/ISSUE 快照（带生成日期） |
-| [`figma-history/`](./figma-history/) | Figma 设计稿早期版本（v1 / v2 / v3 已废，v4 是当前） |
-| [`qq-data-snapshots/`](./qq-data-snapshots/) | QQ 红心 / 艺人映射的一次性导出 |
+| 目录                                         | 用途                                                 |
+| -------------------------------------------- | ---------------------------------------------------- |
+| [`audit-snapshots/`](./audit-snapshots/)     | 全仓审计/ISSUE 快照（带生成日期）                    |
+| [`figma-history/`](./figma-history/)         | Figma 设计稿早期版本（v1 / v2 / v3 已废，v4 是当前） |
+| [`qq-data-snapshots/`](./qq-data-snapshots/) | QQ 红心 / 艺人映射的一次性导出                       |
 
 ## SoT（不在本目录的当前权威）
 

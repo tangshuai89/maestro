@@ -11,7 +11,7 @@
 - [x] 11. 写单元测试: 去重、标点/全角归一化、不同歌曲保留、空输入 — 6 tests pass
 - [x] 12. 跑全量测试 TypeScript 类型检查确认通过（`npx tsc --noEmit` OK）
 - [x] 13. 端到端验证: nest 启动后 curl `/api/music/search?q=周杰伦` → 跨平台合并返回，bestSource=qq 优先；空 q / >100 字符 q 返回 400；test #7 验证跨平台聚合 + mediaMid 透传（无需 GUI 也能验证）
-- [x] 14. 阶段 G: tilde 变体归一 — `normalizeKey` step 5 noise-strip 加入 `~` (U+007E) / `〜` (U+301C) / `～` (U+FF5E) 三种 tilde。修「Departures~歌名~ (Departures~中译~)」(QQ/网易云用 ASCII tilde) vs 「Departures 〜歌名〜」(Spotify 用 wave dash) 不同字符导致 6 tier 全挂的回归。同改动同步到 renderer `groupLibrary.ts` 的展示级 noise-strip 保持一致。test #3g-bis + cross-platform-match.e2e #16 覆盖。
+- [x] 14. 阶段 G: tilde 变体归一 — `normalizeKey` step 5 noise-strip 加入 `~` (U+007E) / `〜` (U+301C) / `～` (U+FF5E) 三种 tilde。修「Departures~~歌名~~ (Departures~~中译~~)」(QQ/网易云用 ASCII tilde) vs 「Departures 〜歌名〜」(Spotify 用 wave dash) 不同字符导致 6 tier 全挂的回归。同改动同步到 renderer `groupLibrary.ts` 的展示级 noise-strip 保持一致。test #3g-bis + cross-platform-match.e2e #16 覆盖。
 - [x] 15. 封面跨源抽取：buildUnifiedItems 同簇（同歌多平台）取首个有封面的 coverUrl，
       主平台无封面时不再产出空封面条目（search.test #9/#10）
 - [x] 16. 多版本 UI：行尾「N 个版本 ▾」展开按钮（行尾唯一的箭头）+ 播放三角移到封面
@@ -53,8 +53,7 @@
       `Ji Mo, Hao Liao | Evan Yo | Loneliness | 342s`，但 normalizeKey 对
       跨脚本元数据（Evan Yo ↔ 蔡旻佑）落到不同 key，同一首歌被拆成三行，
       用户以为"Spotify 没搜到"且 Deezer 拼音行看着很怪。实现：分组后按
-      union-find 做组间证据合并——同 versionType 内「标题同义 + 艺人可桥
-      + 任一对时长 ≤30s」才并组。标题门刻意比 mergeCrossScript 严：搜索
+      union-find 做组间证据合并——同 versionType 内「标题同义 + 艺人可桥 + 任一对时长 ≤30s」才并组。标题门刻意比 mergeCrossScript 严：搜索
       结果是全目录密度，裸 isCrossScript 会把同艺人不同歌误并（「我可以」
       ↔「Death of Me」时长撞上就翻车），跨脚本标题必须过**音译佐证**——
       新增 `translit.ts:titleTransliterationMatch`（pinyin-pro 逐字

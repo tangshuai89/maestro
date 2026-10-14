@@ -1232,4 +1232,3 @@ return { createdNodeIds: [screen.id], screen: 'Screen/EmptyState/Full' };
 `;
 
 module.exports = { SEG1, SEG2, SEG3, SEG4, SEG5, SEG6 };
-

@@ -19,9 +19,7 @@ describe('ErrorPanel', () => {
   });
 
   it('默认折叠：显示首行（多行 message 取首行）', () => {
-    render(
-      <ErrorPanel message={'line1\nline2\nline3'} onClose={() => {}} />,
-    );
+    render(<ErrorPanel message={'line1\nline2\nline3'} onClose={() => {}} />);
     expect(screen.getByText('line1')).toBeInTheDocument();
     expect(screen.queryByText('line2')).not.toBeInTheDocument();
   });
@@ -34,9 +32,7 @@ describe('ErrorPanel', () => {
   });
 
   it('点 summary 展开 → 显示 .err-pre + 复制/关闭按钮', () => {
-    render(
-      <ErrorPanel message={'line1\nline2'} onClose={() => {}} />,
-    );
+    render(<ErrorPanel message={'line1\nline2'} onClose={() => {}} />);
     // 初始：line2 不可见（在 <pre> 里）
     expect(document.querySelector('.err-detail')).not.toBeInTheDocument();
     // 点 summary 行（button accessible name = "⚠ line1 ▸"）

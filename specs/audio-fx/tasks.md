@@ -5,8 +5,7 @@
 
 ## E 组 — EQ（先做）
 
-- [x] **E1** `lib/audioFx.ts`：10 段频段表 + 8 个预置（纯数据）+ 类型
-      + `applyPreset` / `clampGain` / `normaliseGains` / `matchPreset` 等纯函数
+- [x] **E1** `lib/audioFx.ts`：10 段频段表 + 8 个预置（纯数据）+ 类型 + `applyPreset` / `clampGain` / `normaliseGains` / `matchPreset` 等纯函数
       （17 项单测 `audioFx.test.mjs`）
 - [x] **E2** `lib/storage.ts`：`STORAGE_KEYS.audioFx` + `read/writeAudioFx`，
       非法值回落默认，进备份集（5 项新用例，`storage.test.mjs` 共 82 项）
@@ -16,8 +15,7 @@
       EQ 之后。链构建/参数推送抽成 `lib/eqChain.ts` 纯函数（8 项白盒 `eqChain.test.mjs`）
 - [x] **E4** 接线：App → SettingsModal 传 `audioFx` + 3 个 setter（`setEqEnabled` /
       `setEqBandGain` / `applyEqPreset`，各自落 storage + 推 live filter）
-- [x] **E5** SettingsModal 新增「② 音频」节：开关 + 8 预置 + 10 滑块（等宽三列网格）
-      + WPS 适用范围提示。⚠️ **「点一下试听该频段」未做**——试听要么发 boost 音、
+- [x] **E5** SettingsModal 新增「② 音频」节：开关 + 8 预置 + 10 滑块（等宽三列网格）+ WPS 适用范围提示。⚠️ **「点一下试听该频段」未做**——试听要么发 boost 音、
       要么临时摆一条曲线，都是独立一轮；本轮只做静态调节
 - [x] **E6** `audioFx.test.mjs` 17 项 + `SettingsModal.test.tsx` +12 例（共 23）
       —— 含变异验证：注入 `className` 恒 false 时测试曾放过，补断言后能抓住

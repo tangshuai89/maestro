@@ -30,9 +30,7 @@ export default function QualityMenu({ quality, onSelect }: Props) {
             {QUALITIES.map((q) => (
               <button
                 key={q}
-                className={`source-menu-item${
-                  q === quality ? ' source-menu-item--active' : ''
-                }`}
+                className={`source-menu-item${q === quality ? ' source-menu-item--active' : ''}`}
                 onClick={() => {
                   onSelect(q);
                   setOpen(false);

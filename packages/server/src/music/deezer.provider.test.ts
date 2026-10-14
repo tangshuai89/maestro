@@ -31,11 +31,7 @@ async function main() {
   // ── 1. isConfigured always true ────────────────────────────────
   {
     assert.strictEqual(prov.isConfigured(undefined), true);
-    assert.strictEqual(
-      prov.isConfigured({} as any),
-      true,
-      'anonymous provider always configured',
-    );
+    assert.strictEqual(prov.isConfigured({} as any), true, 'anonymous provider always configured');
     console.log('✅ 1. isConfigured 恒返回 true（匿名 provider）');
   }
 
@@ -79,10 +75,7 @@ async function main() {
 
   // ── 5. isValidPreset('nonexistent') → false ────────────────────
   {
-    assert.strictEqual(
-      DeezerMusicProvider.isValidPreset('nonexistent'),
-      false,
-    );
+    assert.strictEqual(DeezerMusicProvider.isValidPreset('nonexistent'), false);
     console.log('✅ 5. isValidPreset("nonexistent") → false');
   }
 
@@ -108,8 +101,7 @@ async function main() {
             album: {
               id: 10,
               title: 'A Night at the Opera',
-              cover_xl:
-                'https://e-cdns-images.dzcdn.net/images/cover/xl.jpg',
+              cover_xl: 'https://e-cdns-images.dzcdn.net/images/cover/xl.jpg',
             },
           },
         ],
@@ -400,11 +392,7 @@ async function main() {
     const tracks = await prov.search({} as any, 'q', 20);
     restore();
     assert.strictEqual(tracks[0].title, 'Short', '有 title_short 用 short');
-    assert.strictEqual(
-      tracks[1].title,
-      'Only Full Title',
-      '无 title_short 回退 title',
-    );
+    assert.strictEqual(tracks[1].title, 'Only Full Title', '无 title_short 回退 title');
     console.log('✅ 18. toTrack 优先 title_short，缺失时回退 title');
   }
 

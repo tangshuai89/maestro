@@ -19,7 +19,7 @@
   - 2026-08-18 核查：lyrics-aggregate.e2e.test.ts 同上，未 listen。
 - [x] --NOTE-- **A5** 把所有 e2e 改完后，`scripts/test.sh` 加 `--require-escalated`
   - 2026-08-18 决议：取消 A5。music.controller.stream.test.ts 的 `srv.listen(0)` 是它测试的核心机制（验证 stream error listener），不能直接替成 in-process；改为 CI escalate 权限运行即可。
-  标记检测（可选；不强求）
+    标记检测（可选；不强求）
 
 ## Phase B — Provider L2 单测（覆盖度 +20%）
 

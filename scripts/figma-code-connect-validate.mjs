@@ -23,7 +23,9 @@ const mappings = map.mappings || [];
 const fileKey = map['$figmaFileKey'] || '<missing>';
 
 const results = [];
-function check(name, ok, detail) { results.push({ name, ok, detail }); }
+function check(name, ok, detail) {
+  results.push({ name, ok, detail });
+}
 
 // ── 1. 全局：每个 mapping 基本字段齐全 ──
 let dup = 0;
@@ -41,15 +43,31 @@ for (let i = 0; i < mappings.length; i++) {
   }
   if (m.figmaNodeId.startsWith('D1-PLACEHOLDER-')) {
     if (STRICT) {
-      check(`mapping[${idx}].figmaNodeId`, false, `仍是 D1 占位 (${m.figmaNodeId})；--strict 模式要求全部已替换`);
+      check(
+        `mapping[${idx}].figmaNodeId`,
+        false,
+        `仍是 D1 占位 (${m.figmaNodeId})；--strict 模式要求全部已替换`,
+      );
     } else {
-      check(`mapping[${idx}].figmaNodeId`, true, `D1 占位（_d1Status=${m._d1Status || '未标'}）— Phase B 替换`);
+      check(
+        `mapping[${idx}].figmaNodeId`,
+        true,
+        `D1 占位（_d1Status=${m._d1Status || '未标'}）— Phase B 替换`,
+      );
     }
   } else if (m.figmaNodeId === 'TBD-FIGMA') {
     if (STRICT) {
-      check(`mapping[${idx}].figmaNodeId`, false, `D5_NEW 占位（TBD-FIGMA）；--strict 模式要求 Figma 端加组件集后填真实 nodeId`);
+      check(
+        `mapping[${idx}].figmaNodeId`,
+        false,
+        `D5_NEW 占位（TBD-FIGMA）；--strict 模式要求 Figma 端加组件集后填真实 nodeId`,
+      );
     } else {
-      check(`mapping[${idx}].figmaNodeId`, true, `D5 新增占位（_status=${m._status}）— 未来 Figma 端加组件集后填真实 nodeId`);
+      check(
+        `mapping[${idx}].figmaNodeId`,
+        true,
+        `D5 新增占位（_status=${m._status}）— 未来 Figma 端加组件集后填真实 nodeId`,
+      );
     }
   } else if (!/^[\d:]+$/.test(m.figmaNodeId) && !m.figmaNodeId.startsWith('I')) {
     // Figma node id 形如 "123:456" 或 "I123:456;789"；允许非纯数字以兼容
@@ -85,23 +103,39 @@ for (let i = 0; i < mappings.length; i++) {
     check(`mapping[${idx}].reactPath 存在`, false, `${m.reactPath} 不存在`);
   } else if (m._status === 'PENDING_REFACTOR') {
     // PENDING_REFACTOR 映射：reactPath 存在但内联子组件未来会提取；跳过 export/define 严格校验
-    check(`mapping[${idx}].reactPath 存在`, true, `${m.reactPath}（PENDING_REFACTOR：内联子组件；将来提取独立 export 后可转 ACTIVE）`);
+    check(
+      `mapping[${idx}].reactPath 存在`,
+      true,
+      `${m.reactPath}（PENDING_REFACTOR：内联子组件；将来提取独立 export 后可转 ACTIVE）`,
+    );
   } else {
     // 文件包含 reactComponent 作为定义（export default / 内联 const/function）
     const content = readFileSync(absPath, 'utf8');
     const exportDefaultMatch = content.match(/export\s+default\s+(function|const)\s+(\w+)/);
     if (exportDefaultMatch && exportDefaultMatch[2] === m.reactComponent) {
       // export default 与 reactComponent 完全匹配（最理想）
-      check(`mapping[${idx}].reactPath + reactComponent`, true, `${m.reactComponent} ← ${m.reactPath}`);
+      check(
+        `mapping[${idx}].reactPath + reactComponent`,
+        true,
+        `${m.reactComponent} ← ${m.reactPath}`,
+      );
     } else {
       // 检查 reactComponent 作为内联定义（const/function/class 声明）
       const inlineRe = new RegExp(`\\b(const|function|class)\\s+${m.reactComponent}\\b`);
       if (inlineRe.test(content)) {
         const note = m._inlineIn ? ` (内联: ${m._inlineIn.slice(0, 40)})` : ' (内联子组件)';
-        check(`mapping[${idx}].reactPath + reactComponent`, true, `${m.reactComponent}${note} ← ${m.reactPath}`);
+        check(
+          `mapping[${idx}].reactPath + reactComponent`,
+          true,
+          `${m.reactComponent}${note} ← ${m.reactPath}`,
+        );
       } else {
         const note = m._inlineIn ? `；_inlineIn 标记但文件内未找到 ${m.reactComponent}` : '';
-        check(`mapping[${idx}].reactPath + reactComponent`, false, `${m.reactPath} 找不到 reactComponent=${m.reactComponent}（export default=${exportDefaultMatch ? exportDefaultMatch[2] : '无'}）${note}`);
+        check(
+          `mapping[${idx}].reactPath + reactComponent`,
+          false,
+          `${m.reactPath} 找不到 reactComponent=${m.reactComponent}（export default=${exportDefaultMatch ? exportDefaultMatch[2] : '无'}）${note}`,
+        );
       }
     }
     // Props 提取（interface Props 字段）
@@ -122,7 +156,11 @@ for (let i = 0; i < mappings.length; i++) {
         }
         const missing = requiredProps.filter((p) => !(p in m.props));
         if (missing.length > 0) {
-          check(`mapping[${idx}].props 覆盖`, STRICT ? false : missing.length < requiredProps.length / 2, `缺: ${missing.join(', ')}（${requiredProps.length - missing.length}/${requiredProps.length} 覆盖）`);
+          check(
+            `mapping[${idx}].props 覆盖`,
+            STRICT ? false : missing.length < requiredProps.length / 2,
+            `缺: ${missing.join(', ')}（${requiredProps.length - missing.length}/${requiredProps.length} 覆盖）`,
+          );
         } else {
           check(`mapping[${idx}].props 覆盖`, true, `${requiredProps.length} 个 prop 全部覆盖`);
         }
@@ -133,7 +171,11 @@ for (let i = 0; i < mappings.length; i++) {
       const propsBody = propsMatch[1];
       const propCount = (propsBody.match(/^\s*[A-Za-z_]\w*\s*[:?]/gm) || []).length;
       if (propCount > 0) {
-        check(`mapping[${idx}].props 覆盖`, false, `interface Props 有 ${propCount} 个 prop 但 mapping.props 为空`);
+        check(
+          `mapping[${idx}].props 覆盖`,
+          false,
+          `interface Props 有 ${propCount} 个 prop 但 mapping.props 为空`,
+        );
       } else {
         check(`mapping[${idx}].props 覆盖`, true, 'interface Props 为空');
       }
@@ -152,10 +194,30 @@ if (fileKey === 'FtbRZXvzlCp4Sq9e322cQQ') {
 
 // ── 3. 汇总 ──
 const fails = results.filter((r) => !r.ok);
-const lines = results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
+const lines = results.map(
+  (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`,
+);
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ pass: fails.length === 0, total: results.length, fails: fails.length, mappings: mappings.length, results }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        pass: fails.length === 0,
+        total: results.length,
+        fails: fails.length,
+        mappings: mappings.length,
+        results,
+      },
+      null,
+      2,
+    ),
+  );
 } else {
-  console.log(`\nFigma Code Connect 校验 — ${mappings.length} 映射\n` + lines.join('\n') + `\n\n${results.length - fails.length}/${results.length} 通过` + (fails.length ? `，${fails.length} 项 FAIL` : ' ✅ 全部达标') + (dup ? `（${dup} 个重复）` : ''));
+  console.log(
+    `\nFigma Code Connect 校验 — ${mappings.length} 映射\n` +
+      lines.join('\n') +
+      `\n\n${results.length - fails.length}/${results.length} 通过` +
+      (fails.length ? `，${fails.length} 项 FAIL` : ' ✅ 全部达标') +
+      (dup ? `（${dup} 个重复）` : ''),
+  );
 }
 process.exit(fails.length ? 1 : 0);

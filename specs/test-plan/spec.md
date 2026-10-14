@@ -14,50 +14,50 @@
 
 ### 1.1 测试文件清单
 
-| # | 包 | 文件 | 用例数 | 状态 |
-|---|---|---|---|---|
-| 1 | common | `artistAlias.test.ts` | 36 | OK |
-| 2 | common | `normalizer.test.ts` | 178 | OK |
-| 3 | renderer/auth | `reducer.test.mjs` | 14 | OK |
-| 4 | server/auth | `refresh-coordinator.test.ts` | 5 | OK |
-| 5 | server/common | `storage.test.ts` | 6 | OK |
-| 6 | server/match | `fuzzy.test.ts` | 10 | OK |
-| 7 | server/match | `match.test.ts` | 24 | OK |
-| 8 | server/music | `cross-platform-match.e2e.test.ts` | 35 | OK |
-| 9 | renderer/lib | `groupLibrary.test.mjs` | 33 | OK |
-| 10 | server/music | `library-badge-merge.e2e.test.ts` | 8 | OK |
-| 11 | server/music | `library-import.e2e.test.ts` | 3 | OK |
-| 12 | server/music | `like-sync.queue.purge.test.ts` | 3 | OK |
-| 13 | server/music | `like-sync.queue.test.ts` | 4 | OK |
-| 14 | server/music | `like.e2e.test.ts` | 13 | OK |
-| 15 | server/music | `music.controller.stream.test.ts` | 3 | OK |
-| 16 | server/music | `search-unified.e2e.test.ts` | 2 | OK |
-| 17 | server/music | `search.test.ts` | 17 | OK |
-| 18 | server/music | `qq.provider.test.ts` | 12 | OK |
-| 19 | server/music | `translit.test.ts` | 8 | OK |
-| 20 | server/music | `lyrics-aggregate.e2e.test.ts` | — | OK |
-| 21 | server/music | `spotify.test.ts` | — | OK |
-| 22 | server/reco | `reco.test.ts` | 23 | OK |
-| 23 | electron | `login-window-runner.test.ts` | 9 | OK |
-| 24 | electron | `oauth-buffer.test.ts` | 12 | OK |
-| 25 | server/auth | `auth.controller.e2e.test.ts` | 33 | OK |
-| 26 | server/common/backup | `backup.controller.e2e.test.ts` | 14 | OK |
-| 27 | server/reco | `reco.controller.e2e.test.ts` | 10 | OK |
-| 28 | renderer/lib | `backup-crypto.test.mjs` | 14 | OK |
-| 29 | renderer/lib | `format.test.mjs` | 25 | OK |
-| 30 | renderer/lib | `likedCache.test.mjs` | 13 | OK |
-| 31 | server/common | `lyrics.test.ts` | 18 | OK |
-| 32 | server/music | `search.util.test.ts` | 26 | OK |
-| 33 | server/common | `session.test.ts` | 16 | OK |
-| 34 | server/music | `music.controller.e2e.test.ts` | 30 | OK |
-| 35 | server/music | `qq-crypto.test.ts` | 16 | OK |
-| 36 | renderer/lib | `placeholderCover.test.mjs` | 12 | OK |
-| 37 | renderer/lib | `debug.test.mjs` | 16 | OK |
-| 38 | renderer/lib | `storage.test.mjs` | 70 | OK |
-| 39 | renderer/hooks | `usePlayer.test.mjs` | 60 | OK（扩 25 项） |
-| 40 | renderer | `api.test.mjs` | 82 | OK |
-| 41 | server/auth | `qq.strategy.test.ts` | 36 | OK |
-| 42 | server/auth | `netease-auth.strategy.test.ts` | 46 | OK |
+| #   | 包                   | 文件                               | 用例数 | 状态           |
+| --- | -------------------- | ---------------------------------- | ------ | -------------- |
+| 1   | common               | `artistAlias.test.ts`              | 36     | OK             |
+| 2   | common               | `normalizer.test.ts`               | 178    | OK             |
+| 3   | renderer/auth        | `reducer.test.mjs`                 | 14     | OK             |
+| 4   | server/auth          | `refresh-coordinator.test.ts`      | 5      | OK             |
+| 5   | server/common        | `storage.test.ts`                  | 6      | OK             |
+| 6   | server/match         | `fuzzy.test.ts`                    | 10     | OK             |
+| 7   | server/match         | `match.test.ts`                    | 24     | OK             |
+| 8   | server/music         | `cross-platform-match.e2e.test.ts` | 35     | OK             |
+| 9   | renderer/lib         | `groupLibrary.test.mjs`            | 33     | OK             |
+| 10  | server/music         | `library-badge-merge.e2e.test.ts`  | 8      | OK             |
+| 11  | server/music         | `library-import.e2e.test.ts`       | 3      | OK             |
+| 12  | server/music         | `like-sync.queue.purge.test.ts`    | 3      | OK             |
+| 13  | server/music         | `like-sync.queue.test.ts`          | 4      | OK             |
+| 14  | server/music         | `like.e2e.test.ts`                 | 13     | OK             |
+| 15  | server/music         | `music.controller.stream.test.ts`  | 3      | OK             |
+| 16  | server/music         | `search-unified.e2e.test.ts`       | 2      | OK             |
+| 17  | server/music         | `search.test.ts`                   | 17     | OK             |
+| 18  | server/music         | `qq.provider.test.ts`              | 12     | OK             |
+| 19  | server/music         | `translit.test.ts`                 | 8      | OK             |
+| 20  | server/music         | `lyrics-aggregate.e2e.test.ts`     | —      | OK             |
+| 21  | server/music         | `spotify.test.ts`                  | —      | OK             |
+| 22  | server/reco          | `reco.test.ts`                     | 23     | OK             |
+| 23  | electron             | `login-window-runner.test.ts`      | 9      | OK             |
+| 24  | electron             | `oauth-buffer.test.ts`             | 12     | OK             |
+| 25  | server/auth          | `auth.controller.e2e.test.ts`      | 33     | OK             |
+| 26  | server/common/backup | `backup.controller.e2e.test.ts`    | 14     | OK             |
+| 27  | server/reco          | `reco.controller.e2e.test.ts`      | 10     | OK             |
+| 28  | renderer/lib         | `backup-crypto.test.mjs`           | 14     | OK             |
+| 29  | renderer/lib         | `format.test.mjs`                  | 25     | OK             |
+| 30  | renderer/lib         | `likedCache.test.mjs`              | 13     | OK             |
+| 31  | server/common        | `lyrics.test.ts`                   | 18     | OK             |
+| 32  | server/music         | `search.util.test.ts`              | 26     | OK             |
+| 33  | server/common        | `session.test.ts`                  | 16     | OK             |
+| 34  | server/music         | `music.controller.e2e.test.ts`     | 30     | OK             |
+| 35  | server/music         | `qq-crypto.test.ts`                | 16     | OK             |
+| 36  | renderer/lib         | `placeholderCover.test.mjs`        | 12     | OK             |
+| 37  | renderer/lib         | `debug.test.mjs`                   | 16     | OK             |
+| 38  | renderer/lib         | `storage.test.mjs`                 | 70     | OK             |
+| 39  | renderer/hooks       | `usePlayer.test.mjs`               | 60     | OK（扩 25 项） |
+| 40  | renderer             | `api.test.mjs`                     | 82     | OK             |
+| 41  | server/auth          | `qq.strategy.test.ts`              | 36     | OK             |
+| 42  | server/auth          | `netease-auth.strategy.test.ts`    | 46     | OK             |
 
 > **基线结论**：`npm test` 在 escalated 权限下 42/42 文件全绿，~1000 个用例
 > 全部通过。sandbox 默认权限下 `like.e2e.test.ts` 因 `listen EPERM` 失败——
@@ -105,6 +105,7 @@ packages/
 **已有**：common 全部、match 全部、auth reducer。
 
 **待补**：
+
 - ~~`packages/server/src/common/lyrics.ts`（`parseLrc`）~~ ✅ 18 项
 - ~~`packages/server/src/music/qq-crypto.ts`（剩余 encrypt/decrypt 路径）~~ ✅ 16 项
 - ~~`packages/server/src/common/session.ts`（cookie 解析、tier 推断）~~ ✅ 16 项
@@ -118,6 +119,7 @@ search/like/getStreamPath 等。
 **已有**：`qq.provider.test`（仅 g_tk 计算）、`spotify.test`（仅 OAuth）。
 
 **待补**：
+
 - `qq.provider.test`：search 命中 / 空结果 / pay_play 标记 / fetchRadioBatch /
   getStreamPath（vkey 过期 -> 401 重取）/ getLyrics
 - `netease.provider.test`：search / getStreamPath / fetchLiked / VIP 推断
@@ -135,6 +137,7 @@ search/like/getStreamPath 等。
 library-import、like-sync.queue、search-unified、lyrics-aggregate。
 
 **待补**：
+
 - `getNextTrack` 流控（refill 失败 -> placeholder / queue 仍空 -> 占位）
 - `markDisliked` / `dislikeMerged` 在不同 platform 集合下的合并
 - `findPlayableEquivalent` 的 priority 边界（qq 不可播 -> 跳 netease）
@@ -148,6 +151,7 @@ library-import、like-sync.queue、search-unified、lyrics-aggregate。
 library-import.e2e.test.ts（3 用例）。
 
 **待补**：
+
 - ~~`/music/search` 输入清洗（XSS 字符 / 空串 / 超长）~~ ✅ music.controller e2e
 - `/music/lyrics/aggregate` cache hit
 - ~~`/music/library` 漏掉 fanOut / 脏数据~~ ✅ music.controller e2e (404 路径)
@@ -162,6 +166,7 @@ server 的 `mergeLibrary` 和 renderer 的 `groupLibraryItems` 共用」。需�
 一组**契约测试**，从两端发同样的输入，断言归一结果一致。
 
 **待补**：`specs/test-plan/contract.test.ts`：
+
 - 同一首歌在 server normalizeKey 与 renderer displayKey 同值
 - 同一组 sources 在 server mergeLibrary 与 renderer groupLibraryItems
   同 grouping（key/member 数/representative 选取）
@@ -207,8 +212,8 @@ kuromoji 首次预热 ~2s。所有依赖时钟 / 网络的用例必须可注入 
       — `contract.test.ts` 23 项 + `grouping.test.ts` 22 项，远超 5 用例门槛。
 - [x] 每个 provider 至少有一个 happy path + 一个 5s 超时缺席 单测。
       — qq（37 项，含 search/fetchLiked 超时缺席）、netease（32 项，含 search/fetchLiked 超时缺席）、
-        deezer（20 项，含 search/fetchRadioBatch 超时缺席）、spotify（32 项，含 refresh/search 超时缺席）、
-        lyricsovh（11 项，含 getLyrics 超时缺席）。全部用 mock fetch + withTimeout 验证 5s 兜底。
+      deezer（20 项，含 search/fetchRadioBatch 超时缺席）、spotify（32 项，含 refresh/search 超时缺席）、
+      lyricsovh（11 项，含 getLyrics 超时缺席）。全部用 mock fetch + withTimeout 验证 5s 兜底。
 - [x] 每个公共 controller 路由至少一个 200 + 一个 4xx e2e。
       — auth.controller e2e 33 项 + backup.controller e2e 14 项 + reco.controller e2e 10 项。
 

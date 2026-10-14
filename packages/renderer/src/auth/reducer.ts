@@ -126,7 +126,10 @@ export function reducer(state: AuthState, action: AuthAction): AuthState {
         loggedIn: true,
         user: action.user,
         tier: action.tier ?? state.tier,
-        phase: { kind: 'authenticated', attempt: currentAttempt(state) ?? newAttempt(state.provider) },
+        phase: {
+          kind: 'authenticated',
+          attempt: currentAttempt(state) ?? newAttempt(state.provider),
+        },
         error: null,
       };
 
@@ -230,7 +233,11 @@ function isCurrentAttempt(state: AuthState, attemptId: string): boolean {
 }
 
 function newAttempt(provider: MusicProvider): AuthAttempt {
-  return { id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, provider, startedAt: Date.now() };
+  return {
+    id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    provider,
+    startedAt: Date.now(),
+  };
 }
 
 export function isAuthErrorCode(value: unknown): value is AuthErrorCode {

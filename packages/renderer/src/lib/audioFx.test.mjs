@@ -54,7 +54,18 @@ async function main() {
 
   check('2. label 用 k 缩写（1k/2k 而不是 1000/2000）', () => {
     const labels = EQ_BANDS.map((b) => b.label);
-    assert.deepStrictEqual(labels, ['31', '62', '125', '250', '500', '1k', '2k', '4k', '8k', '16k']);
+    assert.deepStrictEqual(labels, [
+      '31',
+      '62',
+      '125',
+      '250',
+      '500',
+      '1k',
+      '2k',
+      '4k',
+      '8k',
+      '16k',
+    ]);
   });
 
   // ── 3. 预置 ───────────────────────────────────────────────

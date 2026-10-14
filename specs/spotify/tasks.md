@@ -65,7 +65,7 @@
 > server 拒 → `POST /v1/widevine-license/v1/audio/license 500` → `playback_error` →
 > `hasTrack=false` → 30s 退。**Spotify 自己桌面端用 prod VMP 签的 ECS**——第三方
 > 拿不到，唯一合规通道 = castLabs EVS（完全免费）签 streaming。
-> 
+>
 > **EVS = Electronic Video Service**：castLabs 公开承诺 **完全免费**（2020-09-04 wiki），
 > 个人开发者零成本，签 streaming signature 不收费。**前置 = Apple Developer**
 > （$99/年）做 macOS code-sign / notarize，否则 Gatekeeper 拦 dmg。

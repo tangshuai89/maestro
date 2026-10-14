@@ -48,9 +48,7 @@ function makeProps(over: Partial<LiteViewProps> = {}): LiteViewProps {
  * 元素测试也不会红。可点击元素数才是真正会失败的契约。
  */
 function clickableLabels(container: HTMLElement) {
-  return Array.from(
-    container.querySelectorAll('button, [role="button"], a[href]'),
-  )
+  return Array.from(container.querySelectorAll('button, [role="button"], a[href]'))
     .map((el) => el.getAttribute('aria-label') ?? el.textContent ?? '?')
     .sort();
 }
@@ -71,12 +69,7 @@ describe('LiteView', () => {
   it('交互面恰好 4 个：上一首 / 下一首 / ✨ / ⛶（多一个少一个都红）', () => {
     const { container } = render(<LiteView {...makeProps()} />);
     // 顺序即 Array.sort() 的码点序，写死了免得改动时误以为是渲染顺序
-    expect(clickableLabels(container)).toEqual([
-      '上一首',
-      '下一首',
-      '智能推荐',
-      '返回完整界面',
-    ]);
+    expect(clickableLabels(container)).toEqual(['上一首', '下一首', '智能推荐', '返回完整界面']);
     // 三类可视元素（歌名块 / ◀▶ / ✨）齐备 ⛶ 之外的契约主体
     expect(
       Array.from(container.querySelectorAll('[data-lite-el]'))
@@ -129,9 +122,7 @@ describe('LiteView', () => {
   });
 
   it('未配 key：✨ 仍可点 + title 提示先填 key + 挂 is-unset 视觉态', () => {
-    const { rerender } = render(
-      <LiteView {...makeProps({ recoConfigured: false })} />,
-    );
+    const { rerender } = render(<LiteView {...makeProps({ recoConfigured: false })} />);
     const reco = screen.getByLabelText('智能推荐');
     expect(reco).toBeEnabled();
     expect(reco.getAttribute('title')).toContain('DeepSeek key');
@@ -143,11 +134,7 @@ describe('LiteView', () => {
     expect(screen.getByLabelText('智能推荐')).not.toHaveClass('is-unset');
 
     // 推荐在飞时以 is-running 为准，不叠 is-unset
-    rerender(
-      <LiteView
-        {...makeProps({ recoConfigured: false, recoRunning: true })}
-      />,
-    );
+    rerender(<LiteView {...makeProps({ recoConfigured: false, recoRunning: true })} />);
     const running = screen.getByLabelText('智能推荐');
     expect(running).toHaveClass('is-running');
     expect(running).not.toHaveClass('is-unset');

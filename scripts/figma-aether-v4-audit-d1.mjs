@@ -13,7 +13,9 @@ import { readFileSync } from 'node:fs';
 const FILE_KEY = process.env.FIGMA_FILE_KEY || 'FtbRZXvzlCp4Sq9e322cQQ';
 const TOKEN = process.env.FIGMA_TOKEN;
 const AS_JSON = process.argv.includes('--json');
-const FIXTURE = process.argv.includes('--fixture') ? process.argv[process.argv.indexOf('--fixture') + 1] : null;
+const FIXTURE = process.argv.includes('--fixture')
+  ? process.argv[process.argv.indexOf('--fixture') + 1]
+  : null;
 
 if (!TOKEN && !FIXTURE) {
   console.error('缺少 FIGMA_TOKEN。获取: Figma → Settings → Security → Personal access tokens');
@@ -53,11 +55,15 @@ const D1_COMP_BOUND_MIN = 0.3; // 03 页实例内填充变量绑定率（与 v4 
 const REQUIRED_DESCRIPTION_TAGS = ['AI_CONTRACT:', 'react:', 'a11y:'];
 
 const results = [];
-function check(name, ok, detail) { results.push({ name, ok, detail }); }
+function check(name, ok, detail) {
+  results.push({ name, ok, detail });
+}
 
 // ---------- 1. 拉文件 ----------
 const file = await api(`/files/${FILE_KEY}?depth=4`);
-const pages = (file.document?.children || []).filter((n) => n.type === 'CANVAS' || n.type === 'PAGE');
+const pages = (file.document?.children || []).filter(
+  (n) => n.type === 'CANVAS' || n.type === 'PAGE',
+);
 const page03 = pages.find((p) => p.name === '03 · Screens');
 if (!page03) {
   console.error('找不到 03 · Screens 页');
@@ -66,18 +72,30 @@ if (!page03) {
 
 // ---------- 2. 6 个新 frame 存在性 ----------
 const allFrames = page03.children || [];
-const screenNames = allFrames.filter((n) => n.type === 'FRAME' && n.name.startsWith('Screen/')).map((n) => n.name);
+const screenNames = allFrames
+  .filter((n) => n.type === 'FRAME' && n.name.startsWith('Screen/'))
+  .map((n) => n.name);
 for (const want of D1_SCREENS) {
-  check(`D1 frame: ${want}`, screenNames.includes(want), screenNames.includes(want) ? '' : `当前: ${screenNames.join(', ')}`);
+  check(
+    `D1 frame: ${want}`,
+    screenNames.includes(want),
+    screenNames.includes(want) ? '' : `当前: ${screenNames.join(', ')}`,
+  );
 }
-check(`03 页 Screen/ frame ≥ ${D1_TOTAL_MIN}`, screenNames.length >= D1_TOTAL_MIN, `实际 ${screenNames.length}: ${screenNames.join(', ')}`);
+check(
+  `03 页 Screen/ frame ≥ ${D1_TOTAL_MIN}`,
+  screenNames.length >= D1_TOTAL_MIN,
+  `实际 ${screenNames.length}: ${screenNames.join(', ')}`,
+);
 
 // ---------- 3. AI_CONTRACT 校验 ----------
 // FRAME 在 Plugin API 里没有 description（只有 COMPONENT / COMPONENT_SET 有 PublishableMixin），
 // 所以契约存为 frame 下一个隐藏 TEXT 子节点 AI_CONTRACT，REST 走 characters。
 // 仍兼容 description 字段，方便后续把屏幕升级成 COMPONENT。
 const contractOf = (f) =>
-  f.description || (f.children || []).find((c) => c.type === 'TEXT' && c.name === 'AI_CONTRACT')?.characters || '';
+  f.description ||
+  (f.children || []).find((c) => c.type === 'TEXT' && c.name === 'AI_CONTRACT')?.characters ||
+  '';
 for (const want of D1_SCREENS) {
   const f = allFrames.find((n) => n.name === want);
   if (!f) continue; // 上面已 FAIL
@@ -86,7 +104,11 @@ for (const want of D1_SCREENS) {
   if (missing.length === 0) {
     check(`D1 AI_CONTRACT: ${want}`, true, `(${desc.length} 字符)`);
   } else {
-    check(`D1 AI_CONTRACT: ${want}`, false, desc ? `缺标签: ${missing.join(', ')}` : '找不到 AI_CONTRACT 节点');
+    check(
+      `D1 AI_CONTRACT: ${want}`,
+      false,
+      desc ? `缺标签: ${missing.join(', ')}` : '找不到 AI_CONTRACT 节点',
+    );
   }
 }
 
@@ -103,11 +125,18 @@ const tally = (frames) => {
       if (Array.isArray(n.fills)) {
         for (const f of n.fills) {
           if (f.type === 'SOLID' || f.type === 'GRADIENT_LINEAR') {
-            const bound = f.type === 'GRADIENT_LINEAR'
-              ? (f.gradientStops || []).some((s) => s.boundVariables && s.boundVariables.color)
-              : !!(f.boundVariables && f.boundVariables.color);
-            if (inst) { t.compFill++; if (bound) t.compBound++; }
-            else { t.ownFill++; if (bound) t.ownBound++; else t.unbound.push(`${n.name} [${n.type}]`); }
+            const bound =
+              f.type === 'GRADIENT_LINEAR'
+                ? (f.gradientStops || []).some((s) => s.boundVariables && s.boundVariables.color)
+                : !!(f.boundVariables && f.boundVariables.color);
+            if (inst) {
+              t.compFill++;
+              if (bound) t.compBound++;
+            } else {
+              t.ownFill++;
+              if (bound) t.ownBound++;
+              else t.unbound.push(`${n.name} [${n.type}]`);
+            }
           }
         }
       }
@@ -123,7 +152,9 @@ const d1 = tally(d1Frames);
 const all = tally(allFrames);
 
 check('D1 6 屏含组件实例', d1.inst > 0, `实际 ${d1.inst} 个实例`);
-const d1Unbound = d1.unbound.length ? '；未绑定: ' + d1.unbound.slice(0, 6).join(', ') + (d1.unbound.length > 6 ? '…' : '') : '';
+const d1Unbound = d1.unbound.length
+  ? '；未绑定: ' + d1.unbound.slice(0, 6).join(', ') + (d1.unbound.length > 6 ? '…' : '')
+  : '';
 check(
   `D1 6 屏自有填充绑定 ≥ ${D1_OWN_BOUND_MIN * 100}%`,
   (d1.ownFill ? d1.ownBound / d1.ownFill : 1) >= D1_OWN_BOUND_MIN,
@@ -161,16 +192,40 @@ for (const a of newScreens) {
 check(
   'D1 6 屏与 03 页其他屏无重叠',
   collisions.length === 0,
-  collisions.length ? collisions.slice(0, 6).join('; ') : newScreens.map((s) => `${s.name}@${box(s).x},${box(s).y}`).join(', '),
+  collisions.length
+    ? collisions.slice(0, 6).join('; ')
+    : newScreens.map((s) => `${s.name}@${box(s).x},${box(s).y}`).join(', '),
 );
 
 // ---------- 汇总 ----------
 const skips = results.filter((r) => r.ok === null);
 const fails = results.filter((r) => r.ok === false);
-const lines = results.map((r) => `${r.ok === null ? 'SKIP' : r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
+const lines = results.map(
+  (r) =>
+    `${r.ok === null ? 'SKIP' : r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`,
+);
 if (AS_JSON) {
-  console.log(JSON.stringify({ file: FILE_KEY, pass: fails.length === 0, total: results.length, fails: fails.length, skips: skips.length, results }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        file: FILE_KEY,
+        pass: fails.length === 0,
+        total: results.length,
+        fails: fails.length,
+        skips: skips.length,
+        results,
+      },
+      null,
+      2,
+    ),
+  );
 } else {
-  console.log(`\nAETHER v4-D1 增量审计报告 — ${FILE_KEY}\n` + lines.join('\n') + `\n\n${results.length - fails.length - skips.length}/${results.length} 通过` + (fails.length ? `，${fails.length} 项 FAIL` : ' ✅ 全部达标') + (skips.length ? `，${skips.length} 项 SKIP` : ''));
+  console.log(
+    `\nAETHER v4-D1 增量审计报告 — ${FILE_KEY}\n` +
+      lines.join('\n') +
+      `\n\n${results.length - fails.length - skips.length}/${results.length} 通过` +
+      (fails.length ? `，${fails.length} 项 FAIL` : ' ✅ 全部达标') +
+      (skips.length ? `，${skips.length} 项 SKIP` : ''),
+  );
 }
 process.exit(fails.length ? 1 : 0);

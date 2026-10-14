@@ -45,16 +45,23 @@ async function makeSvc(): Promise<any> {
     lyricsOvh: { getLyrics: async () => null },
   };
   // stub searchEquivalentUncached 实际行为：递增计数 + 等一个手动信号
-  const lyricsService = new LyricsService(
-    qs.netease, qs.deezer, qs.qq, qs.lyricsOvh,
-  );
+  const lyricsService = new LyricsService(qs.netease, qs.deezer, qs.qq, qs.lyricsOvh);
   const match = {};
   const ms = new MusicService(
     fakeStorage,
-    qs.qq, qs.netease, qs.deezer, qs.spotify,
+    qs.qq,
+    qs.netease,
+    qs.deezer,
+    qs.spotify,
     qs.lyricsOvh,
-    lyricsService, match,
-    { registerProcessor: () => {}, registerDiscoverResolver: () => {}, enqueue: () => {}, pendingTargets: () => [] },
+    lyricsService,
+    match,
+    {
+      registerProcessor: () => {},
+      registerDiscoverResolver: () => {},
+      enqueue: () => {},
+      pendingTargets: () => [],
+    },
   );
   // monkey-patch 内部 searchEquivalentUncached 用一个慢 Promise，
   // 让我们能可靠地测「并发共享 promise」行为。
@@ -91,10 +98,7 @@ async function main() {
     await p1;
     // 第二次：cache hit，应该 0 uncached
     await (ms as any).searchEquivalent(session, 'qq', meta);
-    assert.strictEqual(
-      uncachedCalls, 1,
-      `串行 2 次应只触发 1 次远端，实际 ${uncachedCalls}`,
-    );
+    assert.strictEqual(uncachedCalls, 1, `串行 2 次应只触发 1 次远端，实际 ${uncachedCalls}`);
     console.log('✅ 1. 串行 N 次：第 1 次触发远端，第 2 次走 cache hit（uncached=1）');
   }
 
@@ -118,10 +122,7 @@ async function main() {
     // 释放远端 Promise，让所有 awaiter 一起 resolve
     release!();
     const results = await Promise.all(promises);
-    assert.strictEqual(
-      uncachedCalls, 1,
-      `并发 ${N} 个应只触发 1 次远端，实际 ${uncachedCalls}`,
-    );
+    assert.strictEqual(uncachedCalls, 1, `并发 ${N} 个应只触发 1 次远端，实际 ${uncachedCalls}`);
     assert.strictEqual(results.length, N, '应返回 N 个结果（null 也算）');
     console.log(`✅ 2. 并发 ${N} 个：共享同一 Promise（uncached=1，所有 awaiter 一齐 resolve）`);
   }
@@ -188,13 +189,12 @@ async function main() {
     const meta = makeMeta('东风破', '周杰伦', 305);
     // 跑 3 轮：每轮一个新 key
     for (let i = 0; i < 3; i++) {
-      await (ms as any).searchEquivalent(
-        session, 'qq', makeMeta(`title-${i}`, 'A', 100 + i),
-      );
+      await (ms as any).searchEquivalent(session, 'qq', makeMeta(`title-${i}`, 'A', 100 + i));
     }
     const inflightSize = ((ms as any).inflightSearchEquivalent as Map<any, any>).size;
     assert.strictEqual(
-      inflightSize, 0,
+      inflightSize,
+      0,
       `inflight 应在 promise 完成后清理，实际 size=${inflightSize}`,
     );
     console.log('✅ 5. inflight map 完成后清理（无 key 残留）');

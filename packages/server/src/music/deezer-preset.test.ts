@@ -58,8 +58,7 @@ async function main() {
       const r = await call('GET', '/music/deezer/editorials');
       assert.strictEqual(r.status, 200);
       const items = (r.json as { items?: unknown[] }).items;
-      assert.ok(Array.isArray(items) && items!.length > 0,
-        'editorials 列表应非空');
+      assert.ok(Array.isArray(items) && items!.length > 0, 'editorials 列表应非空');
       console.log(`✅ 1. editorials 返回 ${items!.length} 项`);
     }
 
@@ -108,7 +107,17 @@ async function main() {
 
     // ── 7. 所有合法 preset 都能切换 ───────────────────────────
     {
-      const validPresets = ['all', 'asia', 'pop', 'rap', 'rock', 'dance', 'rnb', 'classical', 'jazz'];
+      const validPresets = [
+        'all',
+        'asia',
+        'pop',
+        'rap',
+        'rock',
+        'dance',
+        'rnb',
+        'classical',
+        'jazz',
+      ];
       for (const p of validPresets) {
         const r = await call('PUT', '/music/deezer/preset', { preset: p });
         assert.strictEqual(r.status, 200, `preset ${p} 应 200，实际 ${r.status}`);
@@ -128,7 +137,6 @@ main().catch((e) => {
   process.exit(1);
 });
 
-
 // ─────────────────────────────────────────────────────────────────────
 // T10 G2: deezer-preset persist (setPref 路径)
 // 验证：
@@ -136,74 +144,69 @@ main().catch((e) => {
 //   - 重启后 session.prefs.deezerPreset 仍在
 // ─────────────────────────────────────────────────────────────────────
 void (async () => {
+  // ── G2.1 setDeezerPreset 写入并 persist ──────────────────────────
+  {
+    // 直接调 service.setPref 走持久化路径，避免 HTTP 启动开销
+    const cfg = new ConfigService();
+    const storage = new StorageService(cfg);
+    const session = new SessionService(storage, cfg);
 
-// ── G2.1 setDeezerPreset 写入并 persist ──────────────────────────
-{
-  // 直接调 service.setPref 走持久化路径，避免 HTTP 启动开销
-  const cfg = new ConfigService();
-  const storage = new StorageService(cfg);
-  const session = new SessionService(storage, cfg);
+    // 直接造一个 session
+    const fakeSession = {
+      id: 'test-t10-g2-1',
+      createdAt: Date.now(),
+      lastAccessedAt: Date.now(),
+      providers: {},
+    };
+    (session as any).blob.byId[fakeSession.id] = fakeSession;
 
-  // 直接造一个 session
-  const fakeSession = {
-    id: 'test-t10-g2-1',
-    createdAt: Date.now(),
-    lastAccessedAt: Date.now(),
-    providers: {},
-  };
-  (session as any).blob.byId[fakeSession.id] = fakeSession;
+    // setPref（这是 setDeezerPreset 现在走的路径）
+    session.setPref(fakeSession, 'deezerPreset', 'pop');
+    storage.flushSync();
 
-  // setPref（这是 setDeezerPreset 现在走的路径）
-  session.setPref(fakeSession, 'deezerPreset', 'pop');
-  storage.flushSync();
+    // 重新 load
+    const cfg2 = new ConfigService();
+    const storage2 = new StorageService(cfg2);
+    const session2 = new SessionService(storage2, cfg2);
 
-  // 重新 load
-  const cfg2 = new ConfigService();
-  const storage2 = new StorageService(cfg2);
-  const session2 = new SessionService(storage2, cfg2);
+    const reloaded = session2['blob'].byId[fakeSession.id];
+    assert.ok(reloaded, 'session 应被持久化（重启后仍存在）');
+    assert.strictEqual(
+      reloaded.prefs?.deezerPreset,
+      'pop',
+      `重启后 prefs.deezerPreset 应 = 'pop'（实际 ${reloaded.prefs?.deezerPreset}）`,
+    );
+    console.log('✅ G2.1 setPref 写入 deezerPreset → 持久化 + 重启保留');
+  }
 
-  const reloaded = session2['blob'].byId[fakeSession.id];
-  assert.ok(reloaded, 'session 应被持久化（重启后仍存在）');
-  assert.strictEqual(
-    reloaded.prefs?.deezerPreset,
-    'pop',
-    `重启后 prefs.deezerPreset 应 = 'pop'（实际 ${reloaded.prefs?.deezerPreset}）`,
-  );
-  console.log('✅ G2.1 setPref 写入 deezerPreset → 持久化 + 重启保留');
-}
+  // ── G2.2 /next?preset= 也走 prefs 路径 ────────────────────────────
+  {
+    // 通过 MusicService.getNextTrack 路径读取 preset 时确认 session.prefs.deezerPreset
+    // 被使用。无需真调 QQ/N/，把 deezer preset 改成'rock' 然后用 MusicService 读出来。
+    const cfg = new ConfigService();
+    const storage = new StorageService(cfg);
+    const session = new SessionService(storage, cfg);
+    const sessLike: any = {
+      id: 'test-t10-g2-2',
+      createdAt: Date.now(),
+      lastAccessedAt: Date.now(),
+      providers: {},
+    };
+    (session as any).blob.byId[sessLike.id] = sessLike;
 
-// ── G2.2 /next?preset= 也走 prefs 路径 ────────────────────────────
-{
-  // 通过 MusicService.getNextTrack 路径读取 preset 时确认 session.prefs.deezerPreset
-  // 被使用。无需真调 QQ/N/，把 deezer preset 改成'rock' 然后用 MusicService 读出来。
-  const cfg = new ConfigService();
-  const storage = new StorageService(cfg);
-  const session = new SessionService(storage, cfg);
-  const sessLike: any = {
-    id: 'test-t10-g2-2',
-    createdAt: Date.now(),
-    lastAccessedAt: Date.now(),
-    providers: {},
-  };
-  (session as any).blob.byId[sessLike.id] = sessLike;
+    // 直接设 prefs（无需经过 controller）
+    session.setPref(sessLike, 'deezerPreset', 'rock');
+    storage.flushSync();
 
-  // 直接设 prefs（无需经过 controller）
-  session.setPref(sessLike, 'deezerPreset', 'rock');
-  storage.flushSync();
+    // 重新 load + 用 music.service 读
+    const cfg2 = new ConfigService();
+    const storage2 = new StorageService(cfg2);
+    const session2 = new SessionService(storage2, cfg2);
+    const reloaded = session2['blob'].byId[sessLike.id];
 
-  // 重新 load + 用 music.service 读
-  const cfg2 = new ConfigService();
-  const storage2 = new StorageService(cfg2);
-  const session2 = new SessionService(storage2, cfg2);
-  const reloaded = session2['blob'].byId[sessLike.id];
+    assert.strictEqual(reloaded.prefs?.deezerPreset, 'rock', '重启后 prefs.deezerPreset = rock');
+    console.log('✅ G2.2 prefs.deezerPreset 跨 service 实例保持');
+  }
 
-  assert.strictEqual(
-    reloaded.prefs?.deezerPreset,
-    'rock',
-    '重启后 prefs.deezerPreset = rock',
-  );
-  console.log('✅ G2.2 prefs.deezerPreset 跨 service 实例保持');
-}
-
-console.log('\n🎉 deezer-preset.test: all T2 cases + G2.1/G2.2 passed');
+  console.log('\n🎉 deezer-preset.test: all T2 cases + G2.1/G2.2 passed');
 })();

@@ -51,8 +51,12 @@ for (const a of process.argv.slice(2)) {
     positional.push(a);
   }
 }
-function getArg(name) { return kvArgs[name] || null; }
-function hasFlag(name) { return flagArgs.has(name); }
+function getArg(name) {
+  return kvArgs[name] || null;
+}
+function hasFlag(name) {
+  return flagArgs.has(name);
+}
 const DRY_RUN = hasFlag('dry-run');
 
 let pairs = null;
@@ -61,29 +65,45 @@ if (hasFlag('--from-stdin')) {
   let buf = '';
   for await (const chunk of process.stdin) buf += chunk;
   const trimmed = buf.trim();
-  if (!trimmed) { console.error('stdin 是空'); process.exit(1); }
+  if (!trimmed) {
+    console.error('stdin 是空');
+    process.exit(1);
+  }
   try {
     const arr = JSON.parse(trimmed);
     if (!Array.isArray(arr)) throw new Error('stdin 需为 JSON 数组');
-    pairs = arr.map(x => ({ name: x.name, id: x.id || x.nodeId, seg: x.seg || '' }));
-  } catch (e) { console.error('stdin JSON 解析失败:', e.message); process.exit(1); }
+    pairs = arr.map((x) => ({ name: x.name, id: x.id || x.nodeId, seg: x.seg || '' }));
+  } catch (e) {
+    console.error('stdin JSON 解析失败:', e.message);
+    process.exit(1);
+  }
 } else if (hasFlag('--from-output')) {
   const p = getArg('from-output');
-  if (!p) { console.error('--from-output 需要文件路径'); process.exit(1); }
+  if (!p) {
+    console.error('--from-output 需要文件路径');
+    process.exit(1);
+  }
   const arr = JSON.parse(readFileSync(resolve(p), 'utf8'));
   // 兼容两种格式：[{name, id}] 或 {sets: [{name, ...}], createdNodeIds: [...]}
   if (Array.isArray(arr)) {
-    pairs = arr.map(x => ({ name: x.name, id: x.id || x.nodeId, seg: x.seg || '' }));
+    pairs = arr.map((x) => ({ name: x.name, id: x.id || x.nodeId, seg: x.seg || '' }));
   } else if (arr.sets && Array.isArray(arr.sets)) {
     // 来自 SEG1/SEG2 输出：{"sets": ["Modal/Shell", ...], "createdNodeIds": ["I100:1", ...]}
     pairs = arr.sets.map((name, i) => ({ name, id: arr.createdNodeIds[i], seg: '' }));
   } else {
-    console.error('--from-output JSON 格式未知'); process.exit(1);
+    console.error('--from-output JSON 格式未知');
+    process.exit(1);
   }
 } else {
   // 从 --ids + --names 解析
-  const ids = (getArg('ids') || '').split(',').map(s => s.trim()).filter(Boolean);
-  let names = (getArg('names') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const ids = (getArg('ids') || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let names = (getArg('names') || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (ids.length === 0 || names.length === 0) {
     console.error('用法:');
     console.error('  --ids=ID1,ID2,...,ID10 --names=Name1,...,Name10');
@@ -92,11 +112,14 @@ if (hasFlag('--from-stdin')) {
     console.error('  --dry-run           只打印不写');
     console.error('');
     console.error('默认顺序（也可只传 --ids 按默认顺序配对 --names=DEFAULT）:');
-    for (const p of DEFAULT_ORDER) console.error(`  ${p.seg.padEnd(5)} ${p.name.padEnd(28)} <-- id[${DEFAULT_ORDER.indexOf(p)}]`);
+    for (const p of DEFAULT_ORDER)
+      console.error(
+        `  ${p.seg.padEnd(5)} ${p.name.padEnd(28)} <-- id[${DEFAULT_ORDER.indexOf(p)}]`,
+      );
     process.exit(1);
   }
   // --names=DEFAULT 展开成 10 个默认名字
-  if (names.length === 1 && names[0] === 'DEFAULT') names = DEFAULT_ORDER.map(p => p.name);
+  if (names.length === 1 && names[0] === 'DEFAULT') names = DEFAULT_ORDER.map((p) => p.name);
   if (ids.length !== names.length) {
     console.error(`--ids (${ids.length}) 与 --names (${names.length}) 数量不匹配`);
     process.exit(1);
@@ -110,23 +133,42 @@ if (pairs.length !== 10) {
 }
 const seen = new Set();
 for (const p of pairs) {
-  if (!p.name) { console.error('缺 name:', p); process.exit(1); }
-  if (!p.id) { console.error(`缺 id: ${p.name}`); process.exit(1); }
-  if (!/^[\d:I;\-]+$/.test(p.id)) { console.error(`非标准 nodeId 格式: ${p.name} = ${p.id}`); process.exit(1); }
-  if (seen.has(p.name)) { console.error(`name 重复: ${p.name}`); process.exit(1); }
+  if (!p.name) {
+    console.error('缺 name:', p);
+    process.exit(1);
+  }
+  if (!p.id) {
+    console.error(`缺 id: ${p.name}`);
+    process.exit(1);
+  }
+  if (!/^[\d:I;\-]+$/.test(p.id)) {
+    console.error(`非标准 nodeId 格式: ${p.name} = ${p.id}`);
+    process.exit(1);
+  }
+  if (seen.has(p.name)) {
+    console.error(`name 重复: ${p.name}`);
+    process.exit(1);
+  }
   seen.add(p.name);
 }
 
 // ---------- 加载 + 修改 ----------
 const map = JSON.parse(readFileSync(JSON_PATH, 'utf8'));
 const mappings = map.mappings || [];
-const before = mappings.map(m => ({ figmaComponent: m.figmaComponent, figmaNodeId: m.figmaNodeId, _status: m._status }));
+const before = mappings.map((m) => ({
+  figmaComponent: m.figmaComponent,
+  figmaNodeId: m.figmaNodeId,
+  _status: m._status,
+}));
 
 const replaced = [];
 const missed = [];
 for (const p of pairs) {
-  const m = mappings.find(x => x.figmaComponent === p.name);
-  if (!m) { missed.push({ reason: 'mapping 未找到', ...p }); continue; }
+  const m = mappings.find((x) => x.figmaComponent === p.name);
+  if (!m) {
+    missed.push({ reason: 'mapping 未找到', ...p });
+    continue;
+  }
   if (m.figmaNodeId !== 'TBD-FIGMA') {
     // 已被替换过：仍覆盖（用户显式传入）
     replaced.push({ name: p.name, from: m.figmaNodeId, to: p.id, mode: 'OVERWRITE' });
@@ -148,9 +190,13 @@ const HISTORY_VALUE =
 map.$history[HISTORY_KEY] = HISTORY_VALUE;
 
 // ---------- Diff 输出 ----------
-console.log(`\n── figma-code-connect.json 注入 diff (${replaced.length}/${pairs.length} 替换)${DRY_RUN ? ' [DRY-RUN]' : ''} ──\n`);
+console.log(
+  `\n── figma-code-connect.json 注入 diff (${replaced.length}/${pairs.length} 替换)${DRY_RUN ? ' [DRY-RUN]' : ''} ──\n`,
+);
 for (const r of replaced) {
-  console.log(`  ${r.mode === 'NEW' ? '✓ NEW    ' : '↻ REWRITE'}  ${r.name.padEnd(28)} ${r.from} → ${r.to}`);
+  console.log(
+    `  ${r.mode === 'NEW' ? '✓ NEW    ' : '↻ REWRITE'}  ${r.name.padEnd(28)} ${r.from} → ${r.to}`,
+  );
 }
 if (missed.length) {
   console.log(`\n  ⚠️  ${missed.length} 项未找到:`);
@@ -197,7 +243,10 @@ function patchText(text, items, historyKey, historyValue) {
     const brace = out.indexOf('"$history": {');
     if (brace !== -1) {
       const at = brace + '"$history": {'.length;
-      out = out.slice(0, at) + `\n    ${JSON.stringify(historyKey)}: ${JSON.stringify(historyValue)},` + out.slice(at);
+      out =
+        out.slice(0, at) +
+        `\n    ${JSON.stringify(historyKey)}: ${JSON.stringify(historyValue)},` +
+        out.slice(at);
     }
   }
   return out;

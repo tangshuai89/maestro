@@ -32,7 +32,9 @@
   transition: background 0.15s ease;
 }
 
-.err-summary:hover { background: color-mix(in oklab, var(--status-error) 8%, transparent); }
+.err-summary:hover {
+  background: color-mix(in oklab, var(--status-error) 8%, transparent);
+}
 
 .err-icon {
   flex-shrink: 0;

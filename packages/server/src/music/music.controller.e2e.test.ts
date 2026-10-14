@@ -123,11 +123,7 @@ async function main() {
     // ── 5. GET /music/library → 404（无库）──────────────────────
     {
       const r = await call('GET', '/music/library');
-      expect(
-        '5. GET /music/library 无库 → 404',
-        r.status === 404,
-        `实际 ${r.status}`,
-      );
+      expect('5. GET /music/library 无库 → 404', r.status === 404, `实际 ${r.status}`);
       const json = r.json as { error?: string };
       expect(
         '5b. /music/library 404 返回 library_not_imported',
@@ -142,11 +138,7 @@ async function main() {
         sources: [{ platform: 'qq', trackId: '1' }],
         liked: true,
       });
-      expect(
-        '6. POST /music/like/merged 缺 mergedId → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('6. POST /music/like/merged 缺 mergedId → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 7. POST /music/like/merged 缺 sources → 400 ──────────────
@@ -155,11 +147,7 @@ async function main() {
         mergedId: 'm1',
         liked: true,
       });
-      expect(
-        '7. POST /music/like/merged 缺 sources → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('7. POST /music/like/merged 缺 sources → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 8. POST /music/like/merged 缺 liked → 400 ────────────────
@@ -168,11 +156,7 @@ async function main() {
         mergedId: 'm1',
         sources: [{ platform: 'qq', trackId: '1' }],
       });
-      expect(
-        '8. POST /music/like/merged 缺 liked → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('8. POST /music/like/merged 缺 liked → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 9. POST /music/like/merged 脏 sources → 400 ──────────────
@@ -194,21 +178,13 @@ async function main() {
       const r = await call('POST', '/music/like/detect', {
         sources: [{ platform: 'qq', trackId: '1' }],
       });
-      expect(
-        '10. POST /music/like/detect 缺 mergedId → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('10. POST /music/like/detect 缺 mergedId → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 11. POST /music/like/detect 缺 sources → 400 ─────────────
     {
       const r = await call('POST', '/music/like/detect', { mergedId: 'm1' });
-      expect(
-        '11. POST /music/like/detect 缺 sources → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('11. POST /music/like/detect 缺 sources → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 12. POST /music/dislike/merged 缺 mergedId → 400 ─────────
@@ -272,11 +248,7 @@ async function main() {
     // ── 17. GET /music/deezer/editorials → 200 ───────────────────
     {
       const r = await call('GET', '/music/deezer/editorials');
-      expect(
-        '17. GET /music/deezer/editorials → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('17. GET /music/deezer/editorials → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { items?: unknown[] };
       expect(
         '17b. /music/deezer/editorials 返回 items 数组',
@@ -288,21 +260,13 @@ async function main() {
     // ── 18. PUT /music/deezer/preset 非法 preset → 400 ───────────
     {
       const r = await call('PUT', '/music/deezer/preset', { preset: 'bogus-genre' });
-      expect(
-        '18. PUT /music/deezer/preset 非法 → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('18. PUT /music/deezer/preset 非法 → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 19. PUT /music/deezer/preset 缺 preset → 400 ─────────────
     {
       const r = await call('PUT', '/music/deezer/preset', {});
-      expect(
-        '19. PUT /music/deezer/preset 缺 preset → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('19. PUT /music/deezer/preset 缺 preset → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 20. PUT /music/deezer/preset 合法 → 200 ──────────────────
@@ -328,21 +292,13 @@ async function main() {
     // ── 21. GET /music/cover-proxy 缺 url → 400 ──────────────────
     {
       const r = await call('GET', '/music/cover-proxy');
-      expect(
-        '21. GET /music/cover-proxy 缺 url → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('21. GET /music/cover-proxy 缺 url → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 22. GET /music/cover-proxy 非法 url → 400 ────────────────
     {
       const r = await call('GET', '/music/cover-proxy?url=not-a-url');
-      expect(
-        '22. GET /music/cover-proxy 非法 url → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('22. GET /music/cover-proxy 非法 url → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 23. GET /music/cover-proxy 非白名单 host → 403 ───────────
@@ -358,11 +314,7 @@ async function main() {
     // ── 24. GET /music/cover-proxy 非 http 协议 → 400 ────────────
     {
       const r = await call('GET', '/music/cover-proxy?url=ftp://y.gtimg.cn/img.jpg');
-      expect(
-        '24. GET /music/cover-proxy ftp 协议 → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('24. GET /music/cover-proxy ftp 协议 → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 25. GET /music/liked?provider=qq → 200 ───────────────────

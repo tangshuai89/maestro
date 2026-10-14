@@ -90,61 +90,37 @@ async function main() {
     // ── 1. GET /auth/spotify/callback 缺 code → 400 ─────────────────
     {
       const r = await call('GET', '/auth/spotify/callback');
-      expect(
-        '1. /auth/spotify/callback 缺 code+state → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('1. /auth/spotify/callback 缺 code+state → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 2. GET /auth/spotify/callback 缺 state → 400 ───────────────
     {
       const r = await call('GET', '/auth/spotify/callback?code=abc');
-      expect(
-        '2. /auth/spotify/callback 缺 state → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('2. /auth/spotify/callback 缺 state → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 3. GET /auth/spotify/redeem 缺 code → 400 ──────────────────
     {
       const r = await call('GET', '/auth/spotify/redeem');
-      expect(
-        '3. /auth/spotify/redeem 缺 code+state → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('3. /auth/spotify/redeem 缺 code+state → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 4. GET /auth/netease/qr/check 缺 key → 400 ─────────────────
     {
       const r = await call('GET', '/auth/netease/qr/check');
-      expect(
-        '4. /auth/netease/qr/check 缺 key → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('4. /auth/netease/qr/check 缺 key → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 5. POST /auth/spotify/start 无 client_id → 400 ─────────────
     {
       const r = await call('POST', '/auth/spotify/start', {});
-      expect(
-        '5. /auth/spotify/start 无 client_id → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('5. /auth/spotify/start 无 client_id → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 6. POST /auth/spotify/client-id 太短 → 400 ─────────────────
     {
       const r = await call('POST', '/auth/spotify/client-id', { clientId: 'ab' });
-      expect(
-        '6. /auth/spotify/client-id 太短 → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('6. /auth/spotify/client-id 太短 → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 7. POST /auth/spotify/client-id 合法 → 201 ─────────────────
@@ -152,11 +128,7 @@ async function main() {
       const r = await call('POST', '/auth/spotify/client-id', {
         clientId: 'test-client-id-12345678',
       });
-      expect(
-        '7. /auth/spotify/client-id 合法 → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('7. /auth/spotify/client-id 合法 → 201', r.status === 201, `实际 ${r.status}`);
       const json = r.json as { ok?: boolean; tail?: string };
       expect(
         '7b. /auth/spotify/client-id 返回 ok=true + tail',
@@ -168,11 +140,7 @@ async function main() {
     // ── 8. POST /auth/spotify/start 有 client_id → 201 ─────────────
     {
       const r = await call('POST', '/auth/spotify/start', {});
-      expect(
-        '8. /auth/spotify/start 有 client_id → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('8. /auth/spotify/start 有 client_id → 201', r.status === 201, `实际 ${r.status}`);
       const json = r.json as { authorizeUrl?: string; state?: string };
       expect(
         '8b. /auth/spotify/start 返回 authorizeUrl + state',
@@ -200,11 +168,7 @@ async function main() {
     // ── 9. POST /auth/spotify/cancel → 201（无 in-flight flow）──────
     {
       const r = await call('POST', '/auth/spotify/cancel', {});
-      expect(
-        '9. /auth/spotify/cancel → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('9. /auth/spotify/cancel → 201', r.status === 201, `实际 ${r.status}`);
       const json = r.json as { ok?: boolean; removed?: number };
       expect(
         '9b. /auth/spotify/cancel 返回 ok=true + removed≥0',
@@ -221,11 +185,7 @@ async function main() {
         outcome: 'bogus',
         durationMs: 100,
       });
-      expect(
-        '10. /auth/event 非法 outcome → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('10. /auth/event 非法 outcome → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 11. POST /auth/event 非法 durationMs → 400 ─────────────────
@@ -236,11 +196,7 @@ async function main() {
         outcome: 'ok',
         durationMs: -1,
       });
-      expect(
-        '11. /auth/event 负 durationMs → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('11. /auth/event 负 durationMs → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 12. POST /auth/event 合法 → 201 ────────────────────────────
@@ -251,11 +207,7 @@ async function main() {
         outcome: 'ok',
         durationMs: 1500,
       });
-      expect(
-        '12. /auth/event 合法 → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('12. /auth/event 合法 → 201', r.status === 201, `实际 ${r.status}`);
     }
 
     // ── 13. POST /auth/event fail + errorCode → 201 ────────────────
@@ -267,21 +219,13 @@ async function main() {
         durationMs: 3000,
         errorCode: 'AUTH_EXPIRED',
       });
-      expect(
-        '13. /auth/event fail+errorCode → 201',
-        r.status === 201,
-        `实际 ${r.status}`,
-      );
+      expect('13. /auth/event fail+errorCode → 201', r.status === 201, `实际 ${r.status}`);
     }
 
     // ── 14. GET /auth/spotify/status 未登录 → 200 ──────────────────
     {
       const r = await call('GET', '/auth/spotify/status');
-      expect(
-        '14. /auth/spotify/status 未登录 → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('14. /auth/spotify/status 未登录 → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { hasClientId?: boolean; loggedIn?: boolean; tier?: string };
       expect(
         '14b. /auth/spotify/status loggedIn=false, tier=null',
@@ -293,31 +237,19 @@ async function main() {
     // ── 15. GET /auth/spotify/token 未登录 → 401 ───────────────────
     {
       const r = await call('GET', '/auth/spotify/token');
-      expect(
-        '15. /auth/spotify/token 未登录 → 401',
-        r.status === 401,
-        `实际 ${r.status}`,
-      );
+      expect('15. /auth/spotify/token 未登录 → 401', r.status === 401, `实际 ${r.status}`);
     }
 
     // ── 16. GET /auth/spotify/me 未登录 → 401 ──────────────────────
     {
       const r = await call('GET', '/auth/spotify/me');
-      expect(
-        '16. /auth/spotify/me 未登录 → 401',
-        r.status === 401,
-        `实际 ${r.status}`,
-      );
+      expect('16. /auth/spotify/me 未登录 → 401', r.status === 401, `实际 ${r.status}`);
     }
 
     // ── 17. GET /auth/logout?provider=deezer → 200 noop ────────────
     {
       const r = await call('GET', '/auth/logout?provider=deezer');
-      expect(
-        '17. /auth/logout?provider=deezer → 200 noop',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('17. /auth/logout?provider=deezer → 200 noop', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { success?: boolean; noop?: boolean };
       expect(
         '17b. /auth/logout deezer 返回 success=true + noop=true',
@@ -329,11 +261,7 @@ async function main() {
     // ── 18. GET /auth/status?provider=deezer → 200 loggedIn=true ───
     {
       const r = await call('GET', '/auth/status?provider=deezer');
-      expect(
-        '18. /auth/status?provider=deezer → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('18. /auth/status?provider=deezer → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { provider?: string; loggedIn?: boolean };
       expect(
         '18b. /auth/status deezer loggedIn=true',
@@ -345,11 +273,7 @@ async function main() {
     // ── 19. GET /auth/status?provider=qq 未登录 → 200 loggedIn=false ─
     {
       const r = await call('GET', '/auth/status?provider=qq');
-      expect(
-        '19. /auth/status?provider=qq 未登录 → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('19. /auth/status?provider=qq 未登录 → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { provider?: string; loggedIn?: boolean };
       expect(
         '19b. /auth/status qq loggedIn=false',
@@ -361,11 +285,7 @@ async function main() {
     // ── 20. GET /auth/status?provider=qq&extended=1 → 200 带 lastValidatedAt ─
     {
       const r = await call('GET', '/auth/status?provider=qq&extended=1');
-      expect(
-        '20. /auth/status?provider=qq&extended=1 → 200',
-        r.status === 200,
-        `实际 ${r.status}`,
-      );
+      expect('20. /auth/status?provider=qq&extended=1 → 200', r.status === 200, `实际 ${r.status}`);
       const json = r.json as { lastValidatedAt?: unknown };
       expect(
         '20b. /auth/status extended 带 lastValidatedAt 字段',
@@ -387,31 +307,19 @@ async function main() {
     // ── 22. POST /auth/qq/cookie 缺 cookie → 400 ───────────────────
     {
       const r = await call('POST', '/auth/qq/cookie', {});
-      expect(
-        '22. /auth/qq/cookie 缺 cookie → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('22. /auth/qq/cookie 缺 cookie → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 23. POST /auth/netease/cookie 缺 musicU → 400 ──────────────
     {
       const r = await call('POST', '/auth/netease/cookie', {});
-      expect(
-        '23. /auth/netease/cookie 缺 musicU → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('23. /auth/netease/cookie 缺 musicU → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 24. POST /auth/spotify/client-id 缺 clientId → 400 ─────────
     {
       const r = await call('POST', '/auth/spotify/client-id', {});
-      expect(
-        '24. /auth/spotify/client-id 缺 clientId → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('24. /auth/spotify/client-id 缺 clientId → 400', r.status === 400, `实际 ${r.status}`);
     }
 
     // ── 25. POST /auth/event 缺 outcome → 400 ──────────────────────
@@ -421,11 +329,7 @@ async function main() {
         attemptId: 'a1',
         durationMs: 100,
       });
-      expect(
-        '25. /auth/event 缺 outcome → 400',
-        r.status === 400,
-        `实际 ${r.status}`,
-      );
+      expect('25. /auth/event 缺 outcome → 400', r.status === 400, `实际 ${r.status}`);
     }
   } finally {
     await app.close();

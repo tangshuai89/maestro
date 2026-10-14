@@ -57,9 +57,7 @@ export class StorageService {
       fs.chmodSync(this.file, 0o600);
     } catch (err) {
       // Windows 或只读盘上 chmod 可能失败——日志降级到 debug，不阻塞写。
-      this.logger.debug(
-        `storage chmod 0o600 skipped: ${(err as Error).message}`,
-      );
+      this.logger.debug(`storage chmod 0o600 skipped: ${(err as Error).message}`);
     }
   }
 
@@ -179,7 +177,7 @@ function mergeProviderState(existing: unknown, incoming: unknown): unknown {
   if (!isObj(existing)) return incoming;
   return {
     // Existing queue wins (the live one is more current than a backup's).
-    queue: Array.isArray(existing.queue) ? existing.queue : incoming.queue ?? [],
+    queue: Array.isArray(existing.queue) ? existing.queue : (incoming.queue ?? []),
     liked: unionArray(existing.liked, incoming.liked),
     disliked: unionArray(existing.disliked, incoming.disliked),
   };

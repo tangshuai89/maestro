@@ -13,17 +13,13 @@
  */
 export {};
 const assert = require('node:assert');
-const {
-  normalizeKey,
-  displayKey,
-  stripParensContent,
-  stripTrailingMeta,
-} = require('./normalizer');
+const { normalizeKey, displayKey, stripParensContent, stripTrailingMeta } = require('./normalizer');
 
 let passed = 0;
 let failed = 0;
 function check(label: string, actual: unknown, expected: unknown) {
-  const ok = JSON.stringify(actual) === JSON.stringify(expected) ||
+  const ok =
+    JSON.stringify(actual) === JSON.stringify(expected) ||
     (typeof actual === 'number' && actual === expected);
   if (ok) {
     console.log(`✅ ${label}`);

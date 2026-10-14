@@ -3,6 +3,7 @@
 ## 做什么
 
 把 Spotify 作为第四个音乐源接入：
+
 - 登录：OAuth PKCE（不需要 client secret，纯前端友好的标准流程）
 - 搜索：Web API `/v1/search`
 - 播放：Web API `/v1/tracks/{id}` → preview_url（30s 预览，同 Deezer 限制）
@@ -108,7 +109,7 @@ GET  /api/music/stream/spotify/{trackId}
 - **SDK 宿主**：同一个 renderer window（不另开隐藏 BrowserWindow）。
   `index.html` defer 加载 `https://sdk.scdn.co/spotify-player.js`。
 - **token 桥**：新增 `GET /auth/spotify/token`，返回 `{ accessToken, expiresAt,
-  tier }`；server 自动 refresh 过期 token。renderer 把 accessToken 喂给 SDK，
+tier }`；server 自动 refresh 过期 token。renderer 把 accessToken 喂给 SDK，
   SDK 自管 WebSocket 续连；renderer 用 expiresAt 提前 60s 重拉 + reconnect。
 - **tier 缓存**：`exchangeCode` 时多查一次 `/v1/me` 读 `product` 字段，缓存到
   `session.spotify.tier`（premium/free/open）。新增 `GET /auth/spotify/me` +
@@ -187,7 +188,7 @@ electron-builder 会重组包 + macOS codesign，把 castLabs 原始 VMP 签名�
 ### 可在本环境自动验证
 
 - [x] `like()` → `PUT /v1/me/library?uris=spotify:track:{id}`，header 带 Bearer
-  （旧 `PUT /v1/me/tracks` body `{ids:[trackId]}` 已 deprecate；spec 已更新到新端点）
+      （旧 `PUT /v1/me/tracks` body `{ids:[trackId]}` 已 deprecate；spec 已更新到新端点）
 - [x] `unlike()` → `DELETE /v1/me/library?uris=spotify:track:{id}` 同上
 - [x] `like()` 遇非 2xx（401 等）→ `success:false` 不抛
 - [x] `getValidTokenForRenderer`：无 session → null；有效 → 透传 accessToken + tier

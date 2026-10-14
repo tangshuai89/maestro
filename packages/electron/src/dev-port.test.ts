@@ -52,7 +52,10 @@ async function main(): Promise<void> {
     try {
       const port = await waitForDevPort(30, 1, () => null);
       assert.strictEqual(port, devPort(), '超时回退到 devPort() 兜底值');
-      assert.ok(warns.some((w) => w.includes('超时')), '超时必须有 warn 提示');
+      assert.ok(
+        warns.some((w) => w.includes('超时')),
+        '超时必须有 warn 提示',
+      );
     } finally {
       console.warn = origWarn;
     }

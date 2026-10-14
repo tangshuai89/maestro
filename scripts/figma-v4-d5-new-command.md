@@ -5,6 +5,7 @@
 构建脚本：`scripts/figma-aether-v4-components-d5.js`（2 段 SEG1 + SEG2）
 注入器：`scripts/figma-code-connect-inject.mjs`（TBD-FIGMA → 真实 nodeId）
 验收工具：
+
 - `scripts/figma-v4-smoke-d5-new.mjs`（mock 端到端）
 - `scripts/figma-code-connect-validate.mjs --strict`（110/110 验收）
 - `scripts/figma-aether-v4-audit.mjs`（跑 v4 原 23/25 基线，确认 D5_NEW 不破坏）
@@ -16,18 +17,19 @@
 占位映射全部替换为真实 nodeId。
 
 10 个 set / 28 变体：
-| # | figmaComponent | 变体 | 变体数 | React |
-|---|---|---|---|---|
-| 1 | `Modal/Shell` | `state=default` | 1 | `Modal` |
-| 2 | `Modal/ErrorPanel` | `state=collapsed/expanded` | 2 | `ErrorPanel` |
-| 3 | `Modal/RecoLoading` | `state=loading/error` | 2 | `RecoLoading` |
-| 4 | `SourceChip` | `platform=qq/netease/deezer/spotify` | 4 | `SourceChip` |
-| 5 | `Layout/QualityMenu` | `quality=standard/high/lossless` | 3 | `QualityMenu` |
-| 6 | `Layout/SourceMenu` | `provider=qq/netease/deezer/spotify` | 4 | `SourceMenu` |
-| 7 | `Layout/DeezerPresetSelect` | `state=default/hover/open` | 3 | `DeezerPresetSelect` |
-| 8 | `Screen/SourceSelect` | `state=empty/ready` | 2 | `SourceSelect` |
-| 9 | `Titlebar` | `state=logged-out/logged-in/logging-in` | 3 | `Titlebar` |
-| 10 | `Modal/NeteaseCookie` | `state=empty/qr-shown/cookie-paste/submitting` | 4 | `NeteaseCookieModal` |
+
+| #   | figmaComponent              | 变体                                           | 变体数 | React                |
+| --- | --------------------------- | ---------------------------------------------- | ------ | -------------------- |
+| 1   | `Modal/Shell`               | `state=default`                                | 1      | `Modal`              |
+| 2   | `Modal/ErrorPanel`          | `state=collapsed/expanded`                     | 2      | `ErrorPanel`         |
+| 3   | `Modal/RecoLoading`         | `state=loading/error`                          | 2      | `RecoLoading`        |
+| 4   | `SourceChip`                | `platform=qq/netease/deezer/spotify`           | 4      | `SourceChip`         |
+| 5   | `Layout/QualityMenu`        | `quality=standard/high/lossless`               | 3      | `QualityMenu`        |
+| 6   | `Layout/SourceMenu`         | `provider=qq/netease/deezer/spotify`           | 4      | `SourceMenu`         |
+| 7   | `Layout/DeezerPresetSelect` | `state=default/hover/open`                     | 3      | `DeezerPresetSelect` |
+| 8   | `Screen/SourceSelect`       | `state=empty/ready`                            | 2      | `SourceSelect`       |
+| 9   | `Titlebar`                  | `state=logged-out/logged-in/logging-in`        | 3      | `Titlebar`           |
+| 10  | `Modal/NeteaseCookie`       | `state=empty/qr-shown/cookie-paste/submitting` | 4      | `NeteaseCookieModal` |
 
 > 失败原子性：use_figma 出错时整段不执行、文件无残留；脚本里 `clearOld(setName)` 幂等，
 > 改后重跑该段即可（旧同名 set 先删后建）。
@@ -60,18 +62,20 @@ node scripts/figma-v4-smoke-d5-new.mjs
 
 ## Step 3 — 喂 use_figma（2 次调用）
 
-| 步骤 | SEG | 目标 page | 内容 | 完成后验证 |
-|---|---|---|---|---|
-| D5_NEW-1 | SEG1 | 02 · Components | Modal/Shell + ErrorPanel + RecoLoading + SourceChip + QualityMenu（5 set / 12 变体） | 02 页底部 y=4400 起新 5 个 set |
+| 步骤     | SEG  | 目标 page       | 内容                                                                                         | 完成后验证                        |
+| -------- | ---- | --------------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
+| D5_NEW-1 | SEG1 | 02 · Components | Modal/Shell + ErrorPanel + RecoLoading + SourceChip + QualityMenu（5 set / 12 变体）         | 02 页底部 y=4400 起新 5 个 set    |
 | D5_NEW-2 | SEG2 | 02 · Components | SourceMenu + DeezerPresetSelect + SourceSelect + Titlebar + NeteaseCookie（5 set / 16 变体） | 02 页 y=4400 + y=5760 续 5 个 set |
 
 参数：
+
 - `currentPage` 不需要手切（脚本内 `setCurrentPageAsync` 自定位 `02 · Components`）
 - `code` 参数 = `scripts/figma-aether-v4-components-d5.js` 里 `SEG1` / `SEG2`
   模板字符串内容（去掉外层 `` ` `` 包装）
 - 每段预计 30s ~ 1min 内完成；如超时 60s 大概率撞沙箱 50KB 限制，分段重跑
 
 每次返回格式：
+
 ```json
 {
   "createdNodeIds": ["I1:...", "I2:...", ...],
@@ -105,6 +109,7 @@ node scripts/figma-code-connect-inject.mjs \
 ```
 
 注入器会：
+
 1. 按顺序配对 `--ids` 与 `--names`
 2. 在 `figma-code-connect.json` 的 `mappings[]` 里找到 `figmaNodeId === 'TBD-FIGMA'`
    且 `figmaComponent === <name>` 的项

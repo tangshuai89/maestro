@@ -16,10 +16,7 @@ import { createHash, createCipheriv, randomBytes } from 'crypto';
 // ag-1 请求加密 key（AES-128-GCM，16B）
 const REQUEST_KEY = Buffer.from('bd305f10d0ff74b6ef54dab835b5e1cf', 'hex');
 // ag-1 响应解密 key（循环 XOR，21B）
-const RESPONSE_KEY = Buffer.from(
-  '7a3f8c1d5e9b2f0a6c4d7e8b1f3a5c9d0e2b6f4a81',
-  'hex',
-);
+const RESPONSE_KEY = Buffer.from('7a3f8c1d5e9b2f0a6c4d7e8b1f3a5c9d0e2b6f4a81', 'hex');
 const IV_LEN = 12;
 const TAG_LEN = 16;
 
@@ -66,17 +63,14 @@ export function zzcSign(payload: string): string {
   for (const i of part2Indexes) part2 += hash[i];
 
   const scramble = [
-    89, 39, 179, 150, 218, 82, 58, 252, 177, 52, 186, 123, 120, 64, 242, 133,
-    143, 161, 121, 179,
+    89, 39, 179, 150, 218, 82, 58, 252, 177, 52, 186, 123, 120, 64, 242, 133, 143, 161, 121, 179,
   ];
   const part3 = new Uint8Array(scramble.length);
   for (let i = 0; i < scramble.length; i++) {
     const hv = parseInt(hash.slice(i * 2, i * 2 + 2), 16);
     part3[i] = scramble[i] ^ hv;
   }
-  const midPart = Buffer.from(part3)
-    .toString('base64')
-    .replace(/[/+=]/g, '');
+  const midPart = Buffer.from(part3).toString('base64').replace(/[/+=]/g, '');
 
   return ('zzc' + part1 + midPart + part2).toLowerCase();
 }

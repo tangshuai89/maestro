@@ -61,15 +61,33 @@ class DummySocket extends EventEmitter {
   remoteAddress = '127.0.0.1';
   remotePort = 12345;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  write(_b?: any, _e?: any, cb?: () => void): boolean { if (cb) cb(); return true; }
+  write(_b?: any, _e?: any, cb?: () => void): boolean {
+    if (cb) cb();
+    return true;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  end(_b?: any, _e?: any, cb?: () => void): DummySocket { if (cb) cb(); return this; }
-  destroy(): void { /* no-op */ }
-  unref(): this { return this; }
-  ref(): this { return this; }
-  setKeepAlive(): this { return this; }
-  setNoDelay(): this { return this; }
-  setTimeout(): this { return this; }
+  end(_b?: any, _e?: any, cb?: () => void): DummySocket {
+    if (cb) cb();
+    return this;
+  }
+  destroy(): void {
+    /* no-op */
+  }
+  unref(): this {
+    return this;
+  }
+  ref(): this {
+    return this;
+  }
+  setKeepAlive(): this {
+    return this;
+  }
+  setNoDelay(): this {
+    return this;
+  }
+  setTimeout(): this {
+    return this;
+  }
 }
 
 /**
@@ -87,7 +105,11 @@ function makeReq(
   body: string | undefined,
 ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
 any {
-  const dummyReq = new Readable({ read() { /* drain */ } });
+  const dummyReq = new Readable({
+    read() {
+      /* drain */
+    },
+  });
   const req: // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any = dummyReq;
   req.method = method;
@@ -116,8 +138,9 @@ any {
  * The 'request' listener registered by NestJS's http adapter.
  * It's the express app's `(req, res, next) => void` function.
  */
-type RequestHandler = // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(req: any, res: any) => void;
+type RequestHandler =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (req: any, res: any) => void;
 
 /**
  * Send a request through the express handler and collect the response.
@@ -173,9 +196,7 @@ export function inProcessRequest(
             try {
               return JSON.parse(text);
             } catch {
-              throw new Error(
-                `Not JSON: ${text.slice(0, 200)}${text.length > 200 ? '…' : ''}`,
-              );
+              throw new Error(`Not JSON: ${text.slice(0, 200)}${text.length > 200 ? '…' : ''}`);
             }
           },
           text: () => text,
@@ -205,8 +226,10 @@ export function inProcessRequest(
  * http.Server. The handler is the single 'request' listener that
  * platform-express registers.
  */
-export function getRequestHandlerFromNestApp(app: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-any): RequestHandler {
+export function getRequestHandlerFromNestApp(
+  app: // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+): RequestHandler {
   const server = app.getHttpServer();
   const listeners = server.listeners('request') as RequestHandler[];
   if (listeners.length === 0) {

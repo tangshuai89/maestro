@@ -704,7 +704,6 @@ hint.letterSpacing = (/** @type {LetterSpacing} */ ({ value: 1, unit: 'PIXELS' }
 return { createdNodeIds: created, screen: 'Screen/SourceSelect' };
 `;
 
-
 // ============ SEG4: 降级态屏幕（NoLyrics / TrialFallback / RecoUnconfigured） ============
 const SEG4 = `
 const page = figma.root.children.find(p => p.type === 'PAGE' && p.name === '03 · Screens') || figma.currentPage;

@@ -43,10 +43,7 @@ const fakeStorage = {
 
 // QQ 已登录并有两首红心；其余平台未登录（importLiked 内部会记 error，不阻塞）。
 const qq = {
-  fetchLiked: async () => [
-    makeLikedTrack('q1', '晴天', 'MM_q1'),
-    makeLikedTrack('q2', '稻香'),
-  ],
+  fetchLiked: async () => [makeLikedTrack('q1', '晴天', 'MM_q1'), makeLikedTrack('q2', '稻香')],
 };
 const netease = {};
 const deezer = {};
@@ -70,12 +67,7 @@ const likeSync = {
   enqueue: () => {},
   pendingTargets: () => [],
 };
-const lyricsService = new LyricsService(
-  netease as any,
-  deezer as any,
-  qq as any,
-  lyricsOvh as any,
-);
+const lyricsService = new LyricsService(netease as any, deezer as any, qq as any, lyricsOvh as any);
 
 const svc = new MusicService(
   fakeStorage,
@@ -103,8 +95,7 @@ async function main() {
   assert.ok(captured.tracks && captured.tracks.length === 2, '应导入 2 首');
   for (const t of captured.tracks!) {
     assert.ok(
-      typeof t.audioUrl === 'string' &&
-        t.audioUrl.startsWith('/music/stream/qq/'),
+      typeof t.audioUrl === 'string' && t.audioUrl.startsWith('/music/stream/qq/'),
       `mergeLibrary 收到的 audioUrl 应是代理路径，实际: "${t.audioUrl}"`,
     );
   }
@@ -156,10 +147,7 @@ async function importTimeoutRegression() {
   };
   // 正常的 QQ——返回两条
   const okQq = {
-    fetchLiked: async () => [
-      makeLikedTrack('q1', '晴天'),
-      makeLikedTrack('q2', '稻香'),
-    ],
+    fetchLiked: async () => [makeLikedTrack('q1', '晴天'), makeLikedTrack('q2', '稻香')],
   };
   const svc2 = new MusicService(
     fakeStorage,
@@ -186,10 +174,7 @@ async function importTimeoutRegression() {
   const elapsed = Date.now() - t0;
 
   // 1. 在合理时间内返回（30s 超时 + 5s 余量）
-  assert.ok(
-    elapsed <=  35_000,
-    `import 必须在 ≤35s 内返回；实测 ${elapsed}ms`,
-  );
+  assert.ok(elapsed <= 35_000, `import 必须在 ≤35s 内返回；实测 ${elapsed}ms`);
   console.log(`✅ 4. importLiked 在 hang 下 ${elapsed}ms 内 resolve（≤ 35s）`);
 
   // 2. NetEase sources[].error='timeout'，count=0

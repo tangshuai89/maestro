@@ -72,8 +72,7 @@ async function main() {
     svc.persistSpotify(s.id, livePS);
 
     const after = svc.getProvider(s, 'spotify');
-    assert.strictEqual(after?.spotify?.accessToken, 'new',
-      '同一引用 → 写入新 token 应成功');
+    assert.strictEqual(after?.spotify?.accessToken, 'new', '同一引用 → 写入新 token 应成功');
     console.log('✅ T7.E1.1 同一 ProviderSession 引用 → 写入成功');
   }
 
@@ -83,15 +82,28 @@ async function main() {
     s.providers.spotify = stalePS;
 
     // 模拟登出再重登：s.providers.spotify 现在是另一个对象（livePS2）
-    const livePS2: any = { spotify: { accessToken: 'fresh-from-login', refreshToken: 'r2-new', expiresAt: Date.now() + 3600_000 } };
+    const livePS2: any = {
+      spotify: {
+        accessToken: 'fresh-from-login',
+        refreshToken: 'r2-new',
+        expiresAt: Date.now() + 3600_000,
+      },
+    };
     s.providers.spotify = livePS2;
 
-    const staleTok = { accessToken: 'STALE-FROM-OLD-REFRESH', refreshToken: 'r2', expiresAt: Date.now() + 7200_000 };
+    const staleTok = {
+      accessToken: 'STALE-FROM-OLD-REFRESH',
+      refreshToken: 'r2',
+      expiresAt: Date.now() + 7200_000,
+    };
     svc.persistSpotify(s.id, { ...stalePS, spotify: staleTok });
 
     const after = svc.getProvider(s, 'spotify');
-    assert.strictEqual(after?.spotify?.accessToken, 'fresh-from-login',
-      'stale 写入被丢弃 — s.providers.spotify 仍是 fresh-from-login');
+    assert.strictEqual(
+      after?.spotify?.accessToken,
+      'fresh-from-login',
+      'stale 写入被丢弃 — s.providers.spotify 仍是 fresh-from-login',
+    );
     assert.strictEqual(after, livePS2, 'live 对象仍是 livePS2（没被覆盖）');
     console.log('✅ T7.E1.2 不同引用（重登）→ stale 写入被丢弃');
   }

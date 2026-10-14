@@ -33,14 +33,14 @@ AI_CONTRACT:
 
 ## 2. 范围
 
-| 工作 | 文件 | 类型 |
-|---|---|---|
-| AI CONTRACT 模板标准 | `specs/d6-description-template/template.md` | 新 |
-| D6 spec + tasks | `specs/d6-description-template/{spec,tasks}.md` | 新 |
-| Audit 校验脚本（REST 模式 + fixture 模式） | `scripts/figma-aether-v4-audit-d6.mjs` | 新 |
-| v4-command.md 加 description 强制段 | `scripts/figma-v4-command.md` | 改 |
-| CI 集成 | `package.json` | 改 |
-| D1 6 屏 description 已合规（验证） | — | — |
+| 工作                                       | 文件                                            | 类型 |
+| ------------------------------------------ | ----------------------------------------------- | ---- |
+| AI CONTRACT 模板标准                       | `specs/d6-description-template/template.md`     | 新   |
+| D6 spec + tasks                            | `specs/d6-description-template/{spec,tasks}.md` | 新   |
+| Audit 校验脚本（REST 模式 + fixture 模式） | `scripts/figma-aether-v4-audit-d6.mjs`          | 新   |
+| v4-command.md 加 description 强制段        | `scripts/figma-v4-command.md`                   | 改   |
+| CI 集成                                    | `package.json`                                  | 改   |
+| D1 6 屏 description 已合规（验证）         | —                                               | —    |
 
 ## 3. 不在 D6 范围
 
@@ -59,6 +59,7 @@ AI_CONTRACT:
 ## 5. Audit 检查项（audit-d6.mjs 实现细节）
 
 对 Figma 文件每个节点（按 type 过滤）：
+
 1. **类型白名单**：`COMPONENT_SET` / `COMPONENT` / 顶层 `FRAME`（name 以 `Screen/` 开头或 `README` / `Archive` / `MOTION SPEC`）
 2. **description 非空**（`m.description` 存在且 length > 50）
 3. **AI CONTRACT 段存在**：用正则 `---[\s\S]*?AI_CONTRACT:[\s\S]*?---`

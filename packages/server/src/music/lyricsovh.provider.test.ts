@@ -71,9 +71,7 @@ async function main() {
 
   // ── 4. 命中：单行歌词 → LyricLine[]，time=0 ─────────────────
   {
-    installFetch(
-      () => ({ ok: true, json: async () => ({ lyrics: 'We will rock you' }) }),
-    );
+    installFetch(() => ({ ok: true, json: async () => ({ lyrics: 'We will rock you' }) }));
     const r = await prov.getLyrics('Queen', 'We Will Rock You');
     assert.ok(r, '应返回非 null');
     assert.strictEqual(r!.length, 1);
@@ -93,7 +91,10 @@ async function main() {
     assert.strictEqual(r![0].text, 'line one');
     assert.strictEqual(r![1].text, 'line two');
     assert.strictEqual(r![2].text, 'line three');
-    assert.ok(r!.every((l: any) => l.time === 0), '所有行 time=0');
+    assert.ok(
+      r!.every((l: any) => l.time === 0),
+      '所有行 time=0',
+    );
     restoreFetch();
     console.log('✅ 5. 命中：多行歌词 → 拆分、trim、过滤空行');
   }
@@ -127,9 +128,7 @@ async function main() {
 
   // ── 9. lyrics = "" → null（过滤后无行）──────────────────────
   {
-    installFetch(
-      () => ({ ok: true, json: async () => ({ lyrics: '' }) }),
-    );
+    installFetch(() => ({ ok: true, json: async () => ({ lyrics: '' }) }));
     const r = await prov.getLyrics('Artist', 'Song');
     assert.strictEqual(r, null, '空字符串 lyrics 应返回 null');
     restoreFetch();
@@ -138,22 +137,14 @@ async function main() {
 
   // ── 10. URL 编码：特殊字符 → encodeURIComponent 生效 ────────
   {
-    installFetch(
-      () => ({ ok: true, json: async () => ({ lyrics: 'x' }) }),
-    );
+    installFetch(() => ({ ok: true, json: async () => ({ lyrics: 'x' }) }));
     await prov.getLyrics('AC/DC', 'We Will Rock You');
     assert.strictEqual(fetchCalls.length, 1);
     const url = fetchCalls[0];
     // encodeURIComponent('AC/DC') = 'AC%2FDC'
-    assert.ok(
-      url.includes('AC%2FDC'),
-      `URL 应含编码后的 artist，实际 ${url}`,
-    );
+    assert.ok(url.includes('AC%2FDC'), `URL 应含编码后的 artist，实际 ${url}`);
     // encodeURIComponent('We Will Rock You') = 'We%20Will%20Rock%20You'
-    assert.ok(
-      url.includes('We%20Will%20Rock%20You'),
-      `URL 应含编码后的 title，实际 ${url}`,
-    );
+    assert.ok(url.includes('We%20Will%20Rock%20You'), `URL 应含编码后的 title，实际 ${url}`);
     restoreFetch();
     console.log('✅ 10. URL 编码：特殊字符 → encodeURIComponent 生效');
   }
@@ -167,10 +158,7 @@ async function main() {
     const r = await prov.getLyrics('Artist', 'Song');
     const elapsed = Date.now() - start;
     assert.strictEqual(r, null, '挂起的 fetch 应在超时后返回 null');
-    assert.ok(
-      elapsed >= 4500 && elapsed < 7000,
-      `应等待约 5s，实际 ${elapsed}ms`,
-    );
+    assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
     restoreFetch();
     console.log(`✅ 11. 超时：fetch 永不 resolve → null（${elapsed}ms）`);
   }

@@ -10,6 +10,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 ## Layout Components
 
 ## Titlebar
+
 - Source: `components/layout/Titlebar.tsx`
 - Category: layout
 - Description: Fixed 40px top window bar (macOS drag region): source switch, provider controls (deezer preset / search / reco / liked), quality menu, login/account, settings, reset.
@@ -17,6 +18,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: emoji icons (🔍 🎲 ❤ ⚙ ↺), Chinese tooltips/labels, `.titlebar-btn` CSS classes, liked-count badge logic (999+ cap)
 
 ## SourceMenu
+
 - Source: `components/layout/SourceMenu.tsx`
 - Category: layout
 - Description: Source-switch pill + dropdown menu (4 platforms), owns its own open state with fixed backdrop.
@@ -24,6 +26,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: SELECTABLE list (qq/netease/deezer/spotify), PROVIDER_LABELS text, ⇄ icon, ✓ check mark, `.source-menu*` CSS classes
 
 ## QualityMenu
+
 - Source: `components/layout/QualityMenu.tsx`
 - Category: layout
 - Description: Stream-quality dropdown (standard/high/lossless), right-aligned so it doesn't overflow the window.
@@ -31,6 +34,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: QUALITIES list, QQ_QUALITY_LABELS text, ✓ check, `.source-menu*` shared CSS
 
 ## DeezerPresetSelect
+
 - Source: `components/layout/DeezerPresetSelect.tsx`
 - Category: layout
 - Description: Native `<select>` for Deezer editorial charts; maps display names to preset codes.
@@ -38,6 +42,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: PRESET_CODES name→code map (All/亚洲流行/国际流行/说唱/摇滚/舞曲/R&B/古典/爵士), `.preset-select` CSS
 
 ## SourceSelect
+
 - Source: `components/source-select/SourceSelect.tsx`
 - Category: layout
 - Description: First-run full-window source picker: centred heading + 4 glass cards with brand-tinted logo tiles.
@@ -49,6 +54,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 ## Basic Components
 
 ## Modal
+
 - Source: `components/common/Modal.tsx`
 - Category: basic
 - Description: Shared overlay + frosted-dark panel shell; scrim-click closes, panel clicks stopped.
@@ -56,6 +62,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: `.modal-overlay` / `.modal-panel` CSS, scrim color, 540px default width
 
 ## ErrorPanel
+
 - Source: `components/common/ErrorPanel.tsx`
 - Category: basic
 - Description: Collapsible error panel — one-line summary expands to full text with copy + close actions.
@@ -63,6 +70,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: ⚠ icon, ▸/▾ toggle glyphs, Chinese button labels (复制/关闭/已复制 ✓), `.error-*` CSS
 
 ## AuthErrorPanel
+
 - Source: `components/common/AuthErrorPanel.tsx`
 - Category: basic
 - Description: Fixed bottom-center auth-failure recovery panel with typed actions (retry / re-login / paste cookie / switch source / dismiss).
@@ -70,6 +78,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: FRIENDLY error-code→label map (Chinese), button labels, `.auth-error-*` CSS
 
 ## ProgressBar
+
 - Source: `components/player/ProgressBar.tsx`
 - Category: basic
 - Description: Click-to-seek progress row with hover-grown thumb, time codes left, children slot right (volume group).
@@ -77,6 +86,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: formatTime display, `.progress-*` CSS, `--progress` custom property pattern
 
 ## VolumeControl
+
 - Source: `components/player/VolumeControl.tsx`
 - Category: basic
 - Description: Mute toggle + slim range slider; fill fed by `--volume` custom property.
@@ -84,6 +94,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: VolumeIcon SVG, Chinese aria-labels (静音/取消静音), `.volume-*` CSS, 90px slider width
 
 ## VolumeIcon
+
 - Source: `components/player/VolumeIcon.tsx`
 - Category: basic
 - Description: Four-state speaker icon (muted/low/mid/high) as inline SVG, 14×14.
@@ -91,6 +102,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: Material Design icon SVG paths, 14×14 size
 
 ## TransportBar
+
 - Source: `components/player/TransportBar.tsx`
 - Category: basic
 - Description: Bottom transport row: dislike / like (with fan-out ❤ badge) / play-pause (loading spinner) / skip.
@@ -98,6 +110,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: SVG icon paths (X / heart / play / pause / skip / spinner), Chinese tooltips, `.transport-*` / `.control-btn` CSS, 999+ badge logic
 
 ## SourceChip
+
 - Source: `components/search/SourceChip.tsx`
 - Category: basic
 - Description: Tiny platform chip marking a unified result's availability; best source gets brand color + ★, no-rights gets strikethrough.
@@ -113,6 +126,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 > 当前代码无引用，主视图是 `TheaterView`（AETHER 剧场稿）。
 
 ## MbBattleMenu
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-battle-menu` block, inline)
 - Category: pattern
 - Description: Pokémon-style battle menu — symmetric 2×2 color button columns (FIGHT/BAG/PKMN/RUN | prev/next/shuffle/repeat) flanking a mega circular play button; chunky 3D-press buttons (box-shadow offset).
@@ -120,6 +134,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: button labels (FIGHT/BAG/PKMN/RUN), icon SVGs, color variants (red/yellow/green/blue/pink/white), `.mb-menu-*` / `.mb-mega-play` CSS, 1440×900 stage coordinates
 
 ## MbCreatureCard
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-creature-card` block, inline)
 - Category: pattern
 - Description: "Legendary creature" track card — white card, -3° rotation, yellow border, black banner, cover art with shine + holographic overlays, navy nameplate, 2×2 stat bars (HP/ATK/DEF/SPD), element-type badge.
@@ -127,6 +142,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: "LEGENDARY CREATURE" banner, stat labels, TYPE_COLORS map, star icon, `.mb-creature-*` CSS
 
 ## MbHudStats
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-hud-stats` block, inline; `HUDStat` subcomponent)
 - Category: pattern
 - Description: Top-strip HUD — row of circular icon chips (❤⚡🗡🛡) each with a colored fill track; plus sync-bar and bag counter.
@@ -134,6 +150,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: icon set (heart/zap/swords/shield via MbIcon), labels (跨平台红心/播放进度/战斗能量/同步完成度), "Syncing n/4" text, `.mb-hud-*` / `.mb-sync-*` / `.mb-bag` CSS
 
 ## MbRadar
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-radar` block, inline)
 - Category: pattern
 - Description: Animated radar disc half-hanging from the top strip — crosshair rings, conic sweep, blip, "YOU" label.
@@ -141,6 +158,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: ring/sweep/blip styles, "YOU" label, `.mb-radar*` CSS + `mb-radar-spin` keyframes
 
 ## MbSourceBadges
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-source-badges` block, inline)
 - Category: pattern
 - Description: Four 96px circular provider badges (Q/N/D/S) with italic letters, star/heart corner badges, active ring highlight.
@@ -148,6 +166,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: PROVIDER_BADGE map (letters/colors/names), fake heart counts (PROVIDER_HEART_DEFAULT), `.mb-source-badge*` CSS
 
 ## MbBattleDialog
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-battle-dialog` block, inline)
 - Category: pattern
 - Description: Cream rounded dialog showing synced lyrics (prev/current/next lines with blinking ▶ cursor), status pill row (LV/YEAR/TYPE/SOURCE), speaker portrait, half-hanging NEXT button.
@@ -155,6 +174,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: status labels, blinking cursor, red/yellow/green dots, NEXT button, `.mb-battle-*` CSS
 
 ## MbEncounterLog
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-encounter` block, inline)
 - Category: pattern
 - Description: "DEEP.SEEK ENCOUNTER LOG" — red banner + 3-column grid of AI-recommendation mini creature cards (BotAvatar, type, name, match %), yellow footer pill.
@@ -162,6 +182,7 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 - Hardcoded: "#092 · DEEP.SEEK · ENCOUNTER LOG" banner text, empty-state copy, BotAvatar seed derivation, `.mb-encounter-*` / `.mb-mini-card*` CSS
 
 ## MbProgressBar
+
 - Source: 原 `components/views/MonsterBeatsView.tsx`（D2 收敛后已删除——见 PART 头部说明；`mb-progress` block, inline)
 - Category: pattern
 - Description: Bottom full-width seek bar — navy pill, yellow border, yellow→orange fill, cream handle, mono time codes.
@@ -171,5 +192,6 @@ Candidates below can be extracted as reusable design components. **Layout** = ch
 ---
 
 ### Notes
+
 - The `MonsterBeatsView` pattern components share one source file and are position-absolute within a fixed 1440×900 scaled stage (`--mb-scale`). Extracting any of them means splitting `components/views/MonsterBeatsView.tsx`; they share helpers `seededFromString`, `deriveStats`, `pickType`, `MbIcon`, `BotAvatar`, and the `$monster-beats` SCSS palette (see `theme.md` Part 1).
 - Legacy unused components (`CoverCard`, `NowPlayingCard`, `LyricsCard`, `LyricsPanel` + their `_cover-card.scss` / `_side-cards.scss` / `_progress.scss` / `_transport.scss` / `_volume.scss` styles) are **not** recommended for extraction — the active player view is MonsterBeatsView.

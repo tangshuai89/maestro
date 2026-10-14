@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type RefObject,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { UseSpotifyWpsPlayer } from './useSpotifyWpsPlayer';
 import {
   fetchNextTrack,
@@ -20,13 +14,7 @@ import {
   reportRecoSignal,
   getAuthStatusValidated,
 } from '../api';
-import type {
-  Track,
-  MusicProvider,
-  QqQuality,
-  UnifiedSearchItem,
-  UnifiedSourceInfo,
-} from '../api';
+import type { Track, MusicProvider, QqQuality, UnifiedSearchItem, UnifiedSourceInfo } from '../api';
 import {
   readStoredProvider,
   writeStoredProvider,
@@ -38,12 +26,7 @@ import {
   readAudioFx,
   writeAudioFx,
 } from '../lib/storage';
-import {
-  EQ_BANDS,
-  applyPreset,
-  clampGain,
-  type AudioFxPrefs,
-} from '../lib/audioFx';
+import { EQ_BANDS, applyPreset, clampGain, type AudioFxPrefs } from '../lib/audioFx';
 import { createEqChain, pushEqGains } from '../lib/eqChain';
 import { useCoverArt } from './useCoverArt';
 import { wpsLog } from '../lib/debug';
@@ -57,7 +40,6 @@ import {
   TRIAL_GAP_SEC,
   parsePlayableQueue,
 } from './usePlayer.helpers.ts';
-
 
 /**
  * The playback core: everything that touches the <audio> element, the Web
@@ -145,9 +127,7 @@ export function usePlayer(
   const qqQualityRef = useRef<QqQuality>(qqQuality);
   qqQualityRef.current = qqQuality;
 
-  const [deezerPreset, setDeezerPreset] = useState<string>(() =>
-    readStoredDeezerPreset(),
-  );
+  const [deezerPreset, setDeezerPreset] = useState<string>(() => readStoredDeezerPreset());
 
   // Search-mode client queue. Non-empty → loadNextTrack advances within the
   // results instead of hitting the server radio. Held in a ref so
@@ -275,8 +255,7 @@ export function usePlayer(
     pushEqGains(eqFiltersRef.current, prefs.eqGains, ctx?.currentTime ?? 0, prefs.eqEnabled);
   }, []);
 
-  const { bgLayerRef, coverBackdropRef, presentCover, presentPlaceholder } =
-    useCoverArt();
+  const { bgLayerRef, coverBackdropRef, presentCover, presentPlaceholder } = useCoverArt();
 
   /**
    * Lazily attach a Web Audio analyser to the live <audio> element.
@@ -301,8 +280,7 @@ export function usePlayer(
     try {
       const Ctor: typeof AudioContext =
         window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext;
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new Ctor();
       const src = mediaSrcRef.current ?? ctx.createMediaElementSource(audioEl);
       mediaSrcRef.current = src;
@@ -349,8 +327,7 @@ export function usePlayer(
     (next: Track, unified?: UnifiedSearchItem) => {
       // 换歌就重置「已试平台」；同一首歌的跨平台降级复用 presentTrack 但要
       // 保留记录（否则 netease→qq 失败后又把 netease 当没试过 → 死循环）。
-      const isNewSong =
-        !unified || unified.id !== currentUnifiedRef.current?.id;
+      const isNewSong = !unified || unified.id !== currentUnifiedRef.current?.id;
       currentUnifiedRef.current = unified;
       setCurrentUnified(unified);
       // 切歌瞬间 fire-and-forget 拉 ❤ 数（覆盖电台路径：电台自动切歌时
@@ -401,7 +378,10 @@ export function usePlayer(
         audioUrl = '';
         wpsLog('presentTrack', `provider=spotify && wpsReady=true → 清空 audioUrl（WPS 全曲接管）`);
       } else if (next.provider === 'spotify') {
-        wpsLog('presentTrack', `provider=spotify 但 wpsReady=${Boolean(wpsRef?.current?.wpsReady)} → 走 30s 预览路径（如果 Premium 但仍卡 30s，看 enabled/wpsReady/connect 日志）`);
+        wpsLog(
+          'presentTrack',
+          `provider=spotify 但 wpsReady=${Boolean(wpsRef?.current?.wpsReady)} → 走 30s 预览路径（如果 Premium 但仍卡 30s，看 enabled/wpsReady/connect 日志）`,
+        );
       }
       if (next.coverUrl) {
         // presentCover reads the ref.current INSIDE its async work, so it
@@ -412,9 +392,7 @@ export function usePlayer(
         // No artwork → generate a stable gradient placeholder from the song
         // identity. Also overwrites the previous track's cover in the blurred
         // bg-layer (which presentCover would otherwise leave stale).
-        presentPlaceholder(
-          next.title || next.artist ? `${next.title}·${next.artist}` : next.id,
-        );
+        presentPlaceholder(next.title || next.artist ? `${next.title}·${next.artist}` : next.id);
       }
       setTrack({ ...next, audioUrl });
       // audioUrl 是最终落到 <audio src={...}> 的 URL（含 API_ORIGIN 前缀、
@@ -518,7 +496,6 @@ export function usePlayer(
     [onAuthExpiredRef],
   );
 
-
   const tryFallbackSource = useCallback(async (): Promise<boolean> => {
     const unified = currentUnifiedRef.current;
     const cur = trackRef.current;
@@ -597,12 +574,9 @@ export function usePlayer(
     //    另一个已知 VIP 锁的源没意义（还是试听），跳过它。Spotify Premium 用户
     //    额外纳入 Spotify 作为有效全曲目标（WPS 解全曲）。
     const fullProviders = getFullSongProviders(spotifyTierRef?.current);
-    const inItem = fullProviders.filter((p) => !tried.has(p))
-      .map((p) =>
-        unified.sources.find(
-          (s) => s.platform === p && s.hasCopyright && !s.vipLocked,
-        ),
-      )
+    const inItem = fullProviders
+      .filter((p) => !tried.has(p))
+      .map((p) => unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked))
       .find((s): s is UnifiedSourceInfo => Boolean(s));
     if (inItem) {
       console.warn(
@@ -630,8 +604,7 @@ export function usePlayer(
         !triedPlatformsRef.current.has(src.platform)
       ) {
         console.warn(
-          `[audio] "${display.title}" 30s 试听，服务端匹配到 ${src.platform} ` +
-            `全曲源，升级`,
+          `[audio] "${display.title}" 30s 试听，服务端匹配到 ${src.platform} ` + `全曲源，升级`,
         );
         presentFallbackSource(src, currentUnifiedRef.current, display);
       }
@@ -659,9 +632,7 @@ export function usePlayer(
     ) {
       forcedStandardRef.current = true;
       // 去掉已有的 q=xxx 再拼 q=standard（复用 changeQuality 的写法）。
-      const base = cur.audioUrl
-        .replace(/[?&]q=[^&]*/, '')
-        .replace(/[?&]$/, '');
+      const base = cur.audioUrl.replace(/[?&]q=[^&]*/, '').replace(/[?&]$/, '');
       const sep = base.includes('?') ? '&' : '?';
       console.warn(
         `[audio] "${cur.title}" 疑似 ${qqQualityRef.current} 音质 VIP 试听，` +
@@ -727,10 +698,7 @@ export function usePlayer(
         // 时生效——refreshLikedStateUntilStable polling 场景）。用户主动翻转
         // ❤ 后 detect 旧响应不应覆盖手动状态。loadNextTrack 切歌场景不传
         // expectedLiked（= null）→ 跳过此守卫，让 detect 服务端结果点亮 ❤。
-        if (
-          expectedLiked !== null &&
-          trackRef.current?.liked !== expectedLiked
-        ) {
+        if (expectedLiked !== null && trackRef.current?.liked !== expectedLiked) {
           return null;
         }
         const count = r.liked ? r.fannedOutTo.length : 0;
@@ -823,36 +791,36 @@ export function usePlayer(
   }, [detectAndApplyLiked]);
 
   /** WPS 连上后重切当前歌——从 30s 预览路径切换到 WPS 全曲路径。 */
-/**
- * 切歌时 fire-and-forget 拉 ❤ 数：
- *   1. 对 unified.sources 里 qq/netease 两个 platform 各调一次 fetchTrackLikeCount
- *   2. 写回 source.likeCount
- *   3. recomputeCrossPlatformLikeTotal 重算派生
- *   4. setCurrentUnified({...item}) 触发 React re-render（HUD 显示新数字）
- * 整体 2s 超时（公开匿名接口通常 <500ms），失败留 undefined，HUD 显示 …。
- */
-async function fillLikeCountForCurrentTrack(
-  item: UnifiedSearchItem,
-  setItem: (next: UnifiedSearchItem | undefined) => void,
-): Promise<void> {
-  const targets = item.sources.filter(
-    (s) => (s.platform === 'qq' || s.platform === 'netease') && !s.likeCount,
-  );
-  if (targets.length === 0) return;
-  const settled = await Promise.allSettled(
-    targets.map(async (s) => {
-      const r = await fetchTrackLikeCount(s.platform as 'qq' | 'netease', s.trackId);
-      if (r) {
-        s.likeCount = r;
-      }
-    }),
-  );
-  // 至少一个成功 → 重算 + 触发 re-render
-  if (settled.some((r) => r.status === 'fulfilled')) {
-    recomputeCrossPlatformLikeTotal(item);
-    setItem({ ...item });
+  /**
+   * 切歌时 fire-and-forget 拉 ❤ 数：
+   *   1. 对 unified.sources 里 qq/netease 两个 platform 各调一次 fetchTrackLikeCount
+   *   2. 写回 source.likeCount
+   *   3. recomputeCrossPlatformLikeTotal 重算派生
+   *   4. setCurrentUnified({...item}) 触发 React re-render（HUD 显示新数字）
+   * 整体 2s 超时（公开匿名接口通常 <500ms），失败留 undefined，HUD 显示 …。
+   */
+  async function fillLikeCountForCurrentTrack(
+    item: UnifiedSearchItem,
+    setItem: (next: UnifiedSearchItem | undefined) => void,
+  ): Promise<void> {
+    const targets = item.sources.filter(
+      (s) => (s.platform === 'qq' || s.platform === 'netease') && !s.likeCount,
+    );
+    if (targets.length === 0) return;
+    const settled = await Promise.allSettled(
+      targets.map(async (s) => {
+        const r = await fetchTrackLikeCount(s.platform as 'qq' | 'netease', s.trackId);
+        if (r) {
+          s.likeCount = r;
+        }
+      }),
+    );
+    // 至少一个成功 → 重算 + 触发 re-render
+    if (settled.some((r) => r.status === 'fulfilled')) {
+      recomputeCrossPlatformLikeTotal(item);
+      setItem({ ...item });
+    }
   }
-}
 
   const refreshTrackForWps = useCallback(() => {
     const cur = trackRef.current;
@@ -917,10 +885,7 @@ async function fillLikeCountForCurrentTrack(
     setLoading(true);
     setError(null);
     try {
-      const next = await fetchNextTrack(
-        startedProvider,
-        startedPreset,
-      );
+      const next = await fetchNextTrack(startedProvider, startedPreset);
       // D4 守护：await 期间 provider / preset 变了 → 旧的 fetchNextTrack 结果
       // 丢弃（让新的 loadNextTrack 自然 presentTrack 正确曲）。
       if (
@@ -987,9 +952,7 @@ async function fillLikeCountForCurrentTrack(
         return;
       }
       q.tracks = [...q.tracks, ...tracks];
-      q.unifiedItems = q.unifiedItems
-        ? [...q.unifiedItems, ...aligned]
-        : aligned;
+      q.unifiedItems = q.unifiedItems ? [...q.unifiedItems, ...aligned] : aligned;
       // idx 不变但 items 引用变了——主动推一版 snapshot 给 reactive consumer。
       setQueueSnapshot({ idx: q.idx, items: q.unifiedItems });
       setError(null);
@@ -1100,8 +1063,7 @@ async function fillLikeCountForCurrentTrack(
         retryAttemptedRef.current = true;
         setTimeout(() => {
           const stillOnTrack =
-            audio.dataset.wantPlay === '1' &&
-            audio.src === currentSrcRef.current;
+            audio.dataset.wantPlay === '1' && audio.src === currentSrcRef.current;
           if (!stillOnTrack) {
             // 用户这期间切歌 / 暂停了 → 不重试，进 fallback
             retryAttemptedRef.current = false;
@@ -1191,9 +1153,7 @@ async function fillLikeCountForCurrentTrack(
       void wps?.pause().catch(() => {});
       wpsPlayedIdRef.current = null;
     }
-    const useWps = Boolean(
-      wps?.wpsReady && track.provider === 'spotify' && track.id,
-    );
+    const useWps = Boolean(wps?.wpsReady && track.provider === 'spotify' && track.id);
     if (useWps && wps) {
       if (playing) {
         audio.dataset.wantPlay = '1';
@@ -1208,17 +1168,21 @@ async function fillLikeCountForCurrentTrack(
           const startedTrackId = track.id;
           // transferHere 失败（设备还没注册完）不阻断 play——play 请求带
           // device_id 参数本身也会激活设备。两边都有 404 退避重试。
-          void wps.transferHere().catch((e: Error) => {
-            wpsLog('transfer-fallback', `transferHere 失败，继续 play：${e.message}`);
-          }).then(() => {
-            // D6：切歌检查。startedTrackId 与 wpsPlayedIdRef 都已设过，
-            // 但 await 期间切歌时 ref 也会被刷新——以 wpsPlayedIdRef 为准。
-            if (wpsPlayedIdRef.current !== startedTrackId) return;
-            return wps.play(uri);
-          }).catch((e: Error) => {
-            console.error('[wps] play() rejected:', e);
-            setError(`WPS 播放失败：${e.message}`);
-          });
+          void wps
+            .transferHere()
+            .catch((e: Error) => {
+              wpsLog('transfer-fallback', `transferHere 失败，继续 play：${e.message}`);
+            })
+            .then(() => {
+              // D6：切歌检查。startedTrackId 与 wpsPlayedIdRef 都已设过，
+              // 但 await 期间切歌时 ref 也会被刷新——以 wpsPlayedIdRef 为准。
+              if (wpsPlayedIdRef.current !== startedTrackId) return;
+              return wps.play(uri);
+            })
+            .catch((e: Error) => {
+              console.error('[wps] play() rejected:', e);
+              setError(`WPS 播放失败：${e.message}`);
+            });
         } else {
           void wps.resume().catch(() => {
             // resume 失败常见于 SDK 内部状态；忽略
@@ -1248,13 +1212,10 @@ async function fillLikeCountForCurrentTrack(
 
   /** WPS → 时间轴桥：App 在 wps.state 变化时调它，把 SDK 上报的位置/时长
    *  喂回 usePlayer 的 currentTime / duration。仅在 WPS 播放 spotify 时用。 */
-  const applyWpsProgress = useCallback(
-    (positionMs: number, durationMs: number) => {
-      setCurrentTime(positionMs / 1000);
-      if (durationMs > 0) setDuration(durationMs / 1000);
-    },
-    [],
-  );
+  const applyWpsProgress = useCallback((positionMs: number, durationMs: number) => {
+    setCurrentTime(positionMs / 1000);
+    if (durationMs > 0) setDuration(durationMs / 1000);
+  }, []);
 
   useEffect(() => {
     let target: HTMLDivElement | null = null;
@@ -1342,9 +1303,7 @@ async function fillLikeCountForCurrentTrack(
       track.audioUrl
     ) {
       pendingSeekRef.current = audio.currentTime; // restore after reload
-      const base = track.audioUrl
-        .replace(/[?&]q=[^&]*/, '')
-        .replace(/[?&]$/, '');
+      const base = track.audioUrl.replace(/[?&]q=[^&]*/, '').replace(/[?&]$/, '');
       const sep = base.includes('?') ? '&' : '?';
       const nextUrl = `${base}${sep}q=${q}`;
       // 同步 onError 的 src 镜像（见 handleTrialDetected 里同款注释）。
@@ -1420,9 +1379,7 @@ async function fillLikeCountForCurrentTrack(
     const t = trackRef.current;
     if (audio && t?.title && t.artist) {
       const dur =
-        Number.isFinite(audio.duration) && audio.duration > 0
-          ? audio.duration
-          : t.duration;
+        Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : t.duration;
       const pct = dur > 0 ? Math.round((audio.currentTime / dur) * 100) : 0;
       if (dur >= 60 && pct < 30) {
         reportRecoSignal({
@@ -1579,12 +1536,7 @@ async function fillLikeCountForCurrentTrack(
     // Single-platform path (radio): 单平台标记不喜欢。
     await dislike(provider, track.id);
     if (
-      !shouldApplyLikeResult(
-        myTicket,
-        startedTrackId,
-        likeTicketRef.current,
-        trackRef.current?.id,
-      )
+      !shouldApplyLikeResult(myTicket, startedTrackId, likeTicketRef.current, trackRef.current?.id)
     ) {
       return;
     }

@@ -46,11 +46,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   else if (hp < 5) [r, g, b] = [x, 0, c];
   else [r, g, b] = [c, 0, x];
   const m = l - c / 2;
-  return [
-    Math.round((r + m) * 255),
-    Math.round((g + m) * 255),
-    Math.round((b + m) * 255),
-  ];
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
 }
 
 /**

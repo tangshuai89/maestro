@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { StorageService } from './storage';
@@ -198,18 +193,11 @@ export class SessionService implements OnModuleDestroy {
     return session;
   }
 
-  getProvider(
-    session: Session,
-    provider: MusicProvider,
-  ): ProviderSession | undefined {
+  getProvider(session: Session, provider: MusicProvider): ProviderSession | undefined {
     return session.providers[provider];
   }
 
-  setProvider(
-    session: Session,
-    provider: MusicProvider,
-    data: ProviderSession,
-  ): void {
+  setProvider(session: Session, provider: MusicProvider, data: ProviderSession): void {
     session.providers[provider] = { ...session.providers[provider], ...data };
     this.persist();
   }
@@ -260,11 +248,7 @@ export class SessionService implements OnModuleDestroy {
     return Number.isFinite(n) ? n : null;
   }
 
-  setLastValidatedAt(
-    session: Session,
-    provider: MusicProvider,
-    ts: number,
-  ): void {
+  setLastValidatedAt(session: Session, provider: MusicProvider, ts: number): void {
     this.setPref(session, `lastValidatedAt:${provider}`, String(ts));
   }
 

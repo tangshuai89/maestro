@@ -41,11 +41,11 @@ const SPOTIFY_CLIENT_ID_KEY = 'secrets:spotify-client-id';
 const SPOTIFY_API = 'https://api.spotify.com/v1';
 const SPOTIFY_ACCOUNTS = 'https://accounts.spotify.com';
 const SPOTIFY_SCOPES = [
-  'user-read-private',     // /v1/me → 拿 product（premium/free）做 WPS 路由
-  'user-read-email',       // 用户名 / 邮箱
-  'user-library-read',     // 读 liked
-  'user-library-modify',   // 写 liked
-  'user-read-playback-state',  // WPS device / playback state
+  'user-read-private', // /v1/me → 拿 product（premium/free）做 WPS 路由
+  'user-read-email', // 用户名 / 邮箱
+  'user-library-read', // 读 liked
+  'user-library-modify', // 写 liked
+  'user-read-playback-state', // WPS device / playback state
   'user-modify-playback-state', // WPS 的 transfer/resume/seek
   // Spotify 官方说 Web Playback SDK 不需要 streaming scope，但实测 2024+ 改版
   // 后 WPS 在建立 WebSocket 时仍会校验该 scope——缺失会立刻触发
@@ -133,9 +133,7 @@ export class SpotifyMusicProvider {
   private resolveClientId(): string | null {
     const fromEnv = process.env.SPOTIFY_CLIENT_ID;
     if (fromEnv) return fromEnv;
-    const stored = this.storage.get<{ clientId?: string }>(
-      SPOTIFY_CLIENT_ID_KEY,
-    );
+    const stored = this.storage.get<{ clientId?: string }>(SPOTIFY_CLIENT_ID_KEY);
     return stored?.clientId ?? null;
   }
 
@@ -144,9 +142,7 @@ export class SpotifyMusicProvider {
   }
 
   /** 读 token，必要时自动 refresh。返回 accessToken（或 null）。 */
-  async getValidAccessToken(
-    session: ProviderSession,
-  ): Promise<string | null> {
+  async getValidAccessToken(session: ProviderSession): Promise<string | null> {
     const tok = this.readToken(session);
     if (!tok) return null;
     if (tok.expiresAt > Date.now() + 30_000) return tok.accessToken;
@@ -155,19 +151,14 @@ export class SpotifyMusicProvider {
   }
 
   /** 把 OAuth 回调拿到的 token 写到 session。 */
-  saveToken(
-    session: ProviderSession,
-    token: SpotifyAccessToken,
-  ): ProviderSession {
+  saveToken(session: ProviderSession, token: SpotifyAccessToken): ProviderSession {
     return {
       ...session,
       spotify: token,
     };
   }
 
-  private readToken(session: ProviderSession | undefined):
-    | SpotifyAccessToken
-    | null {
+  private readToken(session: ProviderSession | undefined): SpotifyAccessToken | null {
     return session?.spotify ?? null;
   }
 
@@ -291,7 +282,11 @@ export class SpotifyMusicProvider {
    * 实际不直接调 accounts.spotify.com，由调用方（controller）拿 authorizeUrl
    * 去 redirect 用户浏览器。
    */
-  startAuth(clientId: string, redirectUri: string, sessionId: string): {
+  startAuth(
+    clientId: string,
+    redirectUri: string,
+    sessionId: string,
+  ): {
     authorizeUrl: string;
     state: string;
   } {
@@ -299,9 +294,7 @@ export class SpotifyMusicProvider {
     // 时 Map 无限增长。检查 200ms 内开销可忽略。
     this.evictExpiredFlows(sessionId);
     const codeVerifier = base64UrlEncode(randomBytes(32));
-    const codeChallenge = base64UrlEncode(
-      sha256(Buffer.from(codeVerifier)),
-    );
+    const codeChallenge = base64UrlEncode(sha256(Buffer.from(codeVerifier)));
     const state = base64UrlEncode(randomBytes(16));
     this.pendingFlows.set(state, {
       codeVerifier,
@@ -330,8 +323,7 @@ export class SpotifyMusicProvider {
     const cutoff = Date.now() - SpotifyMusicProvider.PKCE_TTL_MS;
     for (const [state, flow] of this.pendingFlows) {
       const expired = flow.createdAt < cutoff;
-      const wrongSession =
-        forSessionId !== undefined && flow.sessionId === forSessionId;
+      const wrongSession = forSessionId !== undefined && flow.sessionId === forSessionId;
       if (expired || wrongSession) {
         this.pendingFlows.delete(state);
       }
@@ -397,7 +389,9 @@ export class SpotifyMusicProvider {
     });
     if (!tokenRes.ok) {
       const text = await tokenRes.text().catch(() => '');
-      throw new BadRequestException(`spotify token exchange failed: ${tokenRes.status} ${text.slice(0, 200)}`);
+      throw new BadRequestException(
+        `spotify token exchange failed: ${tokenRes.status} ${text.slice(0, 200)}`,
+      );
     }
     const data = (await tokenRes.json()) as {
       access_token: string;
@@ -525,11 +519,7 @@ export class SpotifyMusicProvider {
 
   // ── 业务接口（MusicProvider 家族） ─────────────────────
 
-  async search(
-    session: ProviderSession,
-    keyword: string,
-    limit = 30,
-  ): Promise<Track[]> {
+  async search(session: ProviderSession, keyword: string, limit = 30): Promise<Track[]> {
     const token = await this.getValidAccessToken(session);
     if (!token) {
       throw new BadRequestException('spotify_not_logged_in');
@@ -560,10 +550,7 @@ export class SpotifyMusicProvider {
    * 这里把 url 直接返回，让 music.service 走 audio proxy 字节代理
    * （这样 Web Audio analyser 才能 CORS-clean 取样）。
    */
-  async getStreamPath(
-    session: ProviderSession,
-    trackId: string,
-  ): Promise<string> {
+  async getStreamPath(session: ProviderSession, trackId: string): Promise<string> {
     const token = await this.getValidAccessToken(session);
     if (!token) throw new BadRequestException('spotify_not_logged_in');
     const res = await fetch(`${SPOTIFY_API}/tracks/${encodeURIComponent(trackId)}`, {
@@ -574,24 +561,16 @@ export class SpotifyMusicProvider {
     }
     const data = (await res.json()) as SpotifyTrack;
     if (!data.preview_url) {
-      throw new BadRequestException(
-        'spotify_no_preview：当前区域或曲目无 30s 预览',
-      );
+      throw new BadRequestException('spotify_no_preview：当前区域或曲目无 30s 预览');
     }
     return data.preview_url;
   }
 
-  async like(
-    session: ProviderSession,
-    trackId: string,
-  ): Promise<{ success: boolean }> {
+  async like(session: ProviderSession, trackId: string): Promise<{ success: boolean }> {
     return this.writeSavedTrack(session, trackId, 'PUT');
   }
 
-  async unlike(
-    session: ProviderSession,
-    trackId: string,
-  ): Promise<{ success: boolean }> {
+  async unlike(session: ProviderSession, trackId: string): Promise<{ success: boolean }> {
     return this.writeSavedTrack(session, trackId, 'DELETE');
   }
 
@@ -683,10 +662,7 @@ export class SpotifyMusicProvider {
    * 30 首"全球流行"热门轨的退路（走 Featured Playlists API）。
    * 用户切到 Spotify 源后立即有 30 首可以连续播。
    */
-  async fetchRadioBatch(
-    session: ProviderSession,
-    count = 30,
-  ): Promise<Track[]> {
+  async fetchRadioBatch(session: ProviderSession, count = 30): Promise<Track[]> {
     const token = await this.getValidAccessToken(session);
     if (!token) return [];
     // 简单：直接搜"top hits global"取前 N 首
@@ -694,15 +670,11 @@ export class SpotifyMusicProvider {
     return res;
   }
 
-  async fetchLiked(
-    session: ProviderSession,
-    maxTracks = 1000,
-  ): Promise<Track[]> {
+  async fetchLiked(session: ProviderSession, maxTracks = 1000): Promise<Track[]> {
     const token = await this.getValidAccessToken(session);
     if (!token) return [];
     const out: Track[] = [];
-    let url: string | null =
-      `${SPOTIFY_API}/me/tracks?limit=${Math.min(50, maxTracks)}`;
+    let url: string | null = `${SPOTIFY_API}/me/tracks?limit=${Math.min(50, maxTracks)}`;
     while (url && out.length < maxTracks) {
       const res: Response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
@@ -762,11 +734,7 @@ export class SpotifyMusicProvider {
 import { randomBytes, createHash } from 'node:crypto';
 
 function base64UrlEncode(buf: Buffer): string {
-  return buf
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function sha256(input: Buffer): Buffer {

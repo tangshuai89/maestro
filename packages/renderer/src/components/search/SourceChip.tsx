@@ -59,17 +59,11 @@ export default function SourceChip({
     <span
       className={`source-chip source-chip--${source.platform}${
         source.hasCopyright ? '' : ' source-chip--no-rights'
-      }${isBest ? ' source-chip--best' : ''}${
-        isPaidAlbum ? ' source-chip--paid-album' : ''
-      }`}
+      }${isBest ? ' source-chip--best' : ''}${isPaidAlbum ? ' source-chip--paid-album' : ''}`}
       title={
         source.hasCopyright
           ? `${PROVIDER_LABELS[source.platform]} · 有版权${isBest ? ' · 推荐' : ''}${
-              isPaidAlbum
-                ? source.vipLocked
-                  ? ' · 数字专辑未购'
-                  : ' · 数字专辑已购'
-                : ''
+              isPaidAlbum ? (source.vipLocked ? ' · 数字专辑未购' : ' · 数字专辑已购') : ''
             }`
           : `${PROVIDER_LABELS[source.platform]} · 无版权`
       }

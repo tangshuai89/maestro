@@ -140,8 +140,10 @@ export function stripTrailingMeta(s: string): string {
   //    ⚠️ 已知边界「Song - 朋友主题曲」会被剥（中间「朋友」无 dash）——这种格式
   //    在真实数据中罕见（曲名带「主题曲」三字的，QQ/网易云惯用括号非 dash），
   //    接受这个边角风险，换取主要场景的 strip 能力。
-  const META_RE =
-    new RegExp(`${DASH}[\\s\\u3000]*[^-\\s\\u3000]*?(?:品牌[主题主題]曲|[主题主題]曲|廣告曲|[广告廣告]曲|插片|片[头頭]曲|片[尾尾]曲|插曲|MV|[电影電影]版|影版|TV版|[电视電視]版|[电视電視][剧劇]版|[网網][剧劇]版|[动画動畫]版|[剧场劇場]版|完整版|[单單]曲版|[录錄]音室版|配[乐樂]版|原[声聲]版|[现场現場]版|[录錄]音版|[试試][听聽]|preview)[\\s\\u3000]*$`, 'i');
+  const META_RE = new RegExp(
+    `${DASH}[\\s\\u3000]*[^-\\s\\u3000]*?(?:品牌[主题主題]曲|[主题主題]曲|廣告曲|[广告廣告]曲|插片|片[头頭]曲|片[尾尾]曲|插曲|MV|[电影電影]版|影版|TV版|[电视電視]版|[电视電視][剧劇]版|[网網][剧劇]版|[动画動畫]版|[剧场劇場]版|完整版|[单單]曲版|[录錄]音室版|配[乐樂]版|原[声聲]版|[现场現場]版|[录錄]音版|[试試][听聽]|preview)[\\s\\u3000]*$`,
+    'i',
+  );
   // 2) 英文/版本 **裸关键词**——dash 后只有版本关键词本身（「Song - Live」
   //    「Song - Remix」），无内容字符。**关键**用于跨平台 LIVE/REMIX 等版本
   //    标签的形式归一：QQ 写「古怪 (Live)」走 `stripVersionTags` 把括号剥成
@@ -149,12 +151,16 @@ export function stripTrailingMeta(s: string): string {
   //    剥成「古怪」。两边落到同一 key。
   //    ⚠️ 故意不包含 `feat\.?`/`featuring`——feat + 协奏人名属
   //    `stripFeatTags` 路径，剥人名而非关键词。
-  const SUFFIX_BARE_RE =
-    new RegExp(`${DASH}[\\s\\u3000]*(?:ver\\.?|version|remix|cover|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\\s\\u3000]*$`, 'i');
+  const SUFFIX_BARE_RE = new RegExp(
+    `${DASH}[\\s\\u3000]*(?:ver\\.?|version|remix|cover|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\\s\\u3000]*$`,
+    'i',
+  );
   // 3) 英文版本/合作尾缀（与旧 stripTrailingVersionSuffix 行为对齐）。
   //    允许中间内容含空格（如「zerokoi ver.」中间的空格）和任意字符。
-  const SUFFIX_RE =
-    new RegExp(`${DASH}[\\s\\u3000]*[^-\\s\\u3000][^]*?\\s*(?:ver\\.?|version|remix|cover|feat\\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\\s\\u3000]*$`, 'i');
+  const SUFFIX_RE = new RegExp(
+    `${DASH}[\\s\\u3000]*[^-\\s\\u3000][^]*?\\s*(?:ver\\.?|version|remix|cover|feat\\.?|featuring|live|edition|edit|mix|acoustic|instrumental|karaoke|ost|soundtrack|theme|deluxe|remaster(?:ed)?|anniversary|single|album|radio|cut)[\\s\\u3000]*$`,
+    'i',
+  );
   // 4) 无意义尾词：「 - the」「 - of」之类（最多剥 3 层）。
   const STOPWORDS = new RegExp(`${DASH}[\\s\\u3000]*(?:the|of|and|a|an)[\\s\\u3000]*$`, 'i');
   let out = s;
@@ -218,18 +224,15 @@ const CJK_PAREN_VERSION_WORDS =
 
 export function stripCjkTranslationParens(s: string): string {
   if (!s) return s;
-  const out = s.replace(
-    /[(（\[【〔]([^)）\]】〕]*)[)）\]】〕]/g,
-    (m, inner: string) => {
-      const t = inner.trim();
-      if (!t) return '';
-      // 去常见标点后必须**全是** CJK 汉字（允许 !?~ 等装饰标点）
-      const bare = t.replace(/[～~!！?？·・、，,。.．:：;；'’"“”]/g, '');
-      if (!/^[\u4e00-\u9fff]+$/u.test(bare)) return m;
-      if (CJK_PAREN_VERSION_WORDS.test(bare)) return m;
-      return '';
-    },
-  );
+  const out = s.replace(/[(（\[【〔]([^)）\]】〕]*)[)）\]】〕]/g, (m, inner: string) => {
+    const t = inner.trim();
+    if (!t) return '';
+    // 去常见标点后必须**全是** CJK 汉字（允许 !?~ 等装饰标点）
+    const bare = t.replace(/[～~!！?？·・、，,。.．:：;；'’"“”]/g, '');
+    if (!/^[\u4e00-\u9fff]+$/u.test(bare)) return m;
+    if (CJK_PAREN_VERSION_WORDS.test(bare)) return m;
+    return '';
+  });
   return out.replace(/\s+/g, ' ').trim();
 }
 

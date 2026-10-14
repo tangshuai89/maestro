@@ -118,26 +118,35 @@ function makeTrack(
 // ── 3d. em-dash / en-dash / 全角 hyphen / 长音号 → 半角 hyphen ─────
 {
   const base = normalizeKey('海阔天空 - Live', 'Beyond');
-  assert.strictEqual(base, normalizeKey('海阔天空 — Live', 'Beyond'),
-    'em-dash (U+2014) 应归一');
-  assert.strictEqual(base, normalizeKey('海阔天空 – Live', 'Beyond'),
-    'en-dash (U+2013) 应归一');
-  assert.strictEqual(base, normalizeKey('海阔天空 ‐ Live', 'Beyond'),
-    'hyphen (U+2010) 应归一');
-  assert.strictEqual(base, normalizeKey('海阔天空 ー Live', 'Beyond'),
-    'katakana 长音号 (U+30FC) 应归一');
+  assert.strictEqual(base, normalizeKey('海阔天空 — Live', 'Beyond'), 'em-dash (U+2014) 应归一');
+  assert.strictEqual(base, normalizeKey('海阔天空 – Live', 'Beyond'), 'en-dash (U+2013) 应归一');
+  assert.strictEqual(base, normalizeKey('海阔天空 ‐ Live', 'Beyond'), 'hyphen (U+2010) 应归一');
+  assert.strictEqual(
+    base,
+    normalizeKey('海阔天空 ー Live', 'Beyond'),
+    'katakana 长音号 (U+30FC) 应归一',
+  );
   console.log('✅ 3d. 横线类符号归一（5 种 dash 形式）');
 }
 
 // ── 3e. 智能引号 → 直引号 ──────────────────────────────────
 {
   const base = normalizeKey("海阔天空 'Live'", 'Beyond');
-  assert.strictEqual(base, normalizeKey('海阔天空 \u2018Live\u2019', 'Beyond'),
-    "U+2018/U+2019 单弯引号应归一");
-  assert.strictEqual(base, normalizeKey('海阔天空 \u201CLive\u201D', 'Beyond'),
-    'U+201C/U+201D 双弯引号应归一');
-  assert.strictEqual(base, normalizeKey('海阔天空 \u300CLive\u300D', 'Beyond'),
-    '日式直角引号「」应归一');
+  assert.strictEqual(
+    base,
+    normalizeKey('海阔天空 \u2018Live\u2019', 'Beyond'),
+    'U+2018/U+2019 单弯引号应归一',
+  );
+  assert.strictEqual(
+    base,
+    normalizeKey('海阔天空 \u201CLive\u201D', 'Beyond'),
+    'U+201C/U+201D 双弯引号应归一',
+  );
+  assert.strictEqual(
+    base,
+    normalizeKey('海阔天空 \u300CLive\u300D', 'Beyond'),
+    '日式直角引号「」应归一',
+  );
   console.log('✅ 3e. 智能引号 / 中文书名号归一');
 }
 
@@ -145,8 +154,7 @@ function makeTrack(
 {
   const liveKey = normalizeKey('海阔天空 (Live)', 'Beyond');
   const albumKey = normalizeKey('海阔天空', 'Beyond');
-  assert.notStrictEqual(liveKey, albumKey,
-    '带 Live 标签 vs 无标签应视为不同版本（保守策略）');
+  assert.notStrictEqual(liveKey, albumKey, '带 Live 标签 vs 无标签应视为不同版本（保守策略）');
   console.log(`✅ 3f. 保守保留「(Live)」vs「」版本差异`);
 }
 
@@ -154,8 +162,7 @@ function makeTrack(
 {
   const enLive = normalizeKey('海阔天空 (Live)', 'Beyond');
   const cnLive = normalizeKey('海阔天空 (现场版)', 'Beyond');
-  assert.notStrictEqual(enLive, cnLive,
-    '英文 Live vs 中文「现场版」应视为不同版本（保守策略）');
+  assert.notStrictEqual(enLive, cnLive, '英文 Live vs 中文「现场版」应视为不同版本（保守策略）');
   console.log('✅ 3g. 保守保留「Live」vs「现场版」版本差异');
 }
 
@@ -184,16 +191,10 @@ function makeTrack(
     'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
     'EGOIST (エゴイスト)',
   );
-  const candKey = normalizeKey(
-    'Departures \u301Cあなたにおくるアイの歌\u301C',
-    'EGOIST',
-  );
+  const candKey = normalizeKey('Departures \u301Cあなたにおくるアイの歌\u301C', 'EGOIST');
   // 严格不等（cand 没有中译括号段）—— 但 cand 必须是 seed 标题的子串
   // （Tier 2 双向 includes 的判定前提）。
-  const candTitleKey = normalizeKey(
-    'Departures \u301Cあなたにおくるアイの歌\u301C',
-    '',
-  );
+  const candTitleKey = normalizeKey('Departures \u301Cあなたにおくるアイの歌\u301C', '');
   const seedTitleKey = normalizeKey(
     'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
     '',
@@ -208,25 +209,17 @@ function makeTrack(
 // ── 3h. 阶段 D: stripFeatTags 单独测 ─────────────────────
 {
   // 括号形式：`(feat. X)` 全/半角括号都剥
-  assert.strictEqual(stripFeatTags('Bad Guy (feat. Justin Bieber)'), 'Bad Guy',
-    '半角括号 feat.');
-  assert.strictEqual(stripFeatTags('Bad Guy（feat. Justin Bieber）'), 'Bad Guy',
-    '全角括号 feat.');
+  assert.strictEqual(stripFeatTags('Bad Guy (feat. Justin Bieber)'), 'Bad Guy', '半角括号 feat.');
+  assert.strictEqual(stripFeatTags('Bad Guy（feat. Justin Bieber）'), 'Bad Guy', '全角括号 feat.');
   // featuring / ft. / 无点都覆盖
-  assert.strictEqual(stripFeatTags('Bad Guy featuring Justin Bieber'), 'Bad Guy',
-    'featuring');
-  assert.strictEqual(stripFeatTags('Bad Guy ft. Justin Bieber'), 'Bad Guy',
-    'ft.');
-  assert.strictEqual(stripFeatTags('Bad Guy feat Justin Bieber'), 'Bad Guy',
-    'feat 无点');
+  assert.strictEqual(stripFeatTags('Bad Guy featuring Justin Bieber'), 'Bad Guy', 'featuring');
+  assert.strictEqual(stripFeatTags('Bad Guy ft. Justin Bieber'), 'Bad Guy', 'ft.');
+  assert.strictEqual(stripFeatTags('Bad Guy feat Justin Bieber'), 'Bad Guy', 'feat 无点');
   // 联入形式（无括号）
-  assert.strictEqual(stripFeatTags('Bad Guy, feat. Justin Bieber'), 'Bad Guy',
-    '前置逗号 + feat');
+  assert.strictEqual(stripFeatTags('Bad Guy, feat. Justin Bieber'), 'Bad Guy', '前置逗号 + feat');
   // Live / Remix 不动
-  assert.strictEqual(stripFeatTags('Bad Guy (Live)'), 'Bad Guy (Live)',
-    '(Live) 不动');
-  assert.strictEqual(stripFeatTags('Bad Guy (Remix)'), 'Bad Guy (Remix)',
-    '(Remix) 不动');
+  assert.strictEqual(stripFeatTags('Bad Guy (Live)'), 'Bad Guy (Live)', '(Live) 不动');
+  assert.strictEqual(stripFeatTags('Bad Guy (Remix)'), 'Bad Guy (Remix)', '(Remix) 不动');
   // feat + Live 共存：只剥 feat 部分（多余空格会被 .trim() 收掉为单空格）
   assert.strictEqual(
     stripFeatTags('Bad Guy (feat. Justin Bieber) (Live)'),
@@ -234,12 +227,13 @@ function makeTrack(
     '(feat. X) (Live) 仅剥 feat 部分',
   );
   // "with" 不动（避免误剥 "with Strings" 这种版本修饰）
-  assert.strictEqual(stripFeatTags('Bad Guy with Strings'), 'Bad Guy with Strings',
-    'with 不动');
+  assert.strictEqual(stripFeatTags('Bad Guy with Strings'), 'Bad Guy with Strings', 'with 不动');
   // 没 feat 关键词的多艺人表不动
-  assert.strictEqual(stripFeatTags('Billie Eilish, Justin Bieber'),
+  assert.strictEqual(
+    stripFeatTags('Billie Eilish, Justin Bieber'),
     'Billie Eilish, Justin Bieber',
-    '"B, J" 多艺人表不动（缺 feat 关键词）');
+    '"B, J" 多艺人表不动（缺 feat 关键词）',
+  );
   // 边界
   assert.strictEqual(stripFeatTags(''), '', '空串');
   assert.strictEqual(stripFeatTags('Bad Guy'), 'Bad Guy', '无 feat');
@@ -250,43 +244,58 @@ function makeTrack(
 {
   // title 同，artist 同，唯一差异是 title 上的 (feat. X)
   const base = normalizeKey('Bad Guy', 'Billie Eilish');
-  assert.strictEqual(normalizeKey('Bad Guy (feat. Justin Bieber)', 'Billie Eilish'), base,
-    'title 上的 (feat. X) 整个被剥');
-  assert.strictEqual(normalizeKey('Bad Guy featuring Justin Bieber', 'Billie Eilish'), base,
-    'inline featuring 也剥');
-  assert.strictEqual(normalizeKey('Bad Guy', 'Billie Eilish feat. Justin Bieber'), base,
-    'artist 里的 feat. 也剥');
+  assert.strictEqual(
+    normalizeKey('Bad Guy (feat. Justin Bieber)', 'Billie Eilish'),
+    base,
+    'title 上的 (feat. X) 整个被剥',
+  );
+  assert.strictEqual(
+    normalizeKey('Bad Guy featuring Justin Bieber', 'Billie Eilish'),
+    base,
+    'inline featuring 也剥',
+  );
+  assert.strictEqual(
+    normalizeKey('Bad Guy', 'Billie Eilish feat. Justin Bieber'),
+    base,
+    'artist 里的 feat. 也剥',
+  );
   console.log('✅ 3i. 阶段 D: normalizeKey 跨写法归一 4 case 通过');
 }
 
 // ── 3j. 阶段 E1: stripFuriganaParens 单独测 ──────────────────
 {
   // 纯假名括号 — 剥（最终 trim 过，尾空格已清）
-  assert.strictEqual(stripFuriganaParens('藤井风 (ふじいかぜ)'), '藤井风',
-    '半角括号平假名 (用户场景)');
-  assert.strictEqual(stripFuriganaParens('Adele [エイドル]'), 'Adele',
-    '半角方括号片假名');
-  assert.strictEqual(stripFuriganaParens('Taylor (エーミリー・スミス)'),
-    'Taylor', '片假名中点');
+  assert.strictEqual(
+    stripFuriganaParens('藤井风 (ふじいかぜ)'),
+    '藤井风',
+    '半角括号平假名 (用户场景)',
+  );
+  assert.strictEqual(stripFuriganaParens('Adele [エイドル]'), 'Adele', '半角方括号片假名');
+  assert.strictEqual(stripFuriganaParens('Taylor (エーミリー・スミス)'), 'Taylor', '片假名中点');
   // 全角括号
-  assert.strictEqual(stripFuriganaParens('藤井風（ふじいかぜ）'), '藤井風',
-    '全角括号平假名');
+  assert.strictEqual(stripFuriganaParens('藤井風（ふじいかぜ）'), '藤井風', '全角括号平假名');
   // 中文方括号
-  assert.strictEqual(stripFuriganaParens('歌手【えいみー】'), '歌手',
-    '日式方括号');
+  assert.strictEqual(stripFuriganaParens('歌手【えいみー】'), '歌手', '日式方括号');
   // 假名 + 数字 / Latin → 不剥
-  assert.strictEqual(stripFuriganaParens('Song (ライブ Ver.)'),
+  assert.strictEqual(
+    stripFuriganaParens('Song (ライブ Ver.)'),
     'Song (ライブ Ver.)',
-    '含 Latin "Ver." 不剥');
+    '含 Latin "Ver." 不剥',
+  );
   // 全 Latin → 不剥（live version）
-  assert.strictEqual(stripFuriganaParens('Song (Live 2024)'), 'Song (Live 2024)',
-    'Latin 标签不剥');
+  assert.strictEqual(stripFuriganaParens('Song (Live 2024)'), 'Song (Live 2024)', 'Latin 标签不剥');
   // feat 路径 — stripFuriganaParens 不知道 feat（feat 全 Latin → 不动）
-  assert.strictEqual(stripFuriganaParens('Song (feat. X)'), 'Song (feat. X)',
-    'feat. 纯 Latin → 不动 —— stripFeatTags 会单独处理');
+  assert.strictEqual(
+    stripFuriganaParens('Song (feat. X)'),
+    'Song (feat. X)',
+    'feat. 纯 Latin → 不动 —— stripFeatTags 会单独处理',
+  );
   // 混合假名 + 汉字
-  assert.strictEqual(stripFuriganaParens('藤井风(ふじい風)'), '藤井风(ふじい風)',
-    '含汉字 \"風\" 不剥');
+  assert.strictEqual(
+    stripFuriganaParens('藤井风(ふじい風)'),
+    '藤井风(ふじい風)',
+    '含汉字 \"風\" 不剥',
+  );
   // 空括号
   assert.strictEqual(stripFuriganaParens('Song ()'), 'Song', '空括号');
   // 无括号不动
@@ -300,8 +309,7 @@ function makeTrack(
   const seed = normalizeKey('何なんw', '藤井风 (ふじい かぜ)');
   const candWithFurigana = normalizeKey('何なんw', '藤井风 (フジー)');
   // 两边都剥了；剩 "何なんw + 藤井风"——期望同 key
-  assert.strictEqual(seed, candWithFurigana,
-    'artist 里纯假名括号 → 两侧都剥 → 同 key');
+  assert.strictEqual(seed, candWithFurigana, 'artist 里纯假名括号 → 两侧都剥 → 同 key');
   console.log(`✅ 3k. 阶段 E1: 用户场景 — artist furigana 剥除后命中 (key=${seed})`);
 }
 
@@ -326,8 +334,7 @@ function makeTrack(
   // 多字混合
   assert.strictEqual(cjkUnify('藤井風'), '藤井风', '多字混合');
   assert.strictEqual(cjkUnify('何なんw'), '何なんw', '非 CJK 不动');
-  assert.strictEqual(cjkUnify('藤井風 (フジー)'), '藤井风 (フジー)',
-    '只 unify CJK，kana 不动');
+  assert.strictEqual(cjkUnify('藤井風 (フジー)'), '藤井风 (フジー)', '只 unify CJK，kana 不动');
   console.log('✅ 3l. 阶段 E2: cjkUnify 16 case 全过');
 }
 
@@ -336,15 +343,13 @@ function makeTrack(
   // 用户场景核心: 日文繁体「風」 vs 中文简体「风」 → 同 key
   const jp = normalizeKey('何なんw', '藤井風');
   const cn = normalizeKey('何なんw', '藤井风');
-  assert.strictEqual(jp, cn,
-    '日文繁体的「風」与中文简体的「风」归一到同 key');
+  assert.strictEqual(jp, cn, '日文繁体的「風」与中文简体的「风」归一到同 key');
   console.log(`✅ 3m. 阶段 E2: 跨语言形态 — 風 / 风 同 key (${jp})`);
 
   // 多个 CJK pair 在同一 key
   const ja_track = normalizeKey('時間', '個體');
   const cn_track = normalizeKey('时间', '个体');
-  assert.strictEqual(ja_track, cn_track,
-    '時間 / 时间、个體 / 个体 都对成一组');
+  assert.strictEqual(ja_track, cn_track, '時間 / 时间、个體 / 个体 都对成一组');
   console.log(`✅ 3m. 阶段 E2: 多 pair 合并（時間/时间 + 个體/个体）`);
 }
 
@@ -352,28 +357,15 @@ function makeTrack(
 // 兜底搜索专用：把括号内容整段剥（不限假名），让 Spotify 等严格 API 也能命中。
 {
   // 用户场景：title 带版本标签 → 剥
-  assert.strictEqual(stripParensContent('TO BE (存在)'), 'TO BE',
-    '半角圆括号 + 中文内容');
-  assert.strictEqual(stripParensContent('TO BE（存在）'), 'TO BE',
-    '全角圆括号 + 中文内容');
-  assert.strictEqual(stripParensContent('Song [Live]'), 'Song',
-    '半角方括号 + 英文 Live');
-  assert.strictEqual(stripParensContent('Song【现场版】'), 'Song',
-    '方头括号 + 中文版本');
-  assert.strictEqual(stripParensContent('Song〈Live〉'), 'Song',
-    '书名号 + 英文');
+  assert.strictEqual(stripParensContent('TO BE (存在)'), 'TO BE', '半角圆括号 + 中文内容');
+  assert.strictEqual(stripParensContent('TO BE（存在）'), 'TO BE', '全角圆括号 + 中文内容');
+  assert.strictEqual(stripParensContent('Song [Live]'), 'Song', '半角方括号 + 英文 Live');
+  assert.strictEqual(stripParensContent('Song【现场版】'), 'Song', '方头括号 + 中文版本');
+  assert.strictEqual(stripParensContent('Song〈Live〉'), 'Song', '书名号 + 英文');
 
   // 艺人别名括号 → 剥
-  assert.strictEqual(
-    stripParensContent('滨崎步 (浜崎あゆみ)'),
-    '滨崎步',
-    '艺人中/日别名括号',
-  );
-  assert.strictEqual(
-    stripParensContent('Beyoncé (碧昂丝)'),
-    'Beyoncé',
-    '艺人英文 + 中文别名',
-  );
+  assert.strictEqual(stripParensContent('滨崎步 (浜崎あゆみ)'), '滨崎步', '艺人中/日别名括号');
+  assert.strictEqual(stripParensContent('Beyoncé (碧昂丝)'), 'Beyoncé', '艺人英文 + 中文别名');
 
   // 不动括号外的内容
   assert.strictEqual(stripParensContent('Song'), 'Song', '无括号');
@@ -381,20 +373,11 @@ function makeTrack(
   // 空括号 → 整段剥
   assert.strictEqual(stripParensContent('Song ()'), 'Song', '空括号');
   // 多个括号
-  assert.strictEqual(
-    stripParensContent('TO BE (存在) (2024 Remaster)'),
-    'TO BE',
-    '多个括号串',
-  );
+  assert.strictEqual(stripParensContent('TO BE (存在) (2024 Remaster)'), 'TO BE', '多个括号串');
   // 括号前后空格 trim
-  assert.strictEqual(
-    stripParensContent('TO BE  (存在)'),
-    'TO BE',
-    '多余空格归一',
-  );
+  assert.strictEqual(stripParensContent('TO BE  (存在)'), 'TO BE', '多余空格归一');
   console.log('✅ 3n. 阶段 F: stripParensContent 11 case 全过');
 }
-
 
 // ── 4. 不同歌 → 各自保留 ─────────────────────────────────────
 {
@@ -431,12 +414,25 @@ function makeTrack(
 // ── 7. 跨平台聚合：同一首歌在 QQ + 网易云 + Deezer 都有 → 一条 + 3 sources ──
 {
   const all = [
-    { track: makeTrack('qq', 'qq-001', '晴天', '周杰伦', {
-        mediaMid: 'qq-mm-001', album: '叶惠美' }), platform: 'qq' },
-    { track: makeTrack('netease', 'ne-001', '晴天', '周杰伦', {
-        album: '叶惠美' }), platform: 'netease' },
-    { track: makeTrack('deezer', 'de-001', 'Sunny Day', 'Jay Chou', {
-        album: 'Ye Hui Mei' }), platform: 'deezer' },
+    {
+      track: makeTrack('qq', 'qq-001', '晴天', '周杰伦', {
+        mediaMid: 'qq-mm-001',
+        album: '叶惠美',
+      }),
+      platform: 'qq',
+    },
+    {
+      track: makeTrack('netease', 'ne-001', '晴天', '周杰伦', {
+        album: '叶惠美',
+      }),
+      platform: 'netease',
+    },
+    {
+      track: makeTrack('deezer', 'de-001', 'Sunny Day', 'Jay Chou', {
+        album: 'Ye Hui Mei',
+      }),
+      platform: 'deezer',
+    },
   ];
   // 注意：Deezer 搜出来的"歌名+歌手"可能是英文/罗马音，不一定能归一到中文 key。
   // 这条测试里 Deezer 的英文版本应该独立成条——验证 search 不会"过度归一化"。
@@ -455,9 +451,7 @@ function makeTrack(
 
 // ── 8. bestSource 优先级：只在 Deezer 找到 → bestSource = deezer ──
 {
-  const all = [
-    { track: makeTrack('deezer', 'de-001', 'unknown', 'unknown'), platform: 'deezer' },
-  ];
+  const all = [{ track: makeTrack('deezer', 'de-001', 'unknown', 'unknown'), platform: 'deezer' }];
   const deduped = dedupTracks(all);
   const items = buildUnifiedItems(deduped, all);
   assert.strictEqual(items.length, 1);
@@ -478,7 +472,11 @@ function makeTrack(
   ];
   const deduped = dedupTracks(all);
   const items = buildUnifiedItems(deduped, all);
-  assert.strictEqual(items[0].bestSource, 'spotify', '仅 Spotify 时 bestSource 必须是 spotify，不能是 null');
+  assert.strictEqual(
+    items[0].bestSource,
+    'spotify',
+    '仅 Spotify 时 bestSource 必须是 spotify，不能是 null',
+  );
   console.log('✅ 9b. Spotify 可当 bestSource');
 }
 
@@ -486,15 +484,31 @@ function makeTrack(
 {
   const all = [
     // 三个 "If I Ain't Got You"：album 228s、live 284s、remix 176s
-    { track: makeTrack('qq', 'qq-a', "If I Ain't Got You", 'Alicia Keys', {
-        duration: 228 }), platform: 'qq' },
-    { track: makeTrack('qq', 'qq-b', "If I Ain't Got You", 'Alicia Keys', {
-        duration: 284 }), platform: 'qq' },
-    { track: makeTrack('qq', 'qq-c', "If I Ain't Got You", 'Alicia Keys', {
-        duration: 176 }), platform: 'qq' },
+    {
+      track: makeTrack('qq', 'qq-a', "If I Ain't Got You", 'Alicia Keys', {
+        duration: 228,
+      }),
+      platform: 'qq',
+    },
+    {
+      track: makeTrack('qq', 'qq-b', "If I Ain't Got You", 'Alicia Keys', {
+        duration: 284,
+      }),
+      platform: 'qq',
+    },
+    {
+      track: makeTrack('qq', 'qq-c', "If I Ain't Got You", 'Alicia Keys', {
+        duration: 176,
+      }),
+      platform: 'qq',
+    },
     // 网易云的 album 版 227s → 应与 qq-a(228s) 归为同一版本
-    { track: makeTrack('netease', 'ne-a', "If I Ain't Got You", 'Alicia Keys', {
-        duration: 227 }), platform: 'netease' },
+    {
+      track: makeTrack('netease', 'ne-a', "If I Ain't Got You", 'Alicia Keys', {
+        duration: 227,
+      }),
+      platform: 'netease',
+    },
   ];
   const deduped = dedupTracks(all);
   const items = buildUnifiedItems(deduped, all);
@@ -508,7 +522,9 @@ function makeTrack(
     2,
     'album 版本应含 qq(228)+netease(227) 两个同版本 source',
   );
-  console.log('✅ 9c. Phase 2：1 item + 3 versions（album/live/remix 合并到 1 item，versions 内 3 个录音）');
+  console.log(
+    '✅ 9c. Phase 2：1 item + 3 versions（album/live/remix 合并到 1 item，versions 内 3 个录音）',
+  );
 }
 
 // ── 9d. duration=0（未知）仍合并为一条（老行为不破坏）────
@@ -526,9 +542,7 @@ function makeTrack(
 
 // ── 10. 各 source 都有 url / hasCopyright 默认 true ──────────
 {
-  const all = [
-    { track: makeTrack('qq', 'qq-001', 'A', 'B'), platform: 'qq' },
-  ];
+  const all = [{ track: makeTrack('qq', 'qq-001', 'A', 'B'), platform: 'qq' }];
   const deduped = dedupTracks(all);
   const items = buildUnifiedItems(deduped, all);
   const src = items[0].sources[0];
@@ -558,9 +572,21 @@ function makeTrack(
   // 模拟 saveState 的序列化
   const serialized = {
     providers: {
-      qq: { ...newState.providers.qq, liked: [...newState.providers.qq.liked], disliked: [...newState.providers.qq.disliked] },
-      netease: { ...newState.providers.netease, liked: [...newState.providers.netease.liked], disliked: [...newState.providers.netease.disliked] },
-      deezer: { ...newState.providers.deezer, liked: [...newState.providers.deezer.liked], disliked: [...newState.providers.deezer.disliked] },
+      qq: {
+        ...newState.providers.qq,
+        liked: [...newState.providers.qq.liked],
+        disliked: [...newState.providers.qq.disliked],
+      },
+      netease: {
+        ...newState.providers.netease,
+        liked: [...newState.providers.netease.liked],
+        disliked: [...newState.providers.netease.disliked],
+      },
+      deezer: {
+        ...newState.providers.deezer,
+        liked: [...newState.providers.deezer.liked],
+        disliked: [...newState.providers.deezer.disliked],
+      },
     },
     fanOut: newState.fanOut,
   };
@@ -570,11 +596,7 @@ function makeTrack(
     ['qq', 'deezer'],
     'fanOut 序列化应保留平台列表',
   );
-  assert.deepStrictEqual(
-    serialized.providers.qq.liked,
-    ['a', 'b'],
-    'providers.qq.liked 应保留',
-  );
+  assert.deepStrictEqual(serialized.providers.qq.liked, ['a', 'b'], 'providers.qq.liked 应保留');
   console.log('✅ 11. State 序列化兼容 fanOut 字段');
 }
 
@@ -583,7 +605,7 @@ function makeTrack(
   // 模拟：用户之前 fan-out 心动了 mergedId，state.fanOut[mergedId] = ['qq', 'deezer']。
   // 现在再来一次 unlike，sources 里多带了 netease（用户没心过 netease），
   // 但 toUnlike 只从 fanOut 走，netease 不会被调 unlike。
-  const fanOut = { 'm1': ['qq', 'deezer'] };
+  const fanOut = { m1: ['qq', 'deezer'] };
   const sources = [
     { platform: 'qq', trackId: 'q1' },
     { platform: 'netease', trackId: 'n1' },
@@ -645,11 +667,7 @@ function makeTrack(
   ];
   const deduped = dedupTracks(all);
   const items = buildUnifiedItems(deduped, all);
-  assert.strictEqual(
-    items[0].bestSource,
-    'qq',
-    '全锁时退回平台优先级（qq），行为与之前一致',
-  );
+  assert.strictEqual(items[0].bestSource, 'qq', '全锁时退回平台优先级（qq），行为与之前一致');
   console.log('✅ 14. 全 VIP 锁 → 退回平台优先级');
 }
 
@@ -711,7 +729,9 @@ function makeTrack(
   const all = [
     { track: makeTrack('qq', 'qq-001', '夜曲', '周杰伦'), platform: 'qq' },
     {
-      track: makeTrack('deezer', 'de-001', '夜曲', '周杰伦', { coverUrl: 'https://cover.example/de.jpg' }),
+      track: makeTrack('deezer', 'de-001', '夜曲', '周杰伦', {
+        coverUrl: 'https://cover.example/de.jpg',
+      }),
       platform: 'deezer',
     },
   ];
@@ -768,7 +788,10 @@ function makeTrack(
 // ── 12. 非 Spotify 源不带 noPreview ───────────────────────────
 {
   const all = [
-    { track: makeTrack('netease', 'ne-9', '浓缩蓝鲸', '裘德', { duration: 277 }), platform: 'netease' },
+    {
+      track: makeTrack('netease', 'ne-9', '浓缩蓝鲸', '裘德', { duration: 277 }),
+      platform: 'netease',
+    },
   ];
   const items = buildUnifiedItems(dedupTracks(all), all);
   assert.strictEqual(items[0].sources[0].noPreview, undefined);

@@ -51,8 +51,16 @@ check('阿杜 ↔ A-Do 仍并', stageNameAliasMatch('阿杜', 'A-Do'));
 // ── 4. 拼接 key 移除：独唱↔合唱不再经表互并 ──
 console.log('\n── 拼接 key 移除 ──');
 check('方大同 ↔ 方大同王力宏 不并', stageNameAliasMatch('方大同', '方大同王力宏'), false);
-check('周杰伦 ↔ 周杰伦言承旭吴建豪周渝民 不并', stageNameAliasMatch('周杰伦', '周杰伦言承旭吴建豪周渝民'), false);
-check('米津玄師 ↔ 米津玄師野田洋次郎 不并', stageNameAliasMatch('米津玄師', '米津玄師野田洋次郎'), false);
+check(
+  '周杰伦 ↔ 周杰伦言承旭吴建豪周渝民 不并',
+  stageNameAliasMatch('周杰伦', '周杰伦言承旭吴建豪周渝民'),
+  false,
+);
+check(
+  '米津玄師 ↔ 米津玄師野田洋次郎 不并',
+  stageNameAliasMatch('米津玄師', '米津玄師野田洋次郎'),
+  false,
+);
 
 // ── 5. 数据修复回归（表内条目真正可桥）──────────────────
 console.log('\n── 数据修复回归 ──');
@@ -67,7 +75,11 @@ check('周杰伦 ↔ Jay Chou', stageNameAliasMatch('周杰伦', 'Jay Chou'));
 // 19 轨《叶惠美》是翻唱专辑，绝不能并进周杰伦的 11 轨原版。
 // （曾作为 P11-8 决策入表，album-service.e2e「3 张卡片」护栏当场抓出误并，
 //  见 specs/auth-resilience/spec.md 复核记录。）
-check('周杰伦 ↔ Jue Wang 不并（翻唱艺人非脏数据）', stageNameAliasMatch('周杰伦', 'Jue Wang'), false);
+check(
+  '周杰伦 ↔ Jue Wang 不并（翻唱艺人非脏数据）',
+  stageNameAliasMatch('周杰伦', 'Jue Wang'),
+  false,
+);
 check('王珏 ↔ Jue Wang 不并', stageNameAliasMatch('王珏', 'Jue Wang'), false);
 check('邓紫棋 ↔ G.E.M.', stageNameAliasMatch('邓紫棋', 'G.E.M.'));
 check('马赛克乐队 ↔ 马赛克', stageNameAliasMatch('马赛克乐队', '马赛克'));

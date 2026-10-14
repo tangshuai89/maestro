@@ -57,11 +57,7 @@ export function jaroWinkler(s1: string, s2: string): number {
     k++;
   }
 
-  const jaro =
-    (matches / len1 +
-      matches / len2 +
-      (matches - transpositions / 2) / matches) /
-    3;
+  const jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3;
 
   // Winkler 调整：仅在 jaro 已经高（>= 0.7）时才有意义——差距太大就
   // 没有"前缀对齐"可加。
@@ -116,8 +112,8 @@ export function normalizedLevenshtein(a: string, b: string): number {
     curr[0] = i; // 从 s1[0..i] 到空的代价 = i 次删除
     for (let j = 1; j <= n; j++) {
       const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-      const del = prev[j] + 1;       // 从 s1[0..i-1] 删一个变成 s1[0..i-1] → s2[0..j]
-      const ins = curr[j - 1] + 1;   // 在 s1[0..i] 末尾插入一个 → s2[0..j]
+      const del = prev[j] + 1; // 从 s1[0..i-1] 删一个变成 s1[0..i-1] → s2[0..j]
+      const ins = curr[j - 1] + 1; // 在 s1[0..i] 末尾插入一个 → s2[0..j]
       const sub = prev[j - 1] + cost; // s1[0..i-1] 替换 → s2[0..j-1]
       curr[j] = Math.min(del, ins, sub);
     }

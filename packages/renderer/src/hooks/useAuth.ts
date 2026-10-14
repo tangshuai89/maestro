@@ -22,8 +22,7 @@ import { inReloginGrace, markLoginOk } from '../auth/relogin-grace';
 import { authLog, authWarn, authError } from '../lib/debug';
 
 /** True when running inside the Electron shell (not just a browser tab). */
-const isElectron =
-  typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
 
 /** 24h — renderer's "stale credentials" probe interval. If lastValidatedAt
  *  is older than this, the next status fetch re-runs the guard call. */
@@ -51,11 +50,7 @@ export function useAuth(
   loadNextTrack: () => void,
   setError: Dispatch<SetStateAction<string | null>>,
 ) {
-  const [state, dispatch] = useReducer(
-    reducer,
-    provider ?? 'qq',
-    initialAuthState,
-  );
+  const [state, dispatch] = useReducer(reducer, provider ?? 'qq', initialAuthState);
   /** Browser-fallback flag: when running outside Electron (or without the
    *  native cookie-capture IPC), NetEase login can't capture MUSIC_U from a
    *  child Chromium window. We surface the QR/modal flow instead. */
@@ -177,8 +172,7 @@ export function useAuth(
         try {
           const ext = await getAuthStatusExtended(p);
           const stale =
-            ext.lastValidatedAt == null ||
-            Date.now() - ext.lastValidatedAt > STALE_VALIDATION_MS;
+            ext.lastValidatedAt == null || Date.now() - ext.lastValidatedAt > STALE_VALIDATION_MS;
           if (stale) {
             const fresh = await getAuthStatusValidated(p);
             // 只认 expired:true。「从没登录过」服务端会给 loggedIn:false
@@ -266,11 +260,7 @@ export function useAuth(
         throw makeAuthError(code, result.error ?? '登录失败', attempt, state.provider);
       }
       dispatch({ type: 'enter_validating' });
-      const r = await loginNeteaseCookie(
-        result.musicU,
-        result.csrfToken,
-        result.extraCookies,
-      );
+      const r = await loginNeteaseCookie(result.musicU, result.csrfToken, result.extraCookies);
       if (r.success) {
         dispatch({ type: 'succeed', user: r.user });
         loadNextTrack();
@@ -403,21 +393,28 @@ export function useAuth(
         // resolve（handler 被 invoke 了但结果不传回 renderer，原因待定），加
         // timeout 强制超时后进 else 分支，让 IPC listener + 短 poll 兜底
         // （listener 收 main 主动 send，poll 改用同样 2s 超时避免再卡）。
-        const consumeResult = await Promise.race<Awaited<ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>> | null>([
+        const consumeResult = await Promise.race<Awaited<
+          ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>
+        > | null>([
           window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
-          new Promise<null>((r) => setTimeout(() => {
-            authLog('consumeOAuthCallback 2s 超时 → 进 else 分支（依赖 IPC listener + poll 兜底）');
-            r(null);
-          }, 2_000)),
+          new Promise<null>((r) =>
+            setTimeout(() => {
+              authLog(
+                'consumeOAuthCallback 2s 超时 → 进 else 分支（依赖 IPC listener + poll 兜底）',
+              );
+              r(null);
+            }, 2_000),
+          ),
         ]);
         const pending = consumeResult ?? null;
         authLog('consumeOAuthCallback resolved', {
           hasPending: Boolean(pending),
-          kind: pending && 'error' in pending
-            ? 'error'
-            : pending && 'code' in pending
-              ? 'code'
-              : 'null',
+          kind:
+            pending && 'error' in pending
+              ? 'error'
+              : pending && 'code' in pending
+                ? 'code'
+                : 'null',
         });
         // OAuth error variant (user denied / provider rejection): bail
         // immediately rather than waiting the full 10 min.
@@ -449,65 +446,62 @@ export function useAuth(
           // 对 `let x: () => void = ...; x = ...; x()` 的 narrowing 推断坑。
           const cleanups: Array<() => void> = [];
           let spoiled = false;
-          const result = await new Promise<{ code: string; state: string }>(
-            (resolve, reject) => {
-              const finish = (cb: { code: string; state: string }): void => {
-                if (spoiled) return;
-                spoiled = true;
-                resolve(cb);
-              };
-              const finishErr = (msg: string): void => {
-                if (spoiled) return;
-                spoiled = true;
-                reject(new Error(msg));
-              };
-              // Bug #1 修复后：main 端 handleDeepLink 现在主动 webContents.send
-              // 这条 channel（带 {code,state} 或 {error,state}），listener 立即
-              // 收到。同时 poll buffer 兜底（main 端没 send 的旧版本也兼容）。
-              const ipcUnsub = window.electronAPI!.onIpc<{
-                code?: string;
-                state?: string;
-                error?: string;
-              }>('spotify:oauth-protocol', (data) => {
-                if (data.error) {
-                  authLog('IPC 收到 error 分支:', data.error);
-                  finishErr(`Spotify 登录被拒绝：${data.error}`);
+          const result = await new Promise<{ code: string; state: string }>((resolve, reject) => {
+            const finish = (cb: { code: string; state: string }): void => {
+              if (spoiled) return;
+              spoiled = true;
+              resolve(cb);
+            };
+            const finishErr = (msg: string): void => {
+              if (spoiled) return;
+              spoiled = true;
+              reject(new Error(msg));
+            };
+            // Bug #1 修复后：main 端 handleDeepLink 现在主动 webContents.send
+            // 这条 channel（带 {code,state} 或 {error,state}），listener 立即
+            // 收到。同时 poll buffer 兜底（main 端没 send 的旧版本也兼容）。
+            const ipcUnsub = window.electronAPI!.onIpc<{
+              code?: string;
+              state?: string;
+              error?: string;
+            }>('spotify:oauth-protocol', (data) => {
+              if (data.error) {
+                authLog('IPC 收到 error 分支:', data.error);
+                finishErr(`Spotify 登录被拒绝：${data.error}`);
+                return;
+              }
+              if (data.code && data.state) {
+                authLog('IPC 收到 code+state');
+                finish({ code: data.code, state: data.state });
+              }
+            });
+            cleanups.push(ipcUnsub);
+            const poll = async (): Promise<void> => {
+              try {
+                // 同样 2s timeout——避免 poll 也卡死整个登录流程。
+                const p = await Promise.race<Awaited<
+                  ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>
+                > | null>([
+                  window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
+                  new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+                ]);
+                if (!p) return;
+                if ('error' in p && p.error) {
+                  authLog('poll 拿到 buffer error:', p.error);
+                  finishErr(`Spotify 登录被拒绝：${p.error}`);
                   return;
                 }
-                if (data.code && data.state) {
-                  authLog('IPC 收到 code+state');
-                  finish({ code: data.code, state: data.state });
+                if ('code' in p && p.code && p.state) {
+                  authLog('poll 拿到 buffer entry');
+                  finish({ code: p.code, state: p.state });
                 }
-              });
-              cleanups.push(ipcUnsub);
-              const poll = async (): Promise<void> => {
-                try {
-                  // 同样 2s timeout——避免 poll 也卡死整个登录流程。
-                  const p = await Promise.race<Awaited<ReturnType<NonNullable<typeof window.electronAPI>['consumeOAuthCallback']>> | null>([
-                    window.electronAPI?.consumeOAuthCallback?.() ?? Promise.resolve(null),
-                    new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
-                  ]);
-                  if (!p) return;
-                  if ('error' in p && p.error) {
-                    authLog('poll 拿到 buffer error:', p.error);
-                    finishErr(`Spotify 登录被拒绝：${p.error}`);
-                    return;
-                  }
-                  if ('code' in p && p.code && p.state) {
-                    authLog('poll 拿到 buffer entry');
-                    finish({ code: p.code, state: p.state });
-                  }
-                } catch (err) {
-                  authWarn('poll 出错:', (err as Error).message);
-                }
-              };
-              const timer: ReturnType<typeof setInterval> = setInterval(
-                () => void poll(),
-                3_000,
-              );
-              cleanups.push(() => clearInterval(timer));
-            },
-          );
+              } catch (err) {
+                authWarn('poll 出错:', (err as Error).message);
+              }
+            };
+            const timer: ReturnType<typeof setInterval> = setInterval(() => void poll(), 3_000);
+            cleanups.push(() => clearInterval(timer));
+          });
           // Promise 已 settle——停 IPC listener + poll timer（无论谁先 resolve）。
           for (const fn of cleanups) fn();
           authLog('OAuth callback resolved, code len=', result.code.length);
@@ -531,7 +525,12 @@ export function useAuth(
           clearDeadline();
           attemptIdRef.current = null;
         } else {
-          throw makeAuthError('AUTH_INVALID', 'Spotify 登录失败：redeem 失败', attempt, state.provider);
+          throw makeAuthError(
+            'AUTH_INVALID',
+            'Spotify 登录失败：redeem 失败',
+            attempt,
+            state.provider,
+          );
         }
         return;
       }
@@ -556,7 +555,12 @@ export function useAuth(
           return;
         }
       }
-      throw makeAuthError('AUTH_TIMEOUT', 'Spotify 登录超时（90s），请重试', attempt, state.provider);
+      throw makeAuthError(
+        'AUTH_TIMEOUT',
+        'Spotify 登录超时（90s），请重试',
+        attempt,
+        state.provider,
+      );
     } catch (e) {
       authError('handleSpotifyLogin threw:', e, 'attemptId=', attempt.id);
       const err = e as Error & { code?: AuthErrorCode };

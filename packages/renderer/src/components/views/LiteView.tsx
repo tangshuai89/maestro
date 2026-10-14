@@ -40,15 +40,7 @@ const ICONS: Record<string, string[]> = {
   ],
 };
 
-function LiteIcon({
-  icon,
-  size = 22,
-  fill,
-}: {
-  icon: string;
-  size?: number;
-  fill?: boolean;
-}) {
+function LiteIcon({ icon, size = 22, fill }: { icon: string; size?: number; fill?: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -105,13 +97,9 @@ export default function LiteView({
 
       <div className="lite-stage">
         <div className="lite-title-block" data-lite-el="title">
-          <h1 className="lite-title">
-            {track ? clampText(track.title, 40) : 'Lite 模式'}
-          </h1>
+          <h1 className="lite-title">{track ? clampText(track.title, 40) : 'Lite 模式'}</h1>
           {/* 歌手副行归入歌名块（同一 data-lite-el），不算第四类元素 */}
-          {track && (
-            <p className="lite-artist">{clampText(track.artist, 40)}</p>
-          )}
+          {track && <p className="lite-artist">{clampText(track.artist, 40)}</p>}
         </div>
 
         <div className="lite-controls" data-lite-el="nav">
@@ -148,9 +136,7 @@ export default function LiteView({
           data-lite-el="reco"
         >
           <LiteIcon icon="sparkle" size={20} />
-          <span className="lite-reco-label">
-            {recoRunning ? '推荐中…' : '智能推荐'}
-          </span>
+          <span className="lite-reco-label">{recoRunning ? '推荐中…' : '智能推荐'}</span>
         </button>
       </div>
     </div>

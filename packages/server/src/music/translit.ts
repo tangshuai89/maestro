@@ -147,8 +147,7 @@ export function romanizeJa(s: string): string {
   }
   let out = '';
   for (const t of _jaTokenizer.tokenize(s)) {
-    const reading =
-      t.reading && t.reading !== '*' ? t.reading : t.surface_form;
+    const reading = t.reading && t.reading !== '*' ? t.reading : t.surface_form;
     out += toRomaji(reading);
   }
   return out.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -190,8 +189,7 @@ function romanizeJaTokens(s: string): string[] {
   if (cached !== undefined) return cached;
   const tokens: string[] = [];
   for (const t of _jaTokenizer.tokenize(s)) {
-    const reading =
-      t.reading && t.reading !== '*' ? t.reading : t.surface_form;
+    const reading = t.reading && t.reading !== '*' ? t.reading : t.surface_form;
     const rom = toRomaji(reading)
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '');
@@ -386,8 +384,7 @@ export function artistTransliterationMatch(a: string, b: string): boolean {
   // 顺序无关集合匹配：CJK 侧拆成 token（kuromoji token / 假名括号 token），
   // 拉丁侧只需每个 token 子串命中即可（不要求顺序）。双向都试。
   // token 太短（< MIN_ROMAJI_OVERLAP_LEN）不参与，防止「すず」撞「すずき」。
-  const splitTokens = (s: string): string[] =>
-    s.split(' ').filter(Boolean);
+  const splitTokens = (s: string): string[] => s.split(' ').filter(Boolean);
   const tryTokenMatch = (cjk: string, latinVariants: string[]): boolean => {
     // 1) kuromoji token 级读音（识别规则日文名）——算法猜测，受长度门防误并
     //    （「すず」撞「すずき」）。⚠️ kuromoji 对艺名可能**错读**（「星野源」
@@ -414,9 +411,7 @@ export function artistTransliterationMatch(a: string, b: string): boolean {
       // kuromoji token 全部命中（带长度门）→ 通过（无括号规则日文名）。
       if (
         kuromojiTokens.length >= 2 &&
-        kuromojiTokens.every(
-          (tok) => tok.length >= MIN_ROMAJI_OVERLAP_LEN && latin.includes(tok),
-        )
+        kuromojiTokens.every((tok) => tok.length >= MIN_ROMAJI_OVERLAP_LEN && latin.includes(tok))
       ) {
         return true;
       }

@@ -67,9 +67,7 @@ export class RecoController {
       ? body.exclude
           .filter(
             (e): e is { title: string; artist: string } =>
-              !!e &&
-              typeof e.title === 'string' &&
-              typeof e.artist === 'string',
+              !!e && typeof e.title === 'string' && typeof e.artist === 'string',
           )
           .slice(0, 200)
       : undefined;

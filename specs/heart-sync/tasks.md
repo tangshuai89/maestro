@@ -1,6 +1,7 @@
 # Heart 跨平台同步 — tasks
 
 ## 同步队列（MQ 思路）
+
 - [x] 1. 新建 `music/like-sync.queue.ts`：`LikeSyncQueue`（合并去重 + 串行 drain + 退避重试）
 - [x] 2. `enqueue` 空 targets 忽略；同 key 方向一致合并、方向翻转覆盖
 - [x] 3. `dedupeByPlatform` 兜底「每平台一首」
@@ -8,6 +9,7 @@
 - [x] 5. `MusicService` 构造函数注入并 `registerProcessor` → `syncLikeRemoteOnce`
 
 ## 检测改造（只读 + 入队）
+
 - [x] 6. `syncLikeRemoteOnce`：单次远端写，成功更新缓存、失败 throw（供队列重试）
 - [x] 7. `canSyncLike`：deezer / 未登录 → false
 - [x] 8. `detectLikedAndSync` 改为只读检测；发现红心 → 乐观点亮本地 + 每平台一首入队
@@ -15,11 +17,13 @@
 - [x] 10. `toggleLike`（单平台电台）远端写也走队列
 
 ## 网易云接口修正
+
 - [x] 11. `netease.setRadioLike(liked)` 收敛 like/unlike；`unlike` = `radio/like?like=false`
 - [x] 12. 新增 `netease.fmTrash` = `radio/trash/add`（踩/不喜欢）
 - [x] 13. `markDisliked` 改用 `fmTrash`
 
 ## Deezer 结构性排除（高危 #4：匿名源污染本地红心）
+
 - [x] D1. `isLikeable(provider)`：`!ANONYMOUS_PROVIDERS.has(provider)`
 - [x] D2. `setLike` 守卫：非 likeable → no-op（bulletproof，任何路径误传都不落地）
 - [x] D3. `toggleLike` 对非 likeable 早退 no-op（Deezer 电台点 ❤ 不点亮/不入队）
@@ -29,13 +33,15 @@
 - [x] D7. like.e2e：1–4 改用 qq/netease/spotify；新增 4b 断言 Deezer 不计账（共 12 项）
 
 ## 踩 = 取消跨平台红心
+
 - [x] 14. `MusicService.dislikeMerged`：fanOutLike(false) 取消红心 + disliked 标记 + fmTrash
 - [x] 15. `POST /music/dislike/merged`（注册在 `/dislike/:trackId` 之前）+ 入参校验
 - [x] 16. `api.ts` 加 `dislikeMerged(mergedId, sources)`
 - [x] 17. `usePlayer.handleDislike`：统一队列上下文走 dislikeMerged + 熄灭 ❤/归零角标，
-        单平台电台仍走 dislike
+      单平台电台仍走 dislike
 
 ## 后续修订（中危收尾 / heart-followups）
+
 - [x] F1. [#7] `loadNextTrack` radio 分支 `setFanOutCount(0)`（切回电台清角标）
 - [x] F2. [#10] `detectLikedAndSync` 写 fanOut 记录改「合并旧记录」而非覆盖
 - [x] F3. [#9] `primeLikedCache` + importLiked 三平台拉完顺手暖 `likedCache`
@@ -52,6 +58,7 @@
   - [x] F4d. like.e2e 补 mergedId 漂移归一断言（新 mergedId + 重合 source 复用旧记录）
 
 ## 验证
+
 - [x] 18. `npm run typecheck` 三包全过
 - [x] 19. `npm test`：like.e2e 13 项（+ dislike/merged 路由/取消/校验 + Deezer 排除 + 漂移归一），全绿
 - [x] 20. `npm run lint`（renderer）通过

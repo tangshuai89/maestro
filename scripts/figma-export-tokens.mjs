@@ -22,7 +22,11 @@ import { renderScss, djb2 } from './lib/aether-tokens.mjs';
 const argv = process.argv.slice(2);
 const flag = (name) => {
   const i = argv.indexOf(name);
-  return i === -1 ? null : i + 1 < argv.length && !argv[i + 1].startsWith('--') ? argv[i + 1] : true;
+  return i === -1
+    ? null
+    : i + 1 < argv.length && !argv[i + 1].startsWith('--')
+      ? argv[i + 1]
+      : true;
 };
 const dumpPath = argv.find((a) => !a.startsWith('--') && a !== flag('--out'));
 if (!dumpPath) {
@@ -38,14 +42,22 @@ if (argv.includes('--stdout')) {
   process.stdout.write(css);
 } else {
   const wanted = flag('--out');
-  const outPath = typeof wanted === 'string'
-    ? path.resolve(wanted)
-    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../packages/renderer/src/styles/base/_tokens.generated.scss');
+  const outPath =
+    typeof wanted === 'string'
+      ? path.resolve(wanted)
+      : path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          '../packages/renderer/src/styles/base/_tokens.generated.scss',
+        );
   mkdirSync(path.dirname(outPath), { recursive: true });
   writeFileSync(outPath, css);
   const cssVarCount = css.split('\n').filter((l) => /^\s+--[\w-]+:/.test(l)).length;
-  console.log(`✅ 已生成 ${outPath}（${vars.length} 个变量 → ${cssVarCount} 个 token，hash ${djb2(css)}）`);
+  console.log(
+    `✅ 已生成 ${outPath}（${vars.length} 个变量 → ${cssVarCount} 个 token，hash ${djb2(css)}）`,
+  );
 }
 if (unmapped.length) {
-  console.error(`⚠️  ${unmapped.length} 个变量不属于 AETHER token 体系，已跳过: ${unmapped.slice(0, 8).join(', ')}${unmapped.length > 8 ? ' …' : ''}`);
+  console.error(
+    `⚠️  ${unmapped.length} 个变量不属于 AETHER token 体系，已跳过: ${unmapped.slice(0, 8).join(', ')}${unmapped.length > 8 ? ' …' : ''}`,
+  );
 }

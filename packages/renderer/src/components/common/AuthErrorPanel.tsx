@@ -77,7 +77,9 @@ export default function AuthErrorPanel({
 
   // ESC 关闭
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onDismiss(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDismiss();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onDismiss]);
@@ -115,7 +117,7 @@ export default function AuthErrorPanel({
             <span className="aep-summary-text">{title}</span>
             <button
               className="aep-expand"
-              onClick={() => setExpanded(v => !v)}
+              onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
               aria-label={expanded ? '收起详情' : '展开详情'}
               title={expanded ? '收起' : '展开'}
@@ -125,12 +127,8 @@ export default function AuthErrorPanel({
           </div>
 
           {/* stack trace / detail */}
-          {expanded && hasStack && (
-            <pre className="aep-stack">{error.message}</pre>
-          )}
-          {expanded && !hasStack && (
-            <div className="aep-detail">{error.message}</div>
-          )}
+          {expanded && hasStack && <pre className="aep-stack">{error.message}</pre>}
+          {expanded && !hasStack && <div className="aep-detail">{error.message}</div>}
 
           {/* actions（4 Button/Text） */}
           <div className="aep-actions">

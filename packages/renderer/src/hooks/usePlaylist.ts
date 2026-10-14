@@ -79,9 +79,7 @@ export function usePlaylist(): UsePlaylist {
     setError(null);
     try {
       const updated = await patchPlaylist(id, { name });
-      setPlaylists((prev) =>
-        prev.map((p) => (p.id === id ? updated : p)),
-      );
+      setPlaylists((prev) => prev.map((p) => (p.id === id ? updated : p)));
     } catch (e) {
       setError((e as Error).message ?? '改歌单名失败');
       throw e;
@@ -92,9 +90,7 @@ export function usePlaylist(): UsePlaylist {
     setError(null);
     try {
       const updated = await patchPlaylist(id, { append: tracks });
-      setPlaylists((prev) =>
-        prev.map((p) => (p.id === id ? updated : p)),
-      );
+      setPlaylists((prev) => prev.map((p) => (p.id === id ? updated : p)));
     } catch (e) {
       setError((e as Error).message ?? '追加曲目失败');
       throw e;
@@ -105,28 +101,23 @@ export function usePlaylist(): UsePlaylist {
     setError(null);
     try {
       const updated = await patchPlaylist(id, { remove: trackIds });
-      setPlaylists((prev) =>
-        prev.map((p) => (p.id === id ? updated : p)),
-      );
+      setPlaylists((prev) => prev.map((p) => (p.id === id ? updated : p)));
     } catch (e) {
       setError((e as Error).message ?? '删除曲目失败');
       throw e;
     }
   }, []);
 
-  const remove_playlist = useCallback<UsePlaylist['remove_playlist']>(
-    async (id) => {
-      setError(null);
-      try {
-        await deletePlaylist(id);
-        setPlaylists((prev) => prev.filter((p) => p.id !== id));
-      } catch (e) {
-        setError((e as Error).message ?? '删除歌单失败');
-        throw e;
-      }
-    },
-    [],
-  );
+  const remove_playlist = useCallback<UsePlaylist['remove_playlist']>(async (id) => {
+    setError(null);
+    try {
+      await deletePlaylist(id);
+      setPlaylists((prev) => prev.filter((p) => p.id !== id));
+    } catch (e) {
+      setError((e as Error).message ?? '删除歌单失败');
+      throw e;
+    }
+  }, []);
 
   const clearError = useCallback(() => setError(null), []);
 

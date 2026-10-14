@@ -22,13 +22,7 @@ interface LogoProps {
 /** QQ 音乐 —— 黄色圆角方 + 白色音符（经典 QQ 音乐 logo 形状） */
 export function QqLogo({ size = 12, title = 'QQ 音乐' }: LogoProps): JSX.Element {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      role="img"
-    >
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" role="img">
       {title && <title>{title}</title>}
       <rect width="24" height="24" rx="5" fill="#fff" />
       <path
@@ -42,13 +36,7 @@ export function QqLogo({ size = 12, title = 'QQ 音乐' }: LogoProps): JSX.Eleme
 /** 网易云 —— 红色圆角方 + 白色音符（QQ 音符镜像变体，颜色不同） */
 export function NeteaseLogo({ size = 12, title = '网易云音乐' }: LogoProps): JSX.Element {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      role="img"
-    >
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" role="img">
       {title && <title>{title}</title>}
       <rect width="24" height="24" rx="5" fill="#fff" />
       <path
@@ -62,13 +50,7 @@ export function NeteaseLogo({ size = 12, title = '网易云音乐' }: LogoProps)
 /** Spotify —— 经典绿圆 + 黑色弧线（Spotify 官方 logo 的简化） */
 export function SpotifyLogo({ size = 12, title = 'Spotify' }: LogoProps): JSX.Element {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      role="img"
-    >
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" role="img">
       {title && <title>{title}</title>}
       <circle cx="12" cy="12" r="11" fill="#000" />
       <path
@@ -99,13 +81,7 @@ export function SpotifyLogo({ size = 12, title = 'Spotify' }: LogoProps): JSX.El
 /** Deezer —— 紫色方 + 4 条白竖条（类比 iconic：Deezer logo 风格） */
 export function DeezerLogo({ size = 12, title = 'Deezer' }: LogoProps): JSX.Element {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      role="img"
-    >
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" role="img">
       {title && <title>{title}</title>}
       <rect x="0" y="13" width="3" height="11" fill="#fff" />
       <rect x="6" y="9" width="3" height="15" fill="#fff" />

@@ -84,16 +84,8 @@ function close(actual: number, expected: number, label?: string) {
   assert.strictEqual(recall(holdout, ranked), 1, '两首都找回 → 100%');
   assert.strictEqual(recall(holdout, ranked, 1), 0, 'Top-1 只看到"别的"');
   assert.strictEqual(recall(holdout, ranked, 2), 0.5, 'Top-2 只找回一首');
-  assert.strictEqual(
-    meanReciprocalRank(holdout, ranked),
-    0.5,
-    '首个命中排第 2 → MRR = 1/2',
-  );
-  assert.strictEqual(
-    meanReciprocalRank(holdout, [item('别的', 'X')]),
-    0,
-    '没命中 → 0',
-  );
+  assert.strictEqual(meanReciprocalRank(holdout, ranked), 0.5, '首个命中排第 2 → MRR = 1/2');
+  assert.strictEqual(meanReciprocalRank(holdout, [item('别的', 'X')]), 0, '没命中 → 0');
   assert.strictEqual(recall([], ranked), 0, '留出为空 → 0（不除零）');
   assert.deepStrictEqual(
     hitDetails(holdout, ranked).map((h: any) => [h.title, h.rank]),
@@ -108,10 +100,7 @@ function close(actual: number, expected: number, label?: string) {
 // ── 3. 同艺人 / 新艺人分档 ─────────────────────────────────
 {
   const train = [item('训练歌', '老熟人')];
-  const holdout = [
-    item('老熟人的另一首', '老熟人'),
-    item('新面孔', '陌生人'),
-  ];
+  const holdout = [item('老熟人的另一首', '老熟人'), item('新面孔', '陌生人')];
   const b = holdoutBreakdown(holdout, train);
   assert.strictEqual(b.sameArtist.length, 1);
   assert.strictEqual(b.newArtist.length, 1);
@@ -121,11 +110,7 @@ function close(actual: number, expected: number, label?: string) {
 
 // ── 4. 多样性 ─────────────────────────────────────────────
 {
-  const d = diversityMetrics([
-    item('a', '甲'),
-    item('b', '甲'),
-    item('c', '乙'),
-  ]);
+  const d = diversityMetrics([item('a', '甲'), item('b', '甲'), item('c', '乙')]);
   assert.strictEqual(d.items, 3);
   assert.strictEqual(d.uniqueArtists, 2);
   assert.strictEqual(Math.round(d.artistCoverage * 100) / 100, 0.67);

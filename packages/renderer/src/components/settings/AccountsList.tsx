@@ -12,9 +12,7 @@ import {
  * Deezer 行：标"匿名公开电台"，登出按钮 disabled。
  */
 export default function AccountsList() {
-  const [statuses, setStatuses] = useState<Record<MusicProvider, AuthStatusExtended> | null>(
-    null,
-  );
+  const [statuses, setStatuses] = useState<Record<MusicProvider, AuthStatusExtended> | null>(null);
   const [busyProvider, setBusyProvider] = useState<MusicProvider | null>(null);
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg?: string } | null>(null);
 
@@ -61,16 +59,10 @@ export default function AccountsList() {
         const loggedIn = !!s?.loggedIn;
         return (
           <div key={p} className="set-row">
-            <span className={`set-row-platform set-row-platform--${p}`}>
-              {PROVIDER_LABELS[p]}
-            </span>
+            <span className={`set-row-platform set-row-platform--${p}`}>{PROVIDER_LABELS[p]}</span>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}>
               <div className="set-row-name">
-                {isAnonymous
-                  ? '匿名公开电台'
-                  : loggedIn && s?.user
-                    ? s.user.nickname
-                    : '未登录'}
+                {isAnonymous ? '匿名公开电台' : loggedIn && s?.user ? s.user.nickname : '未登录'}
               </div>
               <div className="set-row-meta">
                 {isAnonymous

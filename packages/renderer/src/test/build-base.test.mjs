@@ -58,10 +58,7 @@ function main() {
           `${entry} 的资源引用 "${ref}" 不是相对路径（file:// 下会解析到文件系统根）`,
         );
         const abs = resolve(pkgRoot, 'dist', ref);
-        assert.ok(
-          existsSync(abs),
-          `${entry} 引用的 "${ref}" 在 dist 里不存在`,
-        );
+        assert.ok(existsSync(abs), `${entry} 引用的 "${ref}" 在 dist 里不存在`);
       }
     }
   });
@@ -125,9 +122,7 @@ function main() {
           .map((m) => m[1]),
       );
       // 产物里出现「--tw-x: <值>」即视为已初始化
-      const inited = new Set(
-        [...css.matchAll(/(--tw-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
-      );
+      const inited = new Set([...css.matchAll(/(--tw-[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
       for (const v of noFallback) {
         if (!inited.has(v)) problems.push(`${f}: ${v}`);
       }
@@ -140,7 +135,9 @@ function main() {
     );
   });
 
-  console.log(`\n${failed === 0 ? '🎉' : '⚠️ '} build-base.test: ${passed} passed, ${failed} failed`);
+  console.log(
+    `\n${failed === 0 ? '🎉' : '⚠️ '} build-base.test: ${passed} passed, ${failed} failed`,
+  );
   if (failed > 0) process.exit(1);
 }
 

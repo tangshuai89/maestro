@@ -21,10 +21,10 @@ while ((m = entryRe.exec(src)) !== null) {
 
   const aliases = aliasStr
     .split(',')
-    .map(s => s.trim())
-    .filter(s => s && s.startsWith("'"))
-    .map(s => s.slice(1, -1).replace(/\\'/g, "'"))
-    .filter(s => s.length > 0);
+    .map((s) => s.trim())
+    .filter((s) => s && s.startsWith("'"))
+    .map((s) => s.slice(1, -1).replace(/\\'/g, "'"))
+    .filter((s) => s.length > 0);
 
   entries.push({ key, aliases, comment });
 }
@@ -39,7 +39,7 @@ for (const e of entries) {
     const existing = seen.get(e.key);
     if (e.aliases.length > existing.aliases.length) {
       // Replace
-      const idx = final.findIndex(x => x.key === e.key);
+      const idx = final.findIndex((x) => x.key === e.key);
       final[idx] = e;
       seen.set(e.key, e);
     }
@@ -52,7 +52,7 @@ for (const e of entries) {
 console.log(`After dedup: ${final.length} unique entries`);
 
 // Remove empty
-const nonEmpty = final.filter(e => e.aliases.length > 0);
+const nonEmpty = final.filter((e) => e.aliases.length > 0);
 console.log(`Non-empty: ${nonEmpty.length} entries`);
 
 // Build the new file
@@ -115,11 +115,13 @@ function cn2t(text: string): string {
  * 简体或繁体都行——「马赛克」与「馬賽克」命中同一值。key 统一繁体（cn2t）。
  */
 const STAGE_NAME_ALIASES: Record<string, string[]> = {
-${nonEmpty.map(e => {
-  const aliasStr = e.aliases.map(a => `'${a.replace(/'/g, "\\'")}'`).join(', ');
-  const commentStr = e.comment ? ` // ${e.comment}` : '';
-  return `  '${e.key}': [${aliasStr}],${commentStr}`;
-}).join('\n')}
+${nonEmpty
+  .map((e) => {
+    const aliasStr = e.aliases.map((a) => `'${a.replace(/'/g, "\\'")}'`).join(', ');
+    const commentStr = e.comment ? ` // ${e.comment}` : '';
+    return `  '${e.key}': [${aliasStr}],${commentStr}`;
+  })
+  .join('\n')}
 };
 
 /**

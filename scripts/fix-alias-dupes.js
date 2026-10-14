@@ -13,8 +13,16 @@ const { Converter } = require('opencc-js');
 const ALIAS_PATH = path.resolve(__dirname, '..', 'packages', 'common', 'src', 'artistAlias.ts');
 
 let s2t, t2s;
-try { s2t = Converter({ from: 'cn', to: 'tw' }); } catch { s2t = s => s; }
-try { t2s = Converter({ from: 'tw', to: 'cn' }); } catch { t2s = s => s; }
+try {
+  s2t = Converter({ from: 'cn', to: 'tw' });
+} catch {
+  s2t = (s) => s;
+}
+try {
+  t2s = Converter({ from: 'tw', to: 'cn' });
+} catch {
+  t2s = (s) => s;
+}
 
 function main() {
   let src = fs.readFileSync(ALIAS_PATH, 'utf8');
@@ -44,10 +52,10 @@ function main() {
     // Parse aliases array
     const aliases = aliasStr
       .split(',')
-      .map(s => s.trim())
-      .filter(s => s.startsWith("'"))
-      .map(s => s.slice(1, -1).replace(/\\'/g, "'"))
-      .filter(s => s.length > 0);
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith("'"))
+      .map((s) => s.slice(1, -1).replace(/\\'/g, "'"))
+      .filter((s) => s.length > 0);
 
     if (entries.has(key)) {
       // Duplicate: merge, keep more aliases
@@ -60,7 +68,9 @@ function main() {
     }
   }
 
-  console.log(`After dedup: ${entries.size} unique entries (removed ${Object.keys(entries).length - entries.size} duplicates)`);
+  console.log(
+    `After dedup: ${entries.size} unique entries (removed ${Object.keys(entries).length - entries.size} duplicates)`,
+  );
 
   // Fill empty entries with s2t/t2s variants
   let filledCount = 0;
@@ -101,7 +111,7 @@ function main() {
     } catch {}
 
     // Remove aliases that equal the key
-    finalAliases = finalAliases.filter(a => a !== key);
+    finalAliases = finalAliases.filter((a) => a !== key);
     // Remove duplicates
     finalAliases = [...new Set(finalAliases)];
 
@@ -114,8 +124,8 @@ function main() {
 
   // Rebuild the object body
   const newBody = finalEntries
-    .map(e => {
-      const aliasStr = e.aliases.map(a => `'${a.replace(/'/g, "\\'")}'`).join(', ');
+    .map((e) => {
+      const aliasStr = e.aliases.map((a) => `'${a.replace(/'/g, "\\'")}'`).join(', ');
       const commentStr = e.comment ? ` // ${e.comment}` : '';
       return `  '${e.key}': [${aliasStr}],${commentStr}`;
     })

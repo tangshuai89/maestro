@@ -204,7 +204,11 @@ withHarness((h) => {
 
   c.setEnabled(true);
   assert.strictEqual(h.windows.length, 1, '开启后建窗');
-  assert.strictEqual(h.windows[0].shownInactive, 0, 'did-finish-load 之前不 show（避免空框闪一下）');
+  assert.strictEqual(
+    h.windows[0].shownInactive,
+    0,
+    'did-finish-load 之前不 show（避免空框闪一下）',
+  );
   assert.deepStrictEqual(
     h.windows[0].alwaysOnTop[0],
     { flag: true, level: 'screen-saver' },
@@ -283,7 +287,11 @@ withHarness((h) => {
   // 锁定时面板整块卸载 → mouseleave 不再来，必须主动清掉 hover 放行
   c.handleOverlayHover(true);
   c.handleOverlayControl({ action: 'lock', locked: true });
-  assert.strictEqual(h.windows[0].ignoreEvents.pop()?.ignore, true, '锁定时清掉 hover 放行，重新穿透');
+  assert.strictEqual(
+    h.windows[0].ignoreEvents.pop()?.ignore,
+    true,
+    '锁定时清掉 hover 放行，重新穿透',
+  );
 
   // 未锁定时 hover 不该改任何东西
   c.handleOverlayControl({ action: 'lock', locked: false });
@@ -307,8 +315,15 @@ withHarness((h) => {
   h.finishLoad(0);
   h.moveWindow(0, { x: 50, y: 60 });
   h.runTimers();
-  c.handleOverlayControl({ action: 'prefs', prefs: { fontScale: 1.5, palette: 'cyan', stroke: false } });
-  const sent = h.sentTo(0, OVERLAY_PREFS_CHANNEL).pop() as { fontScale: number; palette: string; stroke: boolean };
+  c.handleOverlayControl({
+    action: 'prefs',
+    prefs: { fontScale: 1.5, palette: 'cyan', stroke: false },
+  });
+  const sent = h.sentTo(0, OVERLAY_PREFS_CHANNEL).pop() as {
+    fontScale: number;
+    palette: string;
+    stroke: boolean;
+  };
   assert.strictEqual(sent.fontScale, 1.5, '字号回广播');
   assert.strictEqual(sent.palette, 'cyan');
   assert.strictEqual(sent.stroke, false);
@@ -319,12 +334,21 @@ withHarness((h) => {
   // 越界值归一；且浮窗不能顺手改掉 enabled/locked/bounds
   c.handleOverlayControl({
     action: 'prefs',
-    prefs: { fontScale: 99, enabled: false, locked: false, bounds: { x: 0, y: 0, width: 1, height: 1 } },
+    prefs: {
+      fontScale: 99,
+      enabled: false,
+      locked: false,
+      bounds: { x: 0, y: 0, width: 1, height: 1 },
+    },
   });
   const after = c.getPrefs();
   assert.strictEqual(after.fontScale <= 1.8, true, 'fontScale 夹紧');
   assert.strictEqual(after.enabled, true, '浮窗不能通过 prefs 关掉自己');
-  assert.deepStrictEqual(after.bounds, { x: 50, y: 60, width: 860, height: 160 }, '浮窗不能通过 prefs 改位置尺寸');
+  assert.deepStrictEqual(
+    after.bounds,
+    { x: 50, y: 60, width: 860, height: 160 },
+    '浮窗不能通过 prefs 改位置尺寸',
+  );
 
   // close 等价于 setEnabled(false)
   c.handleOverlayControl({ action: 'close' });
@@ -341,8 +365,16 @@ withHarness((h) => {
   h.finishLoad(0);
   h.moveWindow(0, { x: 300, y: 420, width: 700, height: 200 });
   h.moveWindow(0, { x: 310, y: 430 });
-  assert.strictEqual(JSON.parse(readFileSync(prefsPath(h.dir), 'utf-8')).bounds, null, 'debounce 期间还没落盘');
-  assert.strictEqual(h.timers.filter((t) => !t.cleared).length, 1, '前一个定时器被取消，只留一个待跑');
+  assert.strictEqual(
+    JSON.parse(readFileSync(prefsPath(h.dir), 'utf-8')).bounds,
+    null,
+    'debounce 期间还没落盘',
+  );
+  assert.strictEqual(
+    h.timers.filter((t) => !t.cleared).length,
+    1,
+    '前一个定时器被取消，只留一个待跑',
+  );
   h.runTimers();
   const bounds = JSON.parse(readFileSync(prefsPath(h.dir), 'utf-8')).bounds;
   assert.deepStrictEqual(bounds, { x: 310, y: 430, width: 700, height: 200 }, '落盘最后一次位置');
@@ -423,7 +455,9 @@ withHarness((h) => {
       'utf-8',
     );
     const seen: unknown[] = [];
-    const mk = (clamp?: (b: { x: number; y: number; width: number; height: number }) => unknown) => {
+    const mk = (
+      clamp?: (b: { x: number; y: number; width: number; height: number }) => unknown,
+    ) => {
       const captured: BrowserWindowConstructorOptions[] = [];
       const c = new DesktopLyricsController({
         userDataDir: dir,
@@ -445,7 +479,11 @@ withHarness((h) => {
       seen.push(b);
       return null;
     });
-    assert.deepStrictEqual(seen[0], { x: 2400, y: 80, width: 900, height: 200 }, 'clamp 拿得到落盘的原坐标');
+    assert.deepStrictEqual(
+      seen[0],
+      { x: 2400, y: 80, width: 900, height: 200 },
+      'clamp 拿得到落盘的原坐标',
+    );
     assert.strictEqual(dropped?.x, undefined, '坐标失效 → 不下发 x（否则窗口丢进空白区）');
     assert.strictEqual(dropped?.width, 900, '坐标失效仍保留用户拉过的宽度');
 
@@ -464,7 +502,11 @@ withHarness((h) => {
 
 withHarness((h) => {
   const c = h.controllers[0];
-  assert.strictEqual(c.isOverlaySender(h.webContents[0] ?? {}), false, '浮窗未建 → 一律拒（浮窗不存在时不存在合法 sender）');
+  assert.strictEqual(
+    c.isOverlaySender(h.webContents[0] ?? {}),
+    false,
+    '浮窗未建 → 一律拒（浮窗不存在时不存在合法 sender）',
+  );
 
   c.setEnabled(true);
   assert.strictEqual(c.isOverlaySender(h.webContents[0]), true, '浮窗自己发的放行');
@@ -473,7 +515,11 @@ withHarness((h) => {
   assert.strictEqual(c.isOverlaySender(null), false);
 
   c.setEnabled(false);
-  assert.strictEqual(c.isOverlaySender(h.webContents[0]), false, '浮窗已销毁 → 旧 sender 也不再放行');
+  assert.strictEqual(
+    c.isOverlaySender(h.webContents[0]),
+    false,
+    '浮窗已销毁 → 旧 sender 也不再放行',
+  );
 });
 
 // 上次开着退出 → 本次启动仍是开着

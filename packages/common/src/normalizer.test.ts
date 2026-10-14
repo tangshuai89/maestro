@@ -301,7 +301,11 @@ check('录音版', stripTrailingMeta('Song - 录音版'), 'Song');
 check('试听', stripTrailingMeta('Song - 试听'), 'Song');
 check('preview', stripTrailingMeta('Song - preview'), 'Song');
 // 用户实测：一百 + 百事可乐品牌主题曲
-check('用户场景：一百 - 百事可乐品牌主题曲', stripTrailingMeta('一百 - 百事可乐品牌主题曲'), '一百');
+check(
+  '用户场景：一百 - 百事可乐品牌主题曲',
+  stripTrailingMeta('一百 - 百事可乐品牌主题曲'),
+  '一百',
+);
 // 英文版本/合作尾缀（与原 stripTrailingVersionSuffix 一致）
 check('ver.', stripTrailingMeta('Song - zerokoi ver.'), 'Song');
 check('Remix', stripTrailingMeta('Song - Remix'), 'Song');
@@ -313,7 +317,11 @@ check('裸 ver.', stripTrailingMeta('Song - ver.'), 'Song');
 check('裸 Mix', stripTrailingMeta('Song - Mix'), 'Song');
 check('裸 Edit', stripTrailingMeta('Song - Edit'), 'Song');
 check('裸 Deluze', stripTrailingMeta('Song - Deluxe'), 'Song');
-check('feat. Y 无 dash 不剥（走 stripFeatTags 路径）', stripTrailingMeta('Song feat. Y'), 'Song feat. Y');
+check(
+  'feat. Y 无 dash 不剥（走 stripFeatTags 路径）',
+  stripTrailingMeta('Song feat. Y'),
+  'Song feat. Y',
+);
 // 「Song - feat. X」dash 后是 feat+人名（不是裸关键词），不剥
 check('feat. X dash 不剥', stripTrailingMeta('Song - feat. X'), 'Song - feat. X');
 // dash 变体
@@ -329,7 +337,11 @@ check('关键词不在尾不动', stripTrailingMeta('主题曲 Song'), '主题�
 // 边界：双层「朋友 - 主题曲」只剥外层「 - 主题曲」（中间内容不含 dash/space）
 check('双层：朋友 - 主题曲 → 朋友', stripTrailingMeta('Song - 朋友 - 主题曲'), 'Song - 朋友');
 // 边界：尾缀不在白名单不动
-check('(Live) 括号形式不剥（走 stripVersionTags 路径）', stripTrailingMeta('Song (Live)'), 'Song (Live)');
+check(
+  '(Live) 括号形式不剥（走 stripVersionTags 路径）',
+  stripTrailingMeta('Song (Live)'),
+  'Song (Live)',
+);
 // 嵌套多次剥
 check('双层：主题曲 + the', stripTrailingMeta('Song - 主题曲 - the'), 'Song');
 // 全角空格
@@ -344,15 +356,31 @@ check('无括号不动', stripCjkTranslationParens('Lemon'), 'Lemon');
 check('纯 CJK 译名剥（半角）', stripCjkTranslationParens('Lemon (柠檬)'), 'Lemon');
 check('纯 CJK 译名剥（全角）', stripCjkTranslationParens('たばこ（烟草）'), 'たばこ');
 check('纯 CJK 译名剥（春紫菀）', stripCjkTranslationParens('ハルジオン (春紫菀)'), 'ハルジオン');
-check('纯 CJK 译名剥（向夜晚奔去）', stripCjkTranslationParens('夜に駆ける (向夜晚奔去)'), '夜に駆ける');
-check('含装饰标点也剥（阿罗拉!!）', stripCjkTranslationParens('アローラ!! (阿罗拉!!)'), 'アローラ!!');
+check(
+  '纯 CJK 译名剥（向夜晚奔去）',
+  stripCjkTranslationParens('夜に駆ける (向夜晚奔去)'),
+  '夜に駆ける',
+);
+check(
+  '含装饰标点也剥（阿罗拉!!）',
+  stripCjkTranslationParens('アローラ!! (阿罗拉!!)'),
+  'アローラ!!',
+);
 check('(Live) 拉丁不剥', stripCjkTranslationParens('Song (Live)'), 'Song (Live)');
 check('(Explicit) 拉丁不剥', stripCjkTranslationParens('Song (Explicit)'), 'Song (Explicit)');
-check('(Love Lost) 拉丁不剥', stripCjkTranslationParens('我只怪我自己 (Love Lost)'), '我只怪我自己 (Love Lost)');
+check(
+  '(Love Lost) 拉丁不剥',
+  stripCjkTranslationParens('我只怪我自己 (Love Lost)'),
+  '我只怪我自己 (Love Lost)',
+);
 check('(现场版) 版本词不剥', stripCjkTranslationParens('Song (现场版)'), 'Song (现场版)');
 check('(真我版) 版本词不剥', stripCjkTranslationParens('我管你 (真我版)'), '我管你 (真我版)');
 check('(国语) 版本词不剥', stripCjkTranslationParens('Song (国语)'), 'Song (国语)');
-check('混合拉丁不剥（Departures~…）', stripCjkTranslationParens('Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)'), 'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)');
+check(
+  '混合拉丁不剥（Departures~…）',
+  stripCjkTranslationParens('Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)'),
+  'Departures~あなたにおくるアイの歌~ (Departures~送给你的爱之歌~)',
+);
 
 // ── stripCjkTranslationSuffix（拉丁主体 + 空格 + CJK 译名尾段）─────────
 // 背景：QQ「Liyue 璃月」vs 网易云/Spotify「Liyue」——空格分隔的中文译名，
@@ -361,8 +389,16 @@ console.log('\n── stripCjkTranslationSuffix ──');
 check('空串', stripCjkTranslationSuffix(''), '');
 check('无空格不动', stripCjkTranslationSuffix('Liyue'), 'Liyue');
 check('拉丁主体 + CJK 译名剥', stripCjkTranslationSuffix('Liyue 璃月'), 'Liyue');
-check('多词拉丁主体 + CJK 译名剥', stripCjkTranslationSuffix('Spinning Globe 地球仪'), 'Spinning Globe');
-check('纯 CJK 主体不剥（版本词尾）', stripCjkTranslationSuffix('海阔天空 现场版'), '海阔天空 现场版');
+check(
+  '多词拉丁主体 + CJK 译名剥',
+  stripCjkTranslationSuffix('Spinning Globe 地球仪'),
+  'Spinning Globe',
+);
+check(
+  '纯 CJK 主体不剥（版本词尾）',
+  stripCjkTranslationSuffix('海阔天空 现场版'),
+  '海阔天空 现场版',
+);
 check('纯 CJK 主体不剥（普通尾段）', stripCjkTranslationSuffix('夜曲 Nocturne'), '夜曲 Nocturne');
 check('CJK 主体 + 拉丁尾段不剥（反向）', stripCjkTranslationSuffix('爱 Love'), '爱 Love');
 check('尾段含版本词不剥', stripCjkTranslationSuffix('Liyue 主题曲'), 'Liyue 主题曲');
@@ -379,13 +415,21 @@ check('单词尾段也剥', stripLatinTranslationSuffix('枫丹 Fontaine'), '枫
 check('日文主体 + 拉丁译名剥', stripLatinTranslationSuffix('梦の夜会 Invitation'), '梦の夜会');
 check('纯拉丁主体不剥', stripLatinTranslationSuffix('Spinning Globe Away'), 'Spinning Globe Away');
 check('拉丁主体 + CJK 尾段不剥（反向）', stripLatinTranslationSuffix('Liyue 璃月'), 'Liyue 璃月');
-check('主体尾字是拉丁不剥（袁娅维TIA RAY）', stripLatinTranslationSuffix('袁娅维TIA RAY'), '袁娅维TIA RAY');
+check(
+  '主体尾字是拉丁不剥（袁娅维TIA RAY）',
+  stripLatinTranslationSuffix('袁娅维TIA RAY'),
+  '袁娅维TIA RAY',
+);
 check(
   '主体尾字是拉丁不剥（揽佬SKAI ISYOURGOD）',
   stripLatinTranslationSuffix('揽佬SKAI ISYOURGOD'),
   '揽佬SKAI ISYOURGOD',
 );
-check('中点不算 CJK 字（LA・LA・LA）', stripLatinTranslationSuffix('LA・LA・LA LOVE SONG'), 'LA・LA・LA LOVE SONG');
+check(
+  '中点不算 CJK 字（LA・LA・LA）',
+  stripLatinTranslationSuffix('LA・LA・LA LOVE SONG'),
+  'LA・LA・LA LOVE SONG',
+);
 check('数字尾段不剥', stripLatinTranslationSuffix('青花瓷 2024'), '青花瓷 2024');
 check('单字母尾段不剥', stripLatinTranslationSuffix('夜曲 A'), '夜曲 A');
 check('分集尾段不剥（Part 2）', stripLatinTranslationSuffix('序曲 Part 2'), '序曲 Part 2');
@@ -442,7 +486,8 @@ check(
 );
 check(
   '达拉崩吧（伴奏）!= 达拉崩吧（INSTRUMENTAL 保留）',
-  normalizeKey('达拉崩吧（伴奏）', 'ilem / 洛天依 / 言和') === normalizeKey('达拉崩吧', 'ilem / 洛天依 / 言和'),
+  normalizeKey('达拉崩吧（伴奏）', 'ilem / 洛天依 / 言和') ===
+    normalizeKey('达拉崩吧', 'ilem / 洛天依 / 言和'),
   false,
 );
 check(

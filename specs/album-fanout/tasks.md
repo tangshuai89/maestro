@@ -45,8 +45,7 @@
 
 - [ ] 4.1 加 `fanOutAlbumSave(session, mergedAlbumId, sources, saved)`：循环
       `toggleAlbumSave`，收集 `fannedOutTo`，写 `albumFanOut` 字段
-- [ ] 4.2 加 `toggleAlbumSave(session, provider, albumId, saved)`：per-platform 写
-      + 同步到 `albumsByPlatform`
+- [ ] 4.2 加 `toggleAlbumSave(session, provider, albumId, saved)`：per-platform 写 + 同步到 `albumsByPlatform`
 - [ ] 4.3 `loadState` / `saveState` 扩展支持 `albumFanOut` 字段
 - [ ] 4.4 失败策略：单平台失败 → fannedOutTo 不含 + 整体 success=true
 - [ ] 4.5 结构性跳过：hasAlbumSaveApi=false / 未登录 → **不写入** albumFanOut
@@ -92,14 +91,14 @@
 
 ## 估时汇总
 
-| 阶段 | 估时 |
-|---|---|
-| 0–1 | 1 天（准备 + 归一键） |
-| 2 | 1 天（匹配引擎） |
-| 3 | 0.5 天（provider 能力矩阵） |
-| 4–5 | 1 天（service + controller） |
-| 6–7 | 0.5 天（类型 + api.ts） |
-| 8 | 0.5 天（UI） |
-| 9 | 1 天（测试） |
-| 10 | 0.25 天（知识库） |
-| **合计** | **~4.75 天** |
+| 阶段     | 估时                         |
+| -------- | ---------------------------- |
+| 0–1      | 1 天（准备 + 归一键）        |
+| 2        | 1 天（匹配引擎）             |
+| 3        | 0.5 天（provider 能力矩阵）  |
+| 4–5      | 1 天（service + controller） |
+| 6–7      | 0.5 天（类型 + api.ts）      |
+| 8        | 0.5 天（UI）                 |
+| 9        | 1 天（测试）                 |
+| 10       | 0.25 天（知识库）            |
+| **合计** | **~4.75 天**                 |

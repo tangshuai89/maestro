@@ -9,18 +9,18 @@
 
 ## 1. 10 个 component set 规格
 
-| # | figmaComponent | 变体属性 | 变体数 | React props（component property 暴露）|
-|---|---|---|---|---|
-| 1 | `Modal/Shell` | `state=[default]` | 1 | `panelClassName: string?` |
-| 2 | `Modal/ErrorPanel` | `state=[collapsed, expanded]` | 2 | `message: text`（必须用 `text` 类型）|
-| 3 | `Modal/RecoLoading` | `state=[loading, error]` | 2 | `librarySize: number`, `errorText: text?` |
-| 4 | `SourceChip` | `platform=[qq, netease, deezer, spotify]` | 4 | `isBest: boolean`（instance override，**不**做变体）|
-| 5 | `Screen/SourceSelect` | `state=[empty, ready]` | 2 | `provider: enum[qq,netease,deezer,spotify]?` |
-| 6 | `Titlebar` | `state=[logged-out, logged-in, logging-in]` | 3 | `accountName: text?`, `likedCount: number?`, `qqQuality: enum[standard,high,lossless]?` |
-| 7 | `Layout/QualityMenu` | `quality=[standard, high, lossless]` | 3 | `disabled: boolean`（instance override）|
-| 8 | `Layout/SourceMenu` | `provider=[qq, netease, deezer, spotify]` | 4 | `disabled: boolean`（instance override）|
-| 9 | `Layout/DeezerPresetSelect` | `state=[default, hover, open]` | 3 | `value: text?`, `editorialCount: number?` |
-| 10 | `Modal/NeteaseCookie` | `state=[empty, qr-shown, cookie-paste, submitting]` | 4 | `errorText: text?` |
+| #   | figmaComponent              | 变体属性                                            | 变体数 | React props（component property 暴露）                                                  |
+| --- | --------------------------- | --------------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| 1   | `Modal/Shell`               | `state=[default]`                                   | 1      | `panelClassName: string?`                                                               |
+| 2   | `Modal/ErrorPanel`          | `state=[collapsed, expanded]`                       | 2      | `message: text`（必须用 `text` 类型）                                                   |
+| 3   | `Modal/RecoLoading`         | `state=[loading, error]`                            | 2      | `librarySize: number`, `errorText: text?`                                               |
+| 4   | `SourceChip`                | `platform=[qq, netease, deezer, spotify]`           | 4      | `isBest: boolean`（instance override，**不**做变体）                                    |
+| 5   | `Screen/SourceSelect`       | `state=[empty, ready]`                              | 2      | `provider: enum[qq,netease,deezer,spotify]?`                                            |
+| 6   | `Titlebar`                  | `state=[logged-out, logged-in, logging-in]`         | 3      | `accountName: text?`, `likedCount: number?`, `qqQuality: enum[standard,high,lossless]?` |
+| 7   | `Layout/QualityMenu`        | `quality=[standard, high, lossless]`                | 3      | `disabled: boolean`（instance override）                                                |
+| 8   | `Layout/SourceMenu`         | `provider=[qq, netease, deezer, spotify]`           | 4      | `disabled: boolean`（instance override）                                                |
+| 9   | `Layout/DeezerPresetSelect` | `state=[default, hover, open]`                      | 3      | `value: text?`, `editorialCount: number?`                                               |
+| 10  | `Modal/NeteaseCookie`       | `state=[empty, qr-shown, cookie-paste, submitting]` | 4      | `errorText: text?`                                                                      |
 
 合计：**28 变体**（接近 v4 推荐上限"≤30 变体/页"）。
 
@@ -33,15 +33,15 @@
 
 ## 3. 范围
 
-| 工作 | 文件 | 类型 |
-|---|---|---|
-| 规格 spec + tasks | `specs/d5-new-components/{spec,tasks}.md` | 新 |
-| 每组件详细规格 | `specs/d5-new-components/component-specs.md` | 新 |
-| use_figma 段（建 10 个 component set） | `scripts/figma-aether-v4-components-d5.js` | 新 |
-| 执行手册 | `scripts/figma-v4-d5-new-command.md` | 新 |
-| Mock 端到端 | `scripts/figma-v4-smoke-d5-new.mjs` | 新 |
-| TBD-FIGMA → 真实 nodeId 注入器 | `scripts/figma-code-connect-inject.mjs` | 新 |
-| `figma-code-connect.json` 占位 + 真实 id 双向更新工具 | 改 | 改 |
+| 工作                                                  | 文件                                         | 类型 |
+| ----------------------------------------------------- | -------------------------------------------- | ---- |
+| 规格 spec + tasks                                     | `specs/d5-new-components/{spec,tasks}.md`    | 新   |
+| 每组件详细规格                                        | `specs/d5-new-components/component-specs.md` | 新   |
+| use_figma 段（建 10 个 component set）                | `scripts/figma-aether-v4-components-d5.js`   | 新   |
+| 执行手册                                              | `scripts/figma-v4-d5-new-command.md`         | 新   |
+| Mock 端到端                                           | `scripts/figma-v4-smoke-d5-new.mjs`          | 新   |
+| TBD-FIGMA → 真实 nodeId 注入器                        | `scripts/figma-code-connect-inject.mjs`      | 新   |
+| `figma-code-connect.json` 占位 + 真实 id 双向更新工具 | 改                                           | 改   |
 
 ## 4. 不在范围
 

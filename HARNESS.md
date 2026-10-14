@@ -10,19 +10,19 @@
 
 ## 一图流
 
-| Harness | slash 命令 / 自然语言 | sub-agent / workflow | 项目事实 | 配置 / MCP |
-| --- | --- | --- | --- | --- |
-| **opencode** | `.opencode/command/*.md` | `.opencode/agent/*.md` · `.opencode/skill/*/SKILL.md` | `CLAUDE.md` | `opencode.json` · `.opencode/plugin/*.ts` |
-| **Claude Code** | `.claude/workflows/*.md` | — | `CLAUDE.md` | `.claude/settings.json` · `.mcp.json` |
-| **Codex** | （无 slash 命令；直接读 `CLAUDE.md` + `specs/`） | `memories` feature 自管 | `CLAUDE.md` | `.codex/config.toml` · `.mcp.json` |
+| Harness         | slash 命令 / 自然语言                            | sub-agent / workflow                                  | 项目事实    | 配置 / MCP                                |
+| --------------- | ------------------------------------------------ | ----------------------------------------------------- | ----------- | ----------------------------------------- |
+| **opencode**    | `.opencode/command/*.md`                         | `.opencode/agent/*.md` · `.opencode/skill/*/SKILL.md` | `CLAUDE.md` | `opencode.json` · `.opencode/plugin/*.ts` |
+| **Claude Code** | `.claude/workflows/*.md`                         | —                                                     | `CLAUDE.md` | `.claude/settings.json` · `.mcp.json`     |
+| **Codex**       | （无 slash 命令；直接读 `CLAUDE.md` + `specs/`） | `memories` feature 自管                               | `CLAUDE.md` | `.codex/config.toml` · `.mcp.json`        |
 
 ## 顶层入口文档
 
-| 文件 | 谁读 | 内容 |
-| --- | --- | --- |
-| `CLAUDE.md` | **三个 harness 都读** | 技术栈、架构约束、Specs 规则、常用命令——**项目事实单一来源** |
-| `AGENTS.md` | opencode + claude | 入口说明 + opencode 专用命令速查 + 关键路径 |
-| `HARNESS.md`（本文件） | 三个 harness 都读 | harness 专属入口 + 路径引用纪律 |
+| 文件                   | 谁读                  | 内容                                                         |
+| ---------------------- | --------------------- | ------------------------------------------------------------ |
+| `CLAUDE.md`            | **三个 harness 都读** | 技术栈、架构约束、Specs 规则、常用命令——**项目事实单一来源** |
+| `AGENTS.md`            | opencode + claude     | 入口说明 + opencode 专用命令速查 + 关键路径                  |
+| `HARNESS.md`（本文件） | 三个 harness 都读     | harness 专属入口 + 路径引用纪律                              |
 
 > ⚠️ **`AGENTS.md` 与 `CLAUDE.md` 是同一份事实的两种入口**，故意不重复内容。
 > 改 `CLAUDE.md` 时一般**不用**动 `AGENTS.md`；改 `AGENTS.md` 的「opencode 命令」
@@ -33,13 +33,13 @@
 跨包路径在所有 harness 的 SKILL / command / agent / workflow / README / 文档里
 写法必须统一。事实由 `CLAUDE.md`「架构约束」段钉死：
 
-| 文件 / 工具 | 唯一正确路径 | 常见错误 |
-| --- | --- | --- |
-| `MusicProvider` 接口 | `packages/common/src/provider.ts` | ❌ `packages/server/src/common/provider.ts` |
-| `withTimeout` 工具 | `packages/common/src/timeout.ts` | ❌ `packages/server/src/common/timeout.ts` |
-| 跨包归一工具（`fuzzyKey` / `stripFeatTags` / `stripParensContent` / `cjkUnify` 等） | `packages/common/src/normalizer.ts` | ❌ 在 server / renderer 各写一份 |
-| provider 实现 | `packages/server/src/music/<platform>.provider.ts` | ❌ 写到 `packages/server/src/<platform>/` |
-| 跨包类型 | `packages/common/src/<thing>.ts` | ❌ 散落在 server / renderer |
+| 文件 / 工具                                                                         | 唯一正确路径                                       | 常见错误                                    |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------- |
+| `MusicProvider` 接口                                                                | `packages/common/src/provider.ts`                  | ❌ `packages/server/src/common/provider.ts` |
+| `withTimeout` 工具                                                                  | `packages/common/src/timeout.ts`                   | ❌ `packages/server/src/common/timeout.ts`  |
+| 跨包归一工具（`fuzzyKey` / `stripFeatTags` / `stripParensContent` / `cjkUnify` 等） | `packages/common/src/normalizer.ts`                | ❌ 在 server / renderer 各写一份            |
+| provider 实现                                                                       | `packages/server/src/music/<platform>.provider.ts` | ❌ 写到 `packages/server/src/<platform>/`   |
+| 跨包类型                                                                            | `packages/common/src/<thing>.ts`                   | ❌ 散落在 server / renderer                 |
 
 **自查命令**：
 
@@ -64,11 +64,11 @@ grep -rn "packages/[a-z]*/src/" .opencode/ .claude/ AGENTS.md HARNESS.md
 
 > 2026-09-23 约定——避免来回切换 harness 时对"能不能直接 push"产生歧义。
 
-| 改动类型 | 是否直推 master |
-| --- | --- |
-| 文档（README / CHANGELOG / spec / docs/） | ✅ 直接 commit + push |
-| harness 配置（`.opencode/` / `.claude/` / `.codex/` / `AGENTS.md` / `HARNESS.md` / `CLAUDE.md`） | ✅ 直接 commit + push |
-| 普通功能 / 代码改动 / 行为变更 / 新依赖 / 锁文件 | ❌ 不直推；先 commit、给 diff 摘要、等用户点头再 push；常规走 PR 流程 |
+| 改动类型                                                                                         | 是否直推 master                                                       |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| 文档（README / CHANGELOG / spec / docs/）                                                        | ✅ 直接 commit + push                                                 |
+| harness 配置（`.opencode/` / `.claude/` / `.codex/` / `AGENTS.md` / `HARNESS.md` / `CLAUDE.md`） | ✅ 直接 commit + push                                                 |
+| 普通功能 / 代码改动 / 行为变更 / 新依赖 / 锁文件                                                 | ❌ 不直推；先 commit、给 diff 摘要、等用户点头再 push；常规走 PR 流程 |
 
 **判断口诀**：**"harness 间一致就能直推，运行时行为变更就停一下"**——前者只
 是约定同步，错了用户能秒回滚；后者错了会影响实际播放/搜索/打包，需要

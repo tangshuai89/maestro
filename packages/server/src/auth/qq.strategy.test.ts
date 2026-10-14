@@ -35,15 +35,25 @@ function reset() {
 
 let passed = 0;
 let failed = 0;
-function ok(label: string) { console.log(`✅ ${label}`); passed++; }
-function fail(label: string, msg: string) { console.log(`❌ ${label}\n   ${msg}`); failed++; }
+function ok(label: string) {
+  console.log(`✅ ${label}`);
+  passed++;
+}
+function fail(label: string, msg: string) {
+  console.log(`❌ ${label}\n   ${msg}`);
+  failed++;
+}
 async function test(label: string, fn: () => Promise<void>) {
-  try { await fn(); ok(label); } catch (e: any) {
+  try {
+    await fn();
+    ok(label);
+  } catch (e: any) {
     fail(label, e?.message ?? String(e));
   }
 }
 function expect(label: string, cond: boolean, detail = '') {
-  if (cond) ok(label); else fail(label, detail);
+  if (cond) ok(label);
+  else fail(label, detail);
 }
 
 const strategy = new QqAuthStrategy();
@@ -52,26 +62,37 @@ async function main() {
   // ── 1. loginWithCookie：cookie 太短 → AUTH_INVALID ───────────
   reset();
   await test('1. cookie 太短 → BadRequest', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('short'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('short'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 2. loginWithCookie：空 cookie → AUTH_INVALID ──────────────
   reset();
   await test('2. 空 cookie → BadRequest', async () => {
-    await assert.rejects(() => strategy.loginWithCookie(''), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie(''),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 3. loginWithCookie：无 uin → profile fetch 返回 null → AUTH_INVALID
   reset();
-  mockResponse = { text: JSON.stringify({ req_0: { data: { map_userinfo: { '123': { nick: 'Test' } } } } }) };
+  mockResponse = {
+    text: JSON.stringify({ req_0: { data: { map_userinfo: { '123': { nick: 'Test' } } } } }),
+  };
   await test('3. 无 uin → fetchProfile 返回 null → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 4. loginWithCookie：profile fetch 成功 ────────────────────
@@ -93,7 +114,10 @@ async function main() {
   };
   {
     const session = await strategy.loginWithCookie('qm_keyst=abc12345; uin=123456', '123456');
-    expect('4. profile 成功 → session.qqCookie', session.qqCookie === 'qm_keyst=abc12345; uin=123456');
+    expect(
+      '4. profile 成功 → session.qqCookie',
+      session.qqCookie === 'qm_keyst=abc12345; uin=123456',
+    );
     expect('4b. session.nickname = "测试用户"', session.nickname === '测试用户');
     expect('4c. session.avatarUrl', session.avatarUrl === 'https://y.gtimg.cn/avatar.jpg');
     expect('4d. session.qqVip = true', session.qqVip === true);
@@ -109,9 +133,12 @@ async function main() {
     }),
   };
   await test('5. 无 nick → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345', '123'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345', '123'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 6. loginWithCookie：profile 无 headpic → 用 avatar 字段 ──
@@ -202,36 +229,48 @@ async function main() {
   reset();
   mockResponse = { text: 'not json at all' };
   await test('13. 非 JSON → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345', '123'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345', '123'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 14. fetchProfile：空响应 → null → AUTH_INVALID ────────────
   reset();
   mockResponse = { text: '' };
   await test('14. 空响应 → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345', '123'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345', '123'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 15. fetchProfile：JSON 但无 req_0 → null ──────────────────
   reset();
   mockResponse = { text: JSON.stringify({ code: 500 }) };
   await test('15. JSON 无 req_0 → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345', '123'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345', '123'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 16. fetchProfile：map_userinfo 空 → null ──────────────────
   reset();
   mockResponse = { text: JSON.stringify({ req_0: { data: { map_userinfo: {} } } }) };
   await test('16. map_userinfo 空 → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345', '123'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345', '123'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
 
   // ── 17. fetchProfile：fetch URL 正确 ──────────────────────────
@@ -250,7 +289,10 @@ async function main() {
   // ── 18. isConfigured ──────────────────────────────────────────
   {
     expect('18. isConfigured(undefined) → false', strategy.isConfigured(undefined) === false);
-    expect('18b. isConfigured({qqCookie:"x"}) → true', strategy.isConfigured({ qqCookie: 'x' } as any) === true);
+    expect(
+      '18b. isConfigured({qqCookie:"x"}) → true',
+      strategy.isConfigured({ qqCookie: 'x' } as any) === true,
+    );
     expect('18c. isConfigured({}) → false', strategy.isConfigured({} as any) === false);
   }
 
@@ -272,9 +314,12 @@ async function main() {
     text: JSON.stringify({ req_0: { data: { map_userinfo: { '123': { nick: 'T' } } } } }),
   };
   await test('20. profile fetch 超时 → AUTH_INVALID', async () => {
-    await assert.rejects(() => strategy.loginWithCookie('qm_keyst=abc12345', '123'), (e: any) => {
-      return e.response?.error === 'AUTH_INVALID';
-    });
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=abc12345', '123'),
+      (e: any) => {
+        return e.response?.error === 'AUTH_INVALID';
+      },
+    );
   });
   fetchDelay = 0;
 
@@ -334,8 +379,14 @@ async function main() {
     await strategy.loginWithCookie('qm_keyst=abc12345', '999');
     const body = JSON.parse(fetchOpts.body);
     expect('25. body.comm.ct = 24', body.comm.ct === 24);
-    expect('25b. body.req_0.module = userInfo.BaseUserInfoServer', body.req_0.module === 'userInfo.BaseUserInfoServer');
-    expect('25c. body.req_0.param.vec_uin = ["999"]', JSON.stringify(body.req_0.param.vec_uin) === '["999"]');
+    expect(
+      '25b. body.req_0.module = userInfo.BaseUserInfoServer',
+      body.req_0.module === 'userInfo.BaseUserInfoServer',
+    );
+    expect(
+      '25c. body.req_0.param.vec_uin = ["999"]',
+      JSON.stringify(body.req_0.param.vec_uin) === '["999"]',
+    );
   }
 
   console.log(`\n🎉 qq.strategy.test: ${passed} passed, ${failed} failed`);

@@ -116,7 +116,9 @@ const electronAPI = {
    * renderer 端拿到后写到 electronAPI.apiBase + internalToken，api.ts 的
    * fetch wrapper 会读 internalToken 注入到 X-Maestro-Token header。
    */
-  onSidecarReady: (cb: (info: { apiBase: string; internalToken: string }) => void): (() => void) => {
+  onSidecarReady: (
+    cb: (info: { apiBase: string; internalToken: string }) => void,
+  ): (() => void) => {
     const handler = (_e: unknown, payload: { apiBase: string; internalToken: string }): void => {
       // 主进程发过来后写回 apiBase + internalToken，让所有 fetch 直接读到
       const apis = electronAPI as { apiBase: string; internalToken: string };
@@ -129,9 +131,11 @@ const electronAPI = {
   },
 
   /** Open a QQ Music login window; resolves when the login cookie is captured. */
-  qqLogin: (): Promise<QqLoginResponse> => ipcRenderer.invoke('qq:login'),  /** Open a NetEase login window; resolves when the login cookie is captured. */
-  neteaseLogin: (): Promise<NeteaseLoginResponse> =>
-    ipcRenderer.invoke('netease:login'),
+  qqLogin: (): Promise<QqLoginResponse> =>
+    ipcRenderer.invoke(
+      'qq:login',
+    ) /** Open a NetEase login window; resolves when the login cookie is captured. */,
+  neteaseLogin: (): Promise<NeteaseLoginResponse> => ipcRenderer.invoke('netease:login'),
 
   /** Widevine CDM 就绪状态（Spotify WPS 全曲播放必需）。Renderer 在
    *  WPS 初始化失败时（"No supported keysystem was found"）用它排查。 */
@@ -152,8 +156,7 @@ const electronAPI = {
    * external URLs from a renderer is a security smell, so this is bridged
    * through main where shell.openExternal can validate / whitelist.
    */
-  openExternal: (url: string): Promise<void> =>
-    ipcRenderer.invoke('shell:open-external', url),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-external', url),
 
   /**
    * Subscribe to tray transport commands ('playpause' | 'next' | 'prev').
@@ -166,8 +169,7 @@ const electronAPI = {
   },
 
   /** Report current playback state to main so the tray label/tooltip sync. */
-  reportPlaybackState: (state: PlaybackState): void =>
-    ipcRenderer.send('player:state', state),
+  reportPlaybackState: (state: PlaybackState): void => ipcRenderer.send('player:state', state),
 
   /**
    * Report the playback view ('theater' | 'mini' | 'lite') so main can
@@ -191,14 +193,11 @@ const electronAPI = {
    */
   desktopLyrics: {
     /** 主窗口 → main：推当前行。renderer 侧自己做去抖，这里不做节流。 */
-    pushState: (state: DesktopLyricsState): void =>
-      ipcRenderer.send('desktop-lyrics:state', state),
+    pushState: (state: DesktopLyricsState): void => ipcRenderer.send('desktop-lyrics:state', state),
     /** 主窗口 → main：开关浮窗（Titlebar 按钮 / ⌘⇧L / Tray 回显都走这里）。 */
-    setEnabled: (enabled: boolean): void =>
-      ipcRenderer.send('desktop-lyrics:set-enabled', enabled),
+    setEnabled: (enabled: boolean): void => ipcRenderer.send('desktop-lyrics:set-enabled', enabled),
     /** 主窗口 → main：首帧读一次当前开关态，避免按钮图标闪错状态。 */
-    getStatus: (): Promise<DesktopLyricsStatus> =>
-      ipcRenderer.invoke('desktop-lyrics:status'),
+    getStatus: (): Promise<DesktopLyricsStatus> => ipcRenderer.invoke('desktop-lyrics:status'),
     /** main → 主窗口：Tray / 浮窗面板改了开关或锁定态。 */
     onChanged: (cb: (status: DesktopLyricsStatus) => void): (() => void) => {
       const handler = (_e: unknown, status: DesktopLyricsStatus): void => cb(status);
@@ -213,8 +212,7 @@ const electronAPI = {
     },
     /** main → 浮窗：样式偏好的权威值（main 是唯一事实来源）。 */
     onPrefs: (cb: (prefs: DesktopLyricsPrefsPayload) => void): (() => void) => {
-      const handler = (_e: unknown, prefs: unknown): void =>
-        cb(prefs as DesktopLyricsPrefsPayload);
+      const handler = (_e: unknown, prefs: unknown): void => cb(prefs as DesktopLyricsPrefsPayload);
       ipcRenderer.on('desktop-lyrics:overlay:prefs', handler);
       return () => ipcRenderer.removeListener('desktop-lyrics:overlay:prefs', handler);
     },
@@ -222,8 +220,7 @@ const electronAPI = {
     control: (msg: DesktopLyricsControl): void =>
       ipcRenderer.send('desktop-lyrics:overlay:control', msg),
     /** 浮窗 → main：鼠标移入移出（锁定态下据此临时解除点击穿透）。 */
-    hover: (inside: boolean): void =>
-      ipcRenderer.send('desktop-lyrics:overlay:hover', { inside }),
+    hover: (inside: boolean): void => ipcRenderer.send('desktop-lyrics:overlay:hover', { inside }),
   },
 
   /** Tell main we're in Electron so the renderer can branch its behaviour. */

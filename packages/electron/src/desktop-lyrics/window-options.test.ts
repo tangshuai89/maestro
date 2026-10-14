@@ -29,8 +29,16 @@ assert.strictEqual(fresh.height, OVERLAY_DEFAULT_SIZE.height, '无历史 bounds 
 assert.strictEqual(fresh.x, undefined, '无历史 bounds → 不指定位置，让 OS 放');
 assert.strictEqual(fresh.minWidth, OVERLAY_MIN_SIZE.width);
 assert.strictEqual(fresh.minHeight, OVERLAY_MIN_SIZE.height);
-assert.strictEqual(fresh.webPreferences?.backgroundThrottling, false, '节流会让歌词切回可见时最多延迟 1s');
-assert.strictEqual(fresh.webPreferences?.preload, preload, '走同一个 preload（共享 session/token）');
+assert.strictEqual(
+  fresh.webPreferences?.backgroundThrottling,
+  false,
+  '节流会让歌词切回可见时最多延迟 1s',
+);
+assert.strictEqual(
+  fresh.webPreferences?.preload,
+  preload,
+  '走同一个 preload（共享 session/token）',
+);
 assert.strictEqual(fresh.webPreferences?.contextIsolation, true, 'contextIsolation 不能关');
 
 const restored = overlayWindowOptions(
@@ -85,7 +93,10 @@ const offScreen = { x: 2400, y: 80, width: 700, height: 180 };
 
 // ③ 没注入 clamp（单测 / 未来其它调用方）→ 退化为原行为，不静默吞坐标
 {
-  const noClamp = overlayWindowOptions({ ...DEFAULT_PREFS, bounds: offScreen }, { preloadPath: preload });
+  const noClamp = overlayWindowOptions(
+    { ...DEFAULT_PREFS, bounds: offScreen },
+    { preloadPath: preload },
+  );
   assert.strictEqual(noClamp.x, 2400, '未注入 clamp → 行为不变（不替调用方做决定）');
   assert.strictEqual(noClamp.y, 80);
 }

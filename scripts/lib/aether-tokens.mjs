@@ -20,7 +20,11 @@ const HEADER = [
 ];
 
 /** camelCase / 点号 → kebab-case（与 v4 导出脚本保持逐字节一致） */
-export const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[./]/g, '-').toLowerCase();
+export const kebab = (s) =>
+  s
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[./]/g, '-')
+    .toLowerCase();
 
 /**
  * Figma 变量名 → CSS 自定义属性名。
@@ -40,7 +44,10 @@ export function cssVarFor(figmaName) {
   return { group, cssVar };
 }
 
-const hex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+const hex = (v) =>
+  Math.round(v * 255)
+    .toString(16)
+    .padStart(2, '0');
 
 /**
  * 变量值（已解析别名）→ CSS 值字符串。
@@ -52,7 +59,9 @@ const hex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
 export function cssValueFor(entry, cssVar) {
   const v = entry.value;
   if (entry.resolvedType === 'COLOR') {
-    const r = hex(v.r), g = hex(v.g), b = hex(v.b);
+    const r = hex(v.r),
+      g = hex(v.g),
+      b = hex(v.b);
     const a = v.a ?? 1;
     if (a >= 1) return `#${r}${g}${b}`;
     return `rgba(${Math.round(v.r * 255)}, ${Math.round(v.g * 255)}, ${Math.round(v.b * 255)}, ${Number(a.toFixed(3))})`;

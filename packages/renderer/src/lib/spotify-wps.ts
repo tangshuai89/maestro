@@ -135,7 +135,10 @@ function waitForSdk(): Promise<SpotifySdk> {
         return resolve(window.Spotify);
       }
       if (Date.now() - start > 5000) {
-        wpsError('sdk', `timeout after 5s; __wpsSdkReady=${Boolean((window as unknown as { __wpsSdkReady?: boolean }).__wpsSdkReady)}, window.Spotify=${Boolean(window.Spotify)}`);
+        wpsError(
+          'sdk',
+          `timeout after 5s; __wpsSdkReady=${Boolean((window as unknown as { __wpsSdkReady?: boolean }).__wpsSdkReady)}, window.Spotify=${Boolean(window.Spotify)}`,
+        );
         // T8 (consistency-fixes E3)：超时分支 sdkPromise = null 允许下次
         // 重试。旧实现 sdkPromise 永久 rejected → 该会话 WPS 永远不可用。
         sdkPromise = null;
@@ -162,18 +165,11 @@ function makeDeviceName(): string {
  */
 const DEVICE_NOT_FOUND_RETRY_DELAYS_MS = [500, 1500, 3000];
 
-async function spotifyApiWithRetry(
-  url: string,
-  init: RequestInit,
-  tag: string,
-): Promise<Response> {
+async function spotifyApiWithRetry(url: string, init: RequestInit, tag: string): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, init);
     if (res.ok || res.status === 204) return res;
-    if (
-      res.status === 404 &&
-      attempt < DEVICE_NOT_FOUND_RETRY_DELAYS_MS.length
-    ) {
+    if (res.status === 404 && attempt < DEVICE_NOT_FOUND_RETRY_DELAYS_MS.length) {
       const wait = DEVICE_NOT_FOUND_RETRY_DELAYS_MS[attempt];
       wpsLog(tag, `404 Device not found — 等 ${wait}ms 重试（设备注册中，第 ${attempt + 1} 次）`);
       await new Promise((r) => setTimeout(r, wait));
@@ -229,7 +225,10 @@ export function createWpsWrapper(): WpsWrapper {
     const listenerRefs: Array<{ event: string; fn: (p: unknown) => void }> = [];
     const onPlayerStateChanged = (payload: unknown): void => {
       const sdkState = payload as SpotifyWebPlaybackState | null;
-      wpsLog('state', `player_state_changed paused=${sdkState?.paused} pos=${sdkState?.position}ms hasTrack=${Boolean(sdkState?.track)}`);
+      wpsLog(
+        'state',
+        `player_state_changed paused=${sdkState?.paused} pos=${sdkState?.position}ms hasTrack=${Boolean(sdkState?.track)}`,
+      );
       if (!sdkState || !sdkState.track) {
         emit({ hasTrack: false, isPlaying: false, track: null, positionMs: 0 });
         return;
@@ -261,14 +260,23 @@ export function createWpsWrapper(): WpsWrapper {
         (p as unknown as { _deviceId?: string })._deviceId = info.device_id;
         deviceId = info.device_id;
         wpsLog('ready', `SDK ready event fired, device_id=${info.device_id}`);
-        readyCallbacks.forEach((cb) => { try { cb(); } catch { /* ignore */ } });
+        readyCallbacks.forEach((cb) => {
+          try {
+            cb();
+          } catch {
+            /* ignore */
+          }
+        });
         readyCallbacks.length = 0;
       } else {
         wpsWarn('ready', 'ready event fired but no device_id', fmtErr(payload));
       }
     };
     const onNotReady = (): void => {
-      wpsWarn('not_ready', 'Spotify Connect device went offline (player paused / transferred away)');
+      wpsWarn(
+        'not_ready',
+        'Spotify Connect device went offline (player paused / transferred away)',
+      );
       emit({ hasTrack: false, isPlaying: false, track: null, positionMs: 0 });
     };
     // SDK 提供 .addListener()，.on() 是 alias
@@ -298,8 +306,12 @@ export function createWpsWrapper(): WpsWrapper {
     on('authentication_error', (e: unknown) => {
       wpsFatal = true;
       // 通常是 OAuth scope 缺 `streaming`（WPS 必须）。重 OAuth 即可解决。
-      wpsError('fatal', 'authentication_error', fmtErr(e),
-        '→ 大概率：OAuth scope 缺 streaming。撤销授权（https://www.spotify.com/account/apps/）后重新 OAuth');
+      wpsError(
+        'fatal',
+        'authentication_error',
+        fmtErr(e),
+        '→ 大概率：OAuth scope 缺 streaming。撤销授权（https://www.spotify.com/account/apps/）后重新 OAuth',
+      );
     });
     on('playback_error', (e: unknown) => {
       console.warn('[spotify-wps] playback_error:', fmtErr(e));
@@ -308,14 +320,22 @@ export function createWpsWrapper(): WpsWrapper {
     on('initialization_error', (e: unknown) => {
       wpsFatal = true;
       // 通常是 EME / Widevine CDM 初始化失败（隐私模式 / DRM 不支持的浏览器）。
-      wpsError('fatal', 'initialization_error', fmtErr(e),
-        '→ 大概率：EME/Widevine CDM 失败。试试退出隐私窗口 / 换浏览器');
+      wpsError(
+        'fatal',
+        'initialization_error',
+        fmtErr(e),
+        '→ 大概率：EME/Widevine CDM 失败。试试退出隐私窗口 / 换浏览器',
+      );
     });
     on('account_error', (e: unknown) => {
       wpsFatal = true;
       // 账户被 Spotify 拒绝（Premium 校验失败 / 区域限制）。
-      wpsError('fatal', 'account_error', fmtErr(e),
-        '→ 大概率：Premium 账户校验失败 / 区域限制 / Family plan 子账户被识别成 free');
+      wpsError(
+        'fatal',
+        'account_error',
+        fmtErr(e),
+        '→ 大概率：Premium 账户校验失败 / 区域限制 / Family plan 子账户被识别成 free',
+      );
     });
   }
 
@@ -332,13 +352,13 @@ export function createWpsWrapper(): WpsWrapper {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p: any = new Spotify.Player({
-        name: deviceName,
-        getOAuthToken: (cb: (t: string) => void) => {
-          // T8 E6：直接读 latestToken（refreshToken 持续更新这个变量）。
-          if (latestToken) cb(latestToken);
-        },
-        volume: 0.8,
-      });
+      name: deviceName,
+      getOAuthToken: (cb: (t: string) => void) => {
+        // T8 E6：直接读 latestToken（refreshToken 持续更新这个变量）。
+        if (latestToken) cb(latestToken);
+      },
+      volume: 0.8,
+    });
     wpsLog('connect', `creating player name=${deviceName} token.len=${token.length}`);
     wpsDebugBanner();
     bindListeners(p);
@@ -355,18 +375,26 @@ export function createWpsWrapper(): WpsWrapper {
     if (player) {
       // T8 (consistency-fixes E4)：断开前先 removeListener，避免老 listeners
       // 继续回调污染新 player 状态（多次登入登出后会累积成「幽灵设备」）。
-      const refs = (player as unknown as {
-        __wpsListeners?: Array<{ event: string; fn: (p: unknown) => void }>;
-      }).__wpsListeners;
+      const refs = (
+        player as unknown as {
+          __wpsListeners?: Array<{ event: string; fn: (p: unknown) => void }>;
+        }
+      ).__wpsListeners;
       if (refs) {
         for (const { event, fn } of refs) {
           try {
-            if (typeof (player as unknown as {
-              removeListener?: (e: string, c: unknown) => void;
-            }).removeListener === 'function') {
-              (player as unknown as {
-                removeListener: (e: string, c: unknown) => void;
-              }).removeListener(event, fn);
+            if (
+              typeof (
+                player as unknown as {
+                  removeListener?: (e: string, c: unknown) => void;
+                }
+              ).removeListener === 'function'
+            ) {
+              (
+                player as unknown as {
+                  removeListener: (e: string, c: unknown) => void;
+                }
+              ).removeListener(event, fn);
             }
           } catch {
             // ignore
@@ -484,7 +512,10 @@ export function createWpsWrapper(): WpsWrapper {
       return Boolean(deviceId);
     },
     onSdkReady(cb: () => void): void {
-      if (deviceId) { cb(); return; }
+      if (deviceId) {
+        cb();
+        return;
+      }
       readyCallbacks.push(cb);
     },
     onStateChange,

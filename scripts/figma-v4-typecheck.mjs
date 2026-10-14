@@ -18,11 +18,14 @@ const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
 const outDir = process.env.TS_OUT || '/tmp/figma-check/segments';
-const typings = process.env.FIGMA_TYPINGS || '/tmp/figma-check/node_modules/@figma/plugin-typings/index.d.ts';
+const typings =
+  process.env.FIGMA_TYPINGS || '/tmp/figma-check/node_modules/@figma/plugin-typings/index.d.ts';
 const tsc = path.join(repo, 'node_modules/.bin/tsc');
 
 if (!existsSync(typings)) {
-  console.error(`找不到 typings: ${typings}\n先执行: mkdir -p /tmp/figma-check && cd /tmp/figma-check && npm i @figma/plugin-typings --no-audit --no-fund --cache /tmp/figma-check/.npm-cache`);
+  console.error(
+    `找不到 typings: ${typings}\n先执行: mkdir -p /tmp/figma-check && cd /tmp/figma-check && npm i @figma/plugin-typings --no-audit --no-fund --cache /tmp/figma-check/.npm-cache`,
+  );
   process.exit(2);
 }
 
@@ -44,12 +47,33 @@ for (const [file, segs] of files) {
   for (const seg of segs) {
     const out = path.join(outDir, file.replace('.js', '') + '-' + seg + '.js');
     // JSDoc 断言只在 .js + checkJs 下生效；包 async 函数规避顶层 return（TS1108）
-    writeFileSync(out, `/// <reference path="${typings}" />\n// @ts-check\nexport {};\nasync function __run() {\n${mod[seg]}\n}\n__run();\n`);
+    writeFileSync(
+      out,
+      `/// <reference path="${typings}" />\n// @ts-check\nexport {};\nasync function __run() {\n${mod[seg]}\n}\n__run();\n`,
+    );
     tsFiles.push(out);
   }
 }
 try {
-  execFileSync(tsc, ['--noEmit', '--skipLibCheck', '--strict', 'false', '--allowJs', '--checkJs', '--target', 'es2020', '--module', 'esnext', '--moduleResolution', 'bundler', ...tsFiles], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  execFileSync(
+    tsc,
+    [
+      '--noEmit',
+      '--skipLibCheck',
+      '--strict',
+      'false',
+      '--allowJs',
+      '--checkJs',
+      '--target',
+      'es2020',
+      '--module',
+      'esnext',
+      '--moduleResolution',
+      'bundler',
+      ...tsFiles,
+    ],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
   console.log(`✅ 全部 ${tsFiles.length} 段通过类型检查`);
 } catch (e) {
   console.log('❌ 类型检查发现错误:\n');

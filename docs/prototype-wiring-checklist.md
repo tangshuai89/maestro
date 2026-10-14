@@ -17,20 +17,20 @@
 
 ## 连线清单（12 条）
 
-| # | 起点 | 终点 | 触发 | 时长 | 缓动 |
-|---|---|---|---|---|---|
-| 1 | 02/Core/Play `state=idle` | 02/Core/Play `state=hover` | ON_HOVER | 120ms | cubic-bezier(.16,1,.3,1) |
-| 2 | 02/Core/Play `state=idle` | 02/Core/Play `state=pressed` | ON_CLICK | 100ms | ease-in |
-| 3 | 02/Button/Icon `size=sm, state=default` | 02/Button/Icon `size=sm, state=hover` | ON_HOVER | 120ms | cubic-bezier(.16,1,.3,1) |
-| 4 | 02/Button/Icon `size=md, state=default` | 02/Button/Icon `size=md, state=hover` | ON_HOVER | 120ms | cubic-bezier(.16,1,.3,1) |
-| 5 | 02/Card/Neural `state=default` | 02/Card/Neural `state=hover` | ON_HOVER | 160ms | cubic-bezier(.16,1,.3,1) |
-| 6 | 02/Ring/Progress `state=idle` | 02/Ring/Progress `state=hover` | ON_HOVER | 120ms | ease-out |
-| 7 | 02/Ring/Progress `state=idle` | 02/Ring/Progress `state=dragging` | MOUSE_DOWN | 100ms | ease-out |
-| 8 | 02/Lyrics/Line `state=prev` | 02/Lyrics/Line `state=current` | ON_CLICK | 240ms | cubic-bezier(.16,1,.3,1) |
-| 9 | 02/Lyrics/Line `state=current` | 02/Lyrics/Line `state=next` | ON_CLICK | 240ms | cubic-bezier(.16,1,.3,1) |
-| 10 | 03/Screen/NowPlaying/Playing（transport `controls` 实例） | 03/Screen/NowPlaying/Paused | ON_CLICK | 200ms | ease-out |
-| 11 | 03/Screen/NowPlaying/Playing（进度环 `star-orbit` 实例） | 03/Screen/NowPlaying/Buffering | ON_CLICK | 200ms | ease-out |
-| 12 | 03/Screen/SourceSelect（任意推荐卡 `suggestion-card` 实例） | 03/Screen/NowPlaying/Playing | ON_CLICK | 240ms | ease-out |
+| #   | 起点                                                        | 终点                                  | 触发       | 时长  | 缓动                     |
+| --- | ----------------------------------------------------------- | ------------------------------------- | ---------- | ----- | ------------------------ |
+| 1   | 02/Core/Play `state=idle`                                   | 02/Core/Play `state=hover`            | ON_HOVER   | 120ms | cubic-bezier(.16,1,.3,1) |
+| 2   | 02/Core/Play `state=idle`                                   | 02/Core/Play `state=pressed`          | ON_CLICK   | 100ms | ease-in                  |
+| 3   | 02/Button/Icon `size=sm, state=default`                     | 02/Button/Icon `size=sm, state=hover` | ON_HOVER   | 120ms | cubic-bezier(.16,1,.3,1) |
+| 4   | 02/Button/Icon `size=md, state=default`                     | 02/Button/Icon `size=md, state=hover` | ON_HOVER   | 120ms | cubic-bezier(.16,1,.3,1) |
+| 5   | 02/Card/Neural `state=default`                              | 02/Card/Neural `state=hover`          | ON_HOVER   | 160ms | cubic-bezier(.16,1,.3,1) |
+| 6   | 02/Ring/Progress `state=idle`                               | 02/Ring/Progress `state=hover`        | ON_HOVER   | 120ms | ease-out                 |
+| 7   | 02/Ring/Progress `state=idle`                               | 02/Ring/Progress `state=dragging`     | MOUSE_DOWN | 100ms | ease-out                 |
+| 8   | 02/Lyrics/Line `state=prev`                                 | 02/Lyrics/Line `state=current`        | ON_CLICK   | 240ms | cubic-bezier(.16,1,.3,1) |
+| 9   | 02/Lyrics/Line `state=current`                              | 02/Lyrics/Line `state=next`           | ON_CLICK   | 240ms | cubic-bezier(.16,1,.3,1) |
+| 10  | 03/Screen/NowPlaying/Playing（transport `controls` 实例）   | 03/Screen/NowPlaying/Paused           | ON_CLICK   | 200ms | ease-out                 |
+| 11  | 03/Screen/NowPlaying/Playing（进度环 `star-orbit` 实例）    | 03/Screen/NowPlaying/Buffering        | ON_CLICK   | 200ms | ease-out                 |
+| 12  | 03/Screen/SourceSelect（任意推荐卡 `suggestion-card` 实例） | 03/Screen/NowPlaying/Playing          | ON_CLICK   | 240ms | ease-out                 |
 
 > 说明：条目 1-9 在 02 · Components 页组件集上连（组件集连线会被所有实例继承）；
 > 条目 10-12 在 03 · Screens 页屏幕帧上连（触发元素用屏幕内实例）。
@@ -38,13 +38,14 @@
 > transport 实例的 ON_CLICK，第 11 条同起点只剩 ON_DRAG；因此第 11 条起点
 > 改用进度环 `star-orbit` 实例（点击进度条 seek → 缓冲，语义自然）。
 > **2026-08-21 实弹确认（REST 读回 81 条，12 条目标全部命中）**：
+>
 > - 第 2 条 Core/Play idle→pressed 实际触发为 **MOUSE_DOWN**（按下即反馈，
 >   语义等价于 tap；操作时若 Figma 只给 MOUSE_DOWN 属正常）
 > - 第 10/12 条实际从**整帧**连线（Screen 帧级触发），REST 读回同时存在
 >   controls 实例级连线——两种写法都成立，AI 都能拿到动效
 > - 02 页 Controls/Transport 内部 btn/core 的 hover/pressed 连线为
 >   motion SEG1 写入的继承连线（属预期）
-> Button/Like 的 liked/fanout 是数据态而非交互态，无需连线（MOTION SPEC 标注 tap 100ms 由代码实现）。
+>   Button/Like 的 liked/fanout 是数据态而非交互态，无需连线（MOTION SPEC 标注 tap 100ms 由代码实现）。
 
 ## 自动轮播动效（Archive 同款，03 页屏幕循环流转）
 
@@ -75,11 +76,11 @@
 
 ### 一、3 条点击连线（在变体内部实例上起手）
 
-| # | 起点（在哪个变体里） | 起点图层名 | 终点 | 触发 | 动效 | 时长 | 缓动 |
-|---|---|---|---|---|---|---|---|
-| 1 | `state=Playing` | `controls`（transport 实例） | `Screen/NowPlaying` 的 `state=Paused` | On click | Smart Animate | 200ms | Ease out |
-| 2 | `state=Playing` | `star-orbit`（进度环实例） | `Screen/NowPlaying` 的 `state=Buffering` | On click | Smart Animate | 200ms | Ease out |
-| 3 | `03 · Screens` → `Screen/SourceSelect` | `neural-suggestions` 里的任一张 `Card/Neural` | `Screen/NowPlaying` 的 `state=Playing` | On click | Smart Animate | 240ms | Ease out |
+| #   | 起点（在哪个变体里）                   | 起点图层名                                    | 终点                                     | 触发     | 动效          | 时长  | 缓动     |
+| --- | -------------------------------------- | --------------------------------------------- | ---------------------------------------- | -------- | ------------- | ----- | -------- |
+| 1   | `state=Playing`                        | `controls`（transport 实例）                  | `Screen/NowPlaying` 的 `state=Paused`    | On click | Smart Animate | 200ms | Ease out |
+| 2   | `state=Playing`                        | `star-orbit`（进度环实例）                    | `Screen/NowPlaying` 的 `state=Buffering` | On click | Smart Animate | 200ms | Ease out |
+| 3   | `03 · Screens` → `Screen/SourceSelect` | `neural-suggestions` 里的任一张 `Card/Neural` | `Screen/NowPlaying` 的 `state=Playing`   | On click | Smart Animate | 240ms | Ease out |
 
 操作（每条约 30 秒）：
 
@@ -93,11 +94,11 @@
 
 ### 二、3 条自动轮播（起点必须是**变体本身**，不能是变体内部的实例）
 
-| # | 起点 | 终点 | 触发 | 间隔 | 动效 |
-|---|---|---|---|---|---|
-| A | `state=Playing`（选中变体本体） | `state=Paused` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
-| B | `state=Paused`（选中变体本体） | `state=Buffering` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
-| C | `state=Buffering`（选中变体本体） | `state=Playing` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
+| #   | 起点                              | 终点              | 触发        | 间隔   | 动效                                   |
+| --- | --------------------------------- | ----------------- | ----------- | ------ | -------------------------------------- |
+| A   | `state=Playing`（选中变体本体）   | `state=Paused`    | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
+| B   | `state=Paused`（选中变体本体）    | `state=Buffering` | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
+| C   | `state=Buffering`（选中变体本体） | `state=Playing`   | After delay | 3000ms | Smart animate 1200ms · Ease in and out |
 
 操作：鼠标点**变体名那一行**（选中整个变体，不是里面的实例）→ Prototype 面板 →
 **+ Add interaction**（不是拖圆点）→ Trigger 选 **After delay**，填 `3000` →
@@ -127,11 +128,11 @@ FIGMA_TOKEN=<token> node scripts/figma-aether-v4-audit.mjs   # 「原型连线 �
 AFTER_TIMEOUT 链式循环，进入原型播放后自动流转、周而复始（与手动 12 条
 ON_CLICK 连线共存——不同触发类型互不冲突，同一节点只占一条 AFTER_TIMEOUT）。
 
-| # | 起点 | 终点 | 触发 | 间隔 | 动画 |
-|---|---|---|---|---|---|
-| A | 03/Screen/NowPlaying/Playing | 03/Screen/NowPlaying/Paused | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
-| B | 03/Screen/NowPlaying/Paused | 03/Screen/NowPlaying/Buffering | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
-| C | 03/Screen/NowPlaying/Buffering | 03/Screen/NowPlaying/Playing | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
+| #   | 起点                           | 终点                           | 触发          | 间隔   | 动画                                 |
+| --- | ------------------------------ | ------------------------------ | ------------- | ------ | ------------------------------------ |
+| A   | 03/Screen/NowPlaying/Playing   | 03/Screen/NowPlaying/Paused    | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
+| B   | 03/Screen/NowPlaying/Paused    | 03/Screen/NowPlaying/Buffering | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
+| C   | 03/Screen/NowPlaying/Buffering | 03/Screen/NowPlaying/Playing   | AFTER_TIMEOUT | 3000ms | Smart Animate 1200ms EASE_IN_AND_OUT |
 
 操作：选中起点屏幕帧 → Prototype 面板 → **+ 添加交互**（不是拖拽圆点）→
 Trigger 选 **After timeout**，间隔 3000ms → 动效 Smart Animate 1200ms +

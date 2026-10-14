@@ -13,7 +13,9 @@ import { readFileSync } from 'node:fs';
 const FILE_KEY = process.env.FIGMA_FILE_KEY || 'FtbRZXvzlCp4Sq9e322cQQ';
 const TOKEN = process.env.FIGMA_TOKEN;
 const AS_JSON = process.argv.includes('--json');
-const FIXTURE = process.argv.includes('--fixture') ? process.argv[process.argv.indexOf('--fixture') + 1] : null;
+const FIXTURE = process.argv.includes('--fixture')
+  ? process.argv[process.argv.indexOf('--fixture') + 1]
+  : null;
 
 if (!TOKEN && !FIXTURE) {
   console.error('缺少 FIGMA_TOKEN（也可 --fixture <dir> 离线测）');
@@ -42,11 +44,15 @@ const REQUIRED_FIELDS = ['react', 'props', 'a11y', 'states'];
 const REGEX_AI_CONTRACT = /---[\s\S]*?AI_CONTRACT:[\s\S]*?(?:---|$)/;
 
 const results = [];
-function check(name, ok, detail) { results.push({ name, ok, detail }); }
+function check(name, ok, detail) {
+  results.push({ name, ok, detail });
+}
 
 // ── 1. 拉文件树（depth 足够深，description 必带） ──
 const file = await api(`/files/${FILE_KEY}?depth=8`);
-const pages = (file.document?.children || []).filter((n) => n.type === 'CANVAS' || n.type === 'PAGE');
+const pages = (file.document?.children || []).filter(
+  (n) => n.type === 'CANVAS' || n.type === 'PAGE',
+);
 
 // ── 2. 收集需要校验的节点 ──
 function walk(nodes, out = []) {
@@ -54,12 +60,13 @@ function walk(nodes, out = []) {
     if (!n) continue;
     if (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') {
       out.push(n);
-    } else if (n.type === 'FRAME' && (
-      n.name?.startsWith('Screen/') ||
-      n.name === 'README — AI CONTRACT' ||
-      n.name === 'Archive README' ||
-      n.name === 'MOTION SPEC'
-    )) {
+    } else if (
+      n.type === 'FRAME' &&
+      (n.name?.startsWith('Screen/') ||
+        n.name === 'README — AI CONTRACT' ||
+        n.name === 'Archive README' ||
+        n.name === 'MOTION SPEC')
+    ) {
       out.push(n);
     }
     if (n.children) walk(n.children, out);
@@ -69,7 +76,9 @@ function walk(nodes, out = []) {
 const targets = walk(pages);
 
 // ── 3. 校验 description ──
-let pass = 0, fail = 0, skip = 0;
+let pass = 0,
+  fail = 0,
+  skip = 0;
 for (const n of targets) {
   const desc = n.description || '';
   const id = n.id;
@@ -90,16 +99,29 @@ for (const n of targets) {
     check(`D6 description: ${n.name} (${id})`, false, `AI_CONTRACT 缺字段: ${missing.join(', ')}`);
     fail++;
   } else {
-    check(`D6 description: ${n.name} (${id})`, true, `${desc.length} 字符，含 AI_CONTRACT + 4 字段`);
+    check(
+      `D6 description: ${n.name} (${id})`,
+      true,
+      `${desc.length} 字符，含 AI_CONTRACT + 4 字段`,
+    );
     pass++;
   }
 }
 
 // ── 4. 汇总 ──
-const lines = results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`);
+const lines = results.map(
+  (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`,
+);
 if (AS_JSON) {
-  console.log(JSON.stringify({ file: FILE_KEY, pass, fail, total: targets.length, results }, null, 2));
+  console.log(
+    JSON.stringify({ file: FILE_KEY, pass, fail, total: targets.length, results }, null, 2),
+  );
 } else {
-  console.log(`\nAETHER v4-D6 描述审计 — ${FILE_KEY}\n校验节点: ${targets.length}\n` + lines.join('\n') + `\n\n${pass}/${targets.length} 通过` + (fail ? `，${fail} 项 FAIL` : ' ✅ 全部达标'));
+  console.log(
+    `\nAETHER v4-D6 描述审计 — ${FILE_KEY}\n校验节点: ${targets.length}\n` +
+      lines.join('\n') +
+      `\n\n${pass}/${targets.length} 通过` +
+      (fail ? `，${fail} 项 FAIL` : ' ✅ 全部达标'),
+  );
 }
 process.exit(fail ? 1 : 0);

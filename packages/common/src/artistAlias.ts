@@ -575,8 +575,14 @@ function aliasEntry(key: string | null): string[] | undefined {
 function latinWordAnagram(a: string, b: string): boolean {
   if (!a || !b) return false;
   if (/[一-鿿぀-ヿ가-힣]/.test(a + b)) return false; // 任一侧含 CJK/假名/韩文 → 不走
-  const wa = a.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  const wb = b.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const wa = a
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  const wb = b
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
   if (wa.length !== wb.length || wa.length < 2) return false;
   const key = (ws: string[]): string => [...ws].sort().join('|');
   return key(wa) === key(wb);
@@ -686,14 +692,14 @@ function splitArtistSegments(s: string): string[] {
  */
 const LATIN_FULL_ALIASES: Record<string, string[]> = {
   // 2026-08-17 审计确认（用户核对后列入合并）
-  'chilichill乐团': ['chilichill'], // #8 屑屑
-  'fine乐团': ['fine'], // Fine乐团（原「樂團」过宽 key 的精确替代）
-  'royayers': ['royayersubiquity'], // #20 Everybody Loves The Sunshine
-  'noelgallagher': ['noelgallaghershighflyingbirds'], // #21 The Death Of You And Me
-  '藤原さくら': ['藤原樱'], // #27 Soup (汤)
-  '新裤子乐队': ['新裤子'], // #28 别再问我什么是迪斯科
+  chilichill乐团: ['chilichill'], // #8 屑屑
+  fine乐团: ['fine'], // Fine乐团（原「樂團」过宽 key 的精确替代）
+  royayers: ['royayersubiquity'], // #20 Everybody Loves The Sunshine
+  noelgallagher: ['noelgallaghershighflyingbirds'], // #21 The Death Of You And Me
+  藤原さくら: ['藤原樱'], // #27 Soup (汤)
+  新裤子乐队: ['新裤子'], // #28 别再问我什么是迪斯科
   'ターニャ・デグレチャフ': ['悠木碧'], // #30 Los! Los! Los!（角色名 = 声优）
-  'サトシ': ['松本梨香'], // #31 アローラ!!（角色名 = 声优）
+  サトシ: ['松本梨香'], // #31 アローラ!!（角色名 = 声优）
 };
 
 /** 全串归一别名命中（双向、精确整串）。null 值 / 空串不参与。 */

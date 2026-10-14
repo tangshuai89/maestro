@@ -6,6 +6,7 @@
 ## 1. 范围
 
 做：
+
 - **浮窗**：透明、无边框、置顶（`screen-saver` 级）、不进 Dock/任务栏、`visibleOnAllWorkspaces`
 - **双行歌词**：当前行（大、高亮）+ 下一行（小、弱化），随播放进度逐行跟随；行内进度条
 - **样式可调**：字号（3 档）、配色（4 组预设）、描边开关、锁定开关 —— 存在浮窗自己的设置面板里
@@ -15,6 +16,7 @@
 - **无歌词 / 暂停 / 切歌**：暂停显示 `‖` 标记；无歌词显示「暂无歌词」，浮窗不隐藏（保持位置）
 
 不做（留给后续）：
+
 - 桌面歌词的全局热键（#7.3 `globalShortcut`）
 - 逐字卡拉 OK（karaoke）级高亮
 - Windows / Linux 分支的置顶差异（代码留了 `process.platform` 判断，只在 mac 调 `setVisibleOnAllWorkspaces`）
@@ -40,14 +42,14 @@
 
 ## 3. IPC 契约
 
-| 方向 | channel | payload |
-|---|---|---|
-| 主窗口 → main | `desktop-lyrics:state` | `{ playing, current, next, progress, title, artist }` |
-| 主窗口 → main | `desktop-lyrics:set-enabled` | `boolean` |
-| main → 主窗口 | `desktop-lyrics:changed` | `{ enabled, locked }`（Tray / 浮窗锁定的回显） |
-| 浮窗 → main | `desktop-lyrics:overlay:control` | `{ action: 'close' \| 'lock' \| 'prefs', locked?, prefs? }` |
-| 浮窗 → main | `desktop-lyrics:overlay:hover` | `{ inside: boolean }` |
-| main → 浮窗 | `desktop-lyrics:overlay:prefs` | `DesktopLyricsPrefs`（主进程是唯一事实来源，浮窗刷新后回写） |
+| 方向          | channel                          | payload                                                      |
+| ------------- | -------------------------------- | ------------------------------------------------------------ |
+| 主窗口 → main | `desktop-lyrics:state`           | `{ playing, current, next, progress, title, artist }`        |
+| 主窗口 → main | `desktop-lyrics:set-enabled`     | `boolean`                                                    |
+| main → 主窗口 | `desktop-lyrics:changed`         | `{ enabled, locked }`（Tray / 浮窗锁定的回显）               |
+| 浮窗 → main   | `desktop-lyrics:overlay:control` | `{ action: 'close' \| 'lock' \| 'prefs', locked?, prefs? }`  |
+| 浮窗 → main   | `desktop-lyrics:overlay:hover`   | `{ inside: boolean }`                                        |
+| main → 浮窗   | `desktop-lyrics:overlay:prefs`   | `DesktopLyricsPrefs`（主进程是唯一事实来源，浮窗刷新后回写） |
 
 所有 handler 都在 `app.whenReady()` 里注册（与既有 `ipcMain.handle` 同规，规避 main.ts Bug #1 时序坑）。
 `SUBSCRIBABLE_CHANNELS` 白名单加 `desktop-lyrics:changed`。
@@ -55,22 +57,26 @@
 ## 4. 文件改动
 
 **Electron（新建 `packages/electron/src/desktop-lyrics/`）**
+
 - `prefs.ts` — `DesktopLyricsPrefs` / `DEFAULT_PREFS` / `normalisePrefs()` / `loadPrefs()` / `savePrefs()`（纯函数可测）
 - `window-options.ts` — `overlayWindowOptions(prefs)` 纯函数（transparent/置顶/尺寸…）
 - `desktop-lyrics-controller.ts` — 窗口生命周期 + 转发 + Tray 菜单项同步
 - 各自 `.test.ts`
 
 **Electron 改动**
+
 - `main.ts` — 装配 controller、注册 IPC、Tray 加勾选项、`before-quit` 关窗
 - `preload.ts` — `desktopLyrics` API 组 + 白名单
 
 **Renderer（新建）**
+
 - `lyrics.html` + `src/desktop-lyrics/main.tsx`（独立入口）
 - `src/desktop-lyrics/DesktopLyricsOverlay.tsx` + `.test.tsx`
 - `src/styles/desktop-lyrics.scss`（独立样式入口，只引 token 层 + 浮层样式）
 - `src/lib/lyrics.ts` + `.test.mjs`（`activeLineWindow`，TheaterView 同步改用它）
 
 **Renderer 改动**
+
 - `vite.config.ts` — `rollupOptions.input` 加 `lyrics.html`
 - `src/hooks/useDesktopLyrics.ts` — 主窗口侧推送 + 开关状态
 - `App.tsx` / `Titlebar.tsx` — 接线 + `⌘⇧L`

@@ -497,14 +497,11 @@ export async function getAuthStatusExtended(provider: MusicProvider): Promise<Au
  * 所以只在「确实需要判断」时调用（启动重校验 / 播放失败兜底），
  * 不要放进常规轮询。
  */
-export async function getAuthStatusValidated(
-  provider: MusicProvider,
-): Promise<AuthStatusExtended> {
+export async function getAuthStatusValidated(provider: MusicProvider): Promise<AuthStatusExtended> {
   return json<AuthStatusExtended>(
-    await fetchWithToken(
-      `${API_BASE}/auth/status?provider=${provider}&validate=1&extended=1`,
-      { credentials: 'include' },
-    ),
+    await fetchWithToken(`${API_BASE}/auth/status?provider=${provider}&validate=1&extended=1`, {
+      credentials: 'include',
+    }),
   );
 }
 

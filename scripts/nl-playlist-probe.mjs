@@ -33,7 +33,9 @@ function readKey() {
     const v = s['secrets:deepseek'];
     const raw = typeof v === 'string' ? v : v?.apiKey;
     return raw && String(raw).length >= 8 ? String(raw) : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function readLibrary() {
@@ -51,7 +53,9 @@ function readLibrary() {
           .map((x) => ({ title: x.title, artist: x.artist }));
       }
     }
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   return [];
 }
 
@@ -69,10 +73,14 @@ async function main() {
 
   const key = readKey();
   if (!key) {
-    console.error('❌ 没找到 DeepSeek key：设 DEEPSEEK_API_KEY 环境变量，或在 App Settings 里填一次。');
+    console.error(
+      '❌ 没找到 DeepSeek key：设 DEEPSEEK_API_KEY 环境变量，或在 App Settings 里填一次。',
+    );
     process.exit(1);
   }
-  console.log(`🔑 key 已就位（尾号 ${key.slice(-4)}）｜场景 ${prompts.length} 条${withLib ? '｜带库上下文' : '｜无库上下文'}\n`);
+  console.log(
+    `🔑 key 已就位（尾号 ${key.slice(-4)}）｜场景 ${prompts.length} 条${withLib ? '｜带库上下文' : '｜无库上下文'}\n`,
+  );
 
   if (!existsSync(DIST)) {
     console.error(`❌ 找不到编译产物 ${DIST}\n   先跑：npm run build --workspace @maestro/server`);
@@ -87,7 +95,10 @@ async function main() {
   const results = [];
   for (const text of prompts) {
     process.stdout.write(`▶ ${text}\n  `);
-    const messages = buildParseIntentPrompt(text, pickLibrarySample({ items: library.map((x) => ({ ...x, sources: [] })) }, 50));
+    const messages = buildParseIntentPrompt(
+      text,
+      pickLibrarySample({ items: library.map((x) => ({ ...x, sources: [] })) }, 50),
+    );
     const t0 = Date.now();
     let raw = '';
     try {
@@ -122,10 +133,14 @@ async function main() {
       console.log(`   rationale  ${intent.rationale || '—'}`);
       console.log(`   genres     ${intent.genres.join('、') || '—'}`);
       console.log(`   tempo      ${intent.tempo}   language ${intent.language}`);
-      console.log(`   era        ${intent.era ? `${intent.era.from ?? '?'}–${intent.era.to ?? '今'}` : '—'}`);
+      console.log(
+        `   era        ${intent.era ? `${intent.era.from ?? '?'}–${intent.era.to ?? '今'}` : '—'}`,
+      );
       console.log(`   similar    ${intent.similar_artists.join('、') || '—'}`);
       console.log(`   tracks     ${intent.similar_tracks.join('、') || '—'}`);
-      console.log(`   exclude    ${intent.exclude_artists.join('、') || '—'} ${intent.exclude_genres.join('、') || ''}`);
+      console.log(
+        `   exclude    ${intent.exclude_artists.join('、') || '—'} ${intent.exclude_genres.join('、') || ''}`,
+      );
       console.log(`   target     ${intent.target_count}`);
       results.push({ text, intent });
     } catch (e) {
@@ -140,8 +155,12 @@ async function main() {
   console.log(`\n── 汇总 ──`);
   console.log(`成功 ${ok}/${results.length}`);
   const fails = results.filter((r) => r.error);
-  if (fails.length) console.log(`失败：${fails.map((f) => `${f.text.slice(0, 20)}(${f.error})`).join(', ')}`);
+  if (fails.length)
+    console.log(`失败：${fails.map((f) => `${f.text.slice(0, 20)}(${f.error})`).join(', ')}`);
   process.exit(0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

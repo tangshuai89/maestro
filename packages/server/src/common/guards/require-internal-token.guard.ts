@@ -73,9 +73,7 @@ export class RequireInternalTokenGuard implements CanActivate {
 
     const got = this.headerValue(req.headers['x-maestro-token']);
     if (got !== expected) {
-      this.logger.warn(
-        `${req.method} ${req.url} rejected: bad/missing X-Maestro-Token`,
-      );
+      this.logger.warn(`${req.method} ${req.url} rejected: bad/missing X-Maestro-Token`);
       throw new UnauthorizedException('X-Maestro-Token mismatch');
     }
     return true;

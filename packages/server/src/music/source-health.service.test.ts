@@ -90,7 +90,10 @@ check('6. 未知 provider 静默忽略', () => {
   // 故意测异常输入 — service 内按运行时类型守护
   (svc as unknown as { record: (p: string, ok: boolean) => void }).record('not-a-provider', true);
   // 不抛错、snapshot 无新增
-  assert.strictEqual(svc.snapshot().every((x: { total: number }) => x.total === 0), true);
+  assert.strictEqual(
+    svc.snapshot().every((x: { total: number }) => x.total === 0),
+    true,
+  );
 });
 
 console.log(`\n🎉 source-health.service.test: ${passed} passed, ${failed} failed`);

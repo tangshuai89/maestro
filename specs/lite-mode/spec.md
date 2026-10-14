@@ -7,6 +7,7 @@
 ## 1. 范围
 
 做：
+
 - `PlayerMode` 从 `'theater' | 'mini'` 扩为 `'theater' | 'mini' | 'lite'`
   （`theater` 即 NEXT-ITERATION 文中的 `normal`）。类型 + 读写落到
   `lib/storage.ts`，`localStorage['player-mode']` 键名不变（老用户不丢偏好）。
@@ -22,6 +23,7 @@
 - 单测：`LiteView.test.tsx` + `storage.test.mjs` 补 `readStoredPlayerMode`。
 
 不做：
+
 - 窗口变小「自动切 lite」的启发式（NEXT-ITERATION 标注为**可选**，本轮不做 —— 自动切模式
   会在用户拖窗口时误触发，等 lite 手测反馈再定）。
 - lite 下的歌词 / 封面 / 搜索 / 库 / 设置浮层 —— 与"仅三类元素"冲突。
@@ -52,17 +54,19 @@
 ## 3. 文件改动
 
 新建：
+
 - `components/views/LiteView.tsx` — 极简视图（`export interface LiteViewProps`）
 - `components/views/LiteView.test.tsx` — vitest 单测
 - `styles/components/_lite-mode.scss` — 布局 + `.app.lite-mode` 覆写
 
 改动：
+
 - `lib/storage.ts` — `PlayerMode` 类型 + `STORAGE_KEYS.playerMode` + 读写（进备份集）
 - `lib/storage.test.mjs` — 补 3 例
 - `components/mini/MiniPlayer.tsx` — 移除本地 `PlayerMode` 导出（类型搬去 storage）
 - `components/layout/Titlebar.tsx` — 类型改从 `lib/storage` 导入
 - `components/modals/SettingsModal.tsx` — 新增 `playerMode` / `onChangePlayerMode` props
-  + 「① 播放模式」节（其余节顺延编号 ②–⑨）
+  - 「① 播放模式」节（其余节顺延编号 ②–⑨）
 - `components/modals/SettingsModal.test.tsx` — 补 prop + 1 例（切模式触发回调）
 - `styles/abstracts/_variables.scss` — `$z-layers` 加 `'lite-view': 45`
 - `styles/main.scss` — `@use 'components/lite-mode'`

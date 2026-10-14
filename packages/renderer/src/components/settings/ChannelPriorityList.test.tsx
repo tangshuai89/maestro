@@ -18,9 +18,7 @@ const mocks = vi.hoisted(() => ({
       default: ['qq', 'netease', 'deezer', 'spotify'],
     }),
   ),
-  setChannelPriority: vi.fn((p) =>
-    Promise.resolve({ ok: true as const, priority: p }),
-  ),
+  setChannelPriority: vi.fn((p) => Promise.resolve({ ok: true as const, priority: p })),
   resetChannelPriority: vi.fn(() =>
     Promise.resolve({
       ok: true as const,
@@ -58,9 +56,7 @@ describe('ChannelPriorityList', () => {
       priority: ['qq', 'netease', 'deezer', 'spotify'],
       default: ['qq', 'netease', 'deezer', 'spotify'],
     });
-    mockSet.mockImplementation((p) =>
-      Promise.resolve({ ok: true as const, priority: p }),
-    );
+    mockSet.mockImplementation((p) => Promise.resolve({ ok: true as const, priority: p }));
   });
 
   it('挂载时调 getChannelPriority + 渲染 4 个平台', async () => {
@@ -110,12 +106,7 @@ describe('ChannelPriorityList', () => {
     await userEvent.click(upBtns[upBtns.length - 1]);
     await userEvent.click(screen.getByRole('button', { name: /^保存$/ }));
     await waitFor(() => {
-      expect(mockSet).toHaveBeenCalledWith([
-        'qq',
-        'netease',
-        'spotify',
-        'deezer',
-      ]);
+      expect(mockSet).toHaveBeenCalledWith(['qq', 'netease', 'spotify', 'deezer']);
     });
   });
 

@@ -16,9 +16,7 @@ const assert = require('node:assert');
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { MusicController } = require('./music.controller');
-const isAllowed = (MusicController as any).isStreamHostAllowed.bind(
-  MusicController,
-);
+const isAllowed = (MusicController as any).isStreamHostAllowed.bind(MusicController);
 
 async function main() {
   // ── 1. QQ 主 CDN exact ────────────────────────────────────────
@@ -93,11 +91,7 @@ async function main() {
   console.log('✅ 4. Deezer preview + cdns-preview-*.dzcdn.net → allow');
 
   // ── 5. 拒绝陌生域 ─────────────────────────────────────────────
-  assert.strictEqual(
-    isAllowed('https://evil.com/malicious'),
-    false,
-    'evil.com 应 deny',
-  );
+  assert.strictEqual(isAllowed('https://evil.com/malicious'), false, 'evil.com 应 deny');
   assert.strictEqual(
     isAllowed('https://internal-api.local/x'),
     false,

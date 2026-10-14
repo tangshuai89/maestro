@@ -55,17 +55,14 @@ const {
 
 // ── 2. extractJsonBlock ──────────────────────────────────
 {
+  assert.strictEqual(extractJsonBlock('<json>{"a":1}</json>'), '{"a":1}');
+  assert.strictEqual(extractJsonBlock('前文<json>{"a":1}</json>后文'), '{"a":1}');
   assert.strictEqual(
-    extractJsonBlock('<json>{"a":1}</json>'),
-    '{"a":1}',
-  );
-  assert.strictEqual(
-    extractJsonBlock('前文<json>{"a":1}</json>后文'),
-    '{"a":1}',
-  );
-  assert.strictEqual(
-    extractJsonBlock('```json\n{"a":1}\n```'.replace(/```json|```/g, m =>
-      m.includes('json') ? '<json>' : '</json>')),
+    extractJsonBlock(
+      '```json\n{"a":1}\n```'.replace(/```json|```/g, (m) =>
+        m.includes('json') ? '<json>' : '</json>',
+      ),
+    ),
     '{"a":1}',
   );
   assert.strictEqual(extractJsonBlock('{"a":1}'), '{"a":1}');
@@ -73,14 +70,8 @@ const {
 
   // 2026-09-28 C1 实测回归：response_format=json_object 让 DeepSeek 忽略
   // <json> 包裹，直接吐裸 JSON，且可能带前导空白 / 说明文字。
-  assert.strictEqual(
-    extractJsonBlock('\n   {"mood":"夜跑"}  '),
-    '{"mood":"夜跑"}',
-  );
-  assert.strictEqual(
-    extractJsonBlock('```json\n{"mood":"夜跑"}\n```'),
-    '{"mood":"夜跑"}',
-  );
+  assert.strictEqual(extractJsonBlock('\n   {"mood":"夜跑"}  '), '{"mood":"夜跑"}');
+  assert.strictEqual(extractJsonBlock('```json\n{"mood":"夜跑"}\n```'), '{"mood":"夜跑"}');
   assert.strictEqual(
     extractJsonBlock('好的，这是解析结果：\n{"mood":"夜跑","era":{"from":1990}}'),
     '{"mood":"夜跑","era":{"from":1990}}',
@@ -112,9 +103,7 @@ const {
   assert.strictEqual(r2.intent.target_count, 12);
 
   // 非法 enum → 降级 any
-  const r3 = parseIntentResponse(
-    '<json>{"mood":"x","tempo":"WARP","language":"klingon"}</json>',
-  );
+  const r3 = parseIntentResponse('<json>{"mood":"x","tempo":"WARP","language":"klingon"}</json>');
   assert.strictEqual(r3.intent.tempo, 'any');
   assert.strictEqual(r3.intent.language, 'any');
 
@@ -127,9 +116,7 @@ const {
   assert.strictEqual(r6.intent.target_count, 12);
 
   // era 边界
-  const r7 = parseIntentResponse(
-    '<json>{"mood":"x","era":{"from":2000}}</json>',
-  );
+  const r7 = parseIntentResponse('<json>{"mood":"x","era":{"from":2000}}</json>');
   assert.deepStrictEqual(r7.intent.era, { from: 2000 });
   const r8 = parseIntentResponse('<json>{"mood":"x","era":{}}</json>');
   assert.strictEqual(r8.intent.era, undefined);
@@ -148,7 +135,9 @@ const {
     (e: any) =>
       e?.response?.statusCode === 502 && e?.response?.error === 'parse_intent_json_failed',
   );
-  console.log('  ✓ parseIntentResponse: complete / missing / invalid enum / clamp / era / arrays / non-JSON');
+  console.log(
+    '  ✓ parseIntentResponse: complete / missing / invalid enum / clamp / era / arrays / non-JSON',
+  );
 }
 
 // ── 4. pickLibrarySample ──────────────────────────────────
@@ -201,23 +190,27 @@ const {
   assert.throws(
     () => validateParseIntentInput('a'.repeat(501)),
     (e: any) =>
-        e?.response?.statusCode === 400 &&
-        e?.response?.error === 'parse_intent_text_too_long',
+      e?.response?.statusCode === 400 && e?.response?.error === 'parse_intent_text_too_long',
   );
   assert.strictEqual(validateParseIntentInput('a'.repeat(500)), 'a'.repeat(500));
   console.log('  ✓ validateParseIntentInput: trim / empty / non-string / 501 / 500');
 }
 
-
 // ── 6. intentToPromptHints —— run() 把 NLIntent 翻进 prompt 的桥 ────
 {
   // 完整 intent → 6 行 hint
   const out1 = intentToPromptHints({
-    mood: '夜跑', genres: ['electronic', 'house'], tempo: 'fast',
-    language: 'zh', era: { from: 2015, to: 2025 },
-    similar_artists: ['deadmau5'], similar_tracks: [],
-    exclude_artists: ['徐梦圆'], exclude_genres: ['ballad'],
-    target_count: 15, rationale: '',
+    mood: '夜跑',
+    genres: ['electronic', 'house'],
+    tempo: 'fast',
+    language: 'zh',
+    era: { from: 2015, to: 2025 },
+    similar_artists: ['deadmau5'],
+    similar_tracks: [],
+    exclude_artists: ['徐梦圆'],
+    exclude_genres: ['ballad'],
+    target_count: 15,
+    rationale: '',
   });
   assert.ok(out1.includes('心情/场景：夜跑'), 'mood line');
   assert.ok(out1.includes('风格标签：electronic、house'), 'genres line');
@@ -231,29 +224,49 @@ const {
 
   // tempo 'any' → 不出节奏行
   const out2 = intentToPromptHints({
-    mood: '轻', genres: [], tempo: 'any', language: 'any',
-    similar_artists: [], similar_tracks: [],
-    exclude_artists: [], exclude_genres: [],
-    target_count: 12, rationale: '',
+    mood: '轻',
+    genres: [],
+    tempo: 'any',
+    language: 'any',
+    similar_artists: [],
+    similar_tracks: [],
+    exclude_artists: [],
+    exclude_genres: [],
+    target_count: 12,
+    rationale: '',
   });
   assert.deepStrictEqual(out2, ['心情/场景：轻']);
 
   // era 单边（只 to）→ 仍输出
   const out3 = intentToPromptHints({
-    mood: '', genres: [], tempo: 'any', language: 'any',
+    mood: '',
+    genres: [],
+    tempo: 'any',
+    language: 'any',
     era: { to: 1999 },
-    similar_artists: [], similar_tracks: [],
-    exclude_artists: [], exclude_genres: [],
-    target_count: 12, rationale: '',
+    similar_artists: [],
+    similar_tracks: [],
+    exclude_artists: [],
+    exclude_genres: [],
+    target_count: 12,
+    rationale: '',
   });
   assert.ok(out3.includes('年代：?–1999'));
 
   // extra.exclude_titles / exclude_artists（顶层 NL 路径，叠加）
   const out4 = intentToPromptHints(
-    { mood: '', genres: [], tempo: 'any', language: 'any',
-      similar_artists: [], similar_tracks: [],
-      exclude_artists: [], exclude_genres: [],
-      target_count: 12, rationale: '' },
+    {
+      mood: '',
+      genres: [],
+      tempo: 'any',
+      language: 'any',
+      similar_artists: [],
+      similar_tracks: [],
+      exclude_artists: [],
+      exclude_genres: [],
+      target_count: 12,
+      rationale: '',
+    },
     { exclude_titles: ['七里香'], exclude_artists: ['周杰伦'] },
   );
   assert.ok(out4.includes('不要这些标题的歌：七里香'), 'extra exclude_titles');
@@ -262,28 +275,50 @@ const {
   // intent.exclude_artists 与 extra.exclude_artists 合并成一行（去重），
   // 不再出现两条「不要这些艺人的歌」。
   const out4b = intentToPromptHints(
-    { mood: '', genres: [], tempo: 'any', language: 'any',
-      similar_artists: [], similar_tracks: [],
-      exclude_artists: ['周杰伦'], exclude_genres: [],
-      target_count: 12, rationale: '' },
+    {
+      mood: '',
+      genres: [],
+      tempo: 'any',
+      language: 'any',
+      similar_artists: [],
+      similar_tracks: [],
+      exclude_artists: ['周杰伦'],
+      exclude_genres: [],
+      target_count: 12,
+      rationale: '',
+    },
     { exclude_artists: ['周杰伦', '薛之谦'] },
   );
   const artistLines = out4b.filter((h: string) => h.startsWith('不要这些艺人的歌'));
   assert.strictEqual(artistLines.length, 1, 'merged into single line');
-  assert.ok(artistLines[0].includes('周杰伦') && artistLines[0].includes('薛之谦'), 'merged content');
+  assert.ok(
+    artistLines[0].includes('周杰伦') && artistLines[0].includes('薛之谦'),
+    'merged content',
+  );
 
   // 完整 intent + extra 同时 → 都出现且不重复
   const out5 = intentToPromptHints(
-    { mood: '跑步', genres: ['rock'], tempo: 'fast', language: 'zh',
-      similar_artists: [], similar_tracks: ['光辉岁月'],
-      exclude_artists: ['薛之谦'], exclude_genres: [],
-      target_count: 12, rationale: '' },
+    {
+      mood: '跑步',
+      genres: ['rock'],
+      tempo: 'fast',
+      language: 'zh',
+      similar_artists: [],
+      similar_tracks: ['光辉岁月'],
+      exclude_artists: ['薛之谦'],
+      exclude_genres: [],
+      target_count: 12,
+      rationale: '',
+    },
     { exclude_titles: ['浮夸'] },
   );
   assert.ok(out5.includes('心情/场景：跑步'));
   assert.ok(out5.includes('不要这些艺人的歌：薛之谦'), 'from intent');
   assert.ok(out5.includes('不要这些标题的歌：浮夸'), 'from extra');
-  assert.ok(!out5.some(h => h.includes('不要这些艺人的歌：') && h === '不要这些艺人的歌：'), 'no dup exclude_artists');
+  assert.ok(
+    !out5.some((h) => h.includes('不要这些艺人的歌：') && h === '不要这些艺人的歌：'),
+    'no dup exclude_artists',
+  );
   console.log('  ✓ intentToPromptHints: full / tempo any / era single / extra / merged / combined');
 }
 
@@ -291,9 +326,16 @@ const {
 {
   // 合法 intent → 归一后返回
   const ok = normalizeIntentInput({
-    mood: 'x', genres: ['rock'], tempo: 'fast', language: 'zh',
-    similar_artists: [], similar_tracks: [], exclude_artists: [],
-    exclude_genres: [], target_count: 15, rationale: '',
+    mood: 'x',
+    genres: ['rock'],
+    tempo: 'fast',
+    language: 'zh',
+    similar_artists: [],
+    similar_tracks: [],
+    exclude_artists: [],
+    exclude_genres: [],
+    target_count: 15,
+    rationale: '',
   });
   assert.strictEqual(ok.tempo, 'fast');
   assert.strictEqual(ok.target_count, 15);
@@ -322,6 +364,5 @@ const {
   );
   console.log('  ✓ normalizeIntentInput: ok / defaults / 400 non-object / 400 bad fields');
 }
-
 
 console.log('\n✅ nl-playlist logic: all tests passed');

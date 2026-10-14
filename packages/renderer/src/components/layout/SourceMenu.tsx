@@ -32,9 +32,7 @@ export default function SourceMenu({ provider, onSelect }: Props) {
             {SELECTABLE.map((p) => (
               <button
                 key={p}
-                className={`source-menu-item${
-                  p === provider ? ' source-menu-item--active' : ''
-                }`}
+                className={`source-menu-item${p === provider ? ' source-menu-item--active' : ''}`}
                 onClick={() => {
                   onSelect(p);
                   setOpen(false);

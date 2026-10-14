@@ -30,7 +30,10 @@
   background: var(--bg-overlay);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -63,7 +66,10 @@
   padding: 3px 10px;
   cursor: pointer;
   outline: none;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .preset-select:hover {
@@ -109,13 +115,25 @@
 
 // Compact: ≤ 1100px — 隐藏次要按钮，保留 source-switch + login
 @media (max-width: 1100px) {
-  .titlebar { gap: 4px; padding-right: 8px; }
-  .titlebar-btn { padding: 4px 8px; }
+  .titlebar {
+    gap: 4px;
+    padding-right: 8px;
+  }
+  .titlebar-btn {
+    padding: 4px 8px;
+  }
 }
 
 // Ultra-compact: ≤ 960px (min window width) — 只留核心控件
 @media (max-width: 960px) {
-  .titlebar { padding-left: 80px; gap: 2px; }
-  .preset-select { display: none; }
-  .reset-btn { display: none; }
+  .titlebar {
+    padding-left: 80px;
+    gap: 2px;
+  }
+  .preset-select {
+    display: none;
+  }
+  .reset-btn {
+    display: none;
+  }
 }

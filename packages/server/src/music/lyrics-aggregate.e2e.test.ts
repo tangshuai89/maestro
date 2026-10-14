@@ -46,11 +46,7 @@ const MISALIGNED = [
 let qqCalls = 0;
 let neteaseCalls = 0;
 
-function makeSvc(opts: {
-  qqLyrics?: any;
-  neteaseLyrics?: any;
-  ovhLyrics?: any;
-}) {
+function makeSvc(opts: { qqLyrics?: any; neteaseLyrics?: any; ovhLyrics?: any }) {
   qqCalls = 0;
   neteaseCalls = 0;
   const qq = {
@@ -106,9 +102,7 @@ async function main() {
   // ── 1. merge 默认开：两源都命中 → 并集 ───────────────────────
   {
     const svc = makeSvc({ qqLyrics: SYNCED, neteaseLyrics: SYNCED_PLUS });
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦',
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦');
     assert.deepStrictEqual(res.mergedFrom, ['qq', 'netease']);
     assert.strictEqual(res.source, 'qq', '主源仍是 source');
     assert.strictEqual(res.synced, true);
@@ -126,9 +120,7 @@ async function main() {
   // ── 2. 主源无词 → 结果来自 extras ────────────────────────────
   {
     const svc = makeSvc({ neteaseLyrics: SYNCED });
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦',
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦');
     assert.deepStrictEqual(res.mergedFrom, ['netease']);
     assert.strictEqual(res.source, 'netease');
     assert.strictEqual(res.added, 0, '单源合并 added=0');
@@ -139,9 +131,7 @@ async function main() {
   // ── 3. 纯去重（两源完全一致）────────────────────────────────
   {
     const svc = makeSvc({ qqLyrics: SYNCED, neteaseLyrics: SYNCED });
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦',
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦');
     assert.deepStrictEqual(res.mergedFrom, ['qq'], '全重复的源不贡献行');
     assert.strictEqual(res.lines.length, 2);
     assert.strictEqual(res.dropped, 2);
@@ -152,9 +142,7 @@ async function main() {
   // ── 4. 时间轴错位源整源丢弃 ────────────────────────────────
   {
     const svc = makeSvc({ qqLyrics: SYNCED, neteaseLyrics: MISALIGNED });
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦',
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦');
     assert.deepStrictEqual(res.rejected, ['netease'], '错位源应被拒');
     assert.deepStrictEqual(res.mergedFrom, ['qq']);
     assert.strictEqual(res.lines.length, 2, '主源结果不被污染');
@@ -169,9 +157,7 @@ async function main() {
         { time: 0, text: 'line two' },
       ],
     });
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', EXTRAS, 'Hello', 'Adele',
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', EXTRAS, 'Hello', 'Adele');
     assert.strictEqual(res.source, 'lyricsovh');
     assert.deepStrictEqual(res.mergedFrom, ['lyricsovh']);
     assert.strictEqual(res.synced, false, '纯文本歌词必须标记 unsynced');
@@ -181,9 +167,7 @@ async function main() {
   // ── 6. 全部无词 → null ─────────────────────────────────────
   {
     const svc = makeSvc({});
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', [], 'Unknown', 'Nobody',
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', [], 'Unknown', 'Nobody');
     assert.strictEqual(res.lines, null);
     assert.strictEqual(res.source, null);
     assert.deepStrictEqual(res.mergedFrom, []);
@@ -193,9 +177,9 @@ async function main() {
   // ── 7. merge=false 快路径：主源命中即返回 ────────────────────
   {
     const svc = makeSvc({ qqLyrics: SYNCED, neteaseLyrics: SYNCED_PLUS });
-    const res = await svc.getLyricsAggregated(
-      session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦', { merge: false },
-    );
+    const res = await svc.getLyricsAggregated(session, 'qq', 'q1', EXTRAS, '晴天', '周杰伦', {
+      merge: false,
+    });
     assert.deepStrictEqual(res.mergedFrom, ['qq']);
     assert.strictEqual(res.lines.length, 2, '快路径不做合并');
     assert.strictEqual(res.added, 0);

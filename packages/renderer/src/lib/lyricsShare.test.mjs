@@ -55,9 +55,7 @@ function makeLines(n) {
 }
 
 async function main() {
-  const { sliceLyricsWindow, lyricsImageFileName } = await import(
-    './lyricsShare.ts'
-  );
+  const { sliceLyricsWindow, lyricsImageFileName } = await import('./lyricsShare.ts');
 
   // ── 1. 无 highlight → 从头取满窗口 ─────────────────────────────
   check('1. 无 highlight → 前 40 行，不高亮', () => {
@@ -142,7 +140,9 @@ async function main() {
     );
   });
 
-  console.log(`\n${failed === 0 ? '🎉' : '⚠️ '} lyricsShare.test: ${passed} passed, ${failed} failed`);
+  console.log(
+    `\n${failed === 0 ? '🎉' : '⚠️ '} lyricsShare.test: ${passed} passed, ${failed} failed`,
+  );
   if (failed > 0) process.exit(1);
 }
 

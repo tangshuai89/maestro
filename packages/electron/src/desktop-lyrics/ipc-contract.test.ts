@@ -56,17 +56,13 @@ function mainSends(): Set<string> {
   return new Set(
     matchAll(mainSrc, /webContents\.send\(\s*'([^']+)'/g)
       .concat(matchAll(controllerSrc, /webContents\.send\(\s*'([^']+)'/g))
-      .concat(
-        matchAll(controllerSrc, /OVERLAY_PREFS_CHANNEL\s*=\s*'([^']+)'/g),
-      ),
+      .concat(matchAll(controllerSrc, /OVERLAY_PREFS_CHANNEL\s*=\s*'([^']+)'/g)),
   );
 }
 
 /** preload 侧：发给 main 的（send / invoke）。 */
 function preloadSends(): Set<string> {
-  return new Set(
-    matchAll(preloadSrc, /ipcRenderer\.(?:send|invoke)\(\s*'([^']+)'/g),
-  );
+  return new Set(matchAll(preloadSrc, /ipcRenderer\.(?:send|invoke)\(\s*'([^']+)'/g));
 }
 
 /** preload 侧：订阅 main 推的（on）。 */
@@ -141,14 +137,8 @@ function main() {
     );
     // 勾选态切换后要重建菜单，否则关掉再开还是旧状态
     const trayAnchor = "label: '桌面歌词 · 锁定位置'";
-    const trayBlock = mainSrc.slice(
-      mainSrc.indexOf(trayAnchor),
-      mainSrc.indexOf(trayAnchor) + 900,
-    );
-    assert.ok(
-      trayBlock.includes('refreshTray()'),
-      '锁定项 click 里要调 refreshTray() 重建勾选态',
-    );
+    const trayBlock = mainSrc.slice(mainSrc.indexOf(trayAnchor), mainSrc.indexOf(trayAnchor) + 900);
+    assert.ok(trayBlock.includes('refreshTray()'), '锁定项 click 里要调 refreshTray() 重建勾选态');
   });
 
   check('5. 白名单边界清晰：通用 on() 受白名单约束，专用桥接不受', () => {
@@ -156,9 +146,7 @@ function main() {
     //   a) 通用 `on(channel, cb)` 桥接 → 走 SUBSCRIBABLE_CHANNELS 校验（安全边界）
     //   b) desktopLyrics.onState / onPrefs → 直接 ipcRenderer.on，不经白名单
     //      （刻意为之：这两个是固定用途的窄桥，不接受任意 channel）
-    const m = preloadSrc.match(
-      /SUBSCRIBABLE_CHANNELS = new Set\(\[([\s\S]*?)\]\)/,
-    );
+    const m = preloadSrc.match(/SUBSCRIBABLE_CHANNELS = new Set\(\[([\s\S]*?)\]\)/);
     assert.ok(m, 'preload.ts 找不到 SUBSCRIBABLE_CHANNELS = new Set([...])');
     const allowlist = m![1];
     assert.ok(
@@ -191,8 +179,7 @@ function main() {
       );
       assert.ok(
         re.test(mainSrc),
-        `desktop-lyrics:${ch} 的 handler 里没有 sender 守卫 —— ` +
-          `主窗口也能发这条通道`,
+        `desktop-lyrics:${ch} 的 handler 里没有 sender 守卫 —— ` + `主窗口也能发这条通道`,
       );
     }
     assert.ok(
@@ -204,7 +191,7 @@ function main() {
   console.log(
     `\n${failed === 0 ? '🎉' : '⚠️ '} ipc-contract.test: ${passed} passed, ${failed} failed` +
       `\n   （renderer→main ${DL_SEND.length} 个：${DL_SEND.join(', ')}）` +
-        `\n   （main→renderer ${DL_ON.length} 个：${DL_ON.join(', ')}）`,
+      `\n   （main→renderer ${DL_ON.length} 个：${DL_ON.join(', ')}）`,
   );
   if (failed > 0) process.exit(1);
 }

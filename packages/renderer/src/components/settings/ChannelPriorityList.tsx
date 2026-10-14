@@ -16,12 +16,7 @@ import {
  * 底部"重置"按钮 → 写回 fallback。
  */
 export default function ChannelPriorityList() {
-  const [fallback, setFallback] = useState<MusicProvider[]>([
-    'qq',
-    'netease',
-    'deezer',
-    'spotify',
-  ]);
+  const [fallback, setFallback] = useState<MusicProvider[]>(['qq', 'netease', 'deezer', 'spotify']);
   const [list, setList] = useState<MusicProvider[]>(fallback);
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg?: string } | null>(null);
 
@@ -99,9 +94,7 @@ export default function ChannelPriorityList() {
               >
                 {PROVIDER_LABELS[p]}
               </span>
-              {isFirst && (
-                <span className="set-priority-current-badge">· 当前默认</span>
-              )}
+              {isFirst && <span className="set-priority-current-badge">· 当前默认</span>}
             </div>
           </div>
         );

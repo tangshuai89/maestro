@@ -53,14 +53,17 @@ const fixture = {
           // PASS：v4-ABC 组件有完整 description
           component('Ring/Sound', aiContract()),
           // FAIL：v4-ABC 组件 description 缺 react
-          component('Hologram/Cover', `---
+          component(
+            'Hologram/Cover',
+            `---
 AI_CONTRACT:
   props: {}
   a11y: { role: img }
   states: [idle, playing]
   motion: { ambient: breathing 1.4s }
   tokens: [Color/semantic/text-main]
----`),
+---`,
+          ),
         ],
       },
       {

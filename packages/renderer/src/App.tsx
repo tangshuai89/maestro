@@ -10,11 +10,7 @@ import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
 import type { LibraryImportResult, MusicProvider } from './api';
 import { readCachedLibrary } from './lib/likedCache';
-import {
-  readStoredPlayerMode,
-  writeStoredPlayerMode,
-  type PlayerMode,
-} from './lib/storage';
+import { readStoredPlayerMode, writeStoredPlayerMode, type PlayerMode } from './lib/storage';
 import { downloadLyricsImage } from './lib/lyricsShare';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
@@ -61,9 +57,7 @@ export default function App() {
   // ── 歌词分享图（导出 PNG 到本地下载目录）────────────────────────
   // 副作用留在 App（composition layer），TheaterView 只管传「点了哪一句」。
   // 状态机 idle → working → done/error → 2.4s 自动回落，避免 Toast 基建。
-  const [lyricsExport, setLyricsExport] = useState<
-    'idle' | 'working' | 'done' | 'error'
-  >('idle');
+  const [lyricsExport, setLyricsExport] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
   const lyricsExportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -92,10 +86,7 @@ export default function App() {
       } catch {
         setLyricsExport('error');
       }
-      lyricsExportTimer.current = setTimeout(
-        () => setLyricsExport('idle'),
-        2400,
-      );
+      lyricsExportTimer.current = setTimeout(() => setLyricsExport('idle'), 2400);
     },
     [player.track, lyrics.lyrics, lyricsExport],
   );
@@ -122,7 +113,10 @@ export default function App() {
   const prevWpsEnabled = useRef<boolean | null>(null);
   if (prevWpsEnabled.current !== wpsEnabled) {
     prevWpsEnabled.current = wpsEnabled;
-    wpsLog('wpsEnabled', `provider=${player.provider} tier=${String(auth.auth.tier)} → wpsEnabled=${wpsEnabled}`);
+    wpsLog(
+      'wpsEnabled',
+      `provider=${player.provider} tier=${String(auth.auth.tier)} → wpsEnabled=${wpsEnabled}`,
+    );
   }
   const wps = useSpotifyWpsPlayer({ enabled: wpsEnabled });
   wpsRef.current = wps;
@@ -130,7 +124,10 @@ export default function App() {
   // 当 WPS 从 disconnected → connected 时，当前歌如果已经在播（30s 预览），
   // 需要重调 presentTrack 让 usePlayer 切到 WPS 全曲播放路径。
   useEffect(() => {
-    wpsLog('wpsReady-change', `wpsReady=${wps.wpsReady} currentTrack.provider=${String(player.track?.provider)}`);
+    wpsLog(
+      'wpsReady-change',
+      `wpsReady=${wps.wpsReady} currentTrack.provider=${String(player.track?.provider)}`,
+    );
     if (wps.wpsReady && player.track?.provider === 'spotify') {
       wpsLog('wpsReady-change', `→ refreshTrackForWps（切到 WPS 全曲路径）`);
       player.refreshTrackForWps();
@@ -249,8 +246,7 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  const handleTogglePlayerMode = () =>
-    setPlayerMode((m) => (m === 'mini' ? 'theater' : 'mini'));
+  const handleTogglePlayerMode = () => setPlayerMode((m) => (m === 'mini' ? 'theater' : 'mini'));
 
   // 桌面歌词浮窗（§7.2）：这里算「当前行/下一行/行内进度」推给 main，
   // main 转发到浮窗窗口。浮窗不碰 <audio>，所以切浮窗不影响播放。
@@ -452,47 +448,47 @@ export default function App() {
   return (
     // search-open adds a class the CSS uses to freeze the cover animations
     // behind the search overlay's backdrop-filter (avoids flicker).
-    <div className={`app ${playerMode === 'mini' ? 'mini-mode' : playerMode === 'lite' ? 'lite-mode' : 'theater-mode'}${player.searchOpen ? ' search-open' : ''}`}>
+    <div
+      className={`app ${playerMode === 'mini' ? 'mini-mode' : playerMode === 'lite' ? 'lite-mode' : 'theater-mode'}${player.searchOpen ? ' search-open' : ''}`}
+    >
       {/* lite 模式整屏只有三类元素 —— titlebar 不渲染（搜索 / 设置 / 库
           这些入口 lite 下都够不着，切回 theater 再用；⌘⇧L 与 ⛶ 键仍可切回）。*/}
       {playerMode !== 'lite' && (
-      <Titlebar
-        provider={player.provider}
-        onSwitchProvider={player.switchToProvider}
-        deezerEditorials={deezerEditorials}
-        deezerPreset={player.deezerPreset}
-        onChangeDeezerPreset={player.changeDeezerPreset}
-        onOpenSearch={() => player.setSearchOpen(true)}
-        recoStatus={reco.recoStatus}
-        recoRunning={reco.recoRunning}
-        onReco={() => void reco.handleReco()}
-        qqQuality={player.qqQuality}
-        onChangeQuality={player.changeQuality}
-        loggedIn={auth.auth.loggedIn}
-        loggingIn={auth.loggingIn}
-        accountName={auth.auth.user?.nickname}
-        onLogin={
-          player.provider === 'netease'
-            ? auth.handleNeteaseLogin
-            : player.provider === 'spotify'
-              ? auth.handleSpotifyLogin
-              : auth.handleQqLogin
-        }
-        onAccount={
-          player.provider === 'deezer' ? handleSwitchSource : auth.handleLogout
-        }
-        onReset={handleResetLocal}
-        likedCount={likedCount}
-        onOpenLiked={() => {
-          void reloadLikedCount();
-          setLikedOpen(true);
-        }}
-        onOpenSettings={() => setSettingsOpen(true)}
-        playerMode={playerMode}
-        onTogglePlayerMode={handleTogglePlayerMode}
-        desktopLyricsOn={desktopLyrics.enabled}
-        onToggleDesktopLyrics={toggleDesktopLyrics}
-      />
+        <Titlebar
+          provider={player.provider}
+          onSwitchProvider={player.switchToProvider}
+          deezerEditorials={deezerEditorials}
+          deezerPreset={player.deezerPreset}
+          onChangeDeezerPreset={player.changeDeezerPreset}
+          onOpenSearch={() => player.setSearchOpen(true)}
+          recoStatus={reco.recoStatus}
+          recoRunning={reco.recoRunning}
+          onReco={() => void reco.handleReco()}
+          qqQuality={player.qqQuality}
+          onChangeQuality={player.changeQuality}
+          loggedIn={auth.auth.loggedIn}
+          loggingIn={auth.loggingIn}
+          accountName={auth.auth.user?.nickname}
+          onLogin={
+            player.provider === 'netease'
+              ? auth.handleNeteaseLogin
+              : player.provider === 'spotify'
+                ? auth.handleSpotifyLogin
+                : auth.handleQqLogin
+          }
+          onAccount={player.provider === 'deezer' ? handleSwitchSource : auth.handleLogout}
+          onReset={handleResetLocal}
+          likedCount={likedCount}
+          onOpenLiked={() => {
+            void reloadLikedCount();
+            setLikedOpen(true);
+          }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          playerMode={playerMode}
+          onTogglePlayerMode={handleTogglePlayerMode}
+          desktopLyricsOn={desktopLyrics.enabled}
+          onToggleDesktopLyrics={toggleDesktopLyrics}
+        />
       )}
 
       {/* Full-window blurred cover layer — the backdrop the glass cards blur.
@@ -527,46 +523,49 @@ export default function App() {
           onOpenNL={() => setNlOpen(true)}
         />
       ) : (
-      <TheaterView
-        track={player.track}
-        playing={player.playing}
-        loading={player.loading}
-        liked={player.track?.liked ?? false}
-        fanOutCount={player.fanOutCount}
-        currentUnified={player.currentUnified}
-        currentTime={player.currentTime}
-        duration={player.duration}
-        provider={player.provider ?? 'qq'}
-        qqQuality={player.qqQuality}
-        trialFellBack={player.trialFellBack}
-        accountName={auth.auth.user?.nickname ?? 'Guest'}
-        likedCount={likedCount}
-        coverBackdropRef={player.coverBackdropRef}
-        lyrics={lyrics.lyrics}
-        lyricsSynced={lyrics.synced}
-        lyricsSource={lyrics.source}
-        lyricsMergedFrom={lyrics.mergedFrom}
-        lyricsAdded={lyrics.added}
-        lyricsLoading={lyrics.loading}
-        lyricsExportState={lyricsExport}
-        onExportLyrics={handleExportLyrics}
-        onRetryLyrics={lyrics.retryByName}
-        recoConfigured={reco.recoStatus?.configured ?? false}
-        recoLibrarySize={reco.recoStatus?.librarySize ?? 0}
-        recoRunning={reco.recoRunning}
-        recoMatchRate={0}
-        recoSuggestions={reco.suggestions}
-        onPlayPause={player.handlePlayPause}
-        onSkip={player.handleSkip}
-        onPrev={player.handlePrev}
-        onLike={() => void player.handleLike()}
-        onDislike={() => void player.handleDislike()}
-        onSeek={player.seek}
-        onOpenLiked={() => { void reloadLikedCount(); setLikedOpen(true); }}
-        onSwitchProvider={handleSwitchSource}
-        onConfigureReco={() => reco.setRecoKeyOpen(true)}
-        onRecoSeed={() => reco.handleRecoSeed(player.track?.title, player.track?.artist)}
-      />
+        <TheaterView
+          track={player.track}
+          playing={player.playing}
+          loading={player.loading}
+          liked={player.track?.liked ?? false}
+          fanOutCount={player.fanOutCount}
+          currentUnified={player.currentUnified}
+          currentTime={player.currentTime}
+          duration={player.duration}
+          provider={player.provider ?? 'qq'}
+          qqQuality={player.qqQuality}
+          trialFellBack={player.trialFellBack}
+          accountName={auth.auth.user?.nickname ?? 'Guest'}
+          likedCount={likedCount}
+          coverBackdropRef={player.coverBackdropRef}
+          lyrics={lyrics.lyrics}
+          lyricsSynced={lyrics.synced}
+          lyricsSource={lyrics.source}
+          lyricsMergedFrom={lyrics.mergedFrom}
+          lyricsAdded={lyrics.added}
+          lyricsLoading={lyrics.loading}
+          lyricsExportState={lyricsExport}
+          onExportLyrics={handleExportLyrics}
+          onRetryLyrics={lyrics.retryByName}
+          recoConfigured={reco.recoStatus?.configured ?? false}
+          recoLibrarySize={reco.recoStatus?.librarySize ?? 0}
+          recoRunning={reco.recoRunning}
+          recoMatchRate={0}
+          recoSuggestions={reco.suggestions}
+          onPlayPause={player.handlePlayPause}
+          onSkip={player.handleSkip}
+          onPrev={player.handlePrev}
+          onLike={() => void player.handleLike()}
+          onDislike={() => void player.handleDislike()}
+          onSeek={player.seek}
+          onOpenLiked={() => {
+            void reloadLikedCount();
+            setLikedOpen(true);
+          }}
+          onSwitchProvider={handleSwitchSource}
+          onConfigureReco={() => reco.setRecoKeyOpen(true)}
+          onRecoSeed={() => reco.handleRecoSeed(player.track?.title, player.track?.artist)}
+        />
       )}
 
       {/* Always mounted (never conditionally unmounted) so the Web Audio graph
@@ -610,10 +609,7 @@ export default function App() {
       )}
 
       {reco.recoKeyOpen && (
-        <RecoKeyModal
-          onSave={reco.handleSaveRecoKey}
-          onClose={() => reco.setRecoKeyOpen(false)}
-        />
+        <RecoKeyModal onSave={reco.handleSaveRecoKey} onClose={() => reco.setRecoKeyOpen(false)} />
       )}
 
       {likedOpen && (

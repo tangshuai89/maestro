@@ -25,8 +25,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
 {
   // Jaro ≈ 0.944；prefix=3，Winkler 加成 ≈ 0.0167，最终 ≈ 0.961。
   const score = jaroWinkler('MARTHA', 'MARHTA');
-  assert.ok(score >= 0.95 && score <= 0.97,
-    `MARTHA vs MARHTA 应 ~0.96，实际 ${score.toFixed(4)}`);
+  assert.ok(score >= 0.95 && score <= 0.97, `MARTHA vs MARHTA 应 ~0.96，实际 ${score.toFixed(4)}`);
   console.log(`✅ 3. MARTHA / MARHTA (经典) = ${score.toFixed(4)}`);
 }
 
@@ -35,8 +34,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   // Jaro ≈ 0.822；prefix=0 (D != D... wait，D=D, W!=U, so prefix=1)
   // 实测 ≈ 0.84
   const score = jaroWinkler('DWAYNE', 'DUANE');
-  assert.ok(score > 0.8 && score < 0.9,
-    `DWAYNE / DUANE 应 0.8-0.9 (实际 ${score.toFixed(4)})`);
+  assert.ok(score > 0.8 && score < 0.9, `DWAYNE / DUANE 应 0.8-0.9 (实际 ${score.toFixed(4)})`);
   console.log(`✅ 4. DWAYNE / DUANE = ${score.toFixed(4)}`);
 }
 
@@ -46,8 +44,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   const a = '海阔天空livebeyond';
   const b = '海阔天空livebeyong';
   const score = jaroWinkler(a, b);
-  assert.ok(score > 0.93,
-    `1 字符漏字 (尾) 应 > 0.93 (实际 ${score.toFixed(4)})`);
+  assert.ok(score > 0.93, `1 字符漏字 (尾) 应 > 0.93 (实际 ${score.toFixed(4)})`);
   // 高于阶段 C 的 FUZZY_THRESHOLD (0.88)
   console.log(`✅ 5. 1 字符漏字相似度 = ${score.toFixed(4)} (应 >0.93)`);
 }
@@ -58,9 +55,10 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
 // 这里仅记录 JW 给出的纯数值，作为后续 test 设计的基线参考。
 {
   const score = jaroWinkler('海阔天空live', '海阔天空');
-  assert.ok(score >= 0.85,
-    `Live vs 专辑前缀高度重合 → JW 应 >=0.85 (实际 ${score.toFixed(4)})`);
-  console.log(`📌 6. 纯 JW ("海阔天空live" vs "海阔天空") = ${score.toFixed(4)} (≥0.85，pickBest 用长度门拦)`);
+  assert.ok(score >= 0.85, `Live vs 专辑前缀高度重合 → JW 应 >=0.85 (实际 ${score.toFixed(4)})`);
+  console.log(
+    `📌 6. 纯 JW ("海阔天空live" vs "海阔天空") = ${score.toFixed(4)} (≥0.85，pickBest 用长度门拦)`,
+  );
 }
 
 // ── 7. 短标题 1-字符错（4 字符）─────────────────────
@@ -70,8 +68,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   // 实际音乐库中 title 长度多在 8+，距离一般 > 0.93，长度门只在极少数
   // 极短标题上有风险，duration gate 是最后一道保险。
   const short = jaroWinkler('海阔天空', '海阔天家');
-  assert.ok(short >= 0.88 && short <= 0.90,
-    `短标题 1 字符错应 ~0.88 (实际 ${short.toFixed(4)})`);
+  assert.ok(short >= 0.88 && short <= 0.9, `短标题 1 字符错应 ~0.88 (实际 ${short.toFixed(4)})`);
   console.log(`✅ 7. 短标题 1 字符错 = ${short.toFixed(4)} (~0.88，贴着 FUZZY_THRESHOLD)`);
 }
 
@@ -80,8 +77,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   // 长字符串相同位置 typo → JW 高得多（prefix 共享 4+）。
   // 海阔天空beyond vs 海阔天空beyong (尾字 g↔d)
   const long_ = jaroWinkler('海阔天空beyond', '海阔天空beyong');
-  assert.ok(long_ > 0.94,
-    `长标题 1 字符错应 > 0.94 (实际 ${long_.toFixed(4)})`);
+  assert.ok(long_ > 0.94, `长标题 1 字符错应 > 0.94 (实际 ${long_.toFixed(4)})`);
   console.log(`✅ 8. 长标题 1 字符错 = ${long_.toFixed(4)} (应 >0.94)`);
 }
 
@@ -91,8 +87,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   // 这种情况应留给 strict 优先（如果 normalized key 完全相等）和手工
   // 匹配兜底；不要因为 fuzzy 误匹配不同 title。
   const tiny = jaroWinkler('晴天', '晴夭');
-  assert.ok(tiny < 0.7,
-    `极短标题 JW 不可靠（实际 ${tiny.toFixed(4)}），不触发 fuzzy`);
+  assert.ok(tiny < 0.7, `极短标题 JW 不可靠（实际 ${tiny.toFixed(4)}），不触发 fuzzy`);
   console.log(`✅ 9. 极短标题（2 字符）错字 = ${tiny.toFixed(4)} (JW < 0.7，不触发 fuzzy)`);
 }
 
@@ -101,8 +96,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   const a = '海阔天空beyong';
   const b = '七里香jaychou';
   const score = jaroWinkler(a, b);
-  assert.ok(score < 0.7,
-    `完全无关应 <0.7 (实际 ${score.toFixed(4)})`);
+  assert.ok(score < 0.7, `完全无关应 <0.7 (实际 ${score.toFixed(4)})`);
   console.log(`✅ 10. 完全无关 = ${score.toFixed(4)} (应 <0.7)`);
 }
 
@@ -130,8 +124,7 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   // "海阔天空" vs "海阔天家" — 同长度、位置 3 不同
   // 1 次替换 / 4 字符 = 0.25
   const d = normalizedLevenshtein('海阔天空', '海阔天家');
-  assert.strictEqual(d, 0.25,
-    `1 替换 / 4 字符应 = 0.25（实际 ${d.toFixed(4)}）`);
+  assert.strictEqual(d, 0.25, `1 替换 / 4 字符应 = 0.25（实际 ${d.toFixed(4)}）`);
   console.log(`✅ 13. 4 字符 1 替换 = ${d.toFixed(4)} (阈值 0.3 之内的命中)`);
 }
 
@@ -140,17 +133,14 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
   // "海阔天空beyong" vs "海阔天空beyond" (尾 'd' 漏)
   // 1 次插入 / 13 字符 = 1/13 ≈ 0.077
   const d = normalizedLevenshtein('海阔天空beyong', '海阔天空beyond');
-  assert.ok(d < 0.15,
-    `1 字符漏 / 13 字符应 <0.15（实际 ${d.toFixed(4)}）`);
+  assert.ok(d < 0.15, `1 字符漏 / 13 字符应 <0.15（实际 ${d.toFixed(4)}）`);
   console.log(`✅ 14. 尾字漏 = ${d.toFixed(4)} (低于 0.15)`);
 }
 
 // ── 15. 完全不同 ──────────────────────────────────
 {
-  assert.strictEqual(normalizedLevenshtein('晴天', '海阔'), 1,
-    '完全不同字符 → 全替换 = 1.0');
-  assert.strictEqual(normalizedLevenshtein('abc', 'xyz'), 1,
-    'Latin 全替换');
+  assert.strictEqual(normalizedLevenshtein('晴天', '海阔'), 1, '完全不同字符 → 全替换 = 1.0');
+  assert.strictEqual(normalizedLevenshtein('abc', 'xyz'), 1, 'Latin 全替换');
   console.log('✅ 15. 完全无关 → distance 1.0');
 }
 
@@ -158,12 +148,10 @@ const { jaroWinkler, normalizedLevenshtein } = require('./fuzzy');
 {
   // 短标题 1 替换 = 0.5 > 0.3 → 应 NOT match
   const diff = normalizedLevenshtein('晴天', '晴朗');
-  assert.ok(diff > 0.3,
-    `短标题 1 替换 = ${diff.toFixed(4)}, 应 > 0.3 阈值（不同歌）`);
+  assert.ok(diff > 0.3, `短标题 1 替换 = ${diff.toFixed(4)}, 应 > 0.3 阈值（不同歌）`);
   // 中等标题 1 替换 = 0.25 < 0.3 → match
   const typo = normalizedLevenshtein('海阔天空', '海阔天家');
-  assert.ok(typo < 0.3,
-    `4 字 1 替换 = ${typo.toFixed(4)}, 应 < 0.3 阈值（typo 命中）`);
+  assert.ok(typo < 0.3, `4 字 1 替换 = ${typo.toFixed(4)}, 应 < 0.3 阈值（typo 命中）`);
   console.log(`✅ 16. 阈值边界: ${diff.toFixed(4)} > 0.3, ${typo.toFixed(4)} < 0.3`);
 }
 

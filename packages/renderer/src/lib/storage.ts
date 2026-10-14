@@ -65,12 +65,7 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 // ── Provider ──
 export function readStoredProvider(): MusicProvider | null {
   const stored = localStorage.getItem(STORAGE_KEYS.provider);
-  if (
-    stored === 'qq' ||
-    stored === 'netease' ||
-    stored === 'deezer' ||
-    stored === 'spotify'
-  ) {
+  if (stored === 'qq' || stored === 'netease' || stored === 'deezer' || stored === 'spotify') {
     return stored;
   }
   return null;
@@ -91,11 +86,7 @@ export function readStoredVolume(): number {
     const raw = localStorage.getItem(STORAGE_KEYS.volume);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (
-        typeof parsed?.volume === 'number' &&
-        parsed.volume >= 0 &&
-        parsed.volume <= 1
-      ) {
+      if (typeof parsed?.volume === 'number' && parsed.volume >= 0 && parsed.volume <= 1) {
         return parsed.volume;
       }
     }

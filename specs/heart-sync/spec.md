@@ -40,6 +40,7 @@
 ## 验收标准
 
 ### 检测 + 同步
+
 - [x] 播到一首在 QQ 已红心、网易云未红心的歌 → ❤ 点亮，角标显示 ≥1，网易云被
       异步补上红心（「我喜欢的音乐」里出现）
 - [x] 播到一首所有平台都没红心的歌 → 不写任何远端，角标为 0
@@ -51,11 +52,13 @@
 - [x] 远端同步失败 → 不影响播放，不影响本地点亮；有重试
 
 ### 队列
+
 - [x] 相同 `(session, mergedId)` 的重复入队被合并，不会重复同步
 - [x] 队列串行消费，不并发打爆平台 API
 - [x] 单个平台写失败 → 退避重试，最终失败只记日志
 
 ### 踩取消
+
 - [x] 踩一首 fan-out 过的歌 → 所有 fan-out 平台的红心被取消（本地 liked 清空，
       网易云「我喜欢的音乐」里同步移除），`fanOut` 记录被删
 - [x] 踩后角标归 0、❤ 熄灭，并自动切下一首
@@ -63,6 +66,7 @@
 - [x] `/dislike/merged` 路由不被 `/dislike/:trackId` 截胡
 
 ### 网易云接口
+
 - [x] `netease.unlike` 走 `radio/like?like=false`，真正从「我喜欢的音乐」移除
 - [x] `netease.fmTrash` 走 `radio/trash/add`，用于「踩/不喜欢」减少推荐（≠ 取消红心）
 - [x] 单平台 `markDisliked`（电台踩）用 `fmTrash`，语义不变
@@ -106,9 +110,9 @@ Error:
 
 ```ts
 interface LikeSyncTask {
-  session: Session;        // 捕获引用（cookie 随登录态实时反映）
-  mergedId: string;        // 合并去重的 key
-  liked: boolean;          // true=同步收藏，false=同步取消
+  session: Session; // 捕获引用（cookie 随登录态实时反映）
+  mergedId: string; // 合并去重的 key
+  liked: boolean; // true=同步收藏，false=同步取消
   targets: Array<{ platform: MusicProvider; trackId: string }>; // 每平台一首
 }
 ```

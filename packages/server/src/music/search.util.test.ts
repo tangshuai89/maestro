@@ -40,9 +40,7 @@ function check(label: string, fn: () => void) {
   }
 }
 
-function mkTrack(
-  overrides: Partial<Track> & { id: string; provider: Track['provider'] },
-): Track {
+function mkTrack(overrides: Partial<Track> & { id: string; provider: Track['provider'] }): Track {
   return {
     title: 'Test Song',
     artist: 'Test Artist',
@@ -55,10 +53,7 @@ function mkTrack(
   };
 }
 
-function mkSource(
-  platform: MusicProvider,
-  overrides: Partial<SourceInfo> = {},
-): SourceInfo {
+function mkSource(platform: MusicProvider, overrides: Partial<SourceInfo> = {}): SourceInfo {
   return {
     platform,
     trackId: `${platform}-id`,
@@ -153,14 +148,34 @@ check('9. selectBestSource：QQ 锁 + Deezer 非锁 + Spotify 非锁 → Deezer'
 // ── 10. buildUnifiedItems：跨平台同版本合并 ───────────────────
 check('10. buildUnifiedItems：同歌同版本跨平台合并为一条', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 270 }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同歌同版本应合并为 1 条');
   assert.strictEqual(items[0].sources.length, 2, 'sources 含两个平台');
   assert.strictEqual(items[0].bestSource, 'qq', 'bestSource = qq');
-    assert.strictEqual(items[0].id, 'merged-qq-qq-1-studio', 'Phase 2 id = merged-<provider>-<id>-<versionType>');
+  assert.strictEqual(
+    items[0].id,
+    'merged-qq-qq-1-studio',
+    'Phase 2 id = merged-<provider>-<id>-<versionType>',
+  );
 });
 
 // ── Bug #5 (stability-bug5-search-dup-platform) ───────────────────
@@ -169,9 +184,33 @@ check('11a. 同 platform 多 mid（同 duration）→ 合并为 1 个 source', (
   // Bug #5 修复前 → sources 出现 2 个 qq source（"两个 QQ"）。
   // 修复后 → 只保留第一个（dedupTracks "第一次出现" 原则）。
   const entries = [
-    { track: mkTrack({ id: 'qq-hi', provider: 'qq', title: '落俗', artist: '李荣浩', duration: 267 }) },
-    { track: mkTrack({ id: 'qq-std', provider: 'qq', title: '落俗', artist: '李荣浩', duration: 267 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '落俗', artist: '李荣浩', duration: 267 }) },
+    {
+      track: mkTrack({
+        id: 'qq-hi',
+        provider: 'qq',
+        title: '落俗',
+        artist: '李荣浩',
+        duration: 267,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'qq-std',
+        provider: 'qq',
+        title: '落俗',
+        artist: '李荣浩',
+        duration: 267,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '落俗',
+        artist: '李荣浩',
+        duration: 267,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同版本应合并为 1 条');
@@ -181,10 +220,42 @@ check('11a. 同 platform 多 mid（同 duration）→ 合并为 1 个 source', (
 });
 check('11b. 不同 platform 各 1 个 → 不去重（保持原行为）', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 270 }) },
-    { track: mkTrack({ id: 'de-1', provider: 'deezer', title: '晴天', artist: '周杰伦', duration: 270 }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '晴天', artist: '周杰伦', duration: 270 }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'de-1',
+        provider: 'deezer',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同版本应合并为 1 条');
@@ -208,8 +279,26 @@ check('11. buildUnifiedItems：同名同 type 不同 duration → 1 item + 2 ver
   // Phase 2：同 (key, type) 不管 duration 差多少都合并成 1 item，duration 差
   // 体现在 versions 数组里（每个 cluster = 1 version）。toggle 展开时给用户选。
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270, album: 'X' }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 310, album: 'Y' }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+        album: 'X',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 310,
+        album: 'Y',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, 'Phase 2：同 (key, type) → 1 item（不论 duration）');
@@ -225,14 +314,36 @@ check('11. buildUnifiedItems：同名同 type 不同 duration → 1 item + 2 ver
   assert.strictEqual(items[0].versions[0].title, '晴天');
   assert.strictEqual(items[0].versions[0].artist, '周杰伦');
   assert.strictEqual(items[0].versions[0].album, 'Y');
-  assert.strictEqual(items[0].versions[1].album, 'X', '版本级 album 取该 cluster 代表 track，不能串到别的 cluster');
+  assert.strictEqual(
+    items[0].versions[1].album,
+    'X',
+    '版本级 album 取该 cluster 代表 track，不能串到别的 cluster',
+  );
 });
 
 // ── 11b. versions 的元数据必须区分同名不同版本（用户看不到区别就没法选）──
 check('11b. buildUnifiedItems：同录音（时长偏差 ≤50%）合并，各自保留专辑/时长', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 240, album: '首发单曲' }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287, album: '精选集' }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 240,
+        album: '首发单曲',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 287,
+        album: '精选集',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同名同 type → 1 item');
@@ -253,11 +364,37 @@ check('11b. buildUnifiedItems：同录音（时长偏差 ≤50%）合并，各�
 check('11c. buildUnifiedItems：主版本按跨平台源数选，不够长的单平台条目让位', () => {
   const entries = [
     // 80s 那条三平台都有 → 跨平台共识
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 80 }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 80,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 80,
+      }),
+    },
     // 287s 只有 QQ 一条（时长虽长，但只有单平台）
-    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+    {
+      track: mkTrack({
+        id: 'qq-2',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 287,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 2, '80s 与 287s 时长差 >50% → 拆成 2 条');
@@ -283,8 +420,27 @@ check('11e. 主版本取「能出声」的那条，不被更长的无预览版�
   const entries = [
     // artist 刻意相同：这样 normalizeKey 就分在同一 group，不用跨脚本合并桥，
     // 本用例只验「主版本选谁」，不把合并能力混进来（另见 11i 端到端）。
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277, album: '浓缩蓝鲸' }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 285, album: 'Blue Whale', noPreview: true }) },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 277,
+        album: '浓缩蓝鲸',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 285,
+        album: 'Blue Whale',
+        noPreview: true,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同 versionType + 时长差 8s → 1 个 item');
@@ -304,8 +460,24 @@ check('11e. 主版本取「能出声」的那条，不被更长的无预览版�
 
 check('11f. 对照：有预览的更长版本仍可赢（Phase 3 取最长防片段的口径不回退）', () => {
   const entries = [
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277 }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 285 }) },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 277,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 285,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(
@@ -317,8 +489,26 @@ check('11f. 对照：有预览的更长版本仍可赢（Phase 3 取最长防片
 
 check('11g. 两边都无预览 → 原口径（可播性不介入，按最长）', () => {
   const entries = [
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277, noPreview: true }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 285, noPreview: true }) },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 277,
+        noPreview: true,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 285,
+        noPreview: true,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items[0].versions[0].duration, 285, '都没声可出，只能按原口径取最长');
@@ -328,8 +518,25 @@ check('11h. version 内混了 netease(有声) + spotify(无预览) → 该 versi
   // 同一时长 cluster 内的两个平台源，bestSource 按渠道优先级落在 netease，
   // 这个 version 点下去是响的，不该被"含 noPreview"误伤。
   const entries = [
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277 }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: '裘德', duration: 277, noPreview: true }) },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 277,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 277,
+        noPreview: true,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同时长 → 同一 cluster');
@@ -342,8 +549,27 @@ check('11i. 端到端：裘德 ↔ Jude Chiu 跨脚本合并后，主版本仍�
   // 复刻 2026-09-29 报障的完整形态：Spotify 用英文艺名（Jude Chiu 拼音桥不上，
   // 靠 artistAlias 策展表才合得上），album 不同 + 时长差 8s。
   const entries = [
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德', duration: 277, album: '浓缩蓝鲸' }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '浓缩蓝鲸', artist: 'Jude Chiu', duration: 285, album: 'Blue Whale', noPreview: true }) },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '浓缩蓝鲸',
+        artist: '裘德',
+        duration: 277,
+        album: '浓缩蓝鲸',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '浓缩蓝鲸',
+        artist: 'Jude Chiu',
+        duration: 285,
+        album: 'Blue Whale',
+        noPreview: true,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries, undefined, { crossScriptMerge: true });
   assert.strictEqual(items.length, 1, '跨脚本合并后应只有 1 条');
@@ -362,12 +588,38 @@ check('11i. 端到端：裘德 ↔ Jude Chiu 跨脚本合并后，主版本仍�
 check('11d. buildUnifiedItems：片段/剪辑版（时长 -50% 以上）拆成独立 item', () => {
   const entries = [
     // 4:47 三平台共识 = 正式版本
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 287 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '盲选', artist: '黄霄雲', duration: 287 }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 287,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 287,
+      }),
+    },
     // 1:20 只在 QQ，且比主版本短 72% → 不是"版本"
-    { track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }) },
+    {
+      track: mkTrack({ id: 'qq-2', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 80 }),
+    },
     // 2:50 偏 -41%，仍在阈值内 → 保留为版本
-    { track: mkTrack({ id: 'qq-3', provider: 'qq', title: '盲选', artist: '黄霄雲', duration: 170 }) },
+    {
+      track: mkTrack({
+        id: 'qq-3',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄雲',
+        duration: 170,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 2, '1:20 拆走 → 主 item + 1 条独立 item');
@@ -386,8 +638,18 @@ check('11d. buildUnifiedItems：片段/剪辑版（时长 -50% 以上）拆成�
 // ── 12. buildUnifiedItems：duration ≤ 0 全部并入一个 cluster ──
 check('12. buildUnifiedItems：duration=0 全部并入一个 cluster', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 0 }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 0 }) },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 0 }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 0,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, 'duration=0 应合并为 1 条');
@@ -397,8 +659,18 @@ check('12. buildUnifiedItems：duration=0 全部并入一个 cluster', () => {
 // ── 13. buildUnifiedItems：cover 兜底（主平台无封面用其他平台）─
 check('13. buildUnifiedItems：主平台无封面 → 用其他平台封面', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', coverUrl: '' }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', coverUrl: 'https://p1.music.126.net/cover.jpg' }) },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', coverUrl: '' }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        coverUrl: 'https://p1.music.126.net/cover.jpg',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items[0].coverUrl, 'https://p1.music.126.net/cover.jpg');
@@ -407,8 +679,24 @@ check('13. buildUnifiedItems：主平台无封面 → 用其他平台封面', ()
 // ── 14. buildUnifiedItems：main 选取按 PLAY_PRIORITY ───────────
 check('14. buildUnifiedItems：main 取优先级最高平台的 track', () => {
   const entries = [
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: 'Sunny', artist: 'Jay', duration: 270 }) },
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270 }) },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: 'Sunny',
+        artist: 'Jay',
+        duration: 270,
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   // normalizeKey 会把两个归一为同一 key（取决于 normalizer 实现）
@@ -469,12 +757,24 @@ check('16. mergeCrossScript：同歌跨脚本合并为一条', () => {
 check('17. mergeCrossScript：不同歌不合并', () => {
   const items = [
     {
-      id: '1', title: '晴天', artist: '周杰伦', album: '', coverUrl: '',
-      duration: 270, sources: [mkSource('qq', { trackId: '1' })], bestSource: 'qq' as const,
+      id: '1',
+      title: '晴天',
+      artist: '周杰伦',
+      album: '',
+      coverUrl: '',
+      duration: 270,
+      sources: [mkSource('qq', { trackId: '1' })],
+      bestSource: 'qq' as const,
     },
     {
-      id: '2', title: '稻香', artist: '周杰伦', album: '', coverUrl: '',
-      duration: 223, sources: [mkSource('qq', { trackId: '2' })], bestSource: 'qq' as const,
+      id: '2',
+      title: '稻香',
+      artist: '周杰伦',
+      album: '',
+      coverUrl: '',
+      duration: 223,
+      sources: [mkSource('qq', { trackId: '2' })],
+      bestSource: 'qq' as const,
     },
   ];
   const merged = mergeCrossScript(items);
@@ -485,12 +785,24 @@ check('17. mergeCrossScript：不同歌不合并', () => {
 check('18. mergeCrossScript：时长差 > 30s 不合并', () => {
   const items = [
     {
-      id: '1', title: '晴天', artist: '周杰伦', album: '', coverUrl: '',
-      duration: 270, sources: [mkSource('qq', { trackId: '1' })], bestSource: 'qq' as const,
+      id: '1',
+      title: '晴天',
+      artist: '周杰伦',
+      album: '',
+      coverUrl: '',
+      duration: 270,
+      sources: [mkSource('qq', { trackId: '1' })],
+      bestSource: 'qq' as const,
     },
     {
-      id: '2', title: '晴天', artist: '周杰伦', album: '', coverUrl: '',
-      duration: 310, sources: [mkSource('spotify', { trackId: '2' })], bestSource: 'spotify' as const,
+      id: '2',
+      title: '晴天',
+      artist: '周杰伦',
+      album: '',
+      coverUrl: '',
+      duration: 310,
+      sources: [mkSource('spotify', { trackId: '2' })],
+      bestSource: 'spotify' as const,
     },
   ];
   const merged = mergeCrossScript(items);
@@ -515,7 +827,15 @@ check('21. buildUnifiedItems：空输入 → []', () => {
 // ── 22. buildUnifiedItems：vipLocked 透传到 sources ────────────
 check('22. buildUnifiedItems：vipLocked 透传', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: 'VIP歌', artist: '歌手', vipLocked: true }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: 'VIP歌',
+        artist: '歌手',
+        vipLocked: true,
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items[0].sources[0].vipLocked, true);
@@ -524,7 +844,9 @@ check('22. buildUnifiedItems：vipLocked 透传', () => {
 // ── 23. buildUnifiedItems：mediaMid 透传 ───────────────────────
 check('23. buildUnifiedItems：mediaMid 透传', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '歌', artist: '手', mediaMid: 'mid123' }) },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '歌', artist: '手', mediaMid: 'mid123' }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items[0].sources[0].mediaMid, 'mid123');
@@ -569,8 +891,26 @@ check('25c. versionTypeBadge: 其余 → 对应文字', () => {
 // ── Phase 1 buildUnifiedItems: 按 (normalizeKey, versionType) 二元组合并 ───
 check('26. 同歌 studio + live → 2 条（之前会因 cluster 差 > 3s 也 2 条；现在按 type 拆分）', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
-    { track: mkTrack({ id: 'qq-l', provider: 'qq', title: '晴天 (Live)', artist: '周杰伦', duration: 280, album: '叶惠美 Live' }) },
+    {
+      track: mkTrack({
+        id: 'qq-s',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 269,
+        album: '叶惠美',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'qq-l',
+        provider: 'qq',
+        title: '晴天 (Live)',
+        artist: '周杰伦',
+        duration: 280,
+        album: '叶惠美 Live',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 2, 'studio + live → 2 条');
@@ -580,9 +920,36 @@ check('26. 同歌 studio + live → 2 条（之前会因 cluster 差 > 3s 也 2 
 check('27. 同歌同 type (studio) 多平台 → 1 条 studio', () => {
   // 同 artist 跨平台 → 1 条 studio（normalizeKey 一致）。
   const entries = [
-    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
-    { track: mkTrack({ id: 'ne-s', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
-    { track: mkTrack({ id: 'sp-s', provider: 'spotify', title: '晴天', artist: '周杰伦', duration: 269, album: '叶惠美' }) },
+    {
+      track: mkTrack({
+        id: 'qq-s',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 269,
+        album: '叶惠美',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-s',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 269,
+        album: '叶惠美',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-s',
+        provider: 'spotify',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 269,
+        album: '叶惠美',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 1, '同 studio + 同 duration → 1 条');
@@ -595,10 +962,46 @@ check('28. 不同 type 同 key → 各自成条，sources 不混合', () => {
   // 注：title 里的 "(Live)" 因 normalizeKey 不调 stripParensContent 会让 key
   // 不同（"盲选" vs "盲选live"），那是 spec 既定设计——下面用 album 触发 type。
   const entries = [
-    { track: mkTrack({ id: 'qq-s', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
-    { track: mkTrack({ id: 'ne-s', provider: 'netease', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
-    { track: mkTrack({ id: 'qq-l', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 250, album: 'X (Live)' }) },
-    { track: mkTrack({ id: 'sp-l', provider: 'spotify', title: '盲选', artist: '黄霄云', duration: 250, album: 'X Live' }) },
+    {
+      track: mkTrack({
+        id: 'qq-s',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄云',
+        duration: 240,
+        album: 'X',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-s',
+        provider: 'netease',
+        title: '盲选',
+        artist: '黄霄云',
+        duration: 240,
+        album: 'X',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'qq-l',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄云',
+        duration: 250,
+        album: 'X (Live)',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-l',
+        provider: 'spotify',
+        title: '盲选',
+        artist: '黄霄云',
+        duration: 250,
+        album: 'X Live',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 2, 'studio + live → 2 条');
@@ -611,8 +1014,26 @@ check('28. 不同 type 同 key → 各自成条，sources 不混合', () => {
 check('29. classifyVersion 与 buildUnifiedItems 集成（不破坏测试 10/11）', () => {
   // 测试 10 同歌同版本跨平台合并 → versionType='studio'（默认）
   const t10 = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '晴天', artist: '周杰伦', duration: 270, album: '叶惠美' }) },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '晴天', artist: '周杰伦', duration: 270, album: '叶惠美' }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+        album: '叶惠美',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'ne-1',
+        provider: 'netease',
+        title: '晴天',
+        artist: '周杰伦',
+        duration: 270,
+        album: '叶惠美',
+      }),
+    },
   ];
   const i10 = buildUnifiedItems(new Map(), t10);
   assert.strictEqual(i10[0].versionType, 'studio');
@@ -624,8 +1045,26 @@ check('29. classifyVersion 与 buildUnifiedItems 集成（不破坏测试 10/11�
 // 不同的同名项）。
 check('28b. 跨脚本同歌同 type → 各自成条（spec 设计：跨脚本合并留给 library）', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '盲选', artist: '黄霄云', duration: 240, album: 'X' }) },
-    { track: mkTrack({ id: 'sp-1', provider: 'spotify', title: '盲选', artist: 'Huang Xiaoyun', duration: 240, album: 'X' }) },
+    {
+      track: mkTrack({
+        id: 'qq-1',
+        provider: 'qq',
+        title: '盲选',
+        artist: '黄霄云',
+        duration: 240,
+        album: 'X',
+      }),
+    },
+    {
+      track: mkTrack({
+        id: 'sp-1',
+        provider: 'spotify',
+        title: '盲选',
+        artist: 'Huang Xiaoyun',
+        duration: 240,
+        album: 'X',
+      }),
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(items.length, 2, '不同 artist → 不同 normalizeKey → 各自成条（spec 设计）');
@@ -658,39 +1097,27 @@ check('P2. selectBestSource 接受 priority：每档内按用户序迭代', () =
     { platform: 'qq', trackId: '1', hasCopyright: true, url: '' },
     { platform: 'netease', trackId: '2', hasCopyright: true, url: '' },
   ];
-  assert.strictEqual(
-    selectBestSource(full, ['netease', 'qq', 'deezer', 'spotify']),
-    'netease',
-  );
+  assert.strictEqual(selectBestSource(full, ['netease', 'qq', 'deezer', 'spotify']), 'netease');
   // 两个非全曲源：tier-2 内同样按 priority
   const preview: SourceInfo[] = [
     { platform: 'spotify', trackId: '3', hasCopyright: true, url: '' },
     { platform: 'deezer', trackId: '4', hasCopyright: true, url: '' },
   ];
-  assert.strictEqual(
-    selectBestSource(preview, ['spotify', 'deezer', 'qq', 'netease']),
-    'spotify',
-  );
+  assert.strictEqual(selectBestSource(preview, ['spotify', 'deezer', 'qq', 'netease']), 'spotify');
   // 非全曲源不能靠 priority 跨档压过全曲源（ladder 不变，见 P4）
   assert.strictEqual(
-    selectBestSource(
-      [full[0], preview[0]],
-      ['spotify', 'qq', 'netease', 'deezer'],
-    ),
+    selectBestSource([full[0], preview[0]], ['spotify', 'qq', 'netease', 'deezer']),
     'qq',
   );
 });
 
 check('P3. selectBestSource priority = 缺某平台 → 该平台永远不返回', () => {
   const sources: SourceInfo[] = [
-    { platform: 'qq', trackId: '1', hasCopyright: false, url: '' },  // 无版权
+    { platform: 'qq', trackId: '1', hasCopyright: false, url: '' }, // 无版权
     { platform: 'deezer', trackId: '2', hasCopyright: true, url: '' }, // 唯一有版权
   ];
   // user 从 priority 里删了 deezer → 即使 deezer 是唯一有版权源也不选
-  assert.strictEqual(
-    selectBestSource(sources, ['qq', 'netease', 'spotify']),
-    null,
-  );
+  assert.strictEqual(selectBestSource(sources, ['qq', 'netease', 'spotify']), null);
 });
 
 check('P4. selectBestSource VIP ladder 不变：priority 仅影响每档内迭代', () => {
@@ -701,10 +1128,7 @@ check('P4. selectBestSource VIP ladder 不变：priority 仅影响每档内迭�
   ];
   // qq VIP 锁 → 跳过；剩下 netease / deezer 都是非锁，priority=[deezer,...]
   // → 但 netease 在 FULL_SONG_PROVIDERS（qq/netease），deezer 不在 → 仍选 netease
-  assert.strictEqual(
-    selectBestSource(sources, ['deezer', 'netease', 'qq', 'spotify']),
-    'netease',
-  );
+  assert.strictEqual(selectBestSource(sources, ['deezer', 'netease', 'qq', 'spotify']), 'netease');
 });
 
 check('P5. buildUnifiedItems 透传 priority：bestSource 按用户序选', () => {
@@ -712,11 +1136,7 @@ check('P5. buildUnifiedItems 透传 priority：bestSource 按用户序选', () =
     { track: mkTrack({ id: 'qq-1', provider: 'qq', title: 'G', artist: 'A' }) },
     { track: mkTrack({ id: 'ne-1', provider: 'netease', title: 'G', artist: 'A' }) },
   ];
-  const items = buildUnifiedItems(
-    new Map(),
-    entries,
-    ['netease', 'qq', 'deezer', 'spotify'],
-  );
+  const items = buildUnifiedItems(new Map(), entries, ['netease', 'qq', 'deezer', 'spotify']);
   assert.strictEqual(items.length, 1);
   assert.strictEqual(items[0].bestSource, 'netease');
 });
@@ -724,14 +1144,28 @@ check('P5. buildUnifiedItems 透传 priority：bestSource 按用户序选', () =
 check('P6. mergeCrossScript 透传 priority：合并后 bestSource 按用户序重选', () => {
   const items: UnifiedSearchItem[] = [
     {
-      id: 'qq-1', title: '横顔', artist: 'Yama', album: '', coverUrl: '',
-      duration: 200, sources: [mkSource('qq', { trackId: '1' })], bestSource: 'qq' as const,
-      versionType: 'studio' as const, versions: [],
+      id: 'qq-1',
+      title: '横顔',
+      artist: 'Yama',
+      album: '',
+      coverUrl: '',
+      duration: 200,
+      sources: [mkSource('qq', { trackId: '1' })],
+      bestSource: 'qq' as const,
+      versionType: 'studio' as const,
+      versions: [],
     },
     {
-      id: 'ne-1', title: 'Yokogao', artist: 'Yama', album: '', coverUrl: '',
-      duration: 200, sources: [mkSource('netease', { trackId: '2' })], bestSource: 'netease' as const,
-      versionType: 'studio' as const, versions: [],
+      id: 'ne-1',
+      title: 'Yokogao',
+      artist: 'Yama',
+      album: '',
+      coverUrl: '',
+      duration: 200,
+      sources: [mkSource('netease', { trackId: '2' })],
+      bestSource: 'netease' as const,
+      versionType: 'studio' as const,
+      versions: [],
     },
   ];
   const merged = mergeCrossScript(items, ['netease', 'qq', 'deezer', 'spotify']);
@@ -748,15 +1182,20 @@ check('R1. sortByRelevance：netease 独占精确命中从末尾提到第一页'
   for (let i = 0; i < 25; i++) {
     entries.push({
       track: mkTrack({
-        id: `qq-${i}`, provider: 'qq',
-        title: `相关歌曲${i}`, artist: `歌手${i}`,
+        id: `qq-${i}`,
+        provider: 'qq',
+        title: `相关歌曲${i}`,
+        artist: `歌手${i}`,
       }),
       platform: 'qq' as const,
     });
   }
   entries.push({
     track: mkTrack({
-      id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德',
+      id: 'ne-1',
+      provider: 'netease',
+      title: '浓缩蓝鲸',
+      artist: '裘德',
     }),
     platform: 'netease' as const,
   });
@@ -770,8 +1209,14 @@ check('R1. sortByRelevance：netease 独占精确命中从末尾提到第一页'
 
 check('R2. sortByRelevance：多 token「裘德 浓缩蓝鲸」标题+歌手双命中压过同歌名', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '浓缩蓝鲸', artist: '别人' }), platform: 'qq' as const },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德' }), platform: 'netease' as const },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '浓缩蓝鲸', artist: '别人' }),
+      platform: 'qq' as const,
+    },
+    {
+      track: mkTrack({ id: 'ne-1', provider: 'netease', title: '浓缩蓝鲸', artist: '裘德' }),
+      platform: 'netease' as const,
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   const sorted = sortByRelevance(items, '裘德 浓缩蓝鲸');
@@ -780,17 +1225,29 @@ check('R2. sortByRelevance：多 token「裘德 浓缩蓝鲸」标题+歌手双�
 
 check('R3. sortByRelevance：全不匹配时保持插入序（不回归）', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '甲', artist: 'A' }), platform: 'qq' as const },
-    { track: mkTrack({ id: 'ne-1', provider: 'netease', title: '乙', artist: 'B' }), platform: 'netease' as const },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '甲', artist: 'A' }),
+      platform: 'qq' as const,
+    },
+    {
+      track: mkTrack({ id: 'ne-1', provider: 'netease', title: '乙', artist: 'B' }),
+      platform: 'netease' as const,
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   const sorted = sortByRelevance(items, '完全不相关');
-  assert.deepStrictEqual(sorted.map((it) => it.title), ['甲', '乙']);
+  assert.deepStrictEqual(
+    sorted.map((it) => it.title),
+    ['甲', '乙'],
+  );
 });
 
 check('R4. sortByRelevance：空 query / 全空白 → 原序返回', () => {
   const entries = [
-    { track: mkTrack({ id: 'qq-1', provider: 'qq', title: '甲', artist: 'A' }), platform: 'qq' as const },
+    {
+      track: mkTrack({ id: 'qq-1', provider: 'qq', title: '甲', artist: 'A' }),
+      platform: 'qq' as const,
+    },
   ];
   const items = buildUnifiedItems(new Map(), entries);
   assert.strictEqual(sortByRelevance(items, '   '), items);
@@ -817,7 +1274,9 @@ check('R5. sortByRelevance：同分同名按平台内 rank 交错（浓缩蓝鲸
   rankMap.set('netease:ne-1', 0);
   const rankOf = (it: UnifiedSearchItem) =>
     Math.min(
-      ...it.sources.map((s) => rankMap.get(`${s.platform}:${s.trackId}`) ?? Number.MAX_SAFE_INTEGER),
+      ...it.sources.map(
+        (s) => rankMap.get(`${s.platform}:${s.trackId}`) ?? Number.MAX_SAFE_INTEGER,
+      ),
     );
   const sorted = sortByRelevance(items, '浓缩蓝鲸', rankOf);
   const qi = sorted.findIndex((it) => it.artist === '裘德');

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+
 - **`ISSUES.md` §3.5** root `package.json` `description` 更新为跨平台播放器
   （QQ / NetEase / Deezer / Spotify + DeepSeek AI），不再是过期的 QQ-only 描述。
 - **`ISSUES.md` §4.1** `StorageService` 写凭据文件后 chmod 0o600：抽出
@@ -39,13 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `packages/server/src/music/like-sync.queue.ts`。
 
 ### Fixed
+
 - **P0/P1/P2/P3 全量审查修掉的 3 个阻塞**（2026-09-28，review → fix）：
   - **`afterPack-vmp.cjs` 调了不存在的入口**（`python3 -m castlabs_evs.vmp sign-pkg`
     —— castlabs-evs 只有 `evs-vmp` / `evs-account` 两个 CLI，没有 `python3 -m
-    castlabs_evs` 的 `__main__`）。意味着**不带 `SKIP_VMP=1` 的 `npm run pack`
+castlabs_evs` 的 `__main__`）。意味着**不带 `SKIP_VMP=1` 的 `npm run pack`
     必然抛 `No module named castlabs_evs`**，「0.2 逻辑已就绪」这句话本来是不
     成立的。现改为解析可执行文件路径（`EVS_VMP_BIN` → `~/.castlabs-evs-venv/bin/
-    evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可读错误。
+evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可读错误。
   - **打包产物白屏**（跨 P0/P1/P2/P3 的地基 bug）：`vite.config.ts` 没设 `base`，
     prod 走 `mainWindow.loadFile()` = `file://`，vite 默认 `base='/'` 把产物入口
     写成 `src="/assets/main-*.js"` —— 绝对路径在 `file://` 下解析到**文件系统根**，
@@ -88,22 +90,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   映射，`npm run test:ci` 里的 `figma-code-connect-validate` 是红的（109/110）。
 
 ### Added
+
 - **#7.1 10 段均衡器 EQ**（`specs/audio-fx/`）—— 31/62/125/250/500/1k/2k/4k/8k/16k
   十段 peaking（Q=1）级联 + 8 个预置（平直/流行/摇滚/古典/人声/低音增强/高音增强/夜间）
-  + 总开关，存本地偏好并进备份集，Settings 新增「② 音频」节。
-  - `lib/audioFx.ts`：频段表 / 预置 / 归一（`normaliseGains` 把 localStorage 与备份
+  - 总开关，存本地偏好并进备份集，Settings 新增「② 音频」节。
+  * `lib/audioFx.ts`：频段表 / 预置 / 归一（`normaliseGains` 把 localStorage 与备份
     导入的脏数据挡在 Web Audio 之外 —— NaN 增益 = 静音且**不报错**）。
-  - `lib/eqChain.ts`：链构建与参数推送抽成**纯函数**。`usePlayer` 是大 hook，测它要拉
+  * `lib/eqChain.ts`：链构建与参数推送抽成**纯函数**。`usePlayer` 是大 hook，测它要拉
     React 运行时 + 假 `<audio>`，而 EQ 恰恰是"写错了不报错、只听起来不对"的地方
     （串错顺序 = 整体发糊、`.value =` = 每拖一下咔一声）。抽出来后用记录调用的假 ctx
     就能把连接顺序和参数写法钉死。
-  - 建链只在 graph 建立时做一次，之后只改参数、**绝不重连**：EQ 节点提前建好
+  * 建链只在 graph 建立时做一次，之后只改参数、**绝不重连**：EQ 节点提前建好
     （哪怕全 0 dB），重连会发生在正在出声的时刻。
-  - 开关关闭 = 各频段 ramp 到 0 dB 而非 disconnect 真旁路（后者会咔哒），曲线保留在
+  * 开关关闭 = 各频段 ramp 到 0 dB 而非 disconnect 真旁路（后者会咔哒），曲线保留在
     prefs 里、重新打开即恢复。
-  - analyser 移到 EQ **之后**（声波环要反映用户听到的声音，不是 EQ 前的原始信号）；
+  * analyser 移到 EQ **之后**（声波环要反映用户听到的声音，不是 EQ 前的原始信号）；
     `f9 → destination` 与 `f9 → analyser` 并联，analyser 创建失败也不会静音。
-  - UI 诚实标注适用范围：**Spotify WPS 路径不生效**（SDK 自己解码输出）。
+  * UI 诚实标注适用范围：**Spotify WPS 路径不生效**（SDK 自己解码输出）。
 - **crossfade（C 组）本轮不做**——`<audio>` 的 `src` 由 React 绑定，双元素方案要把
   src 改成命令式管理，会动到 P1/P2/P3 都依赖的"src 绑定"不变量，留作独立一轮。
 - **ReplayGain 明确不做**（spec §5 三条理由）：`loudness` / `replayGain` / `gain_db`
@@ -112,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   直接冲突。在没有元数据时宁可让用户自己拉滑块，也不要一个假的自动归一。
 
 ### Added
+
 - **桌面歌词 IPC 契约回归测试**（`electron/src/desktop-lyrics/ipc-contract.test.ts`，
   6 项）—— IPC 通道名拼错**不会报任何错**，只会静默失效，typecheck 和单测都
   覆盖不到（controller 测试是直接调方法、绕过了通道名）。测试按方向分别校验
@@ -203,7 +207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `noCache` 保证评测不污染产品的候选池缓存、也不写推荐历史；
     `pool` 模式（默认，零 token）与 `llm` 模式（完整流水线）可选。
   - `POST /api/reco/eval` + CLI `npm run reco:eval`（`--holdout/--count/--runs/--seed/
-    --mode/--json/--save/--compare/--session/--storage`）；CLI 只读 `state.json`
+--mode/--json/--save/--compare/--session/--storage`）；CLI 只读 `state.json`
     （直接从 blob 取会话，不经 SessionService，不写业务数据）。
 - **推荐延迟包 + 行为信号闭环**（`specs/reco-deepseek/spec.md` v2.1 段）——
   实测「推荐要等好久」后按耗时账逐段砍，并把"只有红心"补成真实行为信号。
@@ -280,9 +284,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - common 包同样接入 ESLint。
   - 现有 `(t as any).unref?.()` 在 `session.ts:117` 已带 `eslint-disable-next-line`，
     新规则启用后该注释立即生效。
-  文件：
-  `packages/server/eslint.config.mjs` / `packages/renderer/eslint.config.js` /
-  `packages/common/eslint.config.mjs`。
+    文件：
+    `packages/server/eslint.config.mjs` / `packages/renderer/eslint.config.js` /
+    `packages/common/eslint.config.mjs`。
 - **`ISSUES.md` §6.1 Test commands** —— 在 `README.md` / `README.zh-CN.md` /
   `README.ja.md` 三份 README 的「开发 / 開発」节后追加「Tests / 测试 / テスト」节，
   列出 `npm test` / `npm run typecheck` / `npm run lint` / `--watch` / `--ci` /
@@ -290,6 +294,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ISSUES.md` §6.2 CHANGELOG.md`**（本文件）。
 
 ### Tests
+
 - `packages/server/src/reco/eval.test.ts`（新）：5 组口径测试（切分不重叠/可复现/
   至少留 1 首训练、召回与 MRR 含 Top-K 截断与空输入、同艺人分档、多样性、
   多轮平均 + 报告格式 + 基线对比升降标注）。
@@ -325,6 +330,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   （`backoffMs` 注入 rng → 精确值 4500 / 1500 / 32500），4 → 5。
 
 ### Fixed
+
 - **Stability round 1**: `searchEquivalent` 同 key 并发请求 coalescing
   —— 读 cache miss → await 远端 → 写 cache 在 await 间断开，让 like sync 与
   VIP 升级并发时各自打后端。仿 RefreshCoordinator 加 inflight map，N 个
@@ -347,6 +353,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `packages/server/src/music/music.service.ts`。
 
 ### Added (2026-09-03 → 2026-09-23)
+
 - **Mini Player P1**（commit `71205ae`，spec `specs/mini-player/spec.md`）：
   Apple Music 式底部浮层 + 主窗口跟随缩放（theater → 620×170），`Cmd+Shift+M`
   切换，`<audio>` 不重建（Web Audio graph 保持），mode 持久化到 localStorage。
@@ -360,7 +367,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D 系列收尾**（D1 / D2 / D4 / D5_NEW / D7 / D8 / D10 / D11，
   见 `docs/d-series-status.md`）：
   - **D8** 桌面尺寸适配（`3d77586`）：三档 density（1440 / 1200 / 960）
-    + 内容减法，原 1920 档方案改写为 transform:scale 1.29×。
+    - 内容减法，原 1920 档方案改写为 transform:scale 1.29×。
   - **D10** MOTION SPEC 载体纠偏（`bcc09fe`）：FRAME 无 `description`
     属性，改用隐藏 TEXT 子节点 `MOTION_SPEC`。
   - **D11** Playwright 视觉回归 CI（`fa16e95`）：6 张基线 + 门禁双向
@@ -374,7 +381,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     CI 离线腿 + MCP 只读段。
 - **token-adoption 专题**（`04a4c24` · `6319635` · `aa0fcd0` · `628ea84`）：
   - 棘轮门禁：每替换一批降低新文件硬编码预算，`scan-hardcoded-colors
-    --gate` 进 `test:ci`。
+--gate` 进 `test:ci`。
   - S3-3 / S3-5 两批替换：88 + 240 处 alpha 派生值换 token（配方 srgb）。
   - Settings token-adoption 二次补强（`628ea84`）：6 处直换 token + budget
     给品牌识别色扩 9 处。
@@ -393,6 +400,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **剧场推荐卡跟随队列位置 + 种子胶囊底部遮挡修复**（`e1d2535`）。
 
 ### Fixed (2026-09-03 → 2026-09-23)
+
 - **跨脚本元数据合并**（PR #87，commit `3c09fd8`）：搜索侧严口径——
   `buildUnifiedItems({crossScriptMerge:true})`，CJK ↔ 拉丁 script
   （如「寂寞，好了」+ Deezer 罗马音）在搜索链路下合并；library import
@@ -413,6 +421,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **剧场死 CSS 清理**（`d00cfc3`）：`.th-lyric--prev/--next`、
   `.th-reco-running` 移除。
 - **`ISSUES.md` 归档与跨引用修复**（`a8bb7d6`）：7 份过时文档归档。
+
 ## [2026-09-03] - Pre-CHANGELOG baseline
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）+

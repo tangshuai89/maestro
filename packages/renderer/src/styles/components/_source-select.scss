@@ -106,8 +106,10 @@
   -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
   overflow: hidden;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.25s ease, background 0.25s ease;
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.25s ease,
+    background 0.25s ease;
 }
 
 .ss-card:hover {

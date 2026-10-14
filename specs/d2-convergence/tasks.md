@@ -64,6 +64,7 @@
 幂等清理会漏 → 改用 `await figma.getNodeByIdAsync(pageMeta.id)` 强制水合，重跑不会叠两份。
 
 **验收**
+
 - `figma-v4-typecheck.mjs` 17/17 · `figma-v4-smoke-d2.mjs` 10/10 · `figma-v4-smoke-d1.mjs` 24/24
 - `figma-aether-v4-audit.mjs` **34/36**（1 FAIL + 1 SKIP，与 D2 之前完全一致，基线未破；
   FAIL 是 03 页 v4-ABC 遗留屏的硬编码填充，SKIP 是 PAT 缺 `file_variables` scope）

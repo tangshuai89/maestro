@@ -11,10 +11,10 @@ size: 1440x900
 react: packages/renderer/src/components/search/SearchPanel.tsx
 routes: [search]
 bindings:
-  - Scene/Backdrop (1)         # 蒙层
-  - Tag/Stat×3                 # 过滤标签：跨平台 / 4 平台 chip
-  - Lyrics/Line×N              # 改用作结果行（占位用，单行字号适配）
-  - Icon/Search×1              # 搜索框前 icon
+  - Scene/Backdrop (1) # 蒙层
+  - Tag/Stat×3 # 过滤标签：跨平台 / 4 平台 chip
+  - Lyrics/Line×N # 改用作结果行（占位用，单行字号适配）
+  - Icon/Search×1 # 搜索框前 icon
 description: |
   ---
   AI_CONTRACT:
@@ -46,8 +46,8 @@ react: packages/renderer/src/components/modals/LikedLibraryModal.tsx
 routes: [liked]
 bindings:
   - Scene/Backdrop (1)
-  - Tag/Stat×2                 # 顶部"已收藏 N 首" + 排序 tag
-  - Icon/Heart×1               # 顶 header icon
+  - Tag/Stat×2 # 顶部"已收藏 N 首" + 排序 tag
+  - Icon/Heart×1 # 顶 header icon
 description: |
   ---
   AI_CONTRACT:
@@ -76,9 +76,9 @@ size: 1440x900
 react: packages/renderer/src/components/modals/SettingsModal.tsx
 routes: [settings]
 bindings:
-  - Scene/Backdrop (1)         # 星空背景
-  - Tag/Stat×5                 # 3 个 section title + 2 个 status
-  - Button/Text×3              # 立即备份 / 导出 / 导入
+  - Scene/Backdrop (1) # 星空背景
+  - Tag/Stat×5 # 3 个 section title + 2 个 status
+  - Button/Text×3 # 立即备份 / 导出 / 导入
 description: |
   ---
   AI_CONTRACT:
@@ -107,8 +107,8 @@ react: packages/renderer/src/components/modals/RecoKeyModal.tsx
 routes: [reco-key]
 bindings:
   - Scene/Backdrop (1)
-  - Tag/Stat×1                 # 标题
-  - Button/Text×2              # 保存 / 取消
+  - Tag/Stat×1 # 标题
+  - Button/Text×2 # 保存 / 取消
 description: |
   ---
   AI_CONTRACT:
@@ -138,8 +138,8 @@ react: packages/renderer/src/components/common/AuthErrorPanel.tsx
 routes: [auth-error]
 bindings:
   - Scene/Backdrop (1)
-  - Tag/Stat×2                 # 错误码 + provider
-  - Button/Text×4              # 重试 / 重新登录 / 粘贴 cookie / 切换音源
+  - Tag/Stat×2 # 错误码 + provider
+  - Button/Text×4 # 重试 / 重新登录 / 粘贴 cookie / 切换音源
 description: |
   ---
   AI_CONTRACT:
@@ -174,9 +174,9 @@ react: (无专用组件 — 嵌入到 SourceSelect/Playing 切换前)
 routes: [empty]
 bindings:
   - Scene/Backdrop (1)
-  - Tag/Stat×1                 # 标题
-  - Button/Text×1              # 去登录
-  - Icon/Heart×1               # 居中 illustration (示意星)
+  - Tag/Stat×1 # 标题
+  - Button/Text×1 # 去登录
+  - Icon/Heart×1 # 居中 illustration (示意星)
 description: |
   ---
   AI_CONTRACT:
@@ -197,14 +197,14 @@ description: |
 
 ## 屏间切换矩阵（自动跳转，仅供 D1 后续原型连线参考）
 
-| from | to | trigger | transition |
-|---|---|---|---|
-| SourceSelect | EmptyState (未登录) | `route` | DISSOLVE 200ms |
-| EmptyState | SourceSelect (点击登录) | click Button/Text | SMART_ANIMATE 240ms |
-| NowPlaying/Playing | Search/Modal | click search button | DISSOLVE 200ms (蒙层) + SLIDE 240ms (面板) |
-| NowPlaying | Liked/Modal | click heart-stat | DISSOLVE 200ms (蒙层) + SLIDE 240ms (面板) |
-| Anywhere | Settings/Full | open settings | DISSOLVE 240ms |
-| NowPlaying | RecoKey/Modal | first-time reco | DISSOLVE 200ms + SLIDE 240ms |
-| Auth fail anywhere | AuthError/Full | dispatch | DISSOLVE 200ms (蒙层) + SLIDE-UP 240ms (面板) |
+| from               | to                      | trigger             | transition                                    |
+| ------------------ | ----------------------- | ------------------- | --------------------------------------------- |
+| SourceSelect       | EmptyState (未登录)     | `route`             | DISSOLVE 200ms                                |
+| EmptyState         | SourceSelect (点击登录) | click Button/Text   | SMART_ANIMATE 240ms                           |
+| NowPlaying/Playing | Search/Modal            | click search button | DISSOLVE 200ms (蒙层) + SLIDE 240ms (面板)    |
+| NowPlaying         | Liked/Modal             | click heart-stat    | DISSOLVE 200ms (蒙层) + SLIDE 240ms (面板)    |
+| Anywhere           | Settings/Full           | open settings       | DISSOLVE 240ms                                |
+| NowPlaying         | RecoKey/Modal           | first-time reco     | DISSOLVE 200ms + SLIDE 240ms                  |
+| Auth fail anywhere | AuthError/Full          | dispatch            | DISSOLVE 200ms (蒙层) + SLIDE-UP 240ms (面板) |
 
 > 这些不在 D1 自动建（D3 范围），description 写好供后续 UI 手动连线对照。

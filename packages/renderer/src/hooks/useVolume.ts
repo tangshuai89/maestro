@@ -1,9 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type RefObject } from 'react';
-import {
-  readStoredMuted,
-  readStoredVolume,
-  writeStoredVolume,
-} from '../lib/storage';
+import { readStoredMuted, readStoredVolume, writeStoredVolume } from '../lib/storage';
 import type { Track } from '../api';
 
 /**
@@ -14,10 +10,7 @@ import type { Track } from '../api';
  * `track` is a dependency of the push effect so a freshly-mounted source
  * starts at the persisted level without a flash of full-volume audio.
  */
-export function useVolume(
-  audioRef: RefObject<HTMLAudioElement | null>,
-  track: Track | null,
-) {
+export function useVolume(audioRef: RefObject<HTMLAudioElement | null>, track: Track | null) {
   const [volume, setVolume] = useState<number>(() => readStoredVolume());
   const [muted, setMuted] = useState<boolean>(() => readStoredMuted());
 

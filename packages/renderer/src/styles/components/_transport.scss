@@ -45,7 +45,9 @@
   box-shadow:
     0 6px 20px rgba(0, 0, 0, 0.4),
     0 0 0 5px color-mix(in oklab, var(--cover-accent) 18%, transparent);
-  transition: transform 0.2s var(--ease-spring), box-shadow 0.4s ease;
+  transition:
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.4s ease;
 }
 
 .play-btn:hover:not(:disabled) {

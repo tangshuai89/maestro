@@ -17,14 +17,14 @@
 
 ## 1. 范围
 
-| 改动 | 文件 | 类型 |
-|---|---|---|
-| 改注释 "Monster Beats view" → "AETHER Theater view" | `packages/renderer/src/App.tsx` L203-205 | 代码注释 |
-| 删"Two visual worlds"段；加"AETHER 单视觉"声明 | `.superdesign/init/theme.md` | 文档 |
-| L531-532：MonsterBeatsView → TheaterView（历史顺序重写） | `.superdesign/init/components.md` | 文档 |
-| 6 处 MonsterBeatsView 引用 → TheaterView；mb-* 类说明 | `.superdesign/init/extractable-components.md` | 文档 |
-| 加"D2 收敛 2026-XX-XX 完成" | `docs/figma-driven-frontend.md` §5/§9 | 文档 |
-| 在 99 · Archive 顶部加 Archive README frame（红色 outline + BASELINE 警告 + 链接） | `scripts/figma-aether-v4-archive-readme.js`（新）+ `figma-v4-d2-command.md` | Figma |
+| 改动                                                                               | 文件                                                                        | 类型     |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------- |
+| 改注释 "Monster Beats view" → "AETHER Theater view"                                | `packages/renderer/src/App.tsx` L203-205                                    | 代码注释 |
+| 删"Two visual worlds"段；加"AETHER 单视觉"声明                                     | `.superdesign/init/theme.md`                                                | 文档     |
+| L531-532：MonsterBeatsView → TheaterView（历史顺序重写）                           | `.superdesign/init/components.md`                                           | 文档     |
+| 6 处 MonsterBeatsView 引用 → TheaterView；mb-* 类说明                              | `.superdesign/init/extractable-components.md`                               | 文档     |
+| 加"D2 收敛 2026-XX-XX 完成"                                                        | `docs/figma-driven-frontend.md` §5/§9                                       | 文档     |
+| 在 99 · Archive 顶部加 Archive README frame（红色 outline + BASELINE 警告 + 链接） | `scripts/figma-aether-v4-archive-readme.js`（新）+ `figma-v4-d2-command.md` | Figma    |
 
 > **2026-09-10 实跑修正**：`99 · Archive` 装的**不是** v3 Monster Beats 视觉稿，而是
 > **AETHER THEATER 宇宙剧场 A / B / C 三版探索稿**（v4 视觉基准，`figma-aether-v4-screens.js`

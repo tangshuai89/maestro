@@ -14,7 +14,9 @@ function check(label, actual, expected) {
     console.log(`✅ ${label}`);
     passed++;
   } else {
-    console.log(`❌ ${label}\n   expected: ${JSON.stringify(expected)}\n   actual:   ${JSON.stringify(actual)}`);
+    console.log(
+      `❌ ${label}\n   expected: ${JSON.stringify(expected)}\n   actual:   ${JSON.stringify(actual)}`,
+    );
     failed++;
   }
 }
@@ -48,20 +50,56 @@ async function main() {
   check('8. 容差外仍是上一行', activeLineIndex(LINES, 9.9), 0);
 
   // ── activeLineWindow ──────────────────────────────────────────────────
-  check('9. 还没开口：current=null，next=第一句', flat(activeLineWindow(LINES, -1)), { index: -1, current: null, next: '第一句', progress: 0 });
-  check('10. 行中：进度过半', flat(activeLineWindow(LINES, 15)), { index: 1, current: '第二句', next: '第三句', progress: 0.5 });
-  check('11. 行首：进度 0', flat(activeLineWindow(LINES, 10)), { index: 1, current: '第二句', next: '第三句', progress: 0 });
-  check('12. 末行：无 next、进度 0', flat(activeLineWindow(LINES, 35)), { index: 3, current: '第四句', next: null, progress: 0 });
-  check('13. 超前的时间不会让进度溢出', flat(activeLineWindow(LINES, 999)), { index: 3, current: '第四句', next: null, progress: 0 });
-  check('14. 浮窗播放头：index=-1 时也带首句做预告', activeLineWindow(LINES, -3).next?.text, '第一句');
-  check('15. 空歌词 → 全空', flat(activeLineWindow(null, 3)), { index: -1, current: null, next: null, progress: 0 });
+  check('9. 还没开口：current=null，next=第一句', flat(activeLineWindow(LINES, -1)), {
+    index: -1,
+    current: null,
+    next: '第一句',
+    progress: 0,
+  });
+  check('10. 行中：进度过半', flat(activeLineWindow(LINES, 15)), {
+    index: 1,
+    current: '第二句',
+    next: '第三句',
+    progress: 0.5,
+  });
+  check('11. 行首：进度 0', flat(activeLineWindow(LINES, 10)), {
+    index: 1,
+    current: '第二句',
+    next: '第三句',
+    progress: 0,
+  });
+  check('12. 末行：无 next、进度 0', flat(activeLineWindow(LINES, 35)), {
+    index: 3,
+    current: '第四句',
+    next: null,
+    progress: 0,
+  });
+  check('13. 超前的时间不会让进度溢出', flat(activeLineWindow(LINES, 999)), {
+    index: 3,
+    current: '第四句',
+    next: null,
+    progress: 0,
+  });
+  check(
+    '14. 浮窗播放头：index=-1 时也带首句做预告',
+    activeLineWindow(LINES, -3).next?.text,
+    '第一句',
+  );
+  check('15. 空歌词 → 全空', flat(activeLineWindow(null, 3)), {
+    index: -1,
+    current: null,
+    next: null,
+    progress: 0,
+  });
 
   // 单行歌词（没有 span）→ 进度恒 0，不该出 NaN
   const one = activeLineWindow([{ time: 5, text: '只有一句' }], 8);
   check('16. 单行歌词进度 0（无 NaN）', one.progress, 0);
   check('17. 单行歌词 next=null', one.next, null);
 
-  console.log(`\n${failed === 0 ? '✅' : '❌'} lyrics.test.mjs: ${passed} passed, ${failed} failed`);
+  console.log(
+    `\n${failed === 0 ? '✅' : '❌'} lyrics.test.mjs: ${passed} passed, ${failed} failed`,
+  );
   if (failed > 0) process.exit(1);
 }
 

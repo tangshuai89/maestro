@@ -9,6 +9,7 @@
 ## 任务
 
 在 Figma `99 · Archive` 页**顶部**加一个 `Archive README` frame：
+
 - 红色 4px outline（dashed）作为视觉警告
 - 内容：「BASELINE — DO NOT EXTEND」+ 说明此页是 **AETHER THEATER 宇宙剧场 A / B / C
   三版探索稿**（v4 视觉基准，只读参考）
@@ -46,11 +47,12 @@ node scripts/figma-v4-smoke-d2.mjs
 
 ## Step 3 — 喂 use_figma（1 次调用）
 
-| 步骤 | SEG | 目标 page | 内容 | 完成后验证 |
-|---|---|---|---|---|
+| 步骤 | SEG  | 目标 page    | 内容                 | 完成后验证                                                     |
+| ---- | ---- | ------------ | -------------------- | -------------------------------------------------------------- |
 | D2-1 | SEG1 | 99 · Archive | Archive README frame | 截图 + 确认 x=1540 / y=-320（对齐 A 稿正上方；A/B/C 都在 y=0） |
 
 参数：
+
 - `currentPage` 不需要手切（脚本内自定位 `99 · Archive`）
 - `code` 参数 = `scripts/figma-aether-v4-archive-readme.js` 里 `SEG1` 模板字符串内容（去掉外层 `` ` `` 包装）
 
@@ -61,6 +63,7 @@ FIGMA_TOKEN=<token> node scripts/figma-aether-v4-audit.mjs
 ```
 
 确认基线不破。**2026-09-10 实测：34/36**（1 FAIL + 1 SKIP，与跑 D2 之前完全一致）：
+
 - FAIL「03 页自有填充绑定 ≤30% 未绑定」= v4-ABC 遗留屏的硬编码填充，非 D1/D2 引入
 - SKIP「变量接口可访问」= PAT 缺 `file_variables` scope（Enterprise 功能）
 

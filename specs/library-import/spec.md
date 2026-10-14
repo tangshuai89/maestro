@@ -20,7 +20,7 @@ QQ 收藏，Deezer user tracks），合并去重后存到 `.storage/library.json
 - [x] QQ: cookie 失效（favorites endpoint 返回 `code === 1000`）→ `sources[qq].error` 反映登录失效，不抛 500
 - [x] **单平台 fetchLiked 硬超时**：任一平台 fetchLiked 卡死（`music.163.com` /
       `c.y.qq.com` / `api.spotify.com` 上游挂）不阻塞整个 import——`POST
-      /music/library/import` 在单平台 30s 兜底后 resolve（`IMPORT_FETCH_TIMEOUT_MS`
+/music/library/import` 在单平台 30s 兜底后 resolve（`IMPORT_FETCH_TIMEOUT_MS`
       常量）；该平台 `sources[].error='timeout'`、`count=0`；其余平台照常合并。
       同样兜底覆盖 `getLikedSet`（❤ 检测 / fanOut 走这条路径，单平台 hang
       也会卡用户点 ❤）。
@@ -71,7 +71,7 @@ QQ 收藏，Deezer user tracks），合并去重后存到 `.storage/library.json
   `/api/v6/playlist/detail` 三步拉取"我喜欢的音乐"歌单
 - ✅ QQ: 走 y.qq.com 现网 web 端同款 `CgiGetDiss`（u.y.qq.com musicu.fcg，
   `module=music.srfDissInfo.DissInfo`，`disstid=0 + dirid=201 +
-  enc_host_uin=<euin>`，euin 从登录窗口捕获的 cookie jar 拿）一次直达「我喜欢」
+enc_host_uin=<euin>`，euin 从登录窗口捕获的 cookie jar 拿）一次直达「我喜欢」
   歌单，`song_begin`/`song_num` 翻页（每页 1000，上限 2000），`hasmore` 判末页。
   QQ 会过滤失效歌曲（filtered_song），短页不判末、偏移按请求页大小推进。
   2026-08-26 前的老两步走（fcg_user_created_diss 找 dirid=201 →

@@ -7,6 +7,7 @@
 ## 1. 范围
 
 做：
+
 - `playerMode: 'theater' | 'mini'` 状态（App 层），顶栏按钮 + `Cmd+Shift+M` 快捷键切换
 - `<MiniPlayer />` 底部悬浮播控条：封面 / 标题 / 歌手-专辑 / 进度条（点击 seek）/ 时间 / prev·play·next·like·expand
 - `.mini-mode` 根 class：TheaterView 卸载、MiniPlayer mount；`.bg-layer` 降为 `opacity 0.2`
@@ -29,11 +30,13 @@
 ## 3. 文件改动
 
 新建：
+
 - `components/mini/MiniPlayer.tsx` — 浮层组件（`export type PlayerMode`）
 - `components/mini/MiniPlayer.test.tsx` — vitest 单测
 - `styles/components/_mini-player.scss` — 浮层样式 + `.app.mini-mode` 覆写
 
 改动：
+
 - `App.tsx` — playerMode state + 持久化 + 快捷键 + 条件渲染 + 根 class
 - `components/layout/Titlebar.tsx` — `playerMode` / `onTogglePlayerMode` props + 切换按钮
 - `styles/abstracts/_variables.scss` — `$z-layers` 加 `'mini-player': 50`
