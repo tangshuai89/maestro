@@ -1,3 +1,5 @@
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 - [x] 1. packages/server/src/reco/reco.service.ts: DeepSeek fetch 包装 + JSON 解析 retry + 429/5xx 分类
 - [x] 2. RecoService: 拿 library → 拼 prompt → 调 DeepSeek → 解析 → 用 P0 统一搜索 fill 平台源
 - [x] 3. Controller: GET /reco/status, POST /reco/run, POST /reco/key

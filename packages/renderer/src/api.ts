@@ -40,18 +40,14 @@ function resolveApiOrigin(): string {
  *
  * `getApiOrigin()` evaluates on every call so media URLs that fire
  * later (radio next-track previews, lazy cover fetches) see the real
- * sidecar URL.
- *
- * The legacy `API_ORIGIN` const is kept as a one-shot snapshot for
- * backwards-compatible callers; new code should prefer `getApiOrigin()`.
+ * sidecar URL. Media URLs must go through it — never through `API_BASE`.
  */
 export function getApiOrigin(): string {
   return resolveApiOrigin();
 }
 
-/** @deprecated one-shot snapshot taken at module load time. Use
- *  `getApiOrigin()` for media URLs that fire after `sidecar-ready`
- *  (audio src, cover-proxy, lyrics share). */
+/** 模块加载时的 origin 快照。普通 REST 调用（`API_BASE`）走它；
+ *  媒体 URL 走 `getApiOrigin()`（audio src / cover-proxy / 歌词分享图）。 */
 export const API_ORIGIN = resolveApiOrigin();
 const API_BASE = API_ORIGIN;
 

@@ -1,5 +1,6 @@
 # 测试计划（Test Plan）— Maestro
 
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
 > 生成时间：2026-08-18
 > 运行环境：macOS，sandbox=workspace-write（听端口受限）
 > 测试命令：`npm test`（脚本：`scripts/test.sh`，自动发现 `packages/*/src/**/*.test.ts`）

@@ -1,8 +1,7 @@
 /**
- * shadcn/ui Textarea（ownership clone，PR #92 sh- 命名空间）。
- *
- * spec: docs/adr/ADR-001-shadcn-migration.md Accepted。
- * spec §文件改动清单: packages/renderer/src/components/ui/textarea.tsx
+ * 多行文本输入框：Radix 无对应原语，直接包原生 <textarea>。
+ * 样式走 shadcn 语义类（border-input / bg-background / ring-ring），
+ * 颜色由 tokens-bridge.scss 把 AETHER 令牌映射过来。
  */
 import * as React from 'react';
 import { cn } from '../../lib/utils';

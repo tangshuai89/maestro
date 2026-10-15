@@ -168,7 +168,7 @@ evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可�
     而不是 `.theater-mode` 的深空黑。
   - 测试：`LiteView.test.tsx` 7 例（含"只渲染三类可视元素"白盒断言）、
     `storage.test.mjs` +7 例、`SettingsModal.test.tsx` +1 例（切模式回调）。
-- **多源歌词合并去重**（NEXT-ITERATION §4「多源歌词聚合」）——歌词从
+- **多源歌词合并去重**——歌词从
   first-hit-wins 改成真正的**并集**：并行拉 QQ / NetEase / Deezer 的候选源，
   按优先级把各自缺的那几行并进来，文本重复的按 400ms 时间容差去重。
   - `packages/server/src/common/lyrics.ts`：新增纯函数 `mergeLyricSources`
@@ -186,7 +186,7 @@ evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可�
   - TheaterView 加 `MERGED · QQ+NETEASE (+n)` 徽章（`th-lyric-tag--merged`）。
   - 测试：`lyrics.test.ts` +13 项（并集/去重/副歌重复/对齐/错位/纯文本/上限/
     脏数据），`lyrics-aggregate.e2e.test.ts` 重写为 merge + 快路径双模式。
-- **歌词分享图接线 + 无歌词引导**（NEXT-ITERATION §4 收尾）——`downloadLyricsImage`
+- **歌词分享图接线 + 无歌词引导**——`downloadLyricsImage`
   写了但全仓零 import，本轮把它接进 AETHER 剧场。
   - `lib/lyricsShare.ts` 新增纯函数 `sliceLyricsWindow` / `lyricsImageFileName`：
     **以用户点的那一行为中心**取 40 行窗口（原来永远从第 1 行截，点长歌第 80 行
@@ -434,6 +434,6 @@ Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写�
 
 已知阻塞：Spotify Premium 全曲播放卡在 Widevine license server 500
 （castLabs fork `+wvcus` 用 dev VMP 签名被生产 license 拒）—— 详见
-`docs/NEXT-ITERATION.md` §0「Apple Developer + castLabs EVS 落地」。
+`NEXT-ITERATION.md` §0「Apple Developer + castLabs EVS 落地」。
 
 历史 PR / commit hash 的完整追踪参见 `git log --oneline` / `git log --grep`。

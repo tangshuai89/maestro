@@ -1,6 +1,9 @@
 # Theme — Design System & Tokens
 
-Source: `packages/renderer/src/styles/` (SCSS via `sass`, no Tailwind). Single entry `main.scss` imported once in `main.tsx`. **Single visual world: AETHER**.
+Source: `packages/renderer/src/styles/` (SCSS via `sass`；另有 Tailwind 走
+`packages/renderer/tailwind.config.js`，与 SCSS 共存——新组件用 Tailwind，
+AETHER 令牌经 `styles/base/tokens-bridge.scss` 桥接给 shadcn 语义类).
+Single entry `main.scss` imported once in `main.tsx`. **Single visual world: AETHER**.
 
 > **D2 收敛（2026-09-10）**：早期文档说"两个视觉世界"（Glass Cosmic 壳 + Monster Beats 主视图）。
 > 实际上 Monster Beats 视觉（`MonsterBeatsView.tsx` + `_monster-beats.scss` + `mb-*` 类）已**全部删除**，

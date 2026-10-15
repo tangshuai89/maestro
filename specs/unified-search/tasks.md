@@ -1,3 +1,5 @@
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 - [x] 1. 定义类型 `music/types.ts` — `SearchResult`、`SearchItem`、`SourceInfo` 接口
 - [x] 2. 在 `MusicProvider` 接口加 `search(q, page, pageSize)` 方法签名（QQ/网易云已有，Deezer 新增）
 - [x] 3. 实现 `qq.provider.ts` 的 `search()`，用现有 QQ cookie 鉴权（已有）

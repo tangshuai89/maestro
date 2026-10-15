@@ -3,44 +3,37 @@
 > 下一期（Phase 7+）的计划。每一项都有：目标、范围、验收标准、参考 spec
 > （如有）。本文件随代码演进被修订；粒度按"一两个工作日一项"分块。
 
-**最后核对日期**：2026-09-23 · **核对人**：auto-audit
+**最后核对日期**：2026-10-15 · **核对人**：文档清理（已交付的条目一律从本文件删除，
+只留「还没做完 / 还欠手测」的）
 
 > ⚠️ **0 节 13 项全部 `[ ]`**——这是事实，不是漏勾。所有项目都是
-> **个人付费 / 外部依赖**类卡点（Apple Developer $99/年、castLabs EVS 凭据、
-> 物理签名机），不是工程问题。每次会话开篇先看本节决定是否值得继续推。
-> 修可解阻塞前，1/2/3/4 节的工程项**不应阻塞主流程**。
+> **个人付费 / 外部依赖**类卡点（Apple Developer $99/年、castLabs EVS 凭据），
+> 不是工程问题。每次会话开篇先看本节决定是否值得继续推。
+> 修可解阻塞前，1/2/3/5 节的工程项**不应阻塞主流程**。
 
 ## 当前状态（基线）
 
-Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）
+四大平台（QQ / 网易云 / Deezer / Spotify）**端到端可用**：登录、搜索、radio、
+专辑搜索/详情、跨平台 match、统一库、DeepSeek 推荐、自然语言歌单、跨平台
+fan-out ❤、AETHER 剧场主界面、三种播放视图（theater / mini / lite）、桌面歌词
+浮窗、加密备份。已合入 `master`。
 
-- **版本标签 + 别名表合并**（PR #52：castLabs fork v31.7.7→v43.2.0+wvcus、QA 全绿、
-  80+ 个测试）+ **WPS 诊断 + 设备 404 重试 + WPS 优先 Spotify 源 + EME 探测**（PR #53）
-- **❤ 角标按歌数显示**（PR #54：慢 discover 时 ❤ 计数仍正确）+ **红心合并修复 +
-  艺人/歌名归一 + 松散匹配收紧**（PR #55）+ **AETHER 剧场视图**（PR #56：Figma-driven
-  酸性赛博宇宙风主界面，替换原 visionOS Bento 玻璃风；新增 `.superdesign/` 简报 +
-  `scripts/figma-aether-v4-*.mjs` 构建脚本 + `.mcp.json` figma-remote 通道 +
-  `docs/aether-theater-v4-spec.md` + `docs/figma-driven-frontend.md`）+ **歌词解析修复**
-  （`d014cf4`：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 白盒覆盖）
-  均已合入 `master` / `fix/fanout`。四大平台能力**端到端可用**：登录、搜索、radio、
-  跨平台 match、统一库、DeepSeek 推荐、跨平台 fan-out ❤、**AETHER 剧场主界面**、
-  Spotify WPS 路径完整。
-
-**已知阻塞**：Spotify Premium 全曲播放卡在 **Widevine license server 500**——
+**已知阻塞（唯一）**：Spotify Premium 全曲播放卡在 **Widevine license server 500**——
 castLabs fork 的免费 `+wvcus` 构建是 **dev VMP 签名**（README 原话：
 "For production use you can sign up for our EVS service"），Spotify 生产 license
 服务器拒 dev 签名 → 500。**唯一修复路径 = castLabs EVS（生产 VMP 签名）+ Apple
-Developer Account（macOS code-sign / notarize 必需）**，见下 0 节新立的"Apple Dev
+Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple Dev
 +EVS 落地"专案。
 
-剩 ~10% 的工作集中在四类：
+剩下的工作集中在四类：
 
 1. **Apple Dev + EVS 落地（本期最优先）**：见下 0 节。0 成本 EVS + $99/年 Apple Dev。
-2. **生产化最后一步**：`npm run pack` 端到端冒烟（避开 #1 license 阻塞后）。
-3. **Settings 收尾**：独立设置页（备份入口、DeepSeek key 管理、源连接健康、
-   渠道优先级）+ 首次启动引导流。
-4. **桌面体验与 AI 深化**：Lite 模式、桌面歌词浮窗、媒体键/全局热键、
-   自然语言歌单（战略重点）。
+2. **生产化最后一步**：`npm run pack` 端到端冒烟（避开 license 阻塞后）。
+3. **Settings 收尾**：首次启动引导流 + 退出前确认弹窗。
+4. **收尾打磨**：Lite 模式与桌面歌词的手测验收、crossfade、媒体键 / 全局热键。
+
+已交付并从本文件移出的历史条目：歌词多源聚合与分享图、渠道优先级、macOS Tray
+与应用图标、AETHER 剧场视图与 Figma 驱动管线、自然语言歌单。
 
 ---
 
@@ -240,33 +233,6 @@ python3 -m venv ~/.castlabs-evs-venv
 
 ---
 
-## 4. 歌词体验 — ✅ **应用层全落地**（本轮：多源合并 + share + 无歌词引导）
-
-- **当前**：**多源并行拉取 → LRC 合并去重 → lyrics.ovh 兜底**，synced 滚动。
-  合并逻辑在 `packages/server/src/common/lyrics.ts::mergeLyricSources`（纯函数，
-  白盒测试覆盖 13 项），服务侧并行 fetch（不是 first-hit-wins）。
-- **已完成**：
-  - [x] 跨平台搜索结果行右侧显示 lyrics 可用性指示
-  - [x] 复制整段歌词 vs 单行（toast 反馈）
-  - [x] **多源歌词聚合**：QQ / NetEase / Deezer 并行拉 → 按优先级并集 → 400ms
-        容差去重；整体偏移用「共同词 delta 众数」对齐；错位源（>3s = 不同
-        录音）整源丢弃；纯文本源（lyrics.ovh / Deezer 无时间戳）只在平台全
-        落空时兜底。响应新增 `mergedFrom` / `added` / `dropped` / `rejected`，
-        TheaterView 显示 `MERGED · QQ+NETEASE (+n)` 徽章。`?merge=0` 保留旧
-        first-hit-wins 快路径。
-  - [x] **词句点击 share**：`lyricsShare.ts` 接线完成——点任一歌词行 → 以**那一行
-        为中心**取 40 行窗口（`sliceLyricsWindow`，长歌点第 80 行图里也有第 80 行）+
-        图上加粗高亮 + 左侧竖条；也保留「导出歌词图」整段按钮。状态机
-        `idle → working → done/error → 2.4s 回落` 做 in-place 反馈，不引 Toast 基建。
-  - [x] **"无歌词" 引导**：`↻ 换个源找歌词`（server `/music/lyrics/search` 早就有了，
-        一直缺 UI）+ `去网易云提交歌词 ↗`（链网易云搜索页，带歌名歌手，用户确认是同首
-        后从歌词页提交）。有歌词时两个按钮常驻在歌词流下方。
-- **风险**：第三方 lyrics API 合规（GDPR 之类），先不碰
-- **遗留**：**canvas 绘制路径没自动化测试**（需真实 DOM + createImageBitmap），
-  纯逻辑（窗口选择 / 文件名）已 9 项覆盖；实景导出图待手工验一次。
-
----
-
 ## 5. 设置 / 首次启动收尾 — ✅ **应用层完成**（PR #88）
 
 - **当前**：独立 Settings modal 已上线（`components/settings/AccountsList` ·
@@ -286,34 +252,11 @@ python3 -m venv ~/.castlabs-evs-venv
 
 ---
 
-## 6. 交互 & 桌面体验（2026-07-13 新增 · PM 自提）
+## 6. 交互 & 桌面体验
 
-> 本批 4 项来自产品侧一次集中提需求，粒度按"半天到两天一项"。
-> 6.x 里凡"并入 #N"的，不重复实现，跟对应老项一起做、共用入口。
-
-### 6.1 平台红心列表点击即播 — ✅ **已确认正常工作**
-
-- **现状核实**：`LikedLibraryModal.tsx:122` 的"我的喜欢"合并库弹窗已可点播（`onPlay` → `usePlayer.playSearch`）。产品反馈指向另一处或旧构建——master 已无未接线列表。
-- **状态**：✅ 无需代码改动；如有复现请先确认跑的是最新 master。
-
-### 6.2 渠道优先级配置（并入 #5 Settings）
-
-- **目标**：弱化"频繁手动切源"，改成在 Settings 里配置一次**渠道优先级**
-  （QQ > 网易云 > Spotify > Deezer），日常播放交给 `bestSource` 按优先级自动选。
-  首屏选源页（`SourceSelect`）**保留但弱化**——仅供快速首选，主控制移入 Settings。
-- **现状**：`api.ts:314` `bestSource` 已按"版权 + 优先级"选源，服务端选源逻辑在
-  `music.service`；优先级目前疑似硬编码，需暴露为用户可配。顶栏已有 `SourceMenu`。
-- **范围**：
-  - Settings 新增可拖拽排序的"渠道优先级"列表，存本地（与其它偏好一致，不上云）
-  - `SourceMenu` 从"主操作"降级为临时覆盖（把某平台临时置顶），默认跟随优先级
-  - 服务端 `bestSource` 读取该优先级（随请求携带或经 API 配置）
-  - setting icon 入口与 #5 的 Settings modal 共用
-- **验收**：
-  - [ ] Settings 拖拽调优先级 → 保存 → 下次统一搜索/播放的 `bestSource` 按新序选
-  - [ ] 首屏选源页仍在，但选过一次后不再强制弹（不再是日常必经）
-  - [ ] 同名歌多平台有版权时，选中优先级最靠前的可播平台
-- **依赖**：与 #5 Settings modal 合并实现。
-- **估时**：+0.5～1 天（叠加在 #5 之上）
+> 本节只剩 Lite 模式的**手测验收**。同批的红心点播核实、渠道优先级、macOS Tray +
+> 应用图标、AETHER 剧场视图都已交付并从本文件删除；编号保留原样是为了不打断
+> `specs/lite-mode/spec.md` 里的 §6.3 引用。
 
 ### 6.3 Lite 播放模式（normal / lite 切换）— 🟡 **代码完成，验收未过（specs/lite-mode，2026-09-28）**
 
@@ -368,70 +311,6 @@ python3 -m venv ~/.castlabs-evs-venv
 - **风险**：lite 只做**展示层裁剪**，复用现有 `usePlayer` 状态，别复制一套播放逻辑。
 - **估时**：1.5～2 天
 
-### 6.4 macOS Tray + Electron 应用图标（并入 #1 打包）— ✅ **已完成**
-
-- **现状**：`packages/electron/src/` 只有 `main.ts` / `preload.ts`，**无 Tray、无自定义
-  图标**（grep 无 `Tray` / `nativeImage` / `icon` 引用），Dock/关于面板是默认 Electron 图标。
-- **范围**：
-  - 应用图标：`.icns`(mac)/`.ico`(win)/png，配 electron-builder `build.icon` +
-    `BrowserWindow` / Dock 图标
-  - macOS Tray：托盘图标（模板图，暗黑自适应）+ 菜单（播放/暂停、上/下一首、
-    显示主窗、退出）+（可选）悬浮显示当前歌名
-  - 关窗到托盘（mac 习惯：关窗不退，留 Dock/Tray），Cmd+Q 才真正退出
-- **验收**：
-  - [ ] 打包后 Dock / 关于面板显示自定义图标，非默认 Electron
-  - [ ] 托盘常驻，菜单能控制播放且状态与主窗同步
-  - [ ] 关主窗 App 不退、托盘/Dock 仍在；Cmd+Q 真正退出并 kill sidecar
-        （与 #1 打包的 sidecar 生命周期一致）
-- **依赖**：与 #1 打包（`specs/packaging`）一起做，图标资源同时进 electron-builder 配置。
-- **估时**：1 天
-
-### 6.5 AETHER 剧场视图 + Figma 驱动设计管线 — ✅ **已交付（PR #56，2026-08-20）**
-
-> **现状**：visionOS Bento 玻璃风虽然「看得见」，但歌词 + 卡片 + 网格的组合没有把
-> "四个平台 / 一份心情"的产品张力立起来。PR #56 用 AETHER 系列设计稿（`.superdesign/`
-> A/B 草稿 → Figma prototype `FtbRZXvzlCp4Sq9e322cQQ`）重做了主界面——1440×900 设计
-> 画布 + `transform: scale` 整体等比缩放（窗口拖动不歪斜），全息封面轨道环 + 歌词
-> 流 + 能量核心播放键 + 紫/青/绿星云背景，配 prefers-reduced-motion 降级。
-
-- **Spec / 设计稿**：
-  - `docs/aether-theater-v4-spec.md` — 剧场稿 AI 驱动重建规格（页面结构 / 组件清单 /
-    MOTION SPEC / 审计期望）
-  - `docs/figma-driven-frontend.md` — Figma 驱动前端改造方案（4 页分层 + 变量别名链 +
-    组件变体 + MOTION SPEC；目标是让 Figma 设计稿 AI 可消费）
-  - `.superdesign/design-system.md` — 设计简报（中立项）
-  - `.superdesign/design-{A,B}.html` + `shot-{A,B}*.png` — A/B 草稿
-- **构建 / 审计脚本**（`scripts/`）：
-  - `figma-aether-v4-foundations.js` · `-components.js` · `-screens.js` ·
-    `-motion.js` · `-icons.js` · `-cleanup.js` · `-audit.mjs` · `-snapshot.js` ·
-    `-smoke.mjs` · `-typecheck.mjs` · `figma-v4-build-prompt.md` · `figma-v4-command.md`
-- **CI / MCP**：`.mcp.json` 启用官方 `figma-remote` MCP（AI 经此直接消费 / 校对 Figma）
-- **代码侧**：
-  - `packages/renderer/src/components/views/TheaterView.tsx`（502 行）— 主界面
-  - `packages/renderer/src/styles/components/_theater.scss`（912 行）— 剧场样式
-  - `packages/renderer/src/styles/components/_app-shell.scss` 加 `.theater-mode`
-    切换：剧场视图全屏 fixed，清掉旧 Bento 网格；非剧场态继续走 glass 卡片
-  - `App.tsx` 直接挂 `<TheaterView/>`（Bento 网格路径保留在 SCSS 注释里，便于回退）
-  - 字体换成 Inter / JetBrains Mono / Noto Sans SC
-- **验收**：
-  - [x] 1440×900 设计画布 + 任意窗口尺寸下 transform:scale 等比缩放（含动效）
-  - [x] 全息封面行星系统（轨道环 + 12 刻度 + 扫描光弧 + 星轨进度环可点击 seek）
-  - [x] 歌词流（当前行巨大发光 + 前后行渐隐，无玻璃底/边框）
-  - [x] 能量核心播放键（径向渐变 + 双层辉光 + ▶/⏸ 切换）
-  - [x] DeepSeek 推荐卡（无边框无背景，渐变卡面）+ 顶部 HUD
-  - [x] 星云背景 + 星尘漂移 + 地平线（带呼吸动效）
-  - [x] demo 模式自动循环（歌词/进度/播放键）——复刻 Figma prototype 的 A→B→C
-  - [x] `prefers-reduced-motion` 降级（动画时长逐类恢复，不被全局 `1ms` 压掉）
-- **不在本节范围**：
-  - A/B 草稿里"卡通怪兽 / 像素 RPG"那一支被设计评审否掉，不进 `.superdesign/init/`；
-    评审意见已落 `.superdesign/design-system.md` 顶部
-  - Figma 商业 license / 团队 seat 管理 —— 个人开发足够
-- **下一步衔接**：
-  - 设计稿成为 AI 可消费源（变量绑定 + 组件变体 + MOTION SPEC）后，下一轮视觉迭代
-    可以走"改 Figma → `figma-remote` MCP 拉 diff → PR 自动覆盖 SCSS + tsx"路径
-  - 与 #5 Settings、#6.3 Lite 模式：Lite 模式**复用** TheaterView 的 ✨ 入口接
-    `reco-deepseek`，不进 Settings
-
 ---
 
 ## 7. 播放体验 & AI 深化（2026-07-13 竞品分析新增）
@@ -439,8 +318,10 @@ python3 -m venv ~/.castlabs-evs-venv
 > 来自一轮竞品扫描（MusicFree / 洛雪 lx-music / Listen1 / YesPlayMusic / Feishin /
 > Spotify AI DJ / Apple AutoMix）。结论：Maestro 在 **AI 推荐 + 跨平台 ❤ 同步 +
 > AETHER 剧场主界面** 上已领先同类开源播放器；缺的是老牌桌面播放器的"基本功"
-> （音效/桌面歌词/桌面集成）。
-> 本章前三项补基本功，7.4 深化 AI 护城河。详细分析只在 Notion 维护（个人重要，本地不留副本）→ https://app.notion.com/p/musicbox-2026-07-39c9be628711800b86f1daff4e05ad6b
+> （音效 / 桌面集成）。本章是那份扫描里还没做完的基本功——EQ 只落地一半，
+> 桌面歌词待手测，媒体键只做了 Tray。AI 侧的自然语言歌单已交付
+> （`specs/nl-playlist/`），从本文件删除。
+> 详细分析只在 Notion 维护（个人重要，本地不留副本）→ https://app.notion.com/p/musicbox-2026-07-39c9be628711800b86f1daff4e05ad6b
 
 ### 7.1 均衡器 EQ + 交叉淡入淡出 + ReplayGain 音量均衡 — 🟡 **EQ 已落地，crossfade 待做，ReplayGain 明确不做**
 
@@ -486,13 +367,13 @@ python3 -m venv ~/.castlabs-evs-venv
 - **范围**：
   - 独立透明置顶窗：可拖动/锁定位置、字号/颜色/描边可调、锁定时点击穿透
   - 双行（当前 + 下一行）滚动跟随播放进度；无歌词时隐藏或提示
-  - 托盘/快捷键开关（与 6.4 Tray、7.3 热键联动）
+  - 托盘/快捷键开关（与 7.3 热键联动）
 - **验收**：
   - [ ] 开启后桌面出现置顶歌词，随播放逐行高亮
   - [ ] 可拖动定位、调样式；锁定后点击穿透不挡下层操作
   - [ ] 切歌 / 无歌词 / 暂停状态均正确
 - **风险**：多显示器 / 全屏应用之上的置顶差异；mac 需处理 `visibleOnAllWorkspaces` + `setIgnoreMouseEvents`。
-- **依赖**：与 6.4 Tray、7.3 热键同做入口最顺。
+- **依赖**：与 7.3 热键同做入口最顺（浮窗开关已挂 Tray）。
 - **估时**：2 天
 - **审查结论（2026-09-28 全量 review）**：14 个已勾任务都真实实现，IPC 7 个通道
   逐个核对全对齐，复用 `useLyrics` 的 lyrics（**不重复请求**），颜色门禁 0 硬编码。
@@ -537,10 +418,10 @@ python3 -m venv ~/.castlabs-evs-venv
     10 例 + `lib/lyrics` 17 例，全绿；typecheck / lint / 颜色门禁 / 双端 build 通过。
   - **未做**：全局热键（`globalShortcut`）留给 #7.3；逐字卡拉OK 未做。
 
-### 7.3 媒体键 + 全局热键 + 系统「正在播放」（并入 6.4 Tray）— **部分（仅 Tray）**
+### 7.3 媒体键 + 全局热键 + 系统「正在播放」— **部分（仅 Tray）**
 
 - **目标**：桌面集成基本功——耳机/键盘媒体键控制、全局快捷键、系统媒体中心显示当前歌。
-- **现状**：6.4 的 Tray 已完成（macOS 菜单控制播放/暂停/上下首/显示/退出）。**尚未做**：
+- **现状**：Tray 已完成（macOS 菜单控制播放/暂停/上下首/显示/退出）。**尚未做**：
   `navigator.mediaSession`（系统媒体控件/媒体键）、`globalShortcut`（全局热键）、
   mac `MPNowPlayingInfoCenter`。
 - **现状 / 复用点**：renderer 用 `navigator.mediaSession` 设 metadata +
@@ -554,29 +435,8 @@ python3 -m venv ~/.castlabs-evs-venv
   - [ ] 自定义全局热键在 App 不聚焦时也生效
   - [ ] mac「正在播放」/系统媒体控件显示当前歌名+封面并可控
 - **风险**：mac `MPNowPlayingInfoCenter` 若 `navigator.mediaSession` 覆盖不全，可能需少量原生/额外模块；先做 MediaSession 能覆盖的，缺口标注。
-- **依赖**：并入 6.4 Tray。
-- **估时**：+1–1.5 天（叠加在 6.4 上）
-
-### 7.4 自然语言歌单（DeepSeek）— ⭐ 本期战略重点 — **未开始**
-
-- **目标**：**放大 AI 护城河**。对着播放器说人话——"放点适合夜跑的电子乐"/"周末慵懒的中文民谣"——
-  直接生成可播队列。Spotify（DJ Requests / Prompted Playlists）、Apple（Playlist Playground）、
-  YouTube 2025–2026 全在抢这能力，而开源聚合器一个都没有，你手里正好有 DeepSeek。
-- **现状 / 复用点**：`specs/reco-deepseek` 已有 `POST /api/reco/run`（吃 {count, language, mood}）
-  - 统一搜索回填 bestSource 的完整链路。本需求 = 在它上面加"自由文本 intent 解析"。
-- **范围**：
-  - 输入入口：播放器里一个文本框（lite 模式的 ✨ 复用它）；（可选）语音输入
-  - DeepSeek 解析自由文本 → 结构化意图（mood/genre/tempo/语言/年代/相似艺人/排除项）
-  - 意图驱动 reco.run（扩展入参）→ 产出 {title, artist}[] → 现有统一搜索填实 bestSource → 生成队列，可播/可存为歌单
-  - 结果去重（对已 ❤ 库 + 上批推荐，复用 reco 既有 normalizeKey）
-- **验收**：
-  - [ ] 输入一句自然语言 → 数秒内生成 ≥10 首可播队列，风格/语言与描述吻合
-  - [ ] "排除…""更多像 X 的"等约束能体现在结果里
-  - [ ] 无 DeepSeek key 走 reco 既有友好提示；429/网络错误 fail loud 不静默
-  - [ ] 生成的队列可一键存为本地歌单
-- **风险**：LLM 输出强约束 JSON + 解析失败保留 raw（沿用 reco spec 做法）；带库上下文注意 token 上限。
-- **依赖**：建议先落 `specs/nl-playlist/spec.md` 钉死意图 schema 与接口，再开工。
-- **估时**：3–4 天（含 prompt 调试 + 搜索回填联调）
+- **依赖**：并进已实现的 Tray 菜单（`packages/electron/src/main.ts` 的 `createTray`）。
+- **估时**：+1–1.5 天
 
 ---
 
@@ -593,49 +453,16 @@ python3 -m venv ~/.castlabs-evs-venv
 
 ## 排期建议（下期，按"什么时候能用上"的优先级）
 
-| 周               | 内容                                                                                                                                                                                                                                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ 装 EVS 客户端 + 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
-| **W1**           | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播）                                                                                                   |
-| **W2**           | ✅ #5 Settings + #6.2 渠道优先级（PR #88 已合）。下期不再排                                                                                                                                                                                                      |
-| **W3**           | ✅ #6.3 Lite 模式已交付（`specs/lite-mode`，三态 + ✨ 入口接 reco-deepseek）+ 7.4 NL 歌单 spec 已先行                                                                                                                                                            |
-| **W4**           | ✅ 多源聚合 + #4 share + 6.3 Lite + 7.2 桌面歌词 + 7.1 EQ。剩：7.1 crossfade（C 组，src 绑定要改造，建议独立一轮）                                                                                                                                               |
-| **W5**           | 7.4 NL 歌单落地 + 7.3 媒体键/全局热键收尾 + bug bash + 发版                                                                                                                                                                                                      |
+| 周               | 内容                                                                                                                                                                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
+| **W1**           | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播）                                                                                   |
+| **W2**           | 6.3 lite 手测验收 + 7.2 桌面歌词手测验收（两份清单见对应 spec 的 P5 / D15 段）                                                                                                                                                                   |
+| **W3**           | 7.1 crossfade（C 组，`<audio>` 的 src 绑定要改成命令式，建议独立一轮 + 自己的回归测试）                                                                                                                                                          |
+| **W4**           | 5 首次启动引导流 + 7.3 媒体键 / 全局热键收尾 + bug bash + 发版                                                                                                                                                                                   |
 
-> **本轮（已发）**：
->
-> - ✅ #1 包装主体 + #6.4 Tray/图标（packaging spec task 1–15）
-> - ✅ #2 Spotify v2 全部应用层（task 1–24）+ v2.1 Widevine 路径（task 26–31，castLabs fork **已升级到 v43.2.0+wvcus**）
-> - ✅ **v2.2 调试链**（PR #53）：`?wpsDebug=1` 日志 + 设备 404 退避重试 + WPS 优先 Spotify 源 + EME 探测——定位到 **license 500** 是 castLabs dev VMP 签名被 Spotify 生产 license server 拒
-> - ✅ #3.1 加密备份 + 每日自动备份 + Electron 端 STORAGE_DIR 修正
-> - ✅ #6.1 红心点播核实（无需改动）
-> - ✅ **PR #54** ❤ 角标按歌数（detect 等 discover 落定 + 同曲兄弟版本并账）
-> - ✅ **PR #55** 红心合并修复 + 艺人/歌名归一 + 松散匹配收紧（`music.service` `mergeLibrary` 链路）
-> - ✅ **PR #56 AETHER 剧场视图**：替换 visionOS Bento 主界面（详见下 #6.5 节）
-> - ✅ **歌词解析修复**（`d014cf4`）：`parseLrc` 多 tag 同行拆分 + 时间越界过滤 + `lyrics.test.ts` 覆盖
-> - ✅ `.codex/config.toml` + `.opencode/command` 模板 + `.superdesign/` 设计简报 + Figma 驱动管线落档
-> - ✅ **PR #88 Settings 完整化 + 渠道优先级 + 源连接健康**（`a108b39`）：独立 Settings modal，渠道优先级可拖拽，`feat(settings)` 按 Figma 03/Screen/Settings 还原 AETHER 全屏风格（`c472b05`），token-adoption 二次补强（`628ea84`，6 处直换 token + budget 扩 9 处品牌识别色）
-> - ✅ **PR #87 跨脚本元数据合并**（`3c09fd8`）：搜索侧严口径（`buildUnifiedItems({crossScriptMerge:true})`），CJK ↔ 拉丁 script 在搜索链路下合并（「寂寞，好了」+ Deezer 罗马音），library import 走宽口径不变——详见 `docs/cross-script-matching.md`
-> - ✅ **付费内容 vipLocked 检测 + 跨平台 fallback 跳过 vipLocked 候选**（`d30c3e5` · `10a5a77` · `fa91734` · `d926904`）：QQ `detectQqVipLocked` 补 `price_track/price_album/pay_month` 识别，`findPlayableEquivalent` 跳过 vipLocked 候选防跨平台 fallback 死循环；绿钻可播曲目不再误判，QQ 全锁时逃 Deezer 30s 预览而不是被静默降级
-> - ✅ **Mini Player P1**（commit `71205ae`，spec `specs/mini-player/spec.md`）：Apple Music 式底部浮层 + 主窗口跟随缩放（theater → 620×170），`Cmd+Shift+M` 切换，`<audio>` 不重建（Web Audio graph 保持），mode 持久化到 localStorage
-> - ✅ **SourceChip 重设计 + 数字专辑状态角标**（`faacf65` · `9c4daaa`）：品牌 logo + 平台 brand 强背景色；chip 末尾 `[P]` / `[NP]` 标已购 / 未购状态
-> - ✅ **单平台行点击静默无效修复 + 综合搜索相关性排序**（`40ef7a7`）：单平台行现在点得响，综合搜索按相关度而非入库序
-> - ✅ **剧场推荐卡跟随队列位置 + 种子胶囊底部遮挡修复**（`e1d2535`）：推荐卡位置与队列位置同步；底部 capsule 不再被推荐区遮挡
-> - ✅ **usePlayer D3 守护收紧**（`66e1a32`）：首次打开已 ❤ 的歌不再被守护误杀（liked-on-first-load 边界）
-> - ✅ **日语查询尾标点 strip**（`48c1789`）：搜索查询去掉 `。`/`!`/`?` 等结尾句号，避免日文句子标点污染
-> - ✅ **D 系列收尾**（`a8bb7d6` · `0b36d47` · `fa16e95` · `3d77586` · `6110e21` · `0738966` · `bcc09fe`）：D1–D11 全部 ✅（详见 `docs/d-series-status.md`），其中 D4 双向漂移门禁 + D11 视觉回归 CI 是本期加入；D5_NEW 10 个 component set 全部落地（strict 110/110）
-> - ✅ **token-adoption 专题**（`04a4c24` · `6319635` · `aa0fcd0` · `628ea84`）：硬编码扫描 + 棘轮门禁 + 剧场调色板接 token；S3-3 / S3-5 两批替换（88 + 240 处 alpha 派生值），新文件预算 = 0（`scan-hardcoded-colors --gate`）
-> - ✅ **CI 视觉回归门禁真绿化**（`ee14874` · `f3f1f71`）：visual 跳过判据改读 `package.json`（原判据跑在 npm ci 前永远假绿）；容差从 0.1% 调到 0.5%（实测跨机器文字 AA 噪声 0.29–0.39%，真漂移 0.69% 仍能命中）
->
-> **不在本期范围**：
->
-> - 6.x 全部不再做独立 PR（6.2 并入 #5、6.3 单做、6.4 已合、6.1 已合）
-> - 7.x 除 7.3 媒体键外都属于"打磨批次"，发版前不必全做完
-> - 7.4 NL 歌单要 W3 起 spec 先行（避免重蹈 6.4 一次性写大段发现的延迟）
-> - **castLabs 商业 3PL VMP 审计**（`3pl@castlabs.com`）——本项目用标准 ECS v43 fork，**不需要 3PL**
->
-> 上面的估时是"代码写完"，实际产出还要算 review + 跑 spec 下 `tasks.md` 验收。
-> 每项开工前先读对应 spec（`specs/<name>/spec.md`）复习一遍，再决定要不要新建 ADR。
+> 不在本期范围：**castLabs 商业 3PL VMP 审计**（`3pl@castlabs.com`）——本项目用标准
+> ECS v43 fork，**不需要 3PL**。
 
 ## 工作流
 

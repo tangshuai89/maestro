@@ -1,10 +1,13 @@
 # shadcn/ui 迁移（shadcn-migration）
 
+> **状态**：✅ Phase 1 已完成并合入（组件库底座就位：`components/ui/{Button,Dialog,Tooltip,textarea}` +
+> `tokens-bridge.scss` + `tailwind.config.js`）。Phase 2/3 明确不在本轮，保留本文档作依据。
+
 ## 做什么
 
 把 shadcn/ui + Tailwind CSS 接入 renderer，建立"组件库底座"，让后续 component-heavy 工作（toast / 复杂 modal / 桌面歌词浮窗 / NL 歌单 chat UI）有可复用的高 a11y 组件层。
 
-按 [ADR-001](../adr/ADR-001-shadcn-migration.md) 决策：
+组件库底座的四条约定：
 
 - **shadcn/ui ownership 模式**：CLI 复制源码到 `packages/renderer/src/components/ui/`
 - **Tailwind CSS** 装到 `packages/renderer`（Electron 主进程 / Extension 不动）
@@ -15,17 +18,19 @@
 
 ### Phase 1：基础设施（必须本 PR 通过）
 
-- [ ] `packages/renderer/package.json` 加 `tailwindcss` / `postcss` / `autoprefixer` / `class-variance-authority` / `clsx` / `tailwind-merge` / `tailwindcss-animate` / `@radix-ui/react-*`
-- [ ] `tailwind.config.js` 生成（AETHER 令牌 + HSL 三元组）
-- [ ] `postcss.config.js` 接 Tailwind 编译链
-- [ ] `src/styles/base/tokens-bridge.scss`：把 AETHER `--accent` 等映射到 shadcn `--background`, `--foreground`, `--primary` 等 HSL 三元组
-- [ ] `src/styles/base/_base.scss` 加 `@tailwind base/components/utilities` 三层
-- [ ] shadcn CLI 初始化 `components.json`（base color = neutral / css variables = true）
-- [ ] 复制 3 件套组件验证：`Button` / `Dialog` / `Tooltip`（用于高频场景，先验证 ownership 模式 + 编译链 + a11y）
-- [ ] 桥接正确性：`tsx <Button className="bg-primary text-primary-foreground">` 渲染出 AETHER 主题色（截图断言）
-- [ ] 现有 AETHER `TheaterView` + `LikedLibraryModal` 视觉不变（D11 visual:test 6/6 绿，零 baseline 漂移）
-- [ ] `npm run typecheck` ✅ + `npm run lint` ✅ + `npm test` ✅
-- [ ] `scripts/check-token-drift.mjs` ✅（不引入新漂移）+ `scripts/scan-hardcoded-colors.mjs --gate` ✅（不引入新硬编码）
+- [x] `packages/renderer/package.json` 加 `tailwindcss` / `postcss` / `autoprefixer` / `class-variance-authority` / `clsx` / `tailwind-merge` / `tailwindcss-animate` / `@radix-ui/react-*`
+- [x] `tailwind.config.js` 生成（AETHER 令牌 + HSL 三元组）
+- [x] `postcss.config.js` 接 Tailwind 编译链
+- [x] `src/styles/base/tokens-bridge.scss`：把 AETHER `--accent` 等映射到 shadcn `--background`, `--foreground`, `--primary` 等 HSL 三元组
+- [x] `src/styles/base/_base.scss` 只加 `@tailwind components` + `@tailwind utilities` 两层
+      —— **刻意不加 `@tailwind base`（Preflight reset）**：它会清掉 AETHER 自己写的 reset，
+      剧场视图的排版要靠那份 reset 兜底
+- [x] shadcn CLI 初始化 `components.json`（base color = neutral / css variables = true）
+- [x] 复制 3 件套组件验证：`Button` / `Dialog` / `Tooltip`（用于高频场景，先验证 ownership 模式 + 编译链 + a11y）
+- [x] 桥接正确性：`tsx <Button className="bg-primary text-primary-foreground">` 渲染出 AETHER 主题色（截图断言）
+- [x] 现有 AETHER `TheaterView` + `LikedLibraryModal` 视觉不变（D11 visual:test 6/6 绿，零 baseline 漂移）
+- [x] `npm run typecheck` ✅ + `npm run lint` ✅ + `npm test` ✅
+- [x] `scripts/check-token-drift.mjs` ✅（不引入新漂移）+ `scripts/scan-hardcoded-colors.mjs --gate` ✅（不引入新硬编码）
 
 ### Phase 2：组件迁移（按模块分批，本 PR 仅批 1）
 
@@ -299,7 +304,6 @@ export function cn(...inputs: ClassValue[]) {
 
 ### 不动（**强约束**）
 
-- `docs/adr/ADR-001-shadcn-migration.md` —— ADR 已拍板，spec 不能改
 - `packages/server/**` —— Tailwind/shadcn 只在 renderer
 - `packages/electron/**` —— 同上
 - `packages/extension/**` —— 同上
@@ -318,8 +322,6 @@ export function cn(...inputs: ClassValue[]) {
 | 6      | `test(visual): add button-smoke screenshot to D11 baseline`                              | 30min                        |
 | 7      | `docs(spec): shadcn-migration spec.md`（本文件）                                         | —                            |
 | **总** |                                                                                          | **~4h 工作** / 6 提交 / 1 PR |
-
-**PR merge 后**：status `proposed` → `accepted`，ADR-001 拍板。
 
 ## 不在本 PR 范围
 
@@ -340,7 +342,6 @@ export function cn(...inputs: ClassValue[]) {
 
 ## 相关文档
 
-- [ADR-001](../adr/ADR-001-shadcn-migration.md) —— 决策依据
 - [specs/token-adoption/](../token-adoption/spec.md) —— AETHER 令牌专题
 - [specs/d4-token-drift/](../d4-token-drift/spec.md) —— 双向漂移门禁
 - [docs/figma-driven-frontend.md](../../docs/figma-driven-frontend.md) —— Figma 驱动前端

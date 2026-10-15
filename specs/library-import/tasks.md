@@ -1,3 +1,5 @@
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 - [x] 1. NeteaseMusicProvider 加 fetchLiked(session, maxTracks) → Track[]
 - [x] 2. MusicService 加 importLiked(session) → 调各 provider fetchLiked → match.mergeLibrary → 存 .storage
 - [x] 3. MusicService 加 getLibrary(session) → 读 .storage

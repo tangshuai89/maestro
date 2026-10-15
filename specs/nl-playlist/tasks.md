@@ -1,5 +1,7 @@
 # NL playlist — Tasks
 
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 ## Phase A — 服务端
 
 - [x] **A1** `parse-intent` prompt 模板（强约束 JSON 包裹 `<json>...</json>`，库上下文 ≤ 50 首）

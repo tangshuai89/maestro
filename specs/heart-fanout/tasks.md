@@ -1,3 +1,5 @@
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 - [x] 1. 在 music/types.ts 加 FanOutLikeRequest / FanOutLikeResponse 类型
 - [x] 2. music.service.ts 加 fanOutLike(session, mergedId, sources, liked)，内部逐个调 toggleLike，收集成功的平台
 - [x] 3. music.service.ts 的 loadState / saveState 扩展支持 fanOut 字段

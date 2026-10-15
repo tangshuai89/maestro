@@ -66,9 +66,9 @@ prefix.
 
 ## Escalation
 
-- If the platform needs new auth flow not yet covered
-  (`login-window-runner.ts`), stop and propose an ADR — don't invent a
-  parallel auth subsystem.
+- If the platform needs a new auth flow not yet covered by
+  `login-window-runner.ts`, stop and describe the intended flow in the
+  provider spec first — don't invent a parallel auth subsystem.
 - If the spec (or your read of existing providers) reveals an interface
   gap in `packages/common/src/provider.ts`, surface it. Do not
   silently widen the interface inside one provider's implementation.

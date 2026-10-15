@@ -60,7 +60,8 @@ playback-queue" or "按 spec 实现 X", without needing the `/` prefix.
 
 ## Escalation
 
-- If a task reveals a deeper design issue, stop and propose an ADR before
+- If a task reveals a deeper design issue, stop and write the options +
+  recommendation into the spec's 「决策记录 / 不在范围」 section before
   writing more code. Don't keep going past a wall.
 - If the spec contradicts `AGENTS.md` (e.g., asks for Redux), surface the
   conflict. Do not silently resolve it in either direction.

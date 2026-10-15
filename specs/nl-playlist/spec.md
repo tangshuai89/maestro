@@ -1,5 +1,7 @@
 # 自然语言歌单（NL playlist，DeepSeek）
 
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 ## 做什么
 
 在播放器里输入一句人话（"放点适合夜跑的电子乐"），自动生成可播队列。
@@ -192,9 +194,7 @@ Playlist 列表落 `state.json` 的 `playlists:{sessionId}` key（沿用 Storage
 
 ## 相关文档
 
-- `NEXT-ITERATION.md` §7.4（strategic 重点）
 - `specs/reco-deepseek/` — LLM 集成 + 跨平台搜索回填链路
 - `specs/cross-platform-likes/` — UnifiedSearchItem 跨平台匹配
 - `specs/shadcn-migration/` — UI 组件来源
-- `docs/adr/ADR-001-shadcn-migration.md`（Accepted） — shadcn 决策
 - `CLAUDE.md` / 仓库根 `AGENTS.md` — 工程约束（按钮 / API 风格 / 文件位置）

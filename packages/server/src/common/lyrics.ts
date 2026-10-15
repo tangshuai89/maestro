@@ -62,7 +62,7 @@ export interface LyricLine {
 import { cjkUnify } from '@maestro/common';
 
 // ─────────────────────────────────────────────────────────────────────────
-// 多源歌词合并（NEXT-ITERATION §4「多源歌词聚合：LRC 合并去重」）
+// 多源歌词合并（LRC 并集 + 去重）
 //
 // 背景：此前 getLyricsAggregated 是 first-hit-wins——QQ 有词就用 QQ，
 // NetEase 里多出来的 verse / 副歌补不进来。合并的目标改成：

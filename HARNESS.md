@@ -33,13 +33,13 @@
 跨包路径在所有 harness 的 SKILL / command / agent / workflow / README / 文档里
 写法必须统一。事实由 `CLAUDE.md`「架构约束」段钉死：
 
-| 文件 / 工具                                                                         | 唯一正确路径                                       | 常见错误                                    |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------- |
-| `MusicProvider` 接口                                                                | `packages/common/src/provider.ts`                  | ❌ `packages/server/src/common/provider.ts` |
-| `withTimeout` 工具                                                                  | `packages/common/src/timeout.ts`                   | ❌ `packages/server/src/common/timeout.ts`  |
-| 跨包归一工具（`fuzzyKey` / `stripFeatTags` / `stripParensContent` / `cjkUnify` 等） | `packages/common/src/normalizer.ts`                | ❌ 在 server / renderer 各写一份            |
-| provider 实现                                                                       | `packages/server/src/music/<platform>.provider.ts` | ❌ 写到 `packages/server/src/<platform>/`   |
-| 跨包类型                                                                            | `packages/common/src/<thing>.ts`                   | ❌ 散落在 server / renderer                 |
+| 文件 / 工具                                                                         | 唯一正确路径                                       | 常见错误                                  |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------- |
+| `MusicProvider` 平台枚举 / 标签                                                     | `packages/server/src/common/provider.ts`           | ❌ 挪进 `packages/common/`                |
+| `withTimeout` 工具                                                                  | `packages/server/src/common/timeout.ts`            | ❌ 挪进 `packages/common/`                |
+| 跨包归一工具（`fuzzyKey` / `stripFeatTags` / `stripParensContent` / `cjkUnify` 等） | `packages/common/src/normalizer.ts`                | ❌ 在 server / renderer 各写一份          |
+| provider 实现                                                                       | `packages/server/src/music/<platform>.provider.ts` | ❌ 写到 `packages/server/src/<platform>/` |
+| 跨包类型                                                                            | `packages/common/src/<thing>.ts`                   | ❌ 散落在 server / renderer               |
 
 **自查命令**：
 

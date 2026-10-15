@@ -1,3 +1,5 @@
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 - [x] 1. 在 server/src/match/match.service.ts 写 MatchService 类（mergeLibrary + findEquivalent）
 - [x] 2. mergeLibrary 复用 buildUnifiedItems（search.util.ts）
 - [x] 3. findEquivalent 给一个 seed track 并行查其他平台，按 duration ±3s 过滤

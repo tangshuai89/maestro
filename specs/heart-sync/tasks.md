@@ -1,5 +1,7 @@
 # Heart 跨平台同步 — tasks
 
+> **状态**：✅ 已完成并合入 `master`（tasks 全部勾完）。文档保留作实现依据，不再改动。
+
 ## 同步队列（MQ 思路）
 
 - [x] 1. 新建 `music/like-sync.queue.ts`：`LikeSyncQueue`（合并去重 + 串行 drain + 退避重试）

@@ -1,6 +1,7 @@
 # Mini Player 模式 + 角色叠加层
 
-> 状态：**P1 已确认，实施中**（Phase 1 mini 浮层先行；角色叠加层待 Figma 稿后单独迭代）
+> 状态：**P1 mini 浮层已交付**（`Cmd+Shift+M` 切换、窗口 600×104、待手测）；
+> Phase 2 角色叠加层**未开工**，等 Figma 稿
 > 创建：2026-09-23 · 决策确认：2026-09-23
 > 关联：`aether-theater-v4-spec.md`（theater view 既有 spec）
 > 实施 spec：`specs/mini-player/`（spec.md + tasks.md）
@@ -42,9 +43,9 @@
 
 | 阶段   | 实现                                                      |
 | ------ | --------------------------------------------------------- |
-| **P1** | 硬编码芙宁娜 SVG，`lib/characters/furina.tsx`             |
-| P2     | Settings 加角色 dropdown，从 `settings/character.json` 读 |
-| P3     | 皮肤包机制（主题 ↔ 角色 + 立绘）                          |
+| **P2** | OpenGameArt CC0 芙宁娜资源落进 `lib/characters/`          |
+| P3     | Settings 加角色 dropdown，从 `settings/character.json` 读 |
+| P4     | 皮肤包机制（主题 ↔ 角色 + 立绘）                          |
 
 **P1 不引入配置**。换角色需改源码。
 
@@ -56,21 +57,22 @@
 - **OpenGameArt CC0 资源** —— 第三方资源，需 license 标注
 - **简化抽象版**（只用头发 + 圆环，忽略五官细节）—— 最简单，最无版权问题
 
-**默认建议**：**自绘简化版**。在 `lib/characters/furina.tsx` 内联 SVG（24×24 viewBox），约 30 行。
+**已定**：**OpenGameArt CC0 资源**（见 §10 决策 2）。落地时把来源 URL + license
+写进 `lib/characters/` 的头部注释。本节其余候选作废，别再照着实现。
 
 ## 3. 文件改动
 
 ### 3.1 新建
 
-| 文件                                        | 内容                              |
-| ------------------------------------------- | --------------------------------- |
-| `components/mini/MiniPlayer.tsx`            | 浮层主组件（封面/标题/进度/控制） |
-| `components/mini/CharacterOverlay.tsx`      | 角色渲染（SVG + 状态动画类切换）  |
-| `components/mini/MiniPlayer.test.tsx`       | 单测（渲染/交互）                 |
-| `components/mini/CharacterOverlay.test.tsx` | 单测（状态 class 切换）           |
-| `lib/characters/furina.tsx`                 | 芙宁娜 SVG 内联（自绘简化版）     |
-| `styles/components/_mini-player.scss`       | 浮层样式（glass + brand tint）    |
-| `styles/components/_character.scss`         | 角色样式（定位 + keyframes 动画） |
+| 文件                                        | 内容                               |
+| ------------------------------------------- | ---------------------------------- |
+| `components/mini/MiniPlayer.tsx`            | 浮层主组件（封面/标题/进度/控制）  |
+| `components/mini/CharacterOverlay.tsx`      | 角色渲染（SVG + 状态动画类切换）   |
+| `components/mini/MiniPlayer.test.tsx`       | 单测（渲染/交互）                  |
+| `components/mini/CharacterOverlay.test.tsx` | 单测（状态 class 切换）            |
+| `lib/characters/`                           | 芙宁娜资源 + 来源/license 头部注释 |
+| `styles/components/_mini-player.scss`       | 浮层样式（glass + brand tint）     |
+| `styles/components/_character.scss`         | 角色样式（定位 + keyframes 动画）  |
 
 ### 3.2 改动
 
