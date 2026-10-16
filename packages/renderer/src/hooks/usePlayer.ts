@@ -32,12 +32,13 @@ import { useCoverArt } from './useCoverArt';
 import { wpsLog } from '../lib/debug';
 import {
   FALLBACK_PRIORITY,
-  FULL_SONG_PROVIDERS,
+  // 注意：FULL_SONG_PROVIDERS 不在这里 import —— 它只剩「对外 re-export」一个用途
+  // （旧的残缺判定还在直接读它时需要）。删掉那个直接使用点后 eslint 会报
+  // no-unused-vars，而 re-export 块走的是独立的 `export { X } from`，不依赖它。
   getFullSongProviders,
   shouldApplyLikeResult,
   shouldStopWpsBeforeTransition,
-  TRIAL_MAX_SEC,
-  TRIAL_GAP_SEC,
+  isResidualAudio,
   parsePlayableQueue,
 } from './usePlayer.helpers.ts';
 
@@ -64,6 +65,7 @@ export {
   shouldStopWpsBeforeTransition,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
+  isResidualAudio,
   pickFallbackSource,
   pickUpgradeSource,
   parsePlayableQueue,
@@ -576,10 +578,12 @@ export function usePlayer(
    * **实际时长 ≈30s，但元数据是全长**。检测到后去**其它完整曲流平台**（qq/网易
    * 云）搜同名等价源换过去，把 30s 试听升级成全曲。与 tryFallbackSource 的区别：
    *  - 触发点不同：那个是 code=4 播放失败；这个是播成功但被锁成试听片段。
-   *  - 目标平台受限：只认 FULL_SONG_PROVIDERS——Deezer/Spotify 的 30s 是正常预览，
-   *    换过去还是 30s，白换，所以排除（服务端可能返回 spotify，这里拒掉）。
+   *
+   * 目标平台 = FULL_SONG_PROVIDERS（qq/网易云 + Premium 时的 Spotify），
+   * 但**触发不限定当前平台**（2026-10-16 修正，见 onLoadedMetadata 处的注释）：
+   * 当前在 Deezer/Spotify 上不等于「白换」——QQ/网易云可能有全曲版只是 VIP 锁。
    * 换源后新音源的 onLoadedMetadata 会再判一次：还是试听 → 试下一个完整平台；
-   * 完整平台都试过仍是试听（两边都 VIP 锁）→ 保持现状，无能为力。
+   * 完整平台都试过仍是残缺 → 保持现状（由 UI 角标告知，不静默）。
    */
   const tryUpgradeFromTrial = useCallback(async (): Promise<void> => {
     const unified = currentUnifiedRef.current;
@@ -1035,22 +1039,37 @@ export function usePlayer(
         pendingSeekRef.current = null;
         return;
       }
-      // VIP 30s 试听检测（每个音源判一次）：只对完整曲流平台（qq/网易云），
-      // 且实际音频远短于元数据全长 → 判定为被 VIP 锁成的试听片段，去别的完整
-      // 平台搜全曲换过去。Deezer/Spotify 的 30s 是正常预览，provider 已排除。
+      // 残缺音源检测（每个音源判一次）：**不限定当前平台**，只要实际音频远短于
+      // 元数据全长 → 判定为残缺，去 qq/网易云搜全曲换过去。
+      //
+      // ⚠️ 2026-10-16 修正：原实现带 `FULL_SONG_PROVIDERS.includes(cur.provider)`
+      // 前置条件，注释的理由是「Deezer/Spotify 的 30s 是正常预览，换过去还是 30s，
+      // 白换」。这个理由**只对一半**成立——它漏掉了真正会命中的场景：
+      //
+      //   实测《不染》（毛不易）：QQ 有 5 个全长版 325/319/281s 但**全部 VIP 锁**，
+      //   网易云根本没这首歌，Deezer/Spotify 的 preview 是唯一能出声的源。
+      //   → 当前 provider 是 preview 平台 → 旧条件直接 return → **连试都不试**，
+      //     静默播完 29 秒，用户完全无感知（这正是用户报的「完全没变化」）。
+      //
+      // 正确语义：当前在哪个平台**不重要**，重要的是「qq/网易云有没有全曲版」。
+      // tryUpgradeFromTrial 的目标本来就是 fullProviders，放开入口只会让它多一
+      // 次本可以成功的搜索；换不到时 trialServerTriedRef 保证每首只问一次。
+      //
+      // 代价（已知且可接受）：所有平台都只有 30s preview 的小众歌，会多一次注定
+      // 失败的跨平台搜索。后台 fire-and-forget，不阻塞播放。
+      //
       // Bug #3 UI 提示：trial 检测触发时无条件 setTrialFellBack(true)，让
       // TheaterView 显示 TRIAL 角标；升级成功（isTrial=false）时 reset false。
       if (!trialEvaluatedRef.current) {
         trialEvaluatedRef.current = true;
         const cur = trackRef.current;
-        const audioDur = audio.duration;
         const isTrial =
-          cur &&
-          FULL_SONG_PROVIDERS.includes(cur.provider) &&
-          Number.isFinite(audioDur) &&
-          audioDur > 0 &&
-          audioDur <= TRIAL_MAX_SEC &&
-          cur.duration > audioDur + TRIAL_GAP_SEC;
+          cur != null &&
+          isResidualAudio({
+            provider: cur.provider,
+            audioDuration: audio.duration,
+            metaDuration: cur.duration,
+          });
         if (isTrial) {
           setTrialFellBack(true);
           void handleTrialDetected();

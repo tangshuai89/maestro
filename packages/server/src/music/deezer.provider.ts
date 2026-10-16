@@ -1,8 +1,15 @@
-import { Injectable, Logger, NotFoundException, BadGatewayException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadGatewayException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Track } from './types';
 import type { AlbumSource, AlbumTrack } from './album-types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
+import type { RemotePlaylist } from './types';
 
 /**
  * Deezer 公共 API 音源。
@@ -60,9 +67,49 @@ interface DeezerAlbumDetail {
   tracks?: { data?: DeezerTrack[] };
 }
 
+/** `/playlist/{id}/tracks` 的 `limit` 上限——Deezer 实测 300 可用，再大会被截。 */
+const DEEZER_PLAYLIST_PAGE = 300;
+
 interface DeezerChartResponse {
   data: DeezerTrack[];
   total: number;
+}
+
+/**
+ * `/playlist/{id}` 响应。
+ *
+ * 2026-10-15 实测要点：
+ *  - **不存在 / 非数字 id 都返回 HTTP 200 + body `{"error":{"code":800,"message":"no data"}}`**，
+ *    不是 404。所以必须查 body 里的 `error`，光看 HTTP status 会把"歌单不存在"
+ *    误判成"成功但没数据"。
+ *  - `nb_tracks` 与实际翻页拿到的条数一致（实测 490 = 490，去重也 490）
+ *  - `public: false` 才算私有歌单 → `RemotePlaylistMeta.private`
+ *  - 封面有 `picture_xl` / `picture_big` / `picture_medium`
+ */
+interface DeezerPlaylistDetail {
+  /** Deezer 把「歌单不存在」也用 HTTP 200 + 这个 error 块回（实测 code=800），
+   *  所以 detail 接口的响应类型**也**要带 error —— 见 fetchPlaylistTracks 的判空。 */
+  error?: { type?: string; message?: string; code?: number };
+  id?: number;
+  title?: string;
+  description?: string;
+  nb_tracks?: number;
+  public?: boolean;
+  collaborative?: boolean;
+  fans?: number;
+  picture_xl?: string;
+  picture_big?: string;
+  picture_medium?: string;
+  creator?: { id?: number; name?: string };
+}
+
+/** `/playlist/{id}/tracks?limit=&index=` 响应 + `next` 游标。
+ *  实测 `limit=300` 可用；翻页直接 follow `next`，不要自己算 index。 */
+interface DeezerPlaylistTracksResponse {
+  data?: DeezerTrack[];
+  total?: number;
+  next?: string | null;
+  error?: { type?: string; message?: string; code?: number };
 }
 
 /** `/search/artist` 与 `/artist/{id}/related` 的条目（只用得上 id/name）。 */
@@ -367,6 +414,90 @@ export class DeezerMusicProvider {
       throw new Error('deezer track has no preview url');
     }
     return json.preview;
+  }
+
+  /**
+   * 拉**公开歌单**的曲目，保序（specs/remote-playlist Phase 4）。
+   *
+   * 端点：`GET /playlist/{id}` 取元信息 + `GET /playlist/{id}/tracks` 翻页取曲目，
+   * 两者都是 Deezer 公开 API —— **不需要 OAuth / API key / 登录态**。这也是本 spec
+   * 里 Deezer 只做「公开歌单」不做「我的歌单」的原因：`/user/{id}/playlists` 匿名
+   * 实测直接返回 `error.code=800`（见 spec §分平台解锁条件）。
+   *
+   * 分页：**follow 响应里的 `next` 游标**，不自己算 `index`。实测 490 首歌单
+   * `limit=300` 翻 2 页取满，去重 490/490。`limit` 上限 300。
+   *
+   * 失败模式（⚠️ 与其他 provider 不同）：
+   *  - 歌单不存在 / id 非数字 → **HTTP 200** + body `error.code=800`
+   *    （不是 404！只看 status 会误判成"成功但空"）→ `playlist_not_found`
+   *  - id 非纯数字 → 发请求前就拒，给一句能看懂的错
+   *
+   * 不实现 `listPlaylists`：Deezer 匿名没有"用户"概念，列不出"我的歌单"。
+   * 歌单靠 URL 里的 id 定位（`https://www.deezer.com/playlist/1313621735`）。
+   */
+  async fetchPlaylistTracks(
+    _session: ProviderSession,
+    playlistId: string,
+    maxTracks = 2000,
+  ): Promise<RemotePlaylist> {
+    const id = Number(playlistId);
+    if (!Number.isFinite(id) || !Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException({
+        error: 'invalid_playlist_id',
+        playlistId,
+        hint: 'Deezer 歌单 id 形如 https://www.deezer.com/playlist/1313621735 的末段数字',
+      });
+    }
+
+    const detail = await this.deezerGet<DeezerPlaylistDetail>(`/playlist/${id}`, 'playlist detail');
+    // ⚠️ Deezer 对不存在的歌单回 200 + error.code=800，不是 404。必须查 body。
+    if (detail.error || detail.id === undefined) {
+      throw new NotFoundException({ error: 'playlist_not_found', playlistId });
+    }
+
+    const collected: DeezerTrack[] = [];
+    let url: string | null = `/playlist/${id}/tracks?limit=${DEEZER_PLAYLIST_PAGE}&index=0`;
+    while (url && collected.length < maxTracks) {
+      const page = await this.deezerGet<DeezerPlaylistTracksResponse>(url, 'playlist tracks');
+      if (page.error) {
+        throw new NotFoundException({ error: 'playlist_not_found', playlistId });
+      }
+      collected.push(...(page.data ?? []));
+      url = page.next ?? null;
+    }
+
+    // audioUrl 走 toTrack：它直接填 t.preview（30s 预览 mp3，Deezer CDN 可热链
+    // ~1 天），这是仓库既有的 Deezer 播放约定，不改。
+    const tracks = collected.slice(0, maxTracks).map((t) => this.toTrack(t));
+
+    this.logger.log(
+      `Deezer fetchPlaylistTracks(${id}) → ${tracks.length}/${detail.nb_tracks ?? '?'} 首`,
+    );
+    return {
+      provider: 'deezer',
+      id: String(detail.id ?? id),
+      name: detail.title ?? '',
+      coverUrl: detail.picture_xl ?? detail.picture_big ?? detail.picture_medium ?? '',
+      trackCount: detail.nb_tracks ?? tracks.length,
+      // Deezer 有 `public` 字段（实测公开歌单为 true），直接映射；缺失时当公开
+      private: detail.public === false,
+      tracks,
+    };
+  }
+
+  /**
+   * Deezer GET + JSON 解析 + 统一错误处理。
+   *
+   * 只做「HTTP 层失败 → 抛错」，**不**把 body 里的 `error` 当异常 —— 歌单不存在
+   * 是 HTTP 200 + error.code=800，由调用方按业务语义判断。
+   */
+  private async deezerGet<T>(path: string, what: string): Promise<T> {
+    const url = path.startsWith('http') ? path : `${DeezerMusicProvider.API}${path}`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      throw new BadGatewayException(`Deezer ${what} failed: ${res.status} ${res.statusText}`);
+    }
+    return (await res.json()) as T;
   }
 
   private toTrack(t: DeezerTrack): Track {

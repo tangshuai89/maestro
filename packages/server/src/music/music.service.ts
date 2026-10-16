@@ -33,6 +33,12 @@ import { MatchService } from '../match/match.service';
 import { jaroWinkler } from '../match/fuzzy';
 import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
 import { withTimeout } from '../common/timeout';
+import type {
+  PlaylistListerProvider,
+  PlaylistReaderProvider,
+  RemotePlaylist,
+  RemotePlaylistMeta,
+} from './types';
 import { LikeSyncQueue, type LikeSyncTask } from './like-sync.queue';
 import { LyricsOvhProvider } from './lyricsovh.provider';
 import { LyricsService, type LyricsAggregatedResult } from './lyrics.service';
@@ -1886,6 +1892,116 @@ export class MusicService {
       this.likeSync.purgeForProvider(session.id, p);
     }
     this.logger.log('library cleared: all providers');
+  }
+
+  // ── 远端歌单（specs/remote-playlist）────────────────────────────────────
+  //
+  // 刻意**不进** mergeLibrary / UnifiedSearchItem 管线：远端歌单是「用户排好的
+  // 有序列表」，合并管线是「跨平台去重的无序集合」——把歌单过一遍会把顺序打散、
+  // 重复项折叠掉，结果就不是用户那个歌单。详见 spec §核心架构决策。
+  //
+  // 也刻意**不持久化**：平台侧歌单随时会变，缓存必然 stale；且与本地
+  // `playlists:{sessionId}`（用户自己造的歌单）语义不同，两者并存不混。
+
+  /**
+   * 取 provider 实例上**实现了读歌单**能力的那部分契约。
+   *
+   * 能力是**各自独立可选**的，且**允许只实现一半**：QQ 实测只能读、不能列
+   * （specs/remote-playlist/spec.md §Phase 2 实证），若这里要求两个方法都在
+   * 才会认，QQ 连它确实能做的读歌单也会被一起判死。
+   */
+  private playlistReader(p: MusicProvider): PlaylistReaderProvider | null {
+    const inst = this.providerFor(p);
+    if (!inst) return null;
+    const cand = inst as Partial<PlaylistReaderProvider>;
+    return typeof cand.fetchPlaylistTracks === 'function' ? (cand as PlaylistReaderProvider) : null;
+  }
+
+  /** 同上，取「列目录」能力。 */
+  private playlistLister(p: MusicProvider): PlaylistListerProvider | null {
+    const inst = this.providerFor(p);
+    if (!inst) return null;
+    const cand = inst as Partial<PlaylistListerProvider>;
+    return typeof cand.listPlaylists === 'function' ? (cand as PlaylistListerProvider) : null;
+  }
+
+  /** provider 名 → 实例。music.service 已持有全部 provider，controller 也有，
+   *  这里只为 playlist 这两个端点做统一映射。 */
+  private providerFor(p: MusicProvider): unknown {
+    switch (p) {
+      case 'qq':
+        return this.qq;
+      case 'netease':
+        return this.netease;
+      case 'deezer':
+        return this.deezer;
+      case 'spotify':
+        return this.spotify;
+    }
+  }
+
+  /**
+   * 列某平台的歌单目录。
+   *
+   * 平台不支持歌单（Deezer 匿名 / Spotify 未授权 playlist scope）→
+   * `{ supported: false }`，**不抛错、不 500**——调用方按能力缺失展示即可。
+   * 平台支持但没登录 → 抛 `not_logged_in`（400），这是真实错误该 fail loud。
+   */
+  async listRemotePlaylists(
+    session: Session,
+    p: MusicProvider,
+    limit = 200,
+  ): Promise<{ provider: MusicProvider; supported: boolean; items: RemotePlaylistMeta[] }> {
+    const lister = this.playlistLister(p);
+    if (!lister) {
+      // 两种降级情形都走这里：完全没实现（Deezer/Spotify），或只实现了读
+      // 不能列（QQ —— 实测列目录接口已下线）。对调用方是同一种语义。
+      this.logger.log(`listRemotePlaylists(${p}): 无「列歌单目录」能力 → supported:false`);
+      return { provider: p, supported: false, items: [] };
+    }
+    const ps = session.providers[p] ?? {};
+    const items = await withTimeout(
+      () => lister.listPlaylists(ps, limit),
+      UNIFIED_SEARCH_TIMEOUT_MS,
+    );
+    if (items === null) {
+      throw new BadRequestException(`platform timeout while listing playlists: ${p}`);
+    }
+    this.logger.log(`listRemotePlaylists(${p}) → ${items.length} 个歌单`);
+    return { provider: p, supported: true, items };
+  }
+
+  /** 拉某平台单个歌单的曲目（保序）。平台不支持 → 400 `playlist_unsupported`。 */
+  async getRemotePlaylist(
+    session: Session,
+    p: MusicProvider,
+    playlistId: string,
+    // 2000 见 controller 侧注释：Deezer 歌单可达 5000 首，默认 1000 会截半；
+    // 网易云 / QQ 的 provider 内部会自己 clamp 到 1000。
+    maxTracks = 2000,
+  ): Promise<RemotePlaylist> {
+    const reader = this.playlistReader(p);
+    if (!reader) {
+      throw new BadRequestException({
+        error: 'playlist_unsupported',
+        provider: p,
+      });
+    }
+    if (!playlistId) {
+      throw new BadRequestException('playlistId 必填');
+    }
+    const ps = session.providers[p] ?? {};
+    const playlist = await withTimeout(
+      () => reader.fetchPlaylistTracks(ps, playlistId, maxTracks),
+      IMPORT_FETCH_TIMEOUT_MS,
+    );
+    if (playlist === null) {
+      throw new BadRequestException(`platform timeout while fetching playlist: ${p}`);
+    }
+    this.logger.log(
+      `getRemotePlaylist(${p}/${playlistId}) → ${playlist.tracks.length}/${playlist.trackCount} 首`,
+    );
+    return playlist;
   }
 
   /**

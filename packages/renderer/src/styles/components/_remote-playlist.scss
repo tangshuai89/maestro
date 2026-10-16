@@ -1,0 +1,174 @@
+@use '../abstracts' as *;
+
+// 远端歌单弹窗（specs/remote-playlist §Phase 5）。
+//
+// 主题感知：用 --glass-* / --text-* / --border 语义令牌，不写死颜色 ——
+// scan-hardcoded-colors.mjs 会对硬编码色值报错（#c62828 之类要留 token）。
+
+// ⚠️ 这里**只能**管内部布局 + 皮肤，**不要**写 `position` / `transform` /
+// `left` / `top`。
+//
+// DialogContent 的默认 class 是 Tailwind 的
+// `fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%]`
+// —— 居中全靠它。components/_*.scss 在 base/base.scss（`@tailwind utilities`）
+// **之后**加载，同为单类选择器、特异性相同时后者胜，所以这里写
+// `position: relative` 会把 `fixed` 覆盖掉：Content 变成相对定位、被
+// `left:50% + translate` 推出视口 → 用户只看到遮罩、没有弹窗（实测踩过）。
+//
+// 宽度同理：Tailwind 已有 `w-full max-w-lg`，用 `max-width` 收窄即可。
+.remote-playlist-modal {
+  max-width: min(560px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.rp-input-row,
+.rp-save-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rp-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+// 错误条沿用 search-panel 的 --error-* 语义令牌（不写死色值：
+// scan-hardcoded-colors.mjs 会把 hex 记成无预算硬编码）。
+.rp-error {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
+  color: var(--error-fg);
+}
+
+.rp-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.rp-cover {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--bg-secondary);
+}
+
+.rp-meta-text {
+  min-width: 0;
+}
+
+.rp-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.rp-dim {
+  color: var(--text-tertiary);
+}
+
+.rp-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rp-tracklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.rp-tracklist li {
+  border-bottom: 1px solid var(--border);
+}
+
+.rp-tracklist button {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.rp-tracklist button:hover {
+  background: var(--bg-secondary);
+}
+
+.rp-idx {
+  flex: 0 0 26px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.rp-t {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rp-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-artist {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-vip {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}

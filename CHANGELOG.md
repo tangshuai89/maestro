@@ -7,7 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **远端歌单读取**（`specs/remote-playlist/`）——从平台歌单链接导入队列，按需实时读、
+  **不落盘、不做跨平台合并**（镜像而非导入：远端歌单是用户排好的有序列表，走
+  `mergeLibrary` 的集合语义会把顺序打散、重复项折叠）。三个 provider 能力实测解锁：
+
+  | 平台   | 能力                 | 依据                                                    |
+  | ------ | -------------------- | ------------------------------------------------------- |
+  | 网易云 | 列目录 + 读歌单      | 复用既有 `fetchLiked` 三步链路，只放开 id               |
+  | QQ     | 仅读（给定 disstid） | `music.srfDissInfo.DissInfo/CgiGetDiss`，227 首实测全量 |
+  | Deezer | 仅公开歌单           | 匿名可用，490 首实测去重一致；用户歌单需 OAuth，不做    |
+
+  实测排掉的坑（全部写进 spec 与代码注释）：
+  - **QQ `disstid` 必须传数字**，传字符串回 `code=10004` 且错误信息不提示类型
+  - **QQ「列我的歌单」实测封死**：8 个候选 `module.method` 全 `500003/860100001`，
+    对照实验（同时刻同 cookie 打已知可用路径 `code=0`）排除风控误判 → 只实现读
+  - **Deezer 对不存在的歌单回 HTTP 200** + body `error.code=800`，不是 404
+  - Spotify / Deezer 的「列目录」不可用 → 契约拆成
+    `PlaylistListerProvider` / `PlaylistReaderProvider` 两个**各自独立可选**的
+    interface，允许只实现一半（否则 QQ 会被整判为「不支持」）
+
+  新增端点 `GET /music/playlists?provider=`、`GET /music/playlists/:provider/:id/tracks`，
+  后者同时返回 **1:1 保序、不合并**的 `items: UnifiedSearchItem[]`
+  （`playlistTracksToUnifiedItems`）供队列播放器直接消费 —— 刻意不用
+  `buildUnifiedItems`，它按歌名折叠同名条目会让 227 首变 225 首，测试钉死这一点。
+
 ### Fixed
+
+- **残缺音源静默播完**（用户实测：搜索队列连播到《不染》，音频只有 29 秒，
+  界面零反馈）—— `tryUpgradeFromTrial` 的入口条件带
+  `FULL_SONG_PROVIDERS.includes(provider)`，把 Deezer/Spotify 源的歌曲整个挡在
+  门外，连试都不试。而升级逻辑的目标本来就是 qq/网易云，完全有能力去找全曲。
+  实测《不染》：QQ 有 5 个全长版（325/319/281s）但**全部 VIP 锁**、网易云无此歌、
+  preview 平台是唯一能出声的源 → 命中该盲区。判定改为**不按 provider 过滤**，
+  并抽成纯函数 `isResidualAudio()`（原先内嵌在 `onLoadedMetadata` 里、零测试覆盖）。
+  附实测数据说明**为何不能**改在搜索阶段过滤：搜索 240 条结果 duration ≤35s 的
+  有 0 条、❤ 库 1174 条里 <60s 仅 7 条且都是真短音频 —— 元数据干净，残缺发生在
+  版权锁，「29 秒的 track」这个对象不存在。详见
+  `usePlayer.helpers.ts:isResidualAudio` 的 JSDoc。
+- **theater 超长歌词撑爆布局**（实测：制作人员名单 40 字被当歌词，44px 主视觉换行
+  4 行把面板撑到 ~500px，压住「复制歌词 / 换个源找歌词」按钮与
+  `DEEP.SEEK // NEURAL FEED`）—— 三道防线：面板 `max-height` 兜底 + 按字数
+  **渐进降级字号**（<14 字 44px / ≤30 字 30px / >30 字 20px，短歌词视觉不变）+
+  `-webkit-line-clamp: 3`。内容不截断，完整文本仍可通过点行导出 / 复制获取。
+- **远端歌单入口与 NL 入口重叠** —— `.sp-nl-entry` 自带硬编码绝对定位
+  (`top:76px;left:64px`)，第二个入口复用同一类叠在同一坐标，把 ✨ 整个盖住。
+  定位归 `.sp-entries` 容器，按钮在其内流式并排。
+- **远端歌单弹窗只有遮罩没有内容** —— `.remote-playlist-modal` 的
+  `position: relative` 覆盖了 `DialogContent` 用于居中的 Tailwind `fixed`，
+  Content 被推出视口。该类不再声明 position/transform。
+- **远端歌单请求打到错误路由** —— 端点在 `@Controller('music')` 下，api.ts 漏写
+  `/music` 前缀，server 回 SPA index.html，renderer 表现为
+  `Unexpected token '<' … is not valid JSON`。补了断言最终 URL 的测试。
+- **同一处第二个查询参数用错分隔符** —— `?provider=netease?limit=30` 导致 limit
+  被静默丢弃（应为 `&`）。由新增的 URL 断言测试抓出。
+- **歌单详情默认 limit 截半 Deezer** —— 默认 1000 → 2000（网易云/QQ 的 provider
+  内部仍 clamp 到 1000）。
 
 - **`ISSUES.md` §3.5** root `package.json` `description` 更新为跨平台播放器
   （QQ / NetEase / Deezer / Spotify + DeepSeek AI），不再是过期的 QQ-only 描述。

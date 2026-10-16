@@ -1,6 +1,6 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Track } from './types';
-import type { VipCategory } from './types';
+import type { VipCategory, RemotePlaylist, RemotePlaylistMeta } from './types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { ProviderSession } from '../common/session';
 import { QqQuality } from './qq.provider';
@@ -249,17 +249,9 @@ export class NeteaseMusicProvider {
   async fetchLiked(session: ProviderSession, maxTracks = 1000): Promise<Track[]> {
     if (!this.isConfigured(session)) return [];
 
-    // 1. 当前用户 uid
-    const account = await this.apiCall<{ account?: { id?: number }; profile?: unknown }>(
-      session,
-      'https://music.163.com/api/nuser/account/get',
-      {},
-    );
-    const uid = account.account?.id;
-    if (!uid) {
-      this.logger.warn('netease fetchLiked: no uid from /nuser/account/get');
-      return [];
-    }
+    // 1. 当前用户 uid（与 listPlaylists 共用同一路径）
+    const uid = await this.currentUid(session, 'fetchLiked');
+    if (!uid) return [];
 
     // 2. 用户歌单列表
     const playlists = await this.apiCall<{
@@ -304,6 +296,165 @@ export class NeteaseMusicProvider {
       duration: Math.round((t.dt ?? 0) / 1000),
       liked: true, // 来源就是"我喜欢的音乐"，全部视为已 ❤
     }));
+  }
+
+  /**
+   * 取当前登录用户的 uid。失败 / 未登录 → `null`（调用方各自决定 fail-loud 还是
+   * 静默返回空）。
+   *
+   * 抽出来是因为 `fetchLiked` 与 `listPlaylists`（specs/remote-playlist）都要走
+   * 同一步 `/api/nuser/account/get`。
+   */
+  private async currentUid(session: ProviderSession, ctx: string): Promise<number | null> {
+    const account = await this.apiCall<{ account?: { id?: number } }>(
+      session,
+      'https://music.163.com/api/nuser/account/get',
+      {},
+    );
+    const uid = account.account?.id;
+    if (!uid) {
+      this.logger.warn(`netease ${ctx}: no uid from /nuser/account/get`);
+      return null;
+    }
+    return uid;
+  }
+
+  /**
+   * 列当前用户的全部歌单（specs/remote-playlist §分平台解锁条件 — 网易云是唯一
+   * 四平台里零阻塞的）。
+   *
+   * 端点：`POST /api/user/playlist?uid=&limit=`（匿名也能列别人的，所以「能列」
+   * 不等于「列的是你」——uid 必须来自 `/nuser/account/get`，不能取本地缓存）。
+   *
+   * 返回**含「我喜欢的音乐」**（specialType=5）——那是用户的歌单之一，调用方
+   * 是否过滤由它自己决定，这里不做隐式丢弃。
+   */
+  async listPlaylists(session: ProviderSession, limit = 200): Promise<RemotePlaylistMeta[]> {
+    if (!this.isConfigured(session)) {
+      throw new BadRequestException('not_logged_in');
+    }
+    const uid = await this.currentUid(session, 'listPlaylists');
+    if (!uid) {
+      throw new BadRequestException('not_logged_in');
+    }
+
+    const res = await this.apiCall<{
+      more?: boolean;
+      playlist?: Array<{
+        id?: number;
+        name?: string;
+        coverImgUrl?: string;
+        trackCount?: number;
+        /** 10 = 私有歌单 */
+        privacy?: number;
+      }>;
+    }>(session, 'https://music.163.com/api/user/playlist', {
+      uid: String(uid),
+      limit: String(limit),
+    });
+
+    return (res.playlist ?? [])
+      .filter((p): p is typeof p & { id: number } => typeof p.id === 'number')
+      .map((p) => ({
+        provider: 'netease' as const,
+        id: String(p.id),
+        name: p.name ?? '',
+        coverUrl: p.coverImgUrl ?? '',
+        trackCount: p.trackCount ?? 0,
+        private: p.privacy === 10,
+      }));
+  }
+
+  /**
+   * 拉单个歌单的曲目，**保序**（顺序 === 平台返回顺序）。
+   *
+   * 端点：`POST /api/v6/playlist/detail?id=&n=`。这是 `fetchLiked` 第三步用的
+   * 同一个端点，只是把 id 放开。
+   *
+   * ⚠️ 必须登录：`specs/remote-playlist` 实测匿名拉 id=1（trackCount=158）时
+   * n=10/100/500/1000 **全部只回 6 首**——网易云对无 cookie 请求有反爬截断。
+   * 登录态下 n=1000 可拿全（`specs/library-import` 实证 987 首）。所以这里
+   * 不靠 n 猜，直接把 maxTracks 交给 n。
+   *
+   * 网易云歌单容量上限 1000 首，maxTracks 默认 1000 刚好够。
+   */
+  async fetchPlaylistTracks(
+    session: ProviderSession,
+    playlistId: string,
+    maxTracks = 1000,
+  ): Promise<RemotePlaylist> {
+    if (!this.isConfigured(session)) {
+      throw new BadRequestException('not_logged_in');
+    }
+    if (!playlistId) {
+      throw new BadRequestException('playlistId 必填');
+    }
+
+    const detail = await this.apiCall<{
+      code?: number;
+      playlist?: {
+        id?: number;
+        name?: string;
+        coverImgUrl?: string;
+        trackCount?: number;
+        privacy?: number;
+        tracks?: Array<{
+          id?: number;
+          name?: string;
+          ar?: Array<{ id?: number; name?: string }>;
+          al?: { id?: number; name?: string; picUrl?: string };
+          dt?: number;
+          fee?: number;
+          privilege?: NeteasePrivilege;
+        }>;
+      };
+    }>(session, 'https://music.163.com/api/v6/playlist/detail', {
+      id: String(playlistId),
+      n: String(Math.min(maxTracks, 1000)),
+    });
+
+    // code=200 才算成功。歌单不存在时网易云回 code=404「歌单不存在」（实测）。
+    if (detail.code !== undefined && detail.code !== 200) {
+      throw new NotFoundException({ error: 'playlist_not_found', playlistId });
+    }
+    const p = detail.playlist;
+    if (!p) {
+      throw new NotFoundException({ error: 'playlist_not_found', playlistId });
+    }
+
+    const tracks: Track[] = (p.tracks ?? [])
+      .filter((t): t is typeof t & { id: number } => typeof t.id === 'number')
+      .slice(0, maxTracks)
+      .map((t) => ({
+        id: String(t.id),
+        provider: 'netease' as const,
+        title: t.name ?? '',
+        artist: t.ar?.map((a) => a.name).join(' / ') ?? '未知艺人',
+        album: t.al?.name ?? '',
+        coverUrl: t.al?.picUrl ?? '',
+        audioUrl: '', // 由 getStreamPath 在播放时动态获取
+        duration: Math.round((t.dt ?? 0) / 1000),
+        liked: false, // 远端歌单 ≠ ❤ 列表，liked 交给 detectLikedAndSync 判定
+        // ⚠️ detectNeteaseVipLocked 只读 privilege.fee / privilege.pl，而
+        // v6/playlist/detail 实测与 cloudsearch/pc 同款：privilege 常为 null、
+        // fee 落在 **track 顶层**（见 NeteaseSearchSong.fee 的注释）。直接传
+        // t.privilege 会把付费歌判成「可播」——所以先把顶层 fee 兜进 privilege，
+        // 让共享 helper 的「fee>0 → 一律锁」语义生效。
+        vipLocked: detectNeteaseVipLocked({ ...t.privilege, fee: t.privilege?.fee ?? t.fee }),
+        vipCategory: detectNeteaseVipCategory({ fee: t.fee, privilege: t.privilege }),
+      }));
+
+    return {
+      provider: 'netease',
+      id: String(p.id ?? playlistId),
+      name: p.name ?? '',
+      coverUrl: p.coverImgUrl ?? '',
+      // 用平台声明的 trackCount，不是 tracks.length —— 两者可以不一致
+      // （QQ 过滤失效歌曲、网易云匿名反爬少给），调用方要能看出"平台说有 N 首"。
+      trackCount: p.trackCount ?? tracks.length,
+      private: p.privacy === 10,
+      tracks,
+    };
   }
 
   /**

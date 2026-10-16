@@ -376,6 +376,132 @@ export async function deletePlaylist(id: string): Promise<{ ok: true }> {
   );
 }
 
+// ── 远端歌单（specs/remote-playlist）──────────────────────────────────────
+
+/**
+ * 远端歌单元信息。**镜像**，不是本地 `Playlist`（那个是 UnifiedSearchItem[]）。
+ * 见 server 侧 `types.ts` 的同名类型。
+ */
+export interface RemotePlaylistMeta {
+  provider: MusicProvider;
+  id: string;
+  name: string;
+  coverUrl: string;
+  /** 平台声明的曲目数，可能 > 实际返回（QQ 过滤失效歌曲 / Deezer 匿名截断） */
+  trackCount: number;
+  private: boolean;
+}
+
+export interface RemotePlaylist extends RemotePlaylistMeta {
+  /** 保序，1:1 对应平台顺序 */
+  tracks: Track[];
+}
+
+export interface RemotePlaylistListResult {
+  provider: MusicProvider;
+  /** 平台是否支持「列歌单目录」。QQ 只支持读、Deezer 匿名无「我的歌单」→ false */
+  supported: boolean;
+  items: RemotePlaylistMeta[];
+}
+
+export async function listRemotePlaylists(
+  provider: MusicProvider,
+  limit?: number,
+): Promise<RemotePlaylistListResult> {
+  // ⚠️ 这是**第二个**查询参数，分隔符必须是 `&` 不是 `?`（写 `?` 会得到
+  // `?provider=netease?limit=30`，limit 被静默丢掉）。
+  const q = limit ? `&limit=${limit}` : '';
+  // ⚠️ `/music` 前缀不能省：远端歌单端点在 `music.controller.ts`
+  // （`@Controller('music')`）。对比 `/library/playlists` —— 那个在
+  // nl-playlist.controller.ts 里，`@Controller()` 无前缀，所以不需要。
+  // 漏掉前缀时 server 会回 SPA 的 index.html，renderer 侧表现为
+  // 「Unexpected token '<' … is not valid JSON」（首轮实测踩过）。
+  return json(
+    await fetchWithToken(`${API_BASE}/music/playlists?provider=${provider}${q}`, {
+      credentials: 'include',
+    }),
+  );
+}
+
+/**
+ * 拉远端歌单。
+ *
+ * 返回的 `items` 已经是 **1:1 保序、不合并**的 `UnifiedSearchItem[]`，可以直接
+ * 喂队列播放器（`usePlayer` 的队列就是吃这个）。**不要**在前端再调一次
+ * `buildUnifiedItems` 之类的合并逻辑 —— 那会按歌名折叠同名条目，让 227 首的
+ * 歌单变 225 首。
+ */
+export async function getRemotePlaylist(
+  provider: MusicProvider,
+  playlistId: string,
+  limit?: number,
+): Promise<{ playlist: RemotePlaylist; items: UnifiedSearchItem[] }> {
+  const q = limit ? `?limit=${limit}` : '';
+  return json(
+    await fetchWithToken(
+      `${API_BASE}/music/playlists/${provider}/${encodeURIComponent(playlistId)}/tracks${q}`,
+      { credentials: 'include' },
+    ),
+  );
+}
+
+/**
+ * 从用户粘贴的内容里抠出歌单 id + 推断平台。
+ *
+ * 接受这些形态（用户多半是直接复制浏览器地址栏）：
+ *  - path 形态  `https://y.qq.com/n/ryqq/playlist/8584177317`（QQ / Deezer）
+ *  - path 形态  `https://music.163.com/playlist/123456`（网易云也支持）
+ *  - hash 形态  `https://music.163.com/#/playlist?id=1562085694`（**网易云地址栏默认**）
+ *  - hash 形态  `https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M`
+ *                （Spotify 的 id 是 **base62 非数字**，单独走宽松分支 —— 只为让
+ *                 UI 能回「Spotify 尚未接入」这句准确提示，而不是含糊的
+ *                 「认不出这个链接」）
+ *  - 裸 id      `8584177317`
+ *
+ * 平台识别靠**域名**，不靠用户手选——从 QQ 链接里推出一个 netease 的请求只会
+ * 得到一句莫名其妙的 404。认不出的域名返回 `null`，由调用方让用户改用裸 id。
+ */
+export function parseRemotePlaylistInput(
+  input: string,
+): { provider: MusicProvider; playlistId: string } | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  // 裸 id：纯数字（QQ / 网易云 / Deezer 的 id 都是数字）
+  if (/^\d+$/.test(raw)) return { provider: 'qq', playlistId: raw };
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.replace(/^www\./, '');
+
+  // ⚠️ 网易云的地址栏是 **hash 路由**：`music.163.com/#/playlist?id=1562085694`
+  //   —— id 在 `?id=` 查询串里，**不在 path 段里**。所以先试 hash + search
+  //   的 `id=`，再退回 path 的 `/playlist/<数字>` 形态（QQ / Deezer 都是后者，
+  //   网易云也同时支持 `music.163.com/playlist/123`）。
+  const fromQuery = /[?&]id=(\d+)/.exec(url.search) ?? /[?&]id=(\d+)/.exec(url.hash);
+  const fromPath = /\/playlist\/(\d+)/.exec(url.pathname);
+
+  // Spotify 的歌单 id 是 base62（如 37i9dQZF1DXcBWIGoYBM5M），不是数字。
+  // 这里为它单独放宽：解析出来好让 UI 提示「Spotify 尚未接入」——那比
+  // 「认不出这个链接」诚实得多。后端拿到也会回 playlist_unsupported。
+  if (host.endsWith('spotify.com')) {
+    const m = /\/playlist\/([A-Za-z0-9]+)/.exec(url.pathname);
+    return m ? { provider: 'spotify', playlistId: m[1] } : null;
+  }
+
+  const id = fromQuery?.[1] ?? fromPath?.[1];
+  if (!id) return null;
+
+  if (host.endsWith('qq.com')) return { provider: 'qq', playlistId: id };
+  if (host.endsWith('163.com')) return { provider: 'netease', playlistId: id };
+  if (host.endsWith('deezer.com')) return { provider: 'deezer', playlistId: id };
+  return null;
+}
+
 export async function fanOutLike(
   mergedId: string,
   sources: Array<{ platform: MusicProvider; trackId: string }>,

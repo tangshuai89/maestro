@@ -308,6 +308,26 @@ export default function TheaterView(props: TheaterViewProps) {
     : IDLE_LYRIC_HINT;
   // 当前行之后的行数按档位收敛（regular 3 / compact 1 / narrow 0）
   // 多源合并徽章：`MERGED · QQ+NETEASE`（只在真的合并了 ≥2 个源时出现）
+  /**
+   * 当前行字号档位 —— 按**字符数**渐进降级。
+   *
+   * 为什么需要：`.th-lyric--current` 是 44px 主视觉，而歌词数据里混着
+   * 制作人员名单这种超长行（实测：「宣传：北京很有可能文化传播有限公司：
+   * 王朝顺/沈雨娟/张倩玉/夏童/田贝贝/汪斯瑶/丁敏」40 字）。560px 宽只能容
+   * 约 12 个中文字 → 换行 4 行 × 44px 把歌词面板撑到 ~500px，把下方的
+   * 「复制歌词 / 换个源找歌词」按钮和 `DEEP.SEEK // NEURAL FEED` 全部压住
+   * （见 specs/d1-screens 的布局事故记录）。
+   *
+   * 阈值取「单行放得下」的整数倍：<14 字单行、≤30 字两行内、>30 字三行内。
+   * 短歌词保持 44px 的视觉冲击不变，只对超长内容降级。
+   */
+  const currentSizeClass = (() => {
+    const n = currentLine?.length ?? 0;
+    if (n > 30) return 'th-lyric--current--xlong';
+    if (n > 14) return 'th-lyric--current--long';
+    return '';
+  })();
+
   const lyricsMergeTag =
     !noLyrics && (lyricsMergedFrom?.length ?? 0) > 1
       ? `MERGED · ${(lyricsMergedFrom ?? [])
@@ -759,7 +779,7 @@ export default function TheaterView(props: TheaterViewProps) {
                 <span className="th-lyric-bar" aria-hidden="true" />
                 <p
                   key={currentLine ?? 'idle'}
-                  className="th-lyric th-lyric--current th-lyric--clickable"
+                  className={`th-lyric th-lyric--current th-lyric--clickable ${currentSizeClass}`}
                   onClick={currentLine ? () => onExportLyrics?.(currentLine) : undefined}
                   title="点击导出这一句的分享图"
                 >
