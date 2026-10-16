@@ -19,6 +19,7 @@ import {
   type SessionProbeResult,
 } from './qq-session-probe';
 import type { AlbumSource, AlbumTrack } from './album-types';
+import type { RemotePlaylist } from './types';
 
 /** QQ 音质档位。standard=m4a(默认)，high=320mp3，lossless=flac（需会员）。 */
 export type QqQuality = 'standard' | 'high' | 'lossless';
@@ -180,6 +181,68 @@ export interface QqPay {
   pay_month?: number;
   price_track?: number;
   price_album?: number;
+}
+
+/**
+ * `CgiGetDiss` 响应里的一首歌。`fetchLiked`（dirid=201 路径）与
+ * `fetchPlaylistTracks`（disstid 路径）结构一致，故共用。
+ * 2026-10-15 实测 disstid 路径返回 41 个字段，比 search 路径多
+ * `label/subtitle/genre/bpm/team` 等，这里只取用得到的。
+ */
+interface QqPlayListSong {
+  mid?: string;
+  name?: string;
+  title?: string;
+  singer?: { name: string; mid: string }[];
+  album?: { name: string; mid: string };
+  interval?: number;
+  file?: { media_mid?: string; strMediaMid?: string };
+  pay?: QqPay;
+}
+
+/**
+ * `CgiGetDiss` 的 `dirinfo`（歌单元信息）。
+ *
+ * 2026-10-15 实测要点：
+ *  - `songnum` = 平台声明曲目数，与实际 songlist 长度可能不等（QQ 过滤失效歌曲）
+ *  - `picurl` 有值但 **`picmid` 为空字符串** → 封面只能走 picurl
+ *  - **没有** `privacy` 字段（那是网易云的）
+ *  - 公开歌单 `host_uin` 为 0，`host_nick` 仍有值
+ */
+interface QqPlayListDirInfo {
+  id?: number;
+  title?: string;
+  songnum?: number;
+  picurl?: string;
+  picmid?: string;
+  host_uin?: number;
+  host_nick?: string;
+  dirtype?: number;
+  disstype?: number;
+  encrypt_uin?: string;
+  owndir?: number;
+  ctime?: number;
+  listennum?: number;
+}
+
+/** `CgiGetDiss` 响应外壳。 */
+interface QqPlayListResp {
+  code?: number;
+  req_0?: {
+    code?: number;
+    data?: {
+      songlist?: QqPlayListSong[];
+      hasmore?: boolean;
+      total_song_num?: number;
+      dirinfo?: QqPlayListDirInfo;
+    };
+  };
+  data?: {
+    songlist?: QqPlayListSong[];
+    hasmore?: boolean;
+    total_song_num?: number;
+    dirinfo?: QqPlayListDirInfo;
+  };
 }
 
 /**
@@ -400,6 +463,161 @@ export class QqMusicProvider {
 
     this.logger.log(`QQ fetchLiked → ${collected.length} 首`);
     return collected.slice(0, maxTracks);
+  }
+
+  /**
+   * 拉**指定**歌单（QQ 的 disstid）的曲目，保序。
+   *
+   *   ⚠️ QQ **没有**「列出我所有歌单」的能力。2026-10-15 登录态实测：8 个列目录
+   *      候选（`PlaylistDir.dir_list` 四种写法 / `FcgUserDissList.diss_list` /
+   *      `UserDirInfo` / `musicHall.DissList` 两种）全部 `code=500003
+   *      subcode=860100001`，对照实验（同时刻同 cookie 打下面这条已知可用路径
+   *      → `code=0`）排除了风控误判。所以本 provider 只实现读、不实现
+   *      `listPlaylists`，契约上属于「只实现一半」。详见
+   *      specs/remote-playlist/spec.md §Phase 2 实证：QQ。
+   *
+   *   ⚠️⚠️ `disstid` 必须传**数字**，传字符串会得到 `code=10004 param error`
+   *      且 `data.songlist` 为空 —— 错误信息完全看不出是类型问题。现有
+   *      `fetchLiked` 传的是 `disstid: 0`（恰好是数字），所以这个坑一直没暴露。
+   *      实测 disstid=8584177317 传数字 → `code=0`、227 首全量拉回；传字符串
+   *      → `code=10004`、0 首。
+   *
+   * 端点：`music.srfDissInfo.DissInfo / CgiGetDiss`，与 `fetchLiked` 同一个
+   * module / 同一个 envelope，只是把 `disstid=0 + dirid=201` 换成
+   * `disstid=<歌单id>`。分页沿用 `fetchLiked` 那套已验证的口径：`song_begin`
+   * 按**请求页大小**推进（不按实际返回数，因为 QQ 会过滤失效歌曲）、`hasmore`
+   * + 空页双信号判末页。
+   *
+   * 失败模式：
+   *  - code 10004 → disstid 不是数字 / 歌单不存在 → `playlist_not_found`
+   *  - code 1000 / 301 → cookie 失效 → `not_logged_in`
+   */
+  async fetchPlaylistTracks(
+    session: ProviderSession,
+    playlistId: string,
+    maxTracks = 1000,
+  ): Promise<RemotePlaylist> {
+    if (!this.isConfigured(session)) {
+      throw new BadRequestException('not_logged_in');
+    }
+    // ⚠️ 必须 Number()。QQ 对字符串 disstid 回 10004，且错误信息完全不提示类型。
+    const disstid = Number(playlistId);
+    if (!Number.isFinite(disstid) || !Number.isInteger(disstid) || disstid <= 0) {
+      // 前端最可能把非数字 URL 片段原样传进来，在这里早失败给一句能看懂的错，
+      // 而不是让它变成上游一个含糊的 10004。
+      throw new BadRequestException({
+        error: 'invalid_playlist_id',
+        playlistId,
+        hint: 'QQ 歌单 id 形如 https://y.qq.com/n/ryqq/playlist/8584177317 的末段数字',
+      });
+    }
+
+    const cookie = session.qqCookie ?? '';
+    const PAGE = 100;
+    const collected: QqPlayListSong[] = [];
+    let info: QqPlayListDirInfo | undefined;
+    let begin = 0;
+
+    for (;;) {
+      if (collected.length >= maxTracks) break;
+      const num = Math.min(PAGE, maxTracks - collected.length);
+      const r = await this.dissInfo(session, cookie, {
+        disstid,
+        song_begin: begin,
+        song_num: num,
+        tag: 1,
+        userinfo: 1,
+        orderlist: 1,
+      });
+      if (r.code === 1004 || r.code === 10004) {
+        throw new NotFoundException({ error: 'playlist_not_found', playlistId });
+      }
+      if (r.code === 1000 || r.code === 301) {
+        throw new BadRequestException('not_logged_in');
+      }
+      if (r.code !== 0) {
+        throw new BadRequestException(`QQ CgiGetDiss failed: code=${r.code}`);
+      }
+
+      info ??= r.data?.dirinfo;
+      const songlist = r.data?.songlist ?? [];
+      if (songlist.length === 0) break;
+      collected.push(...songlist.filter((x) => x.mid));
+
+      // 末页判定与 fetchLiked 同口径：QQ 会过滤失效歌曲，短页不代表末页，
+      // 只信 hasmore + 空页两个信号。
+      if (!r.data?.hasmore) break;
+      // song_begin 按请求页大小推进，不按实际返回数——否则过滤后会漏歌。
+      begin += num;
+    }
+
+    const tracks: Track[] = collected.slice(0, maxTracks).map((x) => ({
+      id: x.mid as string,
+      provider: 'qq' as const,
+      title: x.name ?? x.title ?? '未知歌曲',
+      artist: x.singer?.map((y) => y.name).join(' / ') ?? '未知艺人',
+      album: x.album?.name ?? '',
+      // 实测 dirinfo.picmid 为空、picurl 才有值 —— 封面只能走 picurl。
+      coverUrl: x.album?.mid
+        ? `https://y.gtimg.cn/music/photo_new/T002R800x800M000${x.album.mid}.jpg`
+        : '',
+      audioUrl: '', // 由 getStreamPath 在播放时动态获取
+      duration: x.interval ?? 0,
+      liked: false, // 远端歌单 ≠ ❤ 列表，liked 交给 detectLikedAndSync 判定
+      mediaMid: x.file?.media_mid ?? x.file?.strMediaMid ?? '',
+      // pay 语义与 search 路径完全一致（见 detectQqVipLocked 的注释：它标的是
+      // 歌曲的商业分类，不是「当前账号能不能播」，真信号在 vkey 响应里）。
+      vipLocked: detectQqVipLocked(x.pay, session.qqVip),
+      vipCategory: detectQqVipCategory(x.pay),
+    }));
+
+    this.logger.log(
+      `QQ fetchPlaylistTracks(${disstid}) → ${tracks.length}/${info?.songnum ?? '?'} 首`,
+    );
+    return {
+      provider: 'qq',
+      id: String(disstid),
+      name: info?.title ?? '',
+      coverUrl: info?.picurl ?? '',
+      // 用平台声明的 songnum，不是 tracks.length：QQ 会过滤失效歌曲，两者可能不等。
+      trackCount: info?.songnum ?? tracks.length,
+      // ⚠️ 实测 dirinfo **没有** privacy 字段（网易云才有）。QQ 歌单的私有性
+      // 表达在 encrypt_uin / owndir 上，但这两者的语义未实证，宁可恒 false
+      // 也不猜一个错的「私有」标记。
+      private: false,
+      tracks,
+    };
+  }
+
+  /**
+   * `CgiGetDiss` 的薄封装 —— `fetchLiked`（dirid 路径）和
+   * `fetchPlaylistTracks`（disstid 路径）共用同一 module / 同一 envelope。
+   * 只做错误码 → HTTP 状态码的映射，业务判断留给调用方。
+   */
+  private async dissInfo(
+    session: ProviderSession,
+    cookie: string,
+    param: Record<string, unknown>,
+  ): Promise<QqPlayListResp> {
+    const body = {
+      comm: { ct: 24, cv: 0 },
+      req_0: { module: 'music.srfDissInfo.DissInfo', method: 'CgiGetDiss', param },
+    };
+    const r = await fetch(
+      'https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&inCharset=utf8&outCharset=utf-8',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': QqMusicProvider.UA,
+          Referer: 'https://y.qq.com/',
+          Cookie: cookie,
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    const j = (await r.json()) as QqPlayListResp;
+    return { ...j, code: j.req_0?.code ?? j.code ?? 0, data: j.req_0?.data };
   }
 
   /**

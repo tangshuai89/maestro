@@ -518,6 +518,62 @@ function groupMergeEvidence(a: Group, b: Group): boolean {
   return artistLooseMatch(aa, ab) || artistTransliterationMatch(aa, ab);
 }
 
+/**
+ * `Track[]` → `UnifiedSearchItem[]`，**1:1 严格保序、不做任何合并**。
+ *
+ * 远端歌单专用（specs/remote-playlist §Phase 5）。
+ *
+ * ⚠️ 为什么**绝对不能**用 `buildUnifiedItems`：它按 `normalizeKey(title, artist)`
+ * 分组、再按 duration 聚类 —— 这是「搜索结果去重」的正确语义，但对歌单是**错的**。
+ * 一张 227 首的歌单里若有两首同名同艺人的歌（live 版 / 电台版 / 不同翻唱），
+ * 会被折叠成 1 条，歌单从 227 首变成 225 首、顺序也变了 —— 那就不是用户
+ * 那个歌单了。这正是 spec §核心架构决策「镜像而非导入」的落地点。
+ *
+ * 所以这里刻意**不**做跨平台合并：一首远端歌单曲目就是**一个** source
+ * （它自己那个平台的），`bestSource` 恒等于该平台。这样点播放时走的也是
+ * 原平台的源，与歌单在平台上的实际听感一致。
+ *
+ * `versionType` 恒 `'studio'`：歌单不做版本识别（那是搜索去重的职责），
+ * 恒一个值最保守 —— 不会误标 [LIVE]/[REMIX]。
+ */
+export function playlistTracksToUnifiedItems(tracks: Track[]): UnifiedSearchItem[] {
+  return tracks.map((t) => {
+    const source: SourceInfo = {
+      platform: t.provider,
+      trackId: t.id,
+      hasCopyright: true,
+      url: t.audioUrl,
+      mediaMid: t.mediaMid,
+      vipLocked: t.vipLocked,
+      vipCategory: t.vipCategory,
+      noPreview: t.noPreview,
+    };
+    const version: VersionEntry = {
+      id: `merged-${t.provider}-${t.id}-studio`,
+      duration: t.duration,
+      sources: [source],
+      bestSource: t.provider,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      coverUrl: t.coverUrl,
+    };
+    return {
+      id: version.id,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      coverUrl: t.coverUrl,
+      duration: t.duration,
+      // 只有一个源 —— 「在哪些平台有 ❤」和「在哪些平台搜得到」在这条路径上等价
+      sources: [source],
+      bestSource: t.provider,
+      versionType: 'studio',
+      versions: [version],
+    } satisfies UnifiedSearchItem;
+  });
+}
+
 export function buildUnifiedItems(
   _deduped: Map<string, Track>,
   all: RawSearchEntry[],

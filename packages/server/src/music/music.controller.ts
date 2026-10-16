@@ -25,7 +25,7 @@ import { QqQuality } from './qq.provider';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 import { SkipInternalToken } from '../common/decorators/skip-internal-token.decorator';
 import type { FanOutLikeResponse, SourceInfo } from './types';
-import { PLAY_PRIORITY } from './search.util';
+import { PLAY_PRIORITY, playlistTracksToUnifiedItems } from './search.util';
 import { SourceHealthService } from './source-health.service';
 
 /** 从请求体里宽松解析跨平台匹配元数据。缺字段 / 类型不对 → undefined，
@@ -38,6 +38,21 @@ function parseMeta(m: unknown): LikeMeta | undefined {
   }
   const duration = typeof o.duration === 'number' && Number.isFinite(o.duration) ? o.duration : 0;
   return { title: o.title, artist: o.artist, duration };
+}
+
+/** 歌单端点专用 provider 解析：严格校验、未知值直接 400。
+ *  不用 normalizeProvider——它把未知值兜底成 'qq'（既有搜索 / 电台端点的历史
+ *  行为），对歌单来说那是**静默把请求路由到错平台**，必须 fail loud。 */
+function requirePlaylistProvider(raw: string | undefined): MusicProvider {
+  const p = (raw ?? '').toLowerCase();
+  if (!MUSIC_PROVIDERS.includes(p as MusicProvider)) {
+    throw new BadRequestException({
+      error: 'unknown_provider',
+      provider: raw,
+      allowed: MUSIC_PROVIDERS,
+    });
+  }
+  return p as MusicProvider;
 }
 
 /** 宽松解析 `sources=platform:trackId,platform:trackId` 查询参数。
@@ -556,6 +571,63 @@ export class MusicController {
     const session = this.sessionService.resolve(req, res);
     this.musicService.clearAllLibraries(session);
     return { ok: true as const };
+  }
+
+  /**
+   * 列某平台的**远端歌单目录**（specs/remote-playlist）。
+   *
+   * 与 `GET /music/library` 的关键区别：library 是「已 ❤ 的集合」且**持久化**；
+   * 这里是「平台侧用户排好的有序歌单」，**按需实时读、不落盘**，也**不走**
+   * mergeLibrary 跨平台合并（顺序会被打散、重复项会被折叠）。
+   *
+   * 平台不支持歌单（Deezer 匿名 / Spotify 未授权 playlist scope）→ 返回
+   * `{ supported: false }` 而非 500，调用方据此隐藏入口。
+   */
+  @Get('playlists')
+  async listPlaylists(
+    @Query('provider') provider: string,
+    @Query('limit') limit: string | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    return this.musicService.listRemotePlaylists(
+      session,
+      requirePlaylistProvider(provider),
+      limit ? Number(limit) : 200,
+    );
+  }
+
+  /**
+   * 拉远端歌单详情，返回 `{ playlist, items }`。
+   *
+   * `items` 是给队列播放器直接吃的 `UnifiedSearchItem[]`——renderer 的队列本来
+   * 就吃 UnifiedSearchItem（见 `usePlayer` 的 `queueRef.unifiedItems`），返原始
+   * `Track[]` 会逼前端再实现一遍转换。
+   *
+   * ⚠️ 这个转换是 **1:1 保序、不合并**（`playlistTracksToUnifiedItems`），
+   * **不是** `buildUnifiedItems`——后者按歌名折叠同名条目，会让 227 首的歌单
+   * 变成 225 首。详见 specs/remote-playlist §Phase 5。
+   */
+  @Get('playlists/:provider/:id/tracks')
+  async playlistTracks(
+    @Param('provider') provider: string,
+    @Param('id') id: string,
+    @Query('limit') limit: string | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const playlist = await this.musicService.getRemotePlaylist(
+      session,
+      requirePlaylistProvider(provider),
+      id,
+      // 默认 2000 而不是 1000：网易云 / QQ 的歌单上限就是 1000（provider 内部
+      // 会 clamp `n` 到 1000），但 Deezer 歌单可达 **5000** 首 —— 用 1000 会把
+      // Deezer 的歌单静默截掉一半。用户显式传 limit 时以用户的为准。
+      limit ? Number(limit) : 2000,
+    );
+    return { playlist, items: playlistTracksToUnifiedItems(playlist.tracks) };
   }
 
   /**

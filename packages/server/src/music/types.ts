@@ -1,4 +1,5 @@
 import { MusicProvider } from '../common/provider';
+import type { ProviderSession } from '../common/session';
 
 /**
  * 单条 track 元数据。统一各 provider search / fetchLiked / radio 返回形状，
@@ -220,3 +221,70 @@ export interface FanOutLikeResponse {
   liked: boolean;
   fannedOutTo: MusicProvider[];
 }
+
+// ── 远端歌单（specs/remote-playlist）────────────────────────────────────────
+
+/**
+ * 远端歌单元信息（列表页用，不含曲目）。
+ *
+ * ⚠️ 刻意**不复用** `library/playlist.service.ts` 的 `Playlist`，也不复用
+ * `UnifiedSearchItem`：远端歌单是「用户明确排好的、有序的、单平台的列表」，
+ * 而 `UnifiedSearchItem` 是 `mergeLibrary` 跨平台去重后的**集合**语义——把歌单
+ * 过一遍合并管线会打散顺序、折叠重复项，结果就不是用户那个歌单了。
+ * 详见 specs/remote-playlist/spec.md §核心架构决策。
+ */
+export interface RemotePlaylistMeta {
+  provider: MusicProvider;
+  /** 平台内歌单 id（网易云 / Deezer 数字 id、QQ disstid、Spotify base62）。 */
+  id: string;
+  name: string;
+  coverUrl: string;
+  /**
+   * 平台声明的总曲目数。**可能 > 实际返回条数**——QQ 会过滤失效歌曲
+   * （见 `qq.provider.ts` fetchLiked 里对 `hasmore` 的注释），网易云匿名被反爬
+   * 时也会少给。这里记平台口径，不记 `tracks.length`。
+   */
+  trackCount: number;
+  /** 私有歌单（网易云 `privacy === 10`）。Deezer/Spotify 未实现时留 false。 */
+  private: boolean;
+}
+
+/** 远端歌单详情 = 元信息 + **保序**曲目（顺序 === 平台返回顺序）。 */
+export interface RemotePlaylist extends RemotePlaylistMeta {
+  tracks: Track[];
+}
+
+/**
+ * 平台歌单能力契约 —— **两个方法各自独立可选**。
+ *
+ * 为什么拆成两个 interface 而不是要求成对实现：QQ 只能实现读、不能实现列
+ * （2026-10-15 登录态实测：8 个列目录候选 module.method 全 `500003`，见
+ * specs/remote-playlist/spec.md §Phase 2 实证）。若契约要求成对，QQ 会被整
+ * 个判为「不支持」，连它确实能做的读歌单也一起废掉。
+ *
+ * service 分别探测（`typeof p.listPlaylists === 'function'` /
+ * `typeof p.fetchPlaylistTracks === 'function'`），缺失时降级而不是 500。
+ */
+export interface PlaylistListerProvider {
+  /**
+   * 列当前用户的歌单目录。未登录 → 抛 `not_logged_in`。
+   * @param limit 最多返回多少个歌单（平台侧可能有自己的上限）。
+   */
+  listPlaylists(session: ProviderSession, limit?: number): Promise<RemotePlaylistMeta[]>;
+}
+
+export interface PlaylistReaderProvider {
+  /**
+   * 拉单个歌单的曲目（保序）。歌单不存在 → 抛 `playlist_not_found`。
+   * @param maxTracks 硬上限。歌单容量各平台不同（网易云/QQ 1000、Spotify 10000、
+   *   Deezer 5000），调用方按需 clamp。
+   */
+  fetchPlaylistTracks(
+    session: ProviderSession,
+    playlistId: string,
+    maxTracks?: number,
+  ): Promise<RemotePlaylist>;
+}
+
+/** 两种能力都实现的 provider（如网易云）。 */
+export type PlaylistCapableProvider = PlaylistListerProvider & PlaylistReaderProvider;
