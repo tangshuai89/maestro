@@ -62,6 +62,7 @@ const {
   parsePlayableQueue,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
+  isResidualAudio,
 } = mod;
 
 let passed = 0;
@@ -90,6 +91,66 @@ async function main() {
   check('2. FULL_SONG_PROVIDERS', FULL_SONG_PROVIDERS, ['qq', 'netease']);
   check('3. TRIAL_MAX_SEC = 120', TRIAL_MAX_SEC, 120);
   check('4. TRIAL_GAP_SEC = 45', TRIAL_GAP_SEC, 45);
+
+  // ── isResidualAudio（2026-10-16 新增，残缺音源判定）────────────────
+  // 背景：旧实现带 `FULL_SONG_PROVIDERS.includes(provider)` 前置条件，导致
+  // 《不染》这种「QQ 全长版全 VIP 锁、只有 preview 平台能出声」的场景
+  // **连试都不试**，用户静默听完 29 秒零反馈。下面钉死「不按 provider 过滤」。
+  check(
+    '6. ★ 《不染》场景：deezer 源、音频 29s、元数据 325s → 判残缺（要跨平台搜全曲）',
+    isResidualAudio({ provider: 'deezer', audioDuration: 29, metaDuration: 325 }),
+    true,
+  );
+  check(
+    '7. 同上，spotify 源 → 同样判残缺（旧实现会直接 false）',
+    isResidualAudio({ provider: 'spotify', audioDuration: 30, metaDuration: 240 }),
+    true,
+  );
+  check(
+    '8. qq 源 VIP 试听 → 仍判残缺（原有行为不回退）',
+    isResidualAudio({ provider: 'qq', audioDuration: 30, metaDuration: 240 }),
+    true,
+  );
+  check(
+    '9. provider 不影响判定：四个平台同参数结果一致',
+    ['qq', 'netease', 'deezer', 'spotify'].map((provider) =>
+      isResidualAudio({ provider, audioDuration: 29, metaDuration: 325 }),
+    ),
+    [true, true, true, true],
+  );
+  // 不该判残缺的情形
+  check(
+    '10. 正常全曲（225s 音频 / 240s 元数据）→ 不判残缺',
+    isResidualAudio({ provider: 'qq', audioDuration: 225, metaDuration: 240 }),
+    false,
+  );
+  check(
+    '11. 元数据与音频差 < TRIAL_GAP_SEC（45s）→ 不判（切片加载抖动）',
+    isResidualAudio({ provider: 'qq', audioDuration: 200, metaDuration: 240 }),
+    false,
+  );
+  check(
+    '12. 音频 > TRIAL_MAX_SEC（120s）→ 不判（本来就不是试听）',
+    isResidualAudio({ provider: 'spotify', audioDuration: 180, metaDuration: 300 }),
+    false,
+  );
+  check(
+    '13. audioDuration 未就绪（Infinity / NaN / 0）→ 不判',
+    [
+      isResidualAudio({ provider: 'qq', audioDuration: Infinity, metaDuration: 300 }),
+      isResidualAudio({ provider: 'qq', audioDuration: NaN, metaDuration: 300 }),
+      isResidualAudio({ provider: 'qq', audioDuration: 0, metaDuration: 300 }),
+    ],
+    [false, false, false],
+  );
+  check(
+    '14. metaDuration 缺失 / 0 → 不判（没有全长基准就无从判断）',
+    [
+      isResidualAudio({ provider: 'qq', audioDuration: 29, metaDuration: 0 }),
+      isResidualAudio({ provider: 'qq', audioDuration: 29, metaDuration: NaN }),
+    ],
+    [false, false],
+  );
 
   // ── getFullSongProviders (Bug #3: 必须 tier premium AND wpsReady 才含 spotify) ──
   // 5. premium tier + WPS 就绪 → 含 spotify（全曲流，WPS 接管）

@@ -49,6 +49,80 @@ export function getFullSongProviders(
   return [...FULL_SONG_PROVIDERS];
 }
 
+/**
+ * 「当前音源是残缺音源」判定 —— 试听升级的**唯一入口条件**。
+ *
+ * 抽成纯函数（2026-10-16）有两个原因：
+ *  1. 这个判定式原先内嵌在 usePlayer 的 onLoadedMetadata 里，零覆盖 —— 而它
+ *     恰恰出过一次静默失效（见下）。
+ *  2. 有了纯函数才能在 usePlayer.test.mjs 里精确复现《不染》那个场景。
+ *
+ * ## 判定
+ *
+ * 音频流实际长度远短于元数据全长 → 残缺（VIP 试听 / preview），应去 qq/网易云
+ * 搜全曲换源。
+ *
+ * ## ⚠️ 为什么**不能**按当前 provider 过滤
+ *
+ * 原实现带 `FULL_SONG_PROVIDERS.includes(provider)` 前置条件，理由写在注释里是
+ * 「Deezer/Spotify 的 30s 是正常预览，换过去还是 30s，白换」。**这个理由只对了
+ * 一半**，它漏掉了真正会命中的场景：
+ *
+ *   实测《不染》（毛不易，2026-10-16）：QQ 上有 5 个全长版 325/319/281s，但
+ *   **全部 VIP 锁**；网易云根本没这首歌；Deezer/Spotify 的 preview 是唯一能出声
+ *   的源。此时当前 provider 是 preview 平台，旧条件直接 return ——**连试都不试**，
+ *   用户静默听完 29 秒，界面零反馈（用户原话：「完全没变化，放完了 29 秒」）。
+ *
+ * 正确语义：**当前在哪个平台不重要**，重要的是「qq/网易云有没有全曲版」。
+ * tryUpgradeFromTrial 的目标本来就是 fullProviders，放开入口只会让它多一次本可
+ * 以成功的搜索。
+ *
+ * ## 代价
+ *
+ * 所有平台都只有 30s preview 的小众歌，会多一次注定失败的跨平台搜索。后台
+ * fire-and-forget 不阻塞播放，且 trialServerTriedRef 保证每首只问一次。
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * 附：为什么**不能**改成「在搜索阶段把残缺条目过滤掉」
+ * （2026-10-16 实测，别再走这条已被否掉的路）
+ *
+ * 直觉上「搜不到全曲的条目就别让它出现在结果里」很像那么回事。实测否掉了：
+ *
+ *   ① 搜索层（元数据 duration）：抽 12 个关键词 × 20 条 = **240 条结果，
+ *      duration ≤35s 的有 0 条**，≤45s 的只有 1 条且是真的彩蛋（42s「彩蛋2」）。
+ *   ② ❤ 库：1174 条里 duration <60s 的只有 **7 条**（0.6%），全是真短音频
+ *      ——「声优小剧场」46s、「干饭王」47s 这类，不是被截断的残次品。
+ *   ③ QQ 歌单 8584177317：227 首，duration <60s 的 **0 条**。
+ *
+ * 结论：**「残缺的 29 秒 track」这个对象根本不存在**。用户看到的 29 秒是
+ * `<audio>` 读到的**真实流长度**（= UI 显示的总时长），而元数据是干净的
+ * 99–325s。残缺发生在**版权锁 / preview 限制**，不在数据里。
+ *
+ * 所以正确修法只能是**播放时跨平台找替代**（本函数 + tryUpgradeFromTrial），
+ * 而不是在搜索/入库阶段剔除条目 —— 那里没有可剔除的对象。
+ *
+ * 换源也换不到的情况（就是《不染》）：QQ 全长版全 VIP 锁 + 网易云无此歌 →
+ * 搜不到替代。此时的收尾体验（是否自动跳过残缺音源）是独立的**产品决策**，
+ * 尚未实现；当前行为 = 亮 TRIAL 角标告知 + 播完继续下一首。
+ */
+export function isResidualAudio(input: {
+  /** 当前音源的 provider —— **只用于日志/调试，不参与判定**。 */
+  provider?: MusicProvider;
+  /** `<audio>` 读到的真实流长度（秒）。UI 显示的总时长也是它。 */
+  audioDuration: number;
+  /** 元数据全长（秒）。 */
+  metaDuration: number;
+}): boolean {
+  const { audioDuration, metaDuration } = input;
+  if (!Number.isFinite(audioDuration) || audioDuration <= 0) return false;
+  if (!Number.isFinite(metaDuration) || metaDuration <= 0) return false;
+  // 流式媒体在 metadata 未就绪时 duration 可能是 Infinity / NaN —— 上面的
+  // isFinite 已挡掉。0 是"还没加载出来"，不是残缺。
+  if (audioDuration > TRIAL_MAX_SEC) return false;
+  // 元数据只比音频长一点点（切片加载抖动）→ 不算残缺，否则会误判正常加载。
+  return metaDuration > audioDuration + TRIAL_GAP_SEC;
+}
+
 /** ❤ 写回的乐观更新收敛判断：避免陈旧 ticket 覆盖新状态。
  *  isLikedSync 在 usePlayer 与 useAuth 各持一份 ticket，跨 hook 异步
  *  收敛靠「ticket + trackId 双匹配」防覆盖。 */
