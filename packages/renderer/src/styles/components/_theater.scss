@@ -719,6 +719,10 @@
   background: transparent;
   border: none;
   z-index: 6;
+  // 面板级兜底：当前行歌词再长也不得把面板撑出画布。
+  // 200px ≈ 3 行 × 44px 的主视觉高度 + 上下留白；超出部分交给内部 line-clamp。
+  max-height: 420px;
+  overflow: hidden;
 }
 
 .th-lyric {
@@ -747,6 +751,16 @@
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent);
   flex-shrink: 0;
 }
+// 当前行歌词 = 剧场模式的主视觉。44px × 无行数约束是个定时炸弹：
+// 歌词数据里混着制作人员名单这种超长行（实测 40 字），560px 宽只放得下
+// ~12 个中文字 → 换行 4 行 × 44px 把面板撑到 ~500px，压住下方
+// 「复制歌词 / 换个源找歌词」按钮和 `DEEP.SEEK // NEURAL FEED`。
+//
+// 三道防线：
+//   1. `.th-lyrics-panel` 加 max-height（面板级兜底，任何单元素失控都不炸页）
+//   2. 下面两个 `--long` / `--xlong` 档位按字数降级字号（TSX 侧选档）
+//   3. 本行 `-webkit-line-clamp: 3`（最后一道，超长也不超过 3 行）
+// 完整内容始终可取：点当前行导出分享图 / 「复制歌词」/「复制本行」。
 .th-lyric--current {
   font-size: 44px;
   font-weight: 600;
@@ -758,6 +772,24 @@
   animation: th-lyric-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: normal;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+// 14–30 字：两行内放得下，降到 30px
+.th-lyric--current--long {
+  font-size: 30px;
+  letter-spacing: -0.5px;
+}
+
+// >30 字（制作人员名单等异常长行）：降到与普通歌词同级，靠 line-clamp 兜底
+.th-lyric--current--xlong {
+  font-size: 20px;
+  letter-spacing: 0;
+  font-weight: 500;
+  -webkit-line-clamp: 3;
 }
 @keyframes th-lyric-in {
   from {

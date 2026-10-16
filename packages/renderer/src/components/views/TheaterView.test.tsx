@@ -248,3 +248,85 @@ describe('TheaterView 歌词交互', () => {
     expect(await screen.findByRole('button', { name: /其它源也没有歌词/ })).toBeInTheDocument();
   });
 });
+
+/**
+ * 超长当前行歌词的字号分档（2026-10-16 实测事故）。
+ *
+ * 事故：歌词数据里混着制作人员名单这种超长行——
+ * 「宣传：北京很有可能文化传播有限公司：王朝顺/沈雨娟/张倩玉/夏童/田贝贝/汪斯瑶/丁敏」
+ * 40 字。`.th-lyric--current` 是 44px 主视觉且无行数约束，560px 宽只放得下
+ * ~12 个中文字 → 换行 4 行把歌词面板撑到 ~500px，把下方「复制歌词 /
+ * 换个源找歌词」按钮和 `DEEP.SEEK // NEURAL FEED` 全部压住。
+ *
+ * 修法是**渐进降级**（按字数切档）+ line-clamp 兜底，短歌词的 44px 视觉
+ * 冲击保持不变。这组用例把档位边界钉死。
+ */
+describe('TheaterView 超长当前行歌词降级', () => {
+  // 实测事故歌词，一字不改
+  const XLONG = '宣传：北京很有可能文化传播有限公司：王朝顺/沈雨娟/张倩玉/夏童/田贝贝/汪斯瑶/丁敏';
+  const LONG = '这是一句稍微长一点但是还在两行内放得下的歌词';
+  const SHORT = '第三句';
+
+  /** 取当前行（`.th-lyric--current`）元素。 */
+  function currentLineEl(): HTMLElement {
+    const el = document.querySelector('.th-lyric--current');
+    if (!el) throw new Error('找不到当前行元素');
+    return el as HTMLElement;
+  }
+
+  function propsWith(text: string): Partial<TheaterViewProps> {
+    return { lyrics: [{ time: 0, text }], lyricsSynced: true, currentTime: 10 };
+  }
+
+  it('短歌词不加降级档位（保持 44px 主视觉）', () => {
+    render(<TheaterView {...makeProps(propsWith(SHORT))} />);
+    const el = currentLineEl();
+    expect(el.textContent).toBe(SHORT);
+    expect(el.className).not.toContain('--long');
+    expect(el.className).not.toContain('--xlong');
+  });
+
+  it('中等长度（>14 字）加 --long 档', () => {
+    render(<TheaterView {...makeProps(propsWith(LONG))} />);
+    expect(LONG.length).toBeGreaterThan(14);
+    expect(currentLineEl().className).toContain('th-lyric--current--long');
+    expect(currentLineEl().className).not.toContain('--xlong');
+  });
+
+  it('★ 超长行（>30 字）加 --xlong 档（就是压住布局的那类内容）', () => {
+    render(<TheaterView {...makeProps(propsWith(XLONG))} />);
+    const el = currentLineEl();
+    expect(XLONG.length).toBeGreaterThan(30);
+    expect(el.textContent).toBe(XLONG); // 内容完整，不截断
+    expect(el.className).toContain('th-lyric--current--xlong');
+  });
+
+  it('档位边界：14 字不降级、15 字降级、30 字不降 xlong、31 字降 xlong', () => {
+    const cases: Array<[string, string[]]> = [
+      ['a'.repeat(14), []],
+      ['a'.repeat(15), ['th-lyric--current--long']],
+      ['a'.repeat(30), ['th-lyric--current--long']],
+      ['a'.repeat(31), ['th-lyric--current--xlong']],
+    ];
+    for (const [text, expected] of cases) {
+      const { unmount } = render(<TheaterView {...makeProps(propsWith(text))} />);
+      const cls = currentLineEl().className;
+      for (const e of expected) expect(cls).toContain(e);
+      // 短档不出现
+      if (!expected.includes('th-lyric--current--long')) {
+        expect(cls).not.toContain('--long');
+      }
+      if (!expected.includes('th-lyric--current--xlong')) {
+        expect(cls).not.toContain('--xlong');
+      }
+      unmount();
+    }
+  });
+
+  it('超长行点当前行仍能拿到完整文本（没被截断丢内容）', async () => {
+    const onExportLyrics = vi.fn();
+    render(<TheaterView {...makeProps({ ...propsWith(XLONG), onExportLyrics })} />);
+    await userEvent.click(currentLineEl());
+    expect(onExportLyrics).toHaveBeenCalledWith(XLONG);
+  });
+});
