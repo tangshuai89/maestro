@@ -30,6 +30,8 @@ export interface MiniPlayerProps {
   onExpand: () => void;
   /** spec B3：lite 模式 NL 歌单入口 ✨ */
   onOpenNL?: () => void;
+  /** 远端歌单入口（specs/remote-playlist）。从浏览器复制歌单链接进来读。 */
+  onOpenRemote?: () => void;
 }
 
 // lucide 风格内联 SVG（stroke 制，currentColor 上色）——与 TheaterView 同一套
@@ -84,6 +86,7 @@ export default function MiniPlayer({
   onSeek,
   onExpand,
   onOpenNL,
+  onOpenRemote,
 }: MiniPlayerProps) {
   const hasTrack = Boolean(track);
   const effTime = hasTrack ? currentTime : 0;
@@ -139,6 +142,17 @@ export default function MiniPlayer({
           aria-label="NL 歌单"
         >
           ✨ NL 歌单
+        </button>
+      )}
+      {onOpenRemote && (
+        <button
+          type="button"
+          onClick={onOpenRemote}
+          className="mini-nl-entry"
+          title="从 QQ / 网易云 / Deezer 的歌单链接导入"
+          aria-label="导入歌单"
+        >
+          🔗 歌单
         </button>
       )}
       <div className="mini-info">

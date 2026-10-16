@@ -140,10 +140,22 @@
 
 // ── search-bar（960×56 @ y=112，居中） ───────────────────────────
 
-.sp-nl-entry {
+/* 入口按钮的**容器**——绝对定位只在这里做一次。
+ *
+ * 之前 .sp-nl-entry 自带 `position: absolute; top: 76px; left: 64px`，
+ * 于是第二个入口（🔗 歌单，specs/remote-playlist）复用同一个类时叠在同一个
+ * 坐标上，把 ✨ NL 歌单整个盖住了。定位归容器、按钮归流式，加第 N 个入口
+ * 不用再碰坐标。 */
+.sp-entries {
   position: absolute;
   top: 76px;
   left: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sp-nl-entry {
   display: inline-flex;
   align-items: center;
   gap: 6px;

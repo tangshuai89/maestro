@@ -51,6 +51,8 @@ interface Props {
   onClose: () => void;
   /** spec B3：NL 歌单入口（theater 模式：search 框上方 ✨ 按钮） */
   onOpenNL?: () => void;
+  /** 远端歌单入口（specs/remote-playlist）。从浏览器复制歌单链接进来读。 */
+  onOpenRemote?: () => void;
   /**
    * Spotify Web Playback SDK 是否已连（Premium + provider=spotify）。
    * 决定 Spotify 源算不算"能出声"：停发 preview_url 后，非 WPS 态下
@@ -77,7 +79,13 @@ const PLATFORM_BADGE: Record<MusicProvider, { letter: string; color: string }> =
   spotify: { letter: 'S', color: '#3DFFA2' },
 };
 
-export default function SearchPanel({ onPlay, onClose, onOpenNL, wpsReady = false }: Props) {
+export default function SearchPanel({
+  onPlay,
+  onClose,
+  onOpenNL,
+  onOpenRemote,
+  wpsReady = false,
+}: Props) {
   const [q, setQ] = useState('');
   const [items, setItems] = useState<UnifiedSearchItem[]>([]);
   const [page, setPage] = useState(1);
@@ -415,16 +423,32 @@ export default function SearchPanel({ onPlay, onClose, onOpenNL, wpsReady = fals
           )}
         </header>
 
-        {/* spec B3：theater 模式 NL 歌单入口 ✨ */}
-        {onOpenNL && (
-          <button
-            type="button"
-            className="sp-nl-entry"
-            onClick={onOpenNL}
-            title="说一句话生成歌单（DeepSeek）"
-          >
-            ✨ NL 歌单
-          </button>
+        {/* theater 模式入口：✨ NL 歌单（spec B3）+ 🔗 歌单链接
+            （specs/remote-playlist）。两者共用 .sp-entries 容器流式并排 ——
+            别给单个按钮加绝对定位，那会让第二个入口盖住第一个。 */}
+        {(onOpenNL || onOpenRemote) && (
+          <div className="sp-entries">
+            {onOpenNL && (
+              <button
+                type="button"
+                className="sp-nl-entry"
+                onClick={onOpenNL}
+                title="说一句话生成歌单（DeepSeek）"
+              >
+                ✨ NL 歌单
+              </button>
+            )}
+            {onOpenRemote && (
+              <button
+                type="button"
+                className="sp-nl-entry"
+                onClick={onOpenRemote}
+                title="从 QQ / 网易云 / Deezer 的歌单链接导入"
+              >
+                🔗 歌单
+              </button>
+            )}
+          </div>
         )}
 
         {/* search-bar（960×56 @ y=112） */}

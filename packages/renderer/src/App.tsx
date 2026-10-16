@@ -23,6 +23,7 @@ import NeteaseCookieModal from './components/modals/NeteaseCookieModal';
 import RecoKeyModal from './components/modals/RecoKeyModal';
 import LikedLibraryModal from './components/modals/LikedLibraryModal';
 import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
+import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
 import RecoLoading from './components/common/RecoLoading';
@@ -164,6 +165,8 @@ export default function App() {
   // 按钮上展示数量，点击弹窗内自己处理 refresh。
   const [likedOpen, setLikedOpen] = useState(false);
   const [nlOpen, setNlOpen] = useState(false);
+  // 远端歌单（specs/remote-playlist Phase 5）
+  const [remoteOpen, setRemoteOpen] = useState(false);
   // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
   // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
   const [likedCount, setLikedCount] = useState<number>(() => {
@@ -521,6 +524,7 @@ export default function App() {
           onSeek={player.seek}
           onExpand={handleTogglePlayerMode}
           onOpenNL={() => setNlOpen(true)}
+          onOpenRemote={() => setRemoteOpen(true)}
         />
       ) : (
         <TheaterView
@@ -597,6 +601,10 @@ export default function App() {
             player.setSearchOpen(false);
             setNlOpen(true);
           }}
+          onOpenRemote={() => {
+            player.setSearchOpen(false);
+            setRemoteOpen(true);
+          }}
         />
       )}
 
@@ -648,6 +656,23 @@ export default function App() {
             player.appendToQueue(items);
           }}
           onNeedKey={() => reco.setRecoKeyOpen(true)}
+        />
+      )}
+
+      {remoteOpen && (
+        <RemotePlaylistModal
+          open
+          onClose={() => setRemoteOpen(false)}
+          onPlay={(items, idx) => {
+            setRemoteOpen(false);
+            player.setError(null);
+            player.playSearch(items, idx);
+          }}
+          onAppendQueue={(items) => {
+            setRemoteOpen(false);
+            player.setError(null);
+            player.appendToQueue(items);
+          }}
         />
       )}
 
