@@ -14,7 +14,7 @@ Built with **Electron + React + NestJS** as a desktop-first client.
 > 🟢 **Phase 0–6 done; Phase 7 (AETHER Theater + production packaging) shipping.**
 > All four platform adapters, the unified search, the cross-platform
 > match engine, the importable unified library, DeepSeek recommendations,
-> heart fan-out, the **AETHER Theater view** (酸性赛博宇宙剧场 — 1440×900
+> heart fan-out, the **AETHER Theater view** ("acid cyberpunk cosmic theater" — 1440×900
 > holographic orbit cover + lyric stream + energy-core transport + nebula
 > backdrop, Figma-driven via the official `figma-remote` MCP), Spotify
 > OAuth PKCE with heart-write-back, and Premium full-track playback (via
@@ -109,7 +109,7 @@ Legend: ✅ done · 🚧 partial / in progress · 📋 planned
 | **DeepSeek BYO-key AI recommendations**                                                                                              |                   ✅                    |
 | **Heart fan-out to all licensed platforms**                                                                                          |                   ✅                    |
 | **Spotify adapter** (OAuth PKCE + read + ❤ write-back + WPS full-track for Premium)                                                  |  ⚠️ dev done · **license 500** in prod  |
-| Frontend architecture: CSS/tsx 解耦 + SCSS 7-1 + 拆巨石                                                                              |               ✅ (PR #13)               |
+| Frontend architecture: CSS/tsx decoupling + SCSS 7-1 + monolith split                                                                |               ✅ (PR #13)               |
 | **castLabs Electron fork** (Widevine CDM + dev VMP — **prod VMP via EVS** required)                                                  | ✅ (PR #39) / upgraded v31→v43 (PR #52) |
 | **Figma-driven design pipeline** (`.superdesign/` brief → `scripts/figma-aether-v4-*.mjs` build → `figma-remote` MCP audit → PR #56) |               ✅ (PR #56)               |
 | **Production packaging** (NestJS sidecar + prod API base + **Apple Dev + castLabs EVS VMP signing**)                                 |             🚧 in progress              |
@@ -184,60 +184,61 @@ packages/
                 main.tsx                 entry
                 api.ts                   data layer
                 hooks/                   9 hooks (usePlayer owns the audio core;
-                                          useSpotifyWpsPlayer wraps Premium 全曲
+                                          useSpotifyWpsPlayer wraps Premium
+                                          full-track
                                           via the castLabs Electron fork;
                                           + useCoverArt · useTheme)
                 components/    22 components across 8 groups
                   common/      Modal · ErrorPanel · AuthErrorPanel · RecoLoading
                   layout/      Titlebar · SourceMenu · QualityMenu · DeezerPresetSelect
-                  mini/        MiniPlayer      ← Apple Music 式迷你条
-                                                 （P1 浮层 + 窗口跟随缩放）
+                  mini/        MiniPlayer      ← Apple Music-style mini bar
+                                                 (P1 overlay + window-tracking scale)
                   search/      SearchPanel · SourceChip · providerLogos
                   modals/      NeteaseCookieModal · RecoKeyModal
                                LikedLibraryModal · SettingsModal
                   settings/    AccountsList · ChannelPriorityList
                                LibraryManager · SourceHealthSection
                   source-select/SourceSelect
-                  views/       TheaterView    ← AETHER 剧场主界面
-                                                 （PR #56，含 cover/lyrics/transport/进度环
-                                                 等所有原 player/ 子组件的内嵌实现）
+                  views/       TheaterView    ← AETHER theater main view
+                                                 (PR #56 — inlines cover/lyrics/transport/
+                                                 progress-ring and every former player/ subcomponent)
                 lib/         format · storage · coverColor · lyrics cache
                               · likedCache · spotify-wps · debug (wpsLog/Error)
                 styles/      main.scss + SCSS 7-1 partials
-                              components/_theater.scss (剧场视图样式，~1309 行)
-                              components/_mini-player.scss (迷你条样式，~257 行)
-                              components/_settings-modal.scss (Settings 全屏样式，~466 行)
-                              components/_app-shell.scss (含 .theater-mode / .mini-mode 切换)
+                              components/_theater.scss (theater view styles, ~1309 lines)
+                              components/_mini-player.scss (mini bar styles, ~257 lines)
+                              components/_settings-modal.scss (full-screen Settings styles, ~466 lines)
+                              components/_app-shell.scss (incl. .theater-mode / .mini-mode toggle)
   server/     NestJS back-end
               src/
                 common/   config · storage · session · provider registry
-                          · timeout (withTimeout, 5s 单平台) · lyrics
+                          · timeout (withTimeout, 5s per platform) · lyrics
                           · normalizer (fuzzyKey/stripFeatTags/cjkUnify,
-                            与 renderer groupLibraryItems 共用)
+                            shared with renderer groupLibraryItems)
                 auth/     auth controller + QQ / NetEase / Spotify strategies
                 music/    music controller + 4 providers + audio / cover proxy
-                          + netease-crypto (weapi AES/RSA) + 策展别名表
+                          + netease-crypto (weapi AES/RSA) + curated alias tables
                           + library-import + lyrics aggregate + WPS source picker
                 library/  liked-songs import + unified library (read / write)
                 match/    cross-platform track resolution (ISRC + fuzzy)
                 reco/     DeepSeek recommendation engine
                 like/     heart fan-out
-  common/     @maestro/common — 跨包类型 / normalizer / artistAlias / 接口
+  common/     @maestro/common — cross-package types / normalizer / artistAlias / interfaces
 specs/        Phase-level spec files (one per P0–P6 + packaging + cross-cutting)
               + tasks.md under each
-              + 新增 mini-player · token-adoption · d11-visual-regression
-              + paid-album-detection · cross-script-matching（搜索侧严口径，详见 docs/）
+              + added mini-player · token-adoption · d11-visual-regression
+              + paid-album-detection · cross-script-matching (strict policy on the search side, see docs/)
 
 # Tooling & design pipeline
-.mcp.json          figma-remote MCP（AI 可读 / 写 Figma 设计稿）
-.codex/            Codex CLI 配置 (config.toml)
-.opencode/         OpenCode 命令模板 + node_modules
-.superdesign/      设计简报 + 设计稿（A/B 草稿 HTML + PNG） — AETHER 视觉来源
-docs/              阶段性长文档：aether-theater-v4-spec.md · figma-driven-frontend.md
+.mcp.json          figma-remote MCP (AI can read / write Figma design files)
+.codex/            Codex CLI config (config.toml)
+.opencode/         OpenCode command templates + node_modules
+.superdesign/      design brief + design drafts (A/B mockup HTML + PNG) — AETHER visual source
+docs/              long-form stage docs:aether-theater-v4-spec.md · figma-driven-frontend.md
                    · audit-2026-07-30.md · ISSUES.md · interview-questions-2026.md
 scripts/           test.sh · lint.sh · figma-aether-v4-{foundations,components,
                    screens,motion,icons,cleanup,audit,snapshot,smoke,typecheck}.mjs
-                   · final-merge · export-qq-artists · audit-liked · 等等
+                   · final-merge · export-qq-artists · audit-liked · etc.
 
 .env.example       Dev env vars (all optional, sensible defaults)
 ```
@@ -303,6 +304,9 @@ defaults.
 
 ## Logging in to each source
 
+> **Note** — the app UI ships with Chinese button labels, so they are quoted
+> verbatim below: **登录** = Log in, tray **退出** = Quit.
+
 - **NetEase Cloud Music** — click **登录**, scan the QR code with the NetEase
   phone app, confirm. The server drives NetEase's `/api/login/qrcode/*`
   endpoints and captures `MUSIC_U` from the `Set-Cookie` on success. A
@@ -356,20 +360,21 @@ How the packaged app runs:
 
 - **Sidecar**: Electron main spawns `resources/server/main.js` as a NestJS
   sidecar, polls `:3200/music/deezer/editorials` until ready, then opens the
-  window. On quit (Cmd+Q / tray "退出") the sidecar is killed.
+  window. On quit (Cmd+Q / tray "退出" / Quit) the sidecar is killed.
 - **API base**: preload exposes `window.electronAPI.apiBase`; the renderer's
   `api.ts` prefers it over the dev `localhost:3200` fallback.
 - **extraResources**: `renderer/`, `server/` (compiled dist) and `build/`
   (icons) are copied into `.app/Contents/Resources/`.
 - **Tray**: a menubar tray icon with play/pause, prev/next, show-window and
   quit. Closing the main window hides it to the tray (playback continues);
-  the app only exits via Cmd+Q or the tray "退出" item.
+  the app only exits via Cmd+Q or the tray "退出" / Quit item.
 
 > **Known limitation** — the sidecar needs the server's runtime
 > `node_modules`. With npm workspaces those are hoisted to the repo root, so a
 > fully self-contained `.dmg` still needs the server deps bundled (or an
 > esbuild bundle that preserves NestJS decorator metadata). See
-> `specs/packaging/spec.md` → "已知限制". Dev (`npm run dev`) remains the
+> `specs/packaging/spec.md` → "Known limitations" (the Chinese original reads
+> 「已知限制」). Dev (`npm run dev`) remains the
 > fully-supported way to run the app.
 
 ---
@@ -381,22 +386,27 @@ and the acceptance criteria for each item. At a glance:
 
 1. **Production packaging** — NestJS sidecar + correct prod API base so
    `electron-builder` ships a working app.
-2. **Spotify parity** — full-track play (Premium) 应用层已端到端打通，**仅卡外部
-   EVS 签名**（已不属本期工程范围）。
+2. **Spotify parity** — full-track play (Premium) is wired end-to-end on the
+   application side; **only the external EVS signing** remains (out of scope for
+   this engineering phase).
 3. **Local persistence hardening** — back up / restore the unified library
    and session cookies so re-installs don't lose state.
 4. **Lyrics quality** — surface the existing lyrics fetch more prominently
    and add a "tap to copy" / "tap to share" affordance.
-5. **Settings & onboarding polish** — ✅ **已落地**（PR #88）：DeepSeek key
-   重置、库管理、源连接健康、渠道优先级（拖拽排序）+ AETHER 全屏风格还原。
-6. **Mini Player 模式** — ✅ P1 已落地（commit `71205ae`）：Apple Music 式
-   浮层 + 主窗口跟随缩放（620×170），`Cmd+Shift+M` 切换，`<audio>` 不重建。
-7. **付费内容识别** — ✅ vipLocked 检测 + 跨平台 fallback 跳过 vipLocked 候选
-   （`d30c3e5` · `10a5a77` · `fa91734`）：用户感知「不能播」时不会误降级到
-   Deezer 30s 预览。
-8. **跨脚本元数据合并** — ✅ 搜索侧严口径（PR #87 `3c09fd8`）：CJK ↔ 拉丁
-   script 在搜索链路下合并（如「寂寞，好了」+ Deezer 罗马音），library
-   import 走宽口径不变，详见 `docs/cross-script-matching.md`。
+5. **Settings & onboarding polish** — ✅ **shipped** (PR #88): DeepSeek key
+   reset, library management, source-connection health, channel priority
+   (drag to reorder) + AETHER full-screen visual parity.
+6. **Mini Player mode** — ✅ P1 shipped (commit `71205ae`): Apple Music-style
+   overlay + window-tracking scale (620×170), toggled with `Cmd+Shift+M`,
+   `<audio>` is not rebuilt.
+7. **Paid-content detection** — ✅ vipLocked detection + cross-platform
+   fallback skips vipLocked candidates (`d30c3e5` · `10a5a77` · `fa91734`):
+   when the user perceives "can't play", it won't wrongly degrade to Deezer's
+   30-second preview.
+8. **Cross-script metadata merging** — ✅ strict policy on the search side
+   (PR #87 `3c09fd8`): CJK ↔ Latin scripts merge inside the search pipeline
+   (e.g. a CJK title + Deezer romanisation); library import keeps the original
+   loose policy — see `docs/cross-script-matching.md`.
 
 ---
 

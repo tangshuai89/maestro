@@ -15,7 +15,7 @@
 > 🟢 **ステータス：Phase 0–6 完了、Phase 7（AETHER シアター + 本番パッケージング）
 > を出荷中。** 4 つのプラットフォームアダプター、統合検索、クロスプラット
 > フォーム照合エンジン、インポート可能な統合ライブラリ、DeepSeek レコメンド、
-> ♥ ファンアウト、**AETHER シアター视图**（酸性サイバーユバース風 —
+> ♥ ファンアウト、**AETHER シアタービュー**（酸性サイバーユバース風 —
 > 1440×900 ホログラムオービットカバー + 歌詞ストリーム + エナジーコア +
 > ネビュラ背景、公式 `figma-remote` MCP 経由の Figma 駆動）、Spotify OAuth
 > PKCE + ♥ 書き戻し、Premium フル尺再生（Web Playback SDK + Widevine、
@@ -101,7 +101,7 @@ Maestro は、この 4 つのプラットフォームを**あなた自身が所�
 | マルチソースプレーヤー基盤（Electron / React / Nest）                                                                                      |                      ✅                       |
 | プラットフォーム別ログインとセッション永続化                                                                                               |                      ✅                       |
 | サーバーサイド音声プロキシ（実 URL は UI に出さない）                                                                                      |                      ✅                       |
-| **AETHER シアター视图**（1440×900 ホログラムオービットカバー + 歌詞ストリーム + エナジーコア + ネビュラ背景、Figma 駆動）                  |                  ✅ (PR #56)                  |
+| **AETHER シアタービュー**（1440×900 ホログラムオービットカバー + 歌詞ストリーム + エナジーコア + ネビュラ背景、Figma 駆動）                |                  ✅ (PR #56)                  |
 | ライト / ダーク / システムテーマ                                                                                                           |                      ✅                       |
 | **統合マルチソース検索と再生フォールバック**                                                                                               |                      ✅                       |
 | **クロスプラットフォーム曲照合**（ISRC + タイトル/アーティスト/尺 あいまい；アーティスト別名は `@maestro/common` 経由でブリッジ）          |                      ✅                       |
@@ -205,9 +205,9 @@ packages/
                 lib/         format · storage · coverColor · lyrics cache
                               · likedCache · spotify-wps · debug (wpsLog/Error)
                 styles/      main.scss + SCSS 7-1 partials
-                              components/_theater.scss（シアター样式、約 1309 行）
-                              components/_mini-player.scss（ミニバー样式、約 257 行）
-                              components/_settings-modal.scss（Settings 全画面样式、約 466 行）
+                              components/_theater.scss（シアター用スタイル、約 1309 行）
+                              components/_mini-player.scss（ミニバー用スタイル、約 257 行）
+                              components/_settings-modal.scss（Settings 全画面スタイル、約 466 行）
                               components/_app-shell.scss（.theater-mode / .mini-mode 切替含む）
   server/     NestJS バックエンド
               src/
@@ -392,7 +392,7 @@ cd packages/electron && CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack
    「再生不可」時に Deezer 30 秒プレビューに誤降格しない。
 8. **異文字メタデータ統合** —— ✅ 検索側厳格ロジック（PR #87 `3c09fd8`）：
    CJK ↔ ラテン文字の異文字を統合（「寂莫、好了」+ Deezer ローマ字など）、
-   library import は緩いロジックのまま不变。詳細は `docs/cross-script-matching.md`。
+   library import は緩いロジックのまま不変。詳細は `docs/cross-script-matching.md`。
 
 ---
 
