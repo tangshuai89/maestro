@@ -36,28 +36,45 @@ async function stubApi(page) {
   // （http://localhost:3200），与页面 origin(127.0.0.1:4173) 不同源 ——
   // 旧 pattern '**/api/**' 从不匹配，所有请求 connection refused，页面一直
   // 隐性带 error（PlayerNotice 把它渲染出来后窄屏截图超容差）。
-  // 这里按 sidecar origin 拦截；跨域请求必须补 CORS 头，OPTIONS 预检回 204。
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': '*',
-    'Access-Control-Allow-Headers': '*',
+  // 这里按 sidecar origin 拦截。fetchWithToken 用 credentials:'include'
+  // （session cookie），credentialed 跨域下 ACAO 不能是 '*' —— 必须回显
+  // 请求 Origin 并允许 credentials，否则浏览器照样拦响应。
+  const corsHeaders = (req) => {
+    const h = req.headers();
+    const headers = {};
+    if (h['origin']) {
+      headers['Access-Control-Allow-Origin'] = h['origin'];
+      headers['Access-Control-Allow-Credentials'] = 'true';
+      headers['Vary'] = 'Origin';
+    }
+    if (h['access-control-request-method'])
+      headers['Access-Control-Allow-Methods'] = h['access-control-request-method'];
+    if (h['access-control-request-headers'])
+      headers['Access-Control-Allow-Headers'] = h['access-control-request-headers'];
+    return headers;
   };
   const stub = (route) => {
-    if (route.request().method() === 'OPTIONS') {
-      return route.fulfill({ status: 204, headers: cors });
+    const req = route.request();
+    const headers = corsHeaders(req);
+    if (req.method() === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers });
     }
-    const url = route.request().url();
+    const url = req.url();
     const json = (status, body) =>
       route.fulfill({
         status,
         contentType: 'application/json',
-        headers: cors,
+        headers,
         body: JSON.stringify(body),
       });
     // 空库：App 会进 idle 态（最稳定的视觉目标）
     if (url.includes('/music/library')) return json(404, { message: 'library_not_imported' });
     if (url.includes('/music/liked')) return json(200, []);
     if (url.includes('/music/next')) return json(200, null);
+    // 列表型端点：renderer 期望 {items:[...]}，裸 {} 会读出 undefined.length
+    if (url.includes('/editorials')) return json(200, { items: [] });
+    if (url.includes('/music/playlists') || url.includes('/library/playlists'))
+      return json(200, { items: [] });
     return json(200, {});
   };
   await page.route('http://localhost:3200/**', stub);

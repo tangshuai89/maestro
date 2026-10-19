@@ -1279,6 +1279,9 @@ export function usePlayer(
     setError(null);
     try {
       const next = await fetchNextTrack(startedProvider, startedPreset);
+      // 服务端约定永返 Track（空队列回占位），但 null/204 空体等异常响应
+      // 不应崩进 presentTrack —— 视为「无下一首」保持 idle。
+      if (!next) return;
       // D4 守护：await 期间 provider / preset 变了 → 旧的 fetchNextTrack 结果
       // 丢弃（让新的 loadNextTrack 自然 presentTrack 正确曲）。
       if (
