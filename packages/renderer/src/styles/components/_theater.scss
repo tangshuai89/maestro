@@ -1078,14 +1078,14 @@
   box-shadow: 0 0 10px 1px color-mix(in srgb, var(--status-liked) 40%, transparent);
   color: var(--status-liked);
 }
-// fanout 态 icon 左移（设计稿 x 11→5.5），给右下徽章腾位
+// fanout 态 icon 左移（设计稿 x 11→5.5），给右上徽章腾位
 .th-like.is-fanout svg {
   transform: translateX(-5.5px);
 }
 .th-like-badge {
   position: absolute;
   right: 3px;
-  bottom: 3px;
+  top: 3px;
   min-width: 11px;
   height: 13px;
   padding: 0 3px;
