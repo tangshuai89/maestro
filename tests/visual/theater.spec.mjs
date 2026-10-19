@@ -32,16 +32,36 @@ const FIRST_SCREEN_SIZES = [
 ];
 
 async function stubApi(page) {
-  await page.route('**/api/**', async (route) => {
+  // preview 构建里 api.ts 的 resolveApiOrigin() 返回独立 sidecar origin
+  // （http://localhost:3200），与页面 origin(127.0.0.1:4173) 不同源 ——
+  // 旧 pattern '**/api/**' 从不匹配，所有请求 connection refused，页面一直
+  // 隐性带 error（PlayerNotice 把它渲染出来后窄屏截图超容差）。
+  // 这里按 sidecar origin 拦截；跨域请求必须补 CORS 头，OPTIONS 预检回 204。
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': '*',
+    'Access-Control-Allow-Headers': '*',
+  };
+  const stub = (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: cors });
+    }
     const url = route.request().url();
     const json = (status, body) =>
-      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      route.fulfill({
+        status,
+        contentType: 'application/json',
+        headers: cors,
+        body: JSON.stringify(body),
+      });
     // 空库：App 会进 idle 态（最稳定的视觉目标）
     if (url.includes('/music/library')) return json(404, { message: 'library_not_imported' });
     if (url.includes('/music/liked')) return json(200, []);
     if (url.includes('/music/next')) return json(200, null);
     return json(200, {});
-  });
+  };
+  await page.route('http://localhost:3200/**', stub);
+  await page.route('**/api/**', stub); // 兜底仍可能存在的 /api/ 前缀调用
 }
 
 /** 让 App 跳过 SourceSelect 进剧场：与 App 自带 `?demo=` 用的是同一个 localStorage 键 */
