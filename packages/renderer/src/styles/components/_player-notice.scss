@@ -1,0 +1,109 @@
+// ─────────────────────────────────────────────────────────────────
+// AETHER PlayerNotice — 播放彻底失败后的轻量提示条
+//
+// 底部居中浮条：压在播放器/搜索结果之上（z('player-notice')），不遮罩、
+// 不抢焦点，用户可以继续点歌。autoSkip 倒计时时右上角有「Ns 后自动下一首」。
+// ─────────────────────────────────────────────────────────────────
+
+@use '../abstracts' as *;
+
+.player-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 96px; // 浮在底部 transport bar 之上
+  transform: translateX(-50%);
+  z-index: z('player-notice');
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 48px));
+  padding: 10px 14px;
+
+  background: color-mix(in oklab, var(--bg-elevated, #16161f) 92%, transparent);
+  border: 1px solid color-mix(in oklab, var(--status-warning, #ffb86b) 28%, transparent);
+  border-radius: var(--radius-md, 12px);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  animation: player-notice-in 0.22s ease-out;
+}
+
+@keyframes player-notice-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.player-notice-icon {
+  flex-shrink: 0;
+  color: var(--status-warning, #ffb86b);
+  font-size: 13px;
+}
+
+.player-notice-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-primary, #e8e8f0);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.player-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.player-notice-count {
+  font-size: 11px;
+  color: var(--text-secondary, rgba(232, 232, 240, 0.55));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.player-notice-btn {
+  appearance: none;
+  border: 1px solid color-mix(in oklab, var(--text-primary, #e8e8f0) 18%, transparent);
+  background: transparent;
+  color: var(--text-primary, #e8e8f0);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.player-notice-btn:hover {
+  background: color-mix(in oklab, var(--text-primary, #e8e8f0) 8%, transparent);
+  border-color: color-mix(in oklab, var(--text-primary, #e8e8f0) 30%, transparent);
+}
+
+.player-notice-btn--primary {
+  border-color: color-mix(in oklab, var(--accent, #7c8cff) 55%, transparent);
+  background: color-mix(in oklab, var(--accent, #7c8cff) 18%, transparent);
+}
+
+.player-notice-btn--primary:hover {
+  background: color-mix(in oklab, var(--accent, #7c8cff) 28%, transparent);
+}
+
+.player-notice-btn--close {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1;
+}

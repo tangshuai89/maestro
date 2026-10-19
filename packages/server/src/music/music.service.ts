@@ -161,6 +161,17 @@ const NOOP_SOURCE_HEALTH: SourceHealthService = {
   },
 } as unknown as SourceHealthService;
 
+/** 等价源兜底失败原因分类（/music/equivalents 返回给前端做分级文案）：
+ *  - vip-locked：找到了歌但全部候选都是 VIP 锁
+ *  - stream-failed：同平台换到版本但实探不出流（凭据/版权级拒绝）
+ *  - no-match：其它平台连候选都没搜到 */
+export type EquivalentFailReason = 'vip-locked' | 'stream-failed' | 'no-match';
+
+export interface EquivalentResult {
+  source: SourceInfo | null;
+  reason: EquivalentFailReason | null;
+}
+
 @Injectable()
 export class MusicService {
   private readonly logger = new Logger(MusicService.name);
@@ -572,7 +583,12 @@ export class MusicService {
     seedProvider: MusicProvider,
     seed: LikeMeta,
     opts?: { excludeTrackId?: string },
-  ): Promise<SourceInfo | null> {
+  ): Promise<EquivalentResult> {
+    // 失败原因累计：给前端分级文案用（「要会员」vs「音源挂了」vs「搜不到」
+    // 是完全不同的用户动作）。优先级：stream-failed > vip-locked > no-match
+    // —— 同平台换版本实探失败意味着「歌在、流不给」，最接近真相。
+    let sawLocked = false;
+    let sawStreamFail = false;
     // 0) 同平台换版本兜底（2026-10-19「交换余生」报障）：QQ/网易云同一首歌常有
     //    多个 songmid——专辑版可能需单购无 purl，单曲版却能出全曲流。跨平台搜
     //    不到的"死歌"，同平台另一版本可能活着。**先于**跨平台执行：同账号同
@@ -585,20 +601,26 @@ export class MusicService {
         seed,
         new Set([opts.excludeTrackId]),
       );
-      if (alt && (await this.probePlayable(session, seedProvider, alt))) {
-        const playable = this.toPlayableTrack(alt);
-        this.logger.log(
-          `equivalent same-provider alt: ${seedProvider}/${opts.excludeTrackId} → ` +
-            `${alt.id} "${alt.title} - ${alt.artist}"`,
-        );
-        return {
-          platform: seedProvider,
-          trackId: alt.id,
-          hasCopyright: true,
-          url: playable.audioUrl,
-          mediaMid: alt.mediaMid,
-          vipLocked: false, // 实探已出流，不信元数据锁标
-        };
+      if (alt) {
+        if (await this.probePlayable(session, seedProvider, alt)) {
+          const playable = this.toPlayableTrack(alt);
+          this.logger.log(
+            `equivalent same-provider alt: ${seedProvider}/${opts.excludeTrackId} → ` +
+              `${alt.id} "${alt.title} - ${alt.artist}"`,
+          );
+          return {
+            source: {
+              platform: seedProvider,
+              trackId: alt.id,
+              hasCopyright: true,
+              url: playable.audioUrl,
+              mediaMid: alt.mediaMid,
+              vipLocked: false, // 实探已出流，不信元数据锁标
+            },
+            reason: null,
+          };
+        }
+        sawStreamFail = true; // 换到的版本也出不了流
       }
     }
 
@@ -607,7 +629,12 @@ export class MusicService {
     const userPriority = this.readChannelPriority(session);
     const priority = userPriority.filter((p) => p !== 'deezer');
     const candidates = priority.filter((p) => p !== seedProvider && this.canSyncLike(session, p));
-    if (!candidates.length) return null;
+    if (!candidates.length) {
+      return {
+        source: null,
+        reason: sawStreamFail ? 'stream-failed' : 'no-match',
+      };
+    }
 
     const found = await Promise.all(
       candidates.map(async (p) => {
@@ -628,20 +655,29 @@ export class MusicService {
       // 全锁完 → 落到方法末尾返 null，前端拿到 null 后 setError 干净退出。
       // 复刻自用户实测「浓缩蓝鲸 (Live) - 彭忠豪」：网易云 + QQ 两平台都 VIP
       // 锁，不带这个守卫会无限 code=4。
-      if (t.vipLocked === true) continue;
+      if (t.vipLocked === true) {
+        sawLocked = true;
+        continue;
+      }
       const playable = this.toPlayableTrack(t);
       return {
-        platform: p,
-        trackId: t.id,
-        hasCopyright: true,
-        url: playable.audioUrl,
-        mediaMid: t.mediaMid,
-        // 透传 vipLocked: false（已校验，前端可放心切；保留字段保 SourceInfo
-        // 接口一致，未来前端做更细粒度过滤时有数据可读）。
-        vipLocked: false,
+        source: {
+          platform: p,
+          trackId: t.id,
+          hasCopyright: true,
+          url: playable.audioUrl,
+          mediaMid: t.mediaMid,
+          // 透传 vipLocked: false（已校验，前端可放心切；保留字段保 SourceInfo
+          // 接口一致，未来前端做更细粒度过滤时有数据可读）。
+          vipLocked: false,
+        },
+        reason: null,
       };
     }
-    return null;
+    return {
+      source: null,
+      reason: sawStreamFail ? 'stream-failed' : sawLocked ? 'vip-locked' : 'no-match',
+    };
   }
 
   /**

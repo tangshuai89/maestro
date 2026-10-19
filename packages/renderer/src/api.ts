@@ -1068,12 +1068,24 @@ export async function searchOne(
  * `excludeId`（当前挂掉的曲目 id）：服务端会先做「同平台换版本」兜底——同一
  * 首歌常有多个 songmid（专辑版需单购 vs 单曲版可播），排除死 mid 重新匹配
  * 并实探过流后才返回。
+ *
+ * `reason`：找不到时附带的失败分类，前端据此给分级文案：
+ *  - vip-locked：找到了歌但全部候选都是 VIP 锁
+ *  - stream-failed：同平台换到版本但实探不出流
+ *  - no-match：其它平台连候选都没搜到
  */
+export type EquivalentFailReason = 'vip-locked' | 'stream-failed' | 'no-match';
+
+export interface EquivalentSourceResult {
+  source: UnifiedSourceInfo | null;
+  reason: EquivalentFailReason | null;
+}
+
 export async function findEquivalentSource(
   provider: MusicProvider,
   meta: LikeMeta,
   excludeId?: string,
-): Promise<UnifiedSourceInfo | null> {
+): Promise<EquivalentSourceResult> {
   const params = new URLSearchParams({
     provider,
     title: meta.title,
@@ -1081,12 +1093,15 @@ export async function findEquivalentSource(
     duration: String(meta.duration),
   });
   if (excludeId) params.set('trackId', excludeId);
-  const res = await json<{ source: UnifiedSourceInfo | null }>(
+  const res = await json<{
+    source: UnifiedSourceInfo | null;
+    reason?: EquivalentFailReason | null;
+  }>(
     await fetchWithToken(`${API_BASE}/music/equivalents?${params.toString()}`, {
       credentials: 'include',
     }),
   );
-  return res.source;
+  return { source: res.source ?? null, reason: res.reason ?? null };
 }
 
 /**

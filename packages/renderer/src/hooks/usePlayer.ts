@@ -15,6 +15,26 @@ import {
   getAuthStatusValidated,
 } from '../api';
 import type { Track, MusicProvider, QqQuality, UnifiedSearchItem, UnifiedSourceInfo } from '../api';
+import type { EquivalentFailReason } from '../api';
+
+/** 播放彻底失败（整条兜底链耗尽）的分级原因 —— PlayerNotice 据此给文案。 */
+export type PlayFailReason =
+  | 'paid-track' // 种子源本身是付费专辑/付费单曲（需单购，VIP 不解）
+  | 'vip-locked' // 其它平台搜到了等价曲但全是 VIP 锁
+  | 'stream-failed' // 同平台换到版本但实探不出流（凭据/版权级拒绝）
+  | 'no-match' // 其它平台连候选都搜不到（≈无版权）
+  | 'generic'; // 未知 / 兜底链根本没走到等价源步
+
+export interface PlayFailure {
+  title: string;
+  artist: string;
+  provider: MusicProvider;
+  trackId?: string;
+  reason: PlayFailReason;
+  detail: string;
+  /** false = 连续多首连挂（≥3）或无下一首 → PlayerNotice 不做倒计时自动跳。 */
+  autoSkip: boolean;
+}
 import {
   readStoredProvider,
   writeStoredProvider,
@@ -141,6 +161,9 @@ export function usePlayer(
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 结构化播放失败（兜底链彻底耗尽）：error 字符串之外另存分级原因，
+  // PlayerNotice 据此给「需要会员/付费专辑/无版权」分级文案 + 自动跳下一首。
+  const [failure, setFailure] = useState<PlayFailure | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fanOutCount, setFanOutCount] = useState<number>(0);
   // 当前播放曲目对应的 UnifiedSearchItem（reactive 镜像 — render 用）。
@@ -295,6 +318,12 @@ export function usePlayer(
   //    onLoadedMetadata/onDurationChange 重复触发；每次 presentTrack 重置）。
   const trialServerTriedRef = useRef(false);
   const trialEvaluatedRef = useRef(false);
+  // 兜底链记忆：最近一次 findEquivalentSource 服务端给的失败原因
+  // （vip-locked / no-match / stream-failed），reportPlayFailure 组合分级文案。
+  const lastEquivReasonRef = useRef<EquivalentFailReason | null>(null);
+  // 连续播放失败计数：每首歌兜底耗尽 +1，onTimeUpdate 真出声时清零。
+  // ≥3 首连挂时 PlayerNotice 停止自动跳下一首（防整库不可用时无限跳）。
+  const consecutiveFailuresRef = useRef(0);
   // 本首歌是否已就"试听"降到过标准音质重试（每首一次）。很多 VIP 试听其实是
   // "无损/极高是 VIP、标准免费全曲"，降标准通常直接拿到全曲；每首歌只降一次，
   // 标准仍是试听才继续跨平台。换新歌时在 presentTrack 里重置。
@@ -557,6 +586,8 @@ export function usePlayer(
       // 每次上歌/换源都先清掉上一次的报错——切到下一首/降级成功后不该再
       // 残留旧的 "音频加载失败" 弹窗。真正失败会在 onError 里重新 setError。
       setError(null);
+      setFailure(null);
+      lastEquivReasonRef.current = null;
       // Audit A3 (consistency-fixes T1): use the live sidecar origin
       // instead of the module-load snapshot so radio next-track previews
       // fired after `sidecar-ready` see the real URL.
@@ -704,6 +735,15 @@ export function usePlayer(
     [onAuthExpiredRef],
   );
 
+  /** 还有没有「下一首」可跳：队列模式 >1 首才跳（单曲队列会绕回自己），
+   *  radio 模式服务端总能 refill。用 trackRef 而非 provider state —— 本函数
+   *  被 useCallback([]) 的 reportPlayFailure 捕获，读 state 会拿到首渲染旧值。 */
+  const hasNextTrack = (): boolean => {
+    const q = queueRef.current;
+    if (q && q.tracks.length) return q.tracks.length > 1;
+    return Boolean(trackRef.current?.provider);
+  };
+
   /**
    * 播放彻底失败后的收尾（spec: specs/auth-resilience Phase 10）。
    *
@@ -728,9 +768,33 @@ export function usePlayer(
         } catch {
           /* 探不通就按普通播放失败处理 —— 宁可少提示，不要卡住用户 */
         }
+        // 结构化失败：分级文案（种子源 vipCategory 优先，其次服务端等价源
+        // 搜索结论）+ 自动跳下一首（连挂 ≥3 首停用，防整库死歌无限跳）。
+        consecutiveFailuresRef.current += 1;
+        const cur = trackRef.current;
+        const seedSrc = currentUnifiedRef.current?.sources.find(
+          (s) => s.platform === cur?.provider && s.trackId === cur?.id,
+        );
+        const cat = seedSrc?.vipCategory;
+        const reason: PlayFailReason =
+          cat === 'paid-album' || cat === 'paid-track'
+            ? 'paid-track'
+            : cat === 'vip-only' || cat === 'vip-month'
+              ? 'vip-locked'
+              : (lastEquivReasonRef.current ?? 'generic');
+        setFailure({
+          title: cur?.title ?? '',
+          artist: cur?.artist ?? '',
+          provider: failedProvider,
+          trackId: cur?.id,
+          reason,
+          detail: `音频加载失败（${code}）`,
+          autoSkip: consecutiveFailuresRef.current < 3 && hasNextTrack(),
+        });
         setError(`音频加载失败（${code}），请尝试切歌`);
       })();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onAuthExpiredRef],
   );
 
@@ -795,7 +859,7 @@ export function usePlayer(
       // excludeId=cur.id：让服务端先做「同平台换版本」兜底（排除刚挂掉的 mid
       // 重匹配 + 实探出流才返回），再跨平台。交换余生：专辑版 104003、单曲版
       // 003qWps4042iNf 可播——没有这个参数服务端会跳过整个 QQ 平台。
-      const src = await findEquivalentSource(
+      const equiv = await findEquivalentSource(
         cur.provider,
         {
           title: display.title,
@@ -804,6 +868,9 @@ export function usePlayer(
         },
         cur.id,
       );
+      const src = equiv.source;
+      // 失败原因留给 reportPlayFailure 分级文案（它届时已没有这次搜索的上下文）。
+      lastEquivReasonRef.current = equiv.reason;
       // 竞态守卫：await 期间已切到别的歌 → 丢弃结果。
       // ⚠️ 不能只看 unified id：radio 路径下它前后都是 undefined，切歌了也
       // 照样相等 —— 旧守卫在 radio 上等于没有。
@@ -896,7 +963,7 @@ export function usePlayer(
     try {
       // excludeId=cur.id：同平台换版本兜底——VIP 专辑版试听、同歌单曲版可能
       // 出全曲流（服务端实探过才返回，不会推回同一个试听 mid）。
-      const src = await findEquivalentSource(
+      const equiv = await findEquivalentSource(
         cur.provider,
         {
           title: display.title,
@@ -905,6 +972,8 @@ export function usePlayer(
         },
         cur.id,
       );
+      const src = equiv.source;
+      lastEquivReasonRef.current = equiv.reason;
       if (currentUnifiedRef.current?.id !== songId) return;
       const sameProviderAlt = !!src && src.platform === cur.provider && src.trackId !== cur.id;
       if (
@@ -1305,7 +1374,11 @@ export function usePlayer(
     if (Number.isFinite(audio.duration) && audio.duration > 0) {
       setDuration(audio.duration);
     }
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      // 真出声了才算这首成功 —— 连续失败计数清零，下一首失败重新允许自动跳。
+      if (audio.currentTime > 0.5) consecutiveFailuresRef.current = 0;
+    };
     const onDurationChange = () => {
       if (trackRef.current?.provider === 'spotify' && wpsRef?.current?.wpsReady) return;
       setDuration(audio.duration || 0);
@@ -1422,7 +1495,7 @@ export function usePlayer(
             // 用户这期间切歌 / 暂停了 → 不重试，进 fallback
             retryAttemptedRef.current = false;
             void tryFallbackSource().then((ok) => {
-              if (!ok) setError(`音频加载失败（${code}），请尝试切歌`);
+              if (!ok) reportPlayFailure(failedProvider, code);
             });
             return;
           }
@@ -2007,6 +2080,8 @@ export function usePlayer(
     loading,
     error,
     setError,
+    failure,
+    dismissFailure: () => setFailure(null),
     searchOpen,
     setSearchOpen,
     fanOutCount,

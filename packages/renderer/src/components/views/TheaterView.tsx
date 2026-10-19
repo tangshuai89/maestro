@@ -42,6 +42,8 @@ export interface TheaterViewProps {
   track: Track | null;
   playing: boolean;
   loading: boolean;
+  /** 兜底链彻底耗尽（PlayFailure 非空）→ HUD 状态灯显示 UNAVAILABLE 而非 READY。 */
+  unavailable?: boolean;
   liked: boolean;
   fanOutCount: number;
   /** 当前播放曲目对应的 UnifiedSearchItem（含 crossPlatformLikeTotal）。
@@ -236,6 +238,7 @@ export default function TheaterView(props: TheaterViewProps) {
     track,
     playing,
     loading,
+    unavailable = false,
     liked,
     fanOutCount,
     currentUnified,
@@ -504,7 +507,13 @@ export default function TheaterView(props: TheaterViewProps) {
           </div>
           <div className="th-hud-telemetry">
             <span className="th-hud-buff">
-              {loading ? 'BUFFERING…' : hasTrack ? 'READY' : 'STANDBY'}
+              {unavailable
+                ? 'UNAVAILABLE'
+                : loading
+                  ? 'BUFFERING…'
+                  : hasTrack
+                    ? 'READY'
+                    : 'STANDBY'}
               <span className="th-hud-dot" aria-hidden="true" />
             </span>
             <span className="th-hud-sync">

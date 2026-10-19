@@ -274,11 +274,12 @@ async function main() {
   // 前端拿这个端点向服务端实时匹配，应返回带后端代理 URL 的 QQ 源。
   {
     qqSearchResults = [qqTrack('002M8hNI2QgtRY', '突然好想你', '五月天', 265, 'MMQQ')];
-    const src = await svc.findPlayableEquivalent(session, 'netease', {
+    const res = await svc.findPlayableEquivalent(session, 'netease', {
       title: '突然好想你',
       artist: '五月天',
       duration: 266, // 与 QQ 的 265s 差 1s，在 ±3s 内
     });
+    const src = res.source;
     assert.ok(src, 'netease-only 曲目应能匹配到 QQ 等价源');
     assert.strictEqual(src.platform, 'qq', 'fallback 源应是 QQ');
     assert.strictEqual(src.trackId, '002M8hNI2QgtRY', 'trackId 应是 QQ 命中');
@@ -287,6 +288,7 @@ async function main() {
       `url 应是可播放的后端代理路径（实际 ${src.url}）`,
     );
     assert.ok(src.url.includes('mm=MMQQ'), 'QQ 高音质取流应透传 media_mid');
+    assert.strictEqual(res.reason, null, '命中时 reason 应为 null');
     console.log('✅ 6. findPlayableEquivalent → 返回可播放 QQ 源');
   }
 
@@ -296,12 +298,13 @@ async function main() {
     // QQ 搜索结果不同，缓存命中会拿 test 6 的命中 → 误判时长门限失效。
     (svc as any).equivSearchCache?.clear?.();
     qqSearchResults = [qqTrack('wrong', '突然好想你', '五月天', 180)]; // 差 86s
-    const src = await svc.findPlayableEquivalent(session, 'netease', {
+    const res = await svc.findPlayableEquivalent(session, 'netease', {
       title: '突然好想你',
       artist: '五月天',
       duration: 266,
     });
-    assert.strictEqual(src, null, '时长差超容差不应匹配，返回 null');
+    assert.strictEqual(res.source, null, '时长差超容差不应匹配，source=null');
+    assert.strictEqual(res.reason, 'no-match', '没匹配到时 reason=no-match');
     console.log('✅ 7. findPlayableEquivalent 严格时长 gate → null');
   }
 
@@ -311,7 +314,8 @@ async function main() {
   // → 不该返。换源过去仍是 30s 试听，前端 tryUpgradeFromTrial 拿到后又
   // code=4，进 tryFallbackSource 又调到这里，无限循环。
   // 修法（music.service.ts findPlayableEquivalent）：搜到的等价曲若 vipLocked
-  // → 跳过这个平台候选；priority 全锁完 → 返 null，前端 setError 干净退出。
+  // → 跳过这个平台候选；priority 全锁完 → 返 null + reason=vip-locked，
+  // 前端分级文案「需要会员」而不是笼统报错。
   // 不修这条 → PR #88 Settings 完整化 + 渠道优先级上线后，「VIP 独占 Live 版」
   // 这类歌曲必卡死。
   {
@@ -321,13 +325,14 @@ async function main() {
         vipLocked: true,
       }),
     ];
-    const src = await svc.findPlayableEquivalent(session, 'netease', {
+    const res = await svc.findPlayableEquivalent(session, 'netease', {
       title: '浓缩蓝鲸 (Live)',
       artist: '彭忠豪',
       duration: 283,
     });
-    assert.strictEqual(src, null, '候选 vipLocked=true → 跳过 → 返 null（不再盲切）');
-    console.log('✅ 36. findPlayableEquivalent vipLocked 守卫');
+    assert.strictEqual(res.source, null, '候选 vipLocked=true → 跳过 → 返 null（不再盲切）');
+    assert.strictEqual(res.reason, 'vip-locked', '全锁时 reason=vip-locked（前端分级文案用）');
+    console.log('✅ 36. findPlayableEquivalent vipLocked 守卫 + reason');
   }
 
   // ── 8. 跨平台匹配成功 → 增量补进「我的喜欢」库快照（bug3） ───────────
@@ -1780,12 +1785,13 @@ async function main() {
     ];
     qqStreamOk = new Set(['live-mid']);
     neteaseSearchResults = []; // 跨平台什么都搜不到，也要命中同平台活 mid
-    const src = await svc.findPlayableEquivalent(
+    const res37 = await svc.findPlayableEquivalent(
       session,
       'qq',
       { title: '交换余生', artist: '林俊杰', duration: 256 },
       { excludeTrackId: 'dead-mid' },
     );
+    const src = res37.source;
     assert.ok(src, '同平台换版本应找到可播 mid');
     assert.strictEqual(src.platform, 'qq', '应返回同平台源');
     assert.strictEqual(src.trackId, 'live-mid', '应排除死 mid 选中可播 mid');
@@ -1805,15 +1811,16 @@ async function main() {
     ];
     qqStreamOk = new Set(); // 全死（模拟凭据过期）
     neteaseSearchResults = [neTrack('n-jhys', '交换余生', '林俊杰', 256)];
-    const src = await svc.findPlayableEquivalent(
+    const res38 = await svc.findPlayableEquivalent(
       session,
       'qq',
       { title: '交换余生', artist: '林俊杰', duration: 256 },
       { excludeTrackId: 'dead-mid' },
     );
-    assert.ok(src, '同平台全死时应落到跨平台候选');
-    assert.strictEqual(src.platform, 'netease', '同平台实探全死 → 跨平台 netease');
-    assert.strictEqual(src.trackId, 'n-jhys');
+    const src38 = res38.source;
+    assert.ok(src38, '同平台全死时应落到跨平台候选');
+    assert.strictEqual(src38.platform, 'netease', '同平台实探全死 → 跨平台 netease');
+    assert.strictEqual(src38.trackId, 'n-jhys');
     qqStreamOk = null;
     console.log('✅ 38. 同平台实探全死 → 不推死 mid，落到跨平台候选');
   }

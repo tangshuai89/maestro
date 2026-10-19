@@ -27,6 +27,7 @@ import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
 import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
+import PlayerNotice from './components/common/PlayerNotice';
 import RecoLoading from './components/common/RecoLoading';
 
 /**
@@ -530,6 +531,7 @@ export default function App() {
           track={player.track}
           playing={player.playing}
           loading={player.loading}
+          unavailable={Boolean(player.failure)}
           liked={player.track?.liked ?? false}
           fanOutCount={player.fanOutCount}
           currentUnified={player.currentUnified}
@@ -706,6 +708,24 @@ export default function App() {
               : undefined
           }
           onDismiss={() => auth.handleDismissError?.()}
+        />
+      )}
+
+      {/* 播放兜底链彻底耗尽后的轻量提示：分级文案 + 自动跳下一首倒计时。
+          failure（结构化）优先；普通 error 字符串也借它显示——此前 setError
+          后没有任何组件渲染，用户看到的是"假死"。 */}
+      {(player.failure || player.error) && (
+        <PlayerNotice
+          failure={player.failure}
+          error={player.failure ? null : player.error}
+          onSkipNext={() => {
+            player.dismissFailure();
+            void player.loadNextTrack();
+          }}
+          onDismiss={() => {
+            player.dismissFailure();
+            player.setError(null);
+          }}
         />
       )}
     </div>
