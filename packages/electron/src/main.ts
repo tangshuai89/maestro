@@ -491,25 +491,44 @@ async function readQqCookies(win: BrowserWindow): Promise<{
  * Unlike QQ Connect OAuth, this needs NO appid/secret and NO registered app —
  * we just capture the browser's own login cookies.
  */
+async function clearLoginMarkers(
+  win: BrowserWindow,
+  urls: string[],
+  cookieNames: string[],
+): Promise<void> {
+  for (const url of urls) {
+    for (const name of cookieNames) {
+      try {
+        await win.webContents.session.cookies.remove(url, name);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
 function openQqLoginWindow(): Promise<QqLoginResult> {
-  // T9 (consistency-fixes F1)：每次用户点「登录 QQ 音乐」就清掉缓存结果。
-  // 旧实现：登出后再点「登录」→ 直接返回上一账号的 cached cookie，换不了
-  // 账号（直到重启 app）。新行为：忽略旧 cached → 强制重新 cookie 捕获
-  // 流程（新登录的 cookie 写到 __maestroLastResult）。
-  if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
-    (activeQqLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult = undefined;
+  // Already-running login flow → share the in-flight promise so concurrent
+  // callers don't spawn a second BrowserWindow.
+  if (qqLoginInFlight) {
+    if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
+      activeQqLoginWindow.show();
+      activeQqLoginWindow.focus();
+    }
+    return qqLoginInFlight;
   }
-  // Already-running window with a captured result → reuse.
+  // T9 (consistency-fixes F1)：每次用户点「登录 QQ 音乐」都销毁上一次
+  // keepAlive 隐藏的旧窗口并重新走捕获流程，避免旧窗口被空 show 出来变成
+  // 无监听器的孤儿窗，同时清掉旧 qm_keyst / qqmusic_key（保留 ptcz/RK 等
+  // QQ OAuth cookie 以支持一键快捷登录），防止首轮 poll 直接把过期票据抓走。
   if (activeQqLoginWindow && !activeQqLoginWindow.isDestroyed()) {
-    activeQqLoginWindow.show();
-    activeQqLoginWindow.focus();
-    const cached = (activeQqLoginWindow as BrowserWindow & MaestroWindowExtras)
-      .__maestroLastResult as QqLoginResult | undefined;
-    if (cached) return Promise.resolve(cached);
+    try {
+      activeQqLoginWindow.destroy();
+    } catch {
+      /* ignore */
+    }
+    activeQqLoginWindow = null;
   }
-  // Already-running window, no cached result yet → share the in-flight
-  // promise so concurrent callers don't spawn a second BrowserWindow.
-  if (qqLoginInFlight) return qqLoginInFlight;
 
   const created: BrowserWindow = new BrowserWindow({
     width: 1000,
@@ -531,12 +550,16 @@ function openQqLoginWindow(): Promise<QqLoginResult> {
   created.on('closed', () => {
     if (activeQqLoginWindow === created) activeQqLoginWindow = null;
   });
-  // Trigger the initial navigation. runLoginWindow's documented contract is
-  // that the caller-provided createWindow is responsible for triggering the
-  // load (see login-window-runner.ts:226). Our createWindow just returns
-  // the pre-built window, so we must loadURL() here — otherwise the user
-  // sees a blank window with no QQ login page.
-  created.loadURL('https://y.qq.com/');
+  // Clear only the QQ Music ticket markers (qm_keyst / qqmusic_key) before
+  // loading y.qq.com so runLoginWindow waits for a freshly issued ticket
+  // while keeping QQ OAuth cookies (ptcz/RK/pt_guid_sig) intact.
+  void clearLoginMarkers(created, ['https://y.qq.com', 'https://qq.com'], QQ_LOGIN_MARKERS).finally(
+    () => {
+      if (!created.isDestroyed()) {
+        void created.loadURL('https://y.qq.com/');
+      }
+    },
+  );
 
   qqLoginInFlight = runLoginWindow<QqLoginResult>({
     url: 'https://y.qq.com/',
@@ -628,19 +651,21 @@ async function readNeteaseCookies(win: BrowserWindow): Promise<{
  * trusts), and resolve once MUSIC_U appears in the window's session cookies.
  */
 function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
-  // T9 (consistency-fixes F1)：同 QQ —— 每次点击登录就清缓存，避免换账号失败。
-  if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
-    (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras).__maestroLastResult =
-      undefined;
+  if (neteaseLoginInFlight) {
+    if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
+      activeNeteaseLoginWindow.show();
+      activeNeteaseLoginWindow.focus();
+    }
+    return neteaseLoginInFlight;
   }
   if (activeNeteaseLoginWindow && !activeNeteaseLoginWindow.isDestroyed()) {
-    activeNeteaseLoginWindow.show();
-    activeNeteaseLoginWindow.focus();
-    const cached = (activeNeteaseLoginWindow as BrowserWindow & MaestroWindowExtras)
-      .__maestroLastResult as NeteaseLoginResult | undefined;
-    if (cached) return Promise.resolve(cached);
+    try {
+      activeNeteaseLoginWindow.destroy();
+    } catch {
+      /* ignore */
+    }
+    activeNeteaseLoginWindow = null;
   }
-  if (neteaseLoginInFlight) return neteaseLoginInFlight;
 
   const created: BrowserWindow = new BrowserWindow({
     width: 1000,
@@ -660,10 +685,11 @@ function openNeteaseLoginWindow(): Promise<NeteaseLoginResult> {
   created.on('closed', () => {
     if (activeNeteaseLoginWindow === created) activeNeteaseLoginWindow = null;
   });
-  // See QQ flow — same contract: createWindow returns the pre-built window,
-  // so we trigger loadURL() here. Without this, the window opens to a blank
-  // page and the user can never reach the NetEase login form.
-  created.loadURL('https://music.163.com/login');
+  void clearLoginMarkers(created, ['https://music.163.com'], ['MUSIC_U']).finally(() => {
+    if (!created.isDestroyed()) {
+      void created.loadURL('https://music.163.com/login');
+    }
+  });
 
   neteaseLoginInFlight = runLoginWindow<NeteaseLoginResult>({
     url: 'https://music.163.com/login',

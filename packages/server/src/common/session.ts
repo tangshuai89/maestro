@@ -240,6 +240,44 @@ export class SessionService implements OnModuleDestroy {
     this.persist();
   }
 
+  /**
+   * Persist a refreshed QQ Music session (updated qm_keyst / qqmusic_key /
+   * psrf_musickey_createtime from LoginServer.Login) to state.json.
+   * Uses the same reference-identity guard as persistSpotify so an
+   * in-flight refresh cannot resurrect credentials after logout/re-login.
+   */
+  persistQq(sessionId: string, providerSession: ProviderSession): void {
+    const s = this.blob.byId[sessionId];
+    if (!s) return;
+    if (s.providers.qq !== providerSession) {
+      this.logger.warn(
+        `persistQq: 传入 ProviderSession 与 session[${sessionId.slice(0, 8)}…].qq ` +
+          `不是同一引用 → 用户已登出/重登，丢弃 refresh 写入`,
+      );
+      return;
+    }
+    s.providers.qq = { ...s.providers.qq, ...providerSession };
+    this.persist();
+  }
+
+  /**
+   * Persist updated NetEase session fields (e.g. runtime neteaseVip
+   * entitlement correction) to state.json with reference-identity guard.
+   */
+  persistNetease(sessionId: string, providerSession: ProviderSession): void {
+    const s = this.blob.byId[sessionId];
+    if (!s) return;
+    if (s.providers.netease !== providerSession) {
+      this.logger.warn(
+        `persistNetease: 传入 ProviderSession 与 session[${sessionId.slice(0, 8)}…].netease ` +
+          `不是同一引用 → 用户已登出/重登，丢弃写入`,
+      );
+      return;
+    }
+    s.providers.netease = { ...s.providers.netease, ...providerSession };
+    this.persist();
+  }
+
   /** Last successful server-side validation for a provider's credentials
    *  (ms epoch). null = never validated. */
   getLastValidatedAt(session: Session, provider: MusicProvider): number | null {

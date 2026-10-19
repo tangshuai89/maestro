@@ -909,11 +909,11 @@ export function usePlayer(
   const handleTrialDetected = useCallback(async () => {
     const cur = trackRef.current;
     if (!cur) return;
-    // QQ 出现试听片段有两种可能：「这首歌是 VIP 独占」或「登录态掉了被降权」。
+    // QQ 出现试听片段有两种可能：「这首歌是 VIP 独占」或「登录态掉了被降权」
+    // （也可能是原 QQ 源失败后 tryFallbackSource 切到了网易云/Deezer 30s 试听）。
     // 无法从时长分辨，所以**异步**跑一次 validate=1 探针：过期 → 立即弹重登；
-    // 有效 → 当普通 VIP 处理继续走音质降级/跨平台升级。netease 的等价探针
-    // 还没做（Phase 11），这里只对 qq 补查。
-    if (cur.provider === 'qq') {
+    // 有效 → 当普通 VIP 处理继续走音质降级/跨平台升级。
+    if (cur.provider === 'qq' || triedPlatformsRef.current.has('qq')) {
       checkProviderAuthExpired('qq');
     }
     // 1) 同平台降标准音质重试。

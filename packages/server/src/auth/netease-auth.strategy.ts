@@ -36,19 +36,40 @@ interface AccountResponse {
     userId: number;
     nickname: string;
     avatarUrl?: string;
+    vipType?: number;
   } | null;
-  account?: { id: number; userName: string } | null;
+  account?: {
+    id: number;
+    userName: string;
+    vipType?: number;
+    paidFee?: boolean;
+    baoyueVersion?: number;
+  } | null;
 }
 
-/** 网易云 VIP 信息响应（vip_info 端点）。只看 isVip/redVipLevel 即可判断
- *  「该用户是不是黑胶/SVIP」；其他字段（到期时间 / 成长值）不关心。 */
+/** 网易云 VIP 信息响应（vip_info 端点）。
+ *
+ *  ⚠️ 2026-10-19 实测修正：
+ *  `redVipLevel` 是用户的**历史黑胶成长等级（V1~V7）**，会员过期后依然保留 `>= 1`！
+ *  真实响应通过 `associator` / `musicPackage` / `redplus` / `familyVip` 四个子对象的
+ *  `expireTime`（ms epoch）表达当前是否在有效期内。
+ *  仅当响应不含上述子对象（如老单测 mock `{ redVipLevel: 8 }`）时才回退看 `redVipLevel`。 */
+interface VipPackageInfo {
+  vipCode?: number;
+  expireTime?: number;
+  vipLevel?: number;
+}
+
 interface VipInfoResponse {
   code: number;
   data?: {
     isVip?: boolean;
-    /** 0=免费，8=黑胶，9=黑胶 SVIP（也见过其他值，按 >0 视作付费用户）。 */
     redVipLevel?: number;
     redVip?: boolean;
+    associator?: VipPackageInfo | null;
+    musicPackage?: VipPackageInfo | null;
+    redplus?: VipPackageInfo | null;
+    familyVip?: VipPackageInfo | null;
   } | null;
 }
 
@@ -248,8 +269,26 @@ export class NeteaseAuthStrategy {
       const data = (await res.json()) as VipInfoResponse;
       if (data.code !== 200 || !data.data) return null;
       const d = data.data;
-      // 任一字段为真即视作付费用户
-      return Boolean(d.isVip) || Boolean(d.redVip) || (d.redVipLevel ?? 0) > 0;
+      if (d.isVip === true || d.redVip === true) return true;
+      if (d.isVip === false && d.redVip === undefined && !d.redVipLevel) return false;
+      // 真实 vip/info 响应带有 associator / musicPackage / redplus / familyVip 的 expireTime：
+      // 此时必须按 expireTime > now 判断，绝不能看 redVipLevel（过期 V1 用户 redVipLevel 仍为 1）。
+      const hasExpireFields =
+        d.associator !== undefined ||
+        d.musicPackage !== undefined ||
+        d.redplus !== undefined ||
+        d.familyVip !== undefined;
+      if (hasExpireFields) {
+        const now = Date.now();
+        return (
+          (d.associator?.expireTime ?? 0) > now ||
+          (d.musicPackage?.expireTime ?? 0) > now ||
+          (d.redplus?.expireTime ?? 0) > now ||
+          (d.familyVip?.expireTime ?? 0) > now
+        );
+      }
+      // 兼容不含 expireTime 子对象的简化响应 / 单测 mock
+      return (d.redVipLevel ?? 0) > 0;
     } catch (err) {
       this.logger.warn(`netease vip_info fetch failed: ${(err as Error).message}`);
       return null;

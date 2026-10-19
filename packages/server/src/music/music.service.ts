@@ -430,7 +430,11 @@ export class MusicService {
       // ProviderSession 本身不带 sessionId——在这里把 id 绑上去，refresh 才能
       // 走 RefreshCoordinator 单飞（同 session 并发只 POST 一次 /api/token）
       // 并且 refresh 后的新 token 才能持久化到 state.json。
-      this.spotify.bindSessionId(ps, session.id);
+      this.spotify.bindSessionId?.(ps, session.id);
+    } else if (provider === 'qq') {
+      this.qq.bindSessionId?.(ps, session.id);
+    } else if (provider === 'netease') {
+      this.netease.bindSessionId?.(ps, session.id);
     }
     return ps;
   }
@@ -1071,6 +1075,9 @@ export class MusicService {
   async probeSession(session: Session, provider: MusicProvider): Promise<SessionProbeResult> {
     if (provider === 'qq') {
       const ps = (session.providers.qq ?? {}) as ProviderSession;
+      if (session.providers.qq) {
+        this.qq.bindSessionId?.(ps, session.id);
+      }
       return this.qq.probeSession(ps);
     }
     // 未实现的平台：保守当作可用，避免误报过期打断正常使用
@@ -1299,7 +1306,10 @@ export class MusicService {
    */
   private async ensureQqVip(session: Session): Promise<void> {
     const ps = session.providers.qq;
-    if (!ps?.qqCookie || ps.qqVip !== undefined) return;
+    if (!ps?.qqCookie) return;
+    this.qq.bindSessionId?.(ps, session.id);
+    await this.qq.ensureFreshSession?.(ps);
+    if (ps.qqVip !== undefined || typeof this.qq.probeVipAccess !== 'function') return;
     const vip = await this.qq.probeVipAccess(ps);
     if (vip === undefined) return;
     // ⚠️ vip=false 不能直接落库：cookie 失效 / 探针故障都会让 VIP 曲返回
@@ -1310,12 +1320,26 @@ export class MusicService {
     // 探针判死则返回不写（保持 qqVip=undefined，下次搜索重试），把过期的
     // 暴露留给 getStreamPath / validate=1 两条主链路。
     if (vip === false) {
+      const cookieBefore = ps.qqCookie;
       const probe = await this.qq.probeSession(ps);
       if (!probe.alive) {
         this.logger.warn(
           `qq vip probe → false 但登录态探针判死（reason=${probe.reason}），` +
             `不写 qqVip=false（避免把登录过期误记成非会员）`,
         );
+        return;
+      }
+      // 若 probeSession 内部刚刚通过 refreshSession 续期了 qm_keyst，
+      // 之前的 probeVipAccess=false 是旧过期票据测出来的，必须用新票据重测一次！
+      if (ps.qqCookie !== cookieBefore) {
+        const retriedVip = await this.qq.probeVipAccess(ps);
+        if (retriedVip === undefined) return;
+        if (this.sessions) {
+          this.sessions.setProvider(session, 'qq', { qqVip: retriedVip });
+        } else {
+          ps.qqVip = retriedVip;
+        }
+        this.logger.log(`qq vip probe (after refresh) → qqVip=${retriedVip}`);
         return;
       }
     }
@@ -3597,6 +3621,7 @@ export class MusicService {
           error: 'not_logged_in',
         });
       } else {
+        this.netease.bindSessionId?.(ps, session.id);
         // 单平台硬超时（IMPORT_FETCH_TIMEOUT_MS）。music.163.com 风控严、
         // 单个端点偶尔挂几十秒——不兜底整个 import 会一直等着。单平台失败按
         // absent 处理，sources[].error='timeout'，不阻塞其他平台也不抛 5xx。
@@ -3638,6 +3663,8 @@ export class MusicService {
           error: 'not_logged_in',
         });
       } else {
+        this.qq.bindSessionId?.(ps, session.id);
+        await this.ensureQqVip(session);
         // 上限 2000（fetchLiked 内部按 1000/页分页）—— 覆盖绝大多数用户的
         // 收藏规模；1093 首的用户不会被 1000 截断。
         const tracks = await this.fetchLikedWithTimeout(() => this.qq.fetchLiked(ps, 2000), 'qq');

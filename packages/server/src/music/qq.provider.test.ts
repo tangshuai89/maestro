@@ -1331,7 +1331,90 @@ async function main() {
     console.log(`✅ 37. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 qq.provider.test 全部 50 项通过');
+  // ── 38. getStreamPath: qm_keyst 过期但有 psrf_qqrefresh_token → 自动续期并重试出流 ──
+  {
+    let vkeyCalls = 0;
+    let loginCalls = 0;
+    const restore = mockFetch((_url: string, opts?: any) => {
+      const body = JSON.parse(opts?.body ?? '{}');
+      const mod = body?.req_0?.module;
+      if (mod === 'music.login.LoginServer') {
+        loginCalls++;
+        return {
+          json: async () => ({
+            code: 0,
+            req_0: {
+              code: 0,
+              data: {
+                musicid: 81295659,
+                musickey: 'Q_H_L_NEW_KEY_123',
+                musickeyCreateTime: Math.floor(Date.now() / 1000),
+                keyExpiresIn: 259200,
+              },
+            },
+          }),
+        };
+      }
+      if (mod === 'music.vkey.GetVkey' && body?.req_1?.module === 'music.UserInfo.userInfoServer') {
+        // 探针调用：旧 key 返 req_1.code=1000，新 key 返 req_1.code=0
+        const isNew = String(opts?.headers?.Cookie ?? '').includes('Q_H_L_NEW_KEY_123');
+        return {
+          json: async () => ({
+            code: 0,
+            req_0: {
+              code: 0,
+              data: {
+                midurlinfo: [{ songmid: '004Gq0xE1YC8xp', purl: isNew ? 'ok.m4a' : '' }],
+              },
+            },
+            req_1: { code: isNew ? 0 : 1000 },
+          }),
+        };
+      }
+      // getStreamPath 的 fetchVkey 调用
+      vkeyCalls++;
+      const isNew = String(opts?.headers?.Cookie ?? '').includes('Q_H_L_NEW_KEY_123');
+      return {
+        json: async () => ({
+          code: 0,
+          req_0: {
+            code: 0,
+            data: {
+              midurlinfo: [
+                {
+                  songmid: '002McwUr1NEDsx',
+                  purl: isNew ? 'C400002McwUr1NEDsx.m4a?vkey=FRESH' : '',
+                  vkey: isNew ? 'FRESH' : '',
+                },
+              ],
+              sip: ['https://ws.stream.qqmusic.qq.com/'],
+            },
+          },
+        }),
+      };
+    });
+    const refreshableSession = sess({
+      qqCookie:
+        'qm_keyst=OLD_EXPIRED_KEY; qqmusic_key=OLD_EXPIRED_KEY; psrf_qqrefresh_token=REF123; psrf_qqaccess_token=ACC123; psrf_qqopenid=OPEN123',
+      qqCookies: {
+        qm_keyst: 'OLD_EXPIRED_KEY',
+        qqmusic_key: 'OLD_EXPIRED_KEY',
+        psrf_qqrefresh_token: 'REF123',
+        psrf_qqaccess_token: 'ACC123',
+        psrf_qqopenid: 'OPEN123',
+      },
+      qqUin: '81295659',
+    });
+    const streamUrl = await prov.getStreamPath(refreshableSession, '002McwUr1NEDsx');
+    restore();
+    assert.strictEqual(loginCalls, 1, '应触发 1 次 LoginServer.Login 自动续期');
+    assert.strictEqual(vkeyCalls, 2, '第 1 次 GetVkey 失败 → 续期 → 第 2 次 GetVkey 成功');
+    assert.ok(streamUrl.includes('vkey=FRESH'), `应拿到续期后的流地址，实际: ${streamUrl}`);
+    assert.strictEqual(refreshableSession.qqCookies.qm_keyst, 'Q_H_L_NEW_KEY_123');
+    console.log('✅ 38. getStreamPath: qm_keyst 过期 + 有 refresh_token → 自动续期并成功拿流');
+  }
+
+  console.log('\n🎉 qq.provider.test 全部 51 项通过');
 }
 
 main().catch((err) => {

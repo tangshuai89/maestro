@@ -335,6 +335,42 @@ async function main() {
     ok('18. 0/3 → 判失效，比例照样带上');
   }
 
+  // ── 19. 真实网关返回 req_1 (GetLoginUserInfo code=1000)：即使匿名歌有 purl 也判死 ──
+  {
+    const restore = mockFetch(() => ({
+      ...vkey(
+        { songmid: PROBE_A, purl: '', vkey: '', result: 104003 },
+        { songmid: PROBE_B, purl: 'anon-b.m4a', vkey: 'VB', result: 0 },
+        { songmid: PROBE_C, purl: 'anon-c.m4a', vkey: 'VC', result: 0 },
+      ),
+      req_1: { code: 1000 },
+    }));
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(
+      r.alive,
+      false,
+      'GetLoginUserInfo code=1000 说明 qm_keyst 已过期，不能被匿名 purl 误导为 alive',
+    );
+    assert.strictEqual(r.reason, 'no_vkey');
+    assert.strictEqual(r.purlCount, 2);
+    assert.strictEqual(r.songCount, 3);
+    ok('19. req_1.code=1000 权威判死（拦截《演员》《小情歌》匿名 purl 假阳性）');
+  }
+
+  // ── 20. 真实网关返回 req_1 (GetLoginUserInfo code=0)：权威判活 ──────────────
+  {
+    const restore = mockFetch(() => ({
+      ...vkey({ songmid: PROBE_A, purl: '', vkey: '', result: 104003 }),
+      req_1: { code: 0 },
+    }));
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, true);
+    assert.strictEqual(r.reason, 'vkey_present');
+    ok('20. req_1.code=0 权威判活（即使探针歌全下架也不误判死）');
+  }
+
   console.log(`\n${pass} 个用例全部通过 ✅`);
 }
 

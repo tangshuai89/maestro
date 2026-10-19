@@ -134,6 +134,13 @@ export class QqAuthStrategy {
         method: 'get_user_baseinfo_v2',
         param: { vec_uin: [uin] },
       },
+      // get_user_baseinfo_v2 按 uin 公开可查，不校验 qm_keyst；同请求顺带调
+      // GetLoginUserInfo 校验真实登录态（有效 code=0，失效 code=1000）。
+      req_1: {
+        module: 'music.UserInfo.userInfoServer',
+        method: 'GetLoginUserInfo',
+        param: {},
+      },
     };
     const res = await fetch(
       'https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&inCharset=utf8&outCharset=utf-8',
@@ -158,22 +165,38 @@ export class QqAuthStrategy {
             map_userinfo?: Record<string, { nick?: string; headpic?: string; avatar?: string }>;
           };
         };
+        req_1?: {
+          code?: number;
+          data?: {
+            info?: { nick?: string; logo?: string };
+          };
+        };
       };
+      // 若网关返回了 req_1（GetLoginUserInfo）且 code 非 0（如 1000 未登录/过期），
+      // 说明捕获到的 qm_keyst 已经失效，拒绝入库。单测只 mock req_0 时 req_1 为 undefined，放行。
+      if (typeof json.req_1?.code === 'number' && json.req_1.code !== 0) {
+        this.logger.warn(
+          `qq fetchProfile: GetLoginUserInfo rejected cookie (code=${json.req_1.code})`,
+        );
+        return null;
+      }
       const map = json.req_0?.data?.map_userinfo;
       const first = map ? Object.values(map)[0] : undefined;
-      if (first?.nick) {
-        const vip = this.detectVip(first as Record<string, unknown>);
+      const loginInfo = json.req_1?.data?.info;
+      const nick = first?.nick ?? loginInfo?.nick;
+      if (nick) {
+        const vip = first ? this.detectVip(first as Record<string, unknown>) : undefined;
         // 打日志方便核对：若 VIP 检测没命中（vip=undefined），这行会列出
         // map_userinfo 的实际字段名，贴出来就能把 VIP_FIELDS 补准。
         this.logger.log(
-          `qq profile: nick="${first.nick}" vip=${vip ?? 'unknown'}` +
-            (vip === undefined
+          `qq profile: nick="${nick}" vip=${vip ?? 'unknown'}` +
+            (vip === undefined && first
               ? ` (userinfo keys: ${Object.keys(first as object).join(',')})`
               : ''),
         );
         return {
-          nickname: first.nick,
-          avatarUrl: first.headpic ?? first.avatar ?? '',
+          nickname: nick,
+          avatarUrl: first?.headpic ?? first?.avatar ?? loginInfo?.logo ?? '',
           vip,
         };
       }
