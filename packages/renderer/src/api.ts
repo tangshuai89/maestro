@@ -804,6 +804,10 @@ export interface CrossPlatformLikeTotal {
   display: string;
   /** 累加来源平台列表（顺序 = sources 顺序），用于上标 ¹/² 渲染 */
   platforms: Array<'qq' | 'netease'>;
+  /** 逐项展示串。HUD 要 `5700w+¹ + 2,500²`——上标紧跟各自分数；display 那条
+   *  拼好的串做不到（会渲染成 `5700w+ + 2,500¹²`，上标全粘末尾）。
+   *  顺序 = sources 序。老数据可能没有（服务端未升级）→ HUD 兜回单块 display。 */
+  parts?: Array<{ platform: 'qq' | 'netease'; display: string }>;
 }
 
 /** 统一搜索结果里每个平台的源信息（服务端 SourceInfo 的前端镜像）。 */
@@ -1671,5 +1675,10 @@ export function recomputeCrossPlatformLikeTotal(item: {
   const count = buckets.reduce((a, b) => a + b.count, 0);
   const display = buckets.map((b) => b.display).join(' + ');
   const platforms = buckets.map((b) => b.source);
-  item.crossPlatformLikeTotal = { count, display, platforms };
+  // parts 与 display 同源但保留逐项切分——HUD 要把上标插回每个数字后面。
+  // ⚠️ 这份是 server/src/music/search.util.ts 的**镜像**：server 侧加字段时
+  // 必须同步加，否则 fire-and-forget 走 client 路径填出来的对象没有 parts，
+  // HUD 会静默退化成"一个数字 + 一串上标"。见 CLAUDE.md 跨包归一工具的约定。
+  const parts = buckets.map((b) => ({ platform: b.source, display: b.display }));
+  item.crossPlatformLikeTotal = { count, display, platforms, parts };
 }
