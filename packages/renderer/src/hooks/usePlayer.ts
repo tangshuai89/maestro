@@ -437,6 +437,25 @@ export function usePlayer(
     [],
   );
 
+  /**
+   * **同一首歌**换 URL（切音质 / VIP 试听降标准重试）——把新 URL 装回**当前活跃
+   * 元素**，不换槽、不淡变（还是那首歌，淡入淡出没有意义）。
+   *
+   * ⚠️ 这条路径以前靠 React 的 `src={track.audioUrl}` 绑定生效：src 改成命令式
+   * 装载（crossfade 必需）之后，`setTrack({...prev, audioUrl})` 只会改 React
+   * 状态，元素永远不去加载新 URL —— 表现为「音质切了 / 降标准了，但还是 00:00
+   * 不出声」。凡是改 audioUrl 的地方都必须显式走这里。
+   *
+   * 刻意**不动** `dataset.wantPlay`：保持改动前的行为（用户暂停着切音质 → 不
+   * 会因为这次 reload 突然自己播起来）。
+   */
+  const reloadActiveWithUrl = useCallback((url: string) => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.src = url;
+    el.load();
+  }, []);
+
   const loadIntoSlots = useCallback((url: string, wpsActive: boolean) => {
     slotLoaderRef.current?.load(url, wpsActive, audioFxRef.current.crossfadeSec);
   }, []);
@@ -814,6 +833,9 @@ export function usePlayer(
       // 重试会误判"用户切歌了"直接跳过同源重试。
       currentSrcRef.current = stdUrl;
       setTrack((prev) => (prev ? { ...prev, audioUrl: stdUrl } : prev));
+      // src 不再由 React 绑定 —— 必须自己把新 URL 装进元素，否则「降到标准」
+      // 只改了状态、声音永远停在 00:00（crossfade 落地时踩过一次）。
+      reloadActiveWithUrl(stdUrl);
       return;
     }
     // 2) 跨平台换完整曲流源。
@@ -1511,6 +1533,8 @@ export function usePlayer(
       // 同步 onError 的 src 镜像（见 handleTrialDetected 里同款注释）。
       currentSrcRef.current = nextUrl;
       setTrack((prev) => (prev ? { ...prev, audioUrl: nextUrl } : prev));
+      // 同上：src 是命令式装载的，setTrack 不会让元素去加载。
+      reloadActiveWithUrl(nextUrl);
     }
   };
 

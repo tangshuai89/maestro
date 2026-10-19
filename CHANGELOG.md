@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **fix(player): 交叉淡入淡出接线引入的回归 —— 切音质 / 试听降标准后卡在 00:00**
+  （crossfade 的下一个 commit 修的，2026-10-19 报障）
+
+  - **根因**：crossfade 要求"旧歌留在原元素继续播"，所以 `<audio>` 的 `src`
+    从 React 绑定（`src={track.audioUrl}`）改成了命令式装载。这条隐式契约是
+    「**改 audioUrl 必须同时真的装载元素**」——而有两处旧代码只写
+    `setTrack({...prev, audioUrl})`，靠的正是 React 绑定去加载。改成命令式后
+    它们只改了 React 状态、元素纹丝不动 → 用户看到「降了标准音质，但歌还是
+    00:00 不出声」。
+  - **受影响路径**：`handleTrialDetected` 的「VIP 试听降到标准音质同平台重试」、
+    Settings 的 `changeQuality`（QQ / 网易云切音质）。两处都补了
+    `reloadActiveWithUrl(url)`。
+  - **为什么全部测试都绿**：纯逻辑（决策 / 调度）是对的，断的是"接线"——
+    单元测试根本碰不到 DOM 与元素的 src。补了
+    `src/hooks/audioSrcBinding.test.mjs` 从**源码层**守这条契约：凡改
+    audioUrl 的地方附近必须有命令式装载、两个 `<audio>` 不得绑 src、
+    reload 不得动 `wantPlay`。变异验证（删掉一处调用）能让它变红。
+  - 顺带说明：报障日志里的 `QQ GetVkey 无 purl` 是 QQ 侧没给播放 URL（VIP
+    锁），应用降标准重试是既有行为——只是降下去之后没真去加载，才表现为卡死。
+
 - **交叉淡入淡出 crossfade**（`specs/audio-fx` C 组）——切歌时前后两首重叠渐变，
   时长 1–8s 可选、**默认关闭**。做法：
 
