@@ -180,9 +180,17 @@ interface LikeSyncTask {
 
 在检测 + 队列 + 踩取消 + Deezer 排除之外，补三个一致性 / 性能小修：
 
-- **[#7] 切回电台清角标**：radio（server）曲目不是 unified item、没有 fan-out。
-  `loadNextTrack` 进 radio 分支时 `setFanOutCount(0)`，否则上一首搜索歌的平台数
-  会残留在电台曲目上（❤ 填充仍由 `next.liked` 驱动，正常）。
+- **[#7] 切回电台清角标（已修订）**：radio（server）曲目不是 unified item、
+  fetch 期间 `setFanOutCount(0)` 防止上一首搜索歌的平台数残留（这点保留）。
+  **但电台也要跑红心检测**——服务端 `/music/like/detect` 只需要
+  mergedId+sources+meta，电台 Track 全都有：renderer 用 `synthRadioUnified(track)`
+  合成单源 unified（mergedId 沿用 `merged-{provider}-{id}-studio` 约定），
+  `loadNextTrack` 在 `presentTrack` 后调用 `detectAndApplyLiked`；App 侧
+  `track.id/liked` 变化触发的 `refreshLikedStateUntilStable` 在
+  `currentUnifiedRef` 为空时同样回退到合成 item，角标收敛到真实平台数。
+  服务端 `toggleLike` 补齐了 `single:{p}:{id}` fanOut 种子记录（否则
+  resolveEquivalents 的 T4 守卫把电台 ❤ 的 discover 结果整包丢弃），取消方向
+  按记录反写其余已扇出平台（与 `fanOutLike(false)` 同语义）。
 - **[#10] fanOut 记录合并而非覆盖**：`detectLikedAndSync` 写 `state.fanOut[mergedId]`
   时与旧记录取并集（只留 likeable 平台）。某次搜索缺某平台 source（超时 / 聚类不同）
   时，不再把那平台从记录里抹掉、角标少算；`dislikeMerged` 已 `delete` 整条记录，

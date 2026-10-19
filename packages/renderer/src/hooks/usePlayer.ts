@@ -71,6 +71,7 @@ import {
   shouldTransientRetry,
   shouldSearchEquivalent,
   isPlaybackStalled,
+  synthRadioUnified,
   STALL_PROBE_MS,
 } from './usePlayer.helpers.ts';
 
@@ -107,6 +108,7 @@ export {
   shouldTransientRetry,
   shouldSearchEquivalent,
   isPlaybackStalled,
+  synthRadioUnified,
   STALL_PROBE_MS,
 } from './usePlayer.helpers.ts';
 
@@ -1117,7 +1119,12 @@ export function usePlayer(
    * 中途换歌 / ❤↔取消 / 触发新一轮 refresh 时旧轮询自动让位（generation 计数）。
    */
   const refreshLikedState = useCallback(() => {
-    void detectAndApplyLiked(currentUnifiedRef.current);
+    void detectAndApplyLiked(
+      // 电台曲目没有 unified item —— 回退到 Track 合成的单源 unified，
+      // 否则电台路径的角标刷新永远早退（currentUnifiedRef undefined）。
+      currentUnifiedRef.current ??
+        (trackRef.current ? synthRadioUnified(trackRef.current) : undefined),
+    );
   }, [detectAndApplyLiked]);
 
   /**
@@ -1148,7 +1155,11 @@ export function usePlayer(
     let stableHits = 0;
     while (Date.now() - startTs < HARD_TIMEOUT_MS) {
       if (likedRefreshGenRef.current !== myGen) return null; // 让位给新一轮
-      const unified = currentUnifiedRef.current;
+      // 电台曲目没有 unified item —— 用 Track 合成，否则电台 ❤ 后角标
+      // 轮询直接 return null，永远拿不到 discover 落定后的平台数。
+      const unified =
+        currentUnifiedRef.current ??
+        (trackRef.current ? synthRadioUnified(trackRef.current) : undefined);
       if (!unified) return null;
       // T6 (consistency-fixes D3)：detect 轮询只在用户当前 liked=true 时启动。
       // 用户手动翻转（❤→不 ❤）后，`trackRef.current?.liked` 与期望不符，
@@ -1264,10 +1275,11 @@ export function usePlayer(
       void detectAndApplyLiked(q.unifiedItems?.[q.idx]);
       return;
     }
-    // Radio (server) track: not a unified item, so there's no fan-out. Clear
-    // the badge, otherwise it keeps showing the last search song's platform
-    // count on top of unrelated radio tracks. `next.liked` (from the server)
-    // still drives the ❤ fill via presentTrack.
+    // Radio (server) track: no unified item — synth a single-source one so
+    // liked-detect still runs (heart-sync spec #7 的旧妥协是 radio 不 detect、
+    // 角标恒清 0；但服务端 detect 只要 mergedId+sources+meta，电台 Track
+    // 全都有)。fetch 前先清角标，避免上一首搜索歌的平台数残留在电台曲目上。
+    // `next.liked`（服务端快照）先驱动 ❤ 填充，detect 回来后按真值校正。
     // T6 (consistency-fixes D4)：radio 路径 await 期间用户可能切了平台 /
     // preset（API 不支持中途切，UI 限制先于这点；但保险起见守护）。快照
     // 启动时的 provider + preset，await 回来不一致就丢弃（让新的 loadNextTrack
@@ -1291,6 +1303,10 @@ export function usePlayer(
         return;
       }
       presentTrack(next);
+      // 电台也要跑红心检测：qq 已 ❤ 的歌会触发后台 discover 把 netease /
+      // spotify 等价源并进 fanOut，角标随 refreshLikedStateUntilStable
+      // （App 侧 track.id/liked 变化的 effect）收敛到真实平台数。
+      void detectAndApplyLiked(synthRadioUnified(next));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1961,7 +1977,12 @@ export function usePlayer(
         return;
       }
       setTrack((prev) => (prev ? { ...prev, liked: result.liked } : prev));
-      setFanOutCount(0);
+      // 取消红心 → 角标直接清零（liked=false 时 App 的 refresh effect 不触发，
+      // 没人会把残留数字清掉）。收藏方向不清零：toggleLike 的服务端 discover
+      // 会往 `single:{p}:{id}` fanOut 记录里补其它平台，App 侧 liked 变 true
+      // 触发的 refreshLikedStateUntilStable 会用合成的电台 unified 轮询
+      // detect 收敛到真实平台数。
+      if (!result.liked) setFanOutCount(0);
       if (result.liked) {
         reportRecoSignal({
           type: 'like',

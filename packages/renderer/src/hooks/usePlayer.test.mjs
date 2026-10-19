@@ -62,6 +62,7 @@ const {
   shouldTransientRetry,
   shouldSearchEquivalent,
   isPlaybackStalled,
+  synthRadioUnified,
   TRANSIENT_RETRY_MAX,
   STALL_PROBE_MS,
   parsePlayableQueue,
@@ -783,6 +784,43 @@ async function main() {
     isPlaybackStalled({ currentTime: 1.2, elapsedMs: STALL_PROBE_MS + 500 }),
     false,
   );
+
+  // 62. synthRadioUnified：电台 Track → 单源 unified，mergedId 沿用
+  //     `merged-{provider}-{id}-studio`（server 单平台合并键约定），
+  //     sources 必含 hasCopyright=true（detectLiked 会用它过滤）。
+  {
+    const u = synthRadioUnified({
+      id: '002FRBul05dgjC',
+      provider: 'qq',
+      title: '模特',
+      artist: '李荣浩',
+      album: '模特',
+      coverUrl: 'http://c',
+      audioUrl: '/music/stream/qq/002FRBul05dgjC',
+      duration: 306,
+      liked: true,
+      mediaMid: 'MMx',
+    });
+    check(
+      '62a. 电台 unified id 沿用 server 单平台合并键约定',
+      u.id,
+      'merged-qq-002FRBul05dgjC-studio',
+    );
+    check('62b. sources 恰含种子平台一项', u.sources.length, 1);
+    check(
+      '62c. source.platform/trackId/hasCopyright',
+      JSON.stringify([u.sources[0].platform, u.sources[0].trackId, u.sources[0].hasCopyright]),
+      JSON.stringify(['qq', '002FRBul05dgjC', true]),
+    );
+    check(
+      '62d. meta（title/artist/duration）透传',
+      JSON.stringify([u.title, u.artist, u.duration]),
+      JSON.stringify(['模特', '李荣浩', 306]),
+    );
+    check('62e. bestSource 即种子平台', u.bestSource, 'qq');
+    check('62f. versionType=studio（不显示版本角标）', u.versionType, 'studio');
+    check('62g. versions 为空（单版本）', u.versions.length, 0);
+  }
 
   console.log(`\n🎉 usePlayer.test 通过 ${passed} 项，失败 ${failed} 项`);
   if (failed > 0) process.exit(1);

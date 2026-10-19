@@ -93,6 +93,8 @@
   border-color: var(--border-strong);
 }
 
+// 主按钮走 --accent-ui：_tokens.scss 明确「--accent 是 theater 体系（霓虹青），
+// 非 theater 组件改用 --accent-ui」。PlayerNotice 是全局 overlay，非 theater 件。
 .player-notice-btn--primary {
   border-color: var(--accent-ui);
   background: var(--accent-soft);

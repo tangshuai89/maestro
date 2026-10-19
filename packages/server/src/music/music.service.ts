@@ -3516,6 +3516,8 @@ export class MusicService {
     // 用户点 ❤（toggleLike）→ 立刻取消 ❤（enqueue 触发的 detect 发现已心
     // 然后 state.liked 又被覆盖）。锁住写段避免 lost update。
     let nowLiked = false;
+    let canonicalId = `single:${provider}:${trackId}`;
+    let unlikeTargets: Array<{ platform: MusicProvider; trackId: string }> = [];
     await this.withStateLock(session.id, async () => {
       const state = this.loadState(session);
       // T2 (consistency-fixes B2)：radio ❤ 路径。旧实现用 applyLikeToggle
@@ -3525,17 +3527,43 @@ export class MusicService {
       const wasLiked = state.providers[provider].liked.has(trackId);
       nowLiked = !wasLiked;
       this.writeLike(session, state, provider, trackId, nowLiked);
+      // fanOut 记录是 detect/角标与 discover 落地的 canonical 凭据。种子平台
+      // 必须自己先落账 —— 否则 resolveEquivalents 的 T4 守卫
+      // （`!state.fanOut[fullCanonicalId]` → 视为"用户中途取消"整包丢弃）把
+      // 电台 ❤ 的跨平台匹配结果扔掉，电台红心永远扇不出去（全历史 49 个
+      // session 只有 1 条 single: 记录佐证）。canonicalMergedId 会在该曲目
+      // 已有 merged-* 记录（搜索路径 fan-out 过）时归一到那个 key。
+      canonicalId = this.canonicalMergedId(state, canonicalId, [{ platform: provider, trackId }]);
+      if (nowLiked) {
+        state.fanOut[canonicalId] = this.mergeFanOutEntries(state.fanOut[canonicalId] ?? [], [
+          { platform: provider, trackId },
+        ]);
+      } else {
+        // 取消方向与 fanOutLike(false) 同语义：按记录反写其余已扇出平台 +
+        // 删记录 —— 否则远端残留红心、记录残留，detect 下一轮又把角标数回来。
+        const record = state.fanOut[canonicalId] ?? [];
+        unlikeTargets = record
+          .filter((e) => e.trackId && e.platform !== provider)
+          .map((e) => ({ platform: e.platform, trackId: e.trackId as string }));
+        for (const e of unlikeTargets) {
+          this.writeLike(session, state, e.platform, e.trackId, false);
+        }
+        delete state.fanOut[canonicalId];
+      }
       this.saveState(session, state);
     });
     // 远端同步走队列（best-effort + 重试，不阻塞本地）。单平台用一个稳定
     // 的合成 key，避免和统一搜索的 mergedId 撞车。
     // discover：这是电台单平台 track（如 QQ 私人 FM），点 ❤ 时顺带去其余
-    // 已登录平台跨平台匹配，把红心同步过去（仅收藏方向，取消不匹配）。
+    // 已登录平台跨平台匹配，把红心同步过去（仅收藏方向，取消不匹配——取消
+    // 方向按 fanOut 记录反写其余平台，见上）。
     this.enqueueLikeSync(
       session,
-      `single:${provider}:${trackId}`,
+      canonicalId,
       nowLiked,
-      [{ platform: provider, trackId }],
+      nowLiked
+        ? [{ platform: provider, trackId }]
+        : [{ platform: provider, trackId }, ...unlikeTargets],
       nowLiked ? this.buildDiscover(meta, [provider]) : undefined,
     );
     return { success: true, liked: nowLiked };

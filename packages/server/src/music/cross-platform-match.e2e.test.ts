@@ -41,6 +41,7 @@ let spotifySearchResults: any[] = [];
 // （模拟 GetVkey 104003 无 purl / 凭据死透）。
 let qqStreamOk: Set<string> | null = null;
 const neteaseLikes: string[] = [];
+const neteaseUnlikes: string[] = [];
 let qqLikedRemote: string[] = [];
 const spotifyLikes: string[] = [];
 const netease = {
@@ -49,7 +50,10 @@ const netease = {
     neteaseLikes.push(id);
     return true;
   },
-  unlike: async () => true,
+  unlike: async (_ps: unknown, id: string) => {
+    neteaseUnlikes.push(id);
+    return true;
+  },
 };
 const qq = {
   search: async () => qqSearchResults,
@@ -1825,7 +1829,72 @@ async function main() {
     console.log('✅ 38. 同平台实探全死 → 不推死 mid，落到跨平台候选');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 38 项通过');
+  // ── 39. toggleLike（电台 ❤）→ single: fanOut 种子记录 + discover 落地 ──
+  // 旧实现 toggleLike 从不写 state.fanOut → resolveEquivalents 的 T4 守卫
+  // （记录不存在 → 整包丢弃）把电台 ❤ 的跨平台匹配结果扔掉，电台红心从未
+  // 扇出（全历史 49 session 仅 1 条 single: 记录佐证）。修复后：种子平台先
+  // 落 fanOut，discover 正常补齐 netease，detect 按 trackId 桥到 single: key。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    // qqLikedRemote 同步上这首——模拟 qq.like 远端已生效；否则 detect 走
+    // getLikedSet 远端对账时（cache miss / reconcile）会把它当本地脏数据抹掉。
+    qqLikedRemote.push('q-radio');
+    neteaseSearchResults = [neTrack('n-radio', '电台红心歌', '电台歌手', 250)];
+    const r = await svc.toggleLike(session, 'qq', 'q-radio', {
+      title: '电台红心歌',
+      artist: '电台歌手',
+      duration: 251,
+    });
+    assert.strictEqual(r.liked, true, 'toggleLike 应返回 liked=true');
+    const ok = await waitFor(async () => (await likedIds('netease')).includes('n-radio'));
+    assert.ok(ok, '电台 ❤ 的 discover 应把 netease n-radio 加入本地 liked');
+    assert.ok(neteaseLikes.includes('n-radio'), '电台 ❤ 应同步远端 netease.like');
+    // detect 用 renderer 合成的 merged-{p}-{id}-studio key —— canonicalMergedId
+    // 应按 qq:q-radio 桥到 single:qq:q-radio 记录。
+    const d = await svc.detectLikedAndSync(
+      session,
+      'merged-qq-q-radio-studio',
+      [{ platform: 'qq', trackId: 'q-radio' }],
+      { title: '电台红心歌', artist: '电台歌手', duration: 251 },
+    );
+    assert.strictEqual(d.liked, true, 'detect 应读到 qq 已红心');
+    assert.deepStrictEqual(
+      d.fannedOutTo.sort(),
+      ['netease', 'qq'],
+      '角标数应含 qq + discover 补齐的 netease（=2）',
+    );
+    console.log('✅ 39. toggleLike(电台 ❤) → single: 记录 + discover 扇出 + detect 桥接');
+  }
+
+  // ── 40. toggleLike 取消方向 → 按 fanOut 记录反写其余平台 + 删记录 ──────
+  // 与 fanOutLike(false) 同语义：电台取消红心必须把已扇出到 netease 的红心
+  // 一起撤掉（本地 + 远端），否则远端残留红心、detect 又把角标数回来。
+  {
+    const beforeUnlikes = neteaseUnlikes.length;
+    // qq.unlike 远端已生效 → 远端 liked 集不再含它（detect 对账/重拉视角）。
+    qqLikedRemote = qqLikedRemote.filter((id) => id !== 'q-radio');
+    const r = await svc.toggleLike(session, 'qq', 'q-radio', {
+      title: '电台红心歌',
+      artist: '电台歌手',
+      duration: 251,
+    });
+    assert.strictEqual(r.liked, false, '再点 ❤ 应取消（liked=false）');
+    const ok = await waitFor(async () => neteaseUnlikes.length > beforeUnlikes);
+    assert.ok(ok, '取消电台 ❤ 应远端反写已扇出的 netease 平台');
+    assert.ok(neteaseUnlikes.includes('n-radio'), 'netease.unlike 应收到 discover 补的 n-radio');
+    // detect 复跑：qq 已不红心 → liked=false，角标清零。
+    const d = await svc.detectLikedAndSync(
+      session,
+      'merged-qq-q-radio-studio',
+      [{ platform: 'qq', trackId: 'q-radio' }],
+      { title: '电台红心歌', artist: '电台歌手', duration: 251 },
+    );
+    assert.strictEqual(d.liked, false, '取消后 detect 应返回 liked=false');
+    assert.deepStrictEqual(d.fannedOutTo, [], 'fannedOutTo 应为空（角标 0）');
+    console.log('✅ 40. toggleLike 取消 → 反写已扇出平台 + detect 归零');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 40 项通过');
 }
 
 main().catch((err) => {

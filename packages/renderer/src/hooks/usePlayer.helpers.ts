@@ -345,3 +345,38 @@ export function isPlaybackStalled(input: {
   // 观察窗口没到就还不能下结论（否则会把正常起播误判成卡死）
   return input.elapsedMs >= probe && !(input.currentTime > 0);
 }
+
+/**
+ * 电台 / 单平台 Track 合成的最小 UnifiedSearchItem —— 服务端
+ * `/music/like/detect` 只需要 mergedId + sources + meta 三样，全部可从
+ * Track 推导。电台路径没有真实 unified item，但红心检测/角标同样需要跑。
+ *
+ * mergedId 沿用 server 单平台合并键约定 `merged-{provider}-{trackId}-studio`
+ * （search.util.ts 同款），让电台 fanOut 落在与统一搜索同一 key 空间；
+ * 服务端 canonicalMergedId 还能按 `platform:trackId` 命中 toggleLike 写的
+ * `single:{p}:{id}` 记录（电台 ❤ 的 keyspace）——两个键空间按 trackId 打通。
+ */
+export function synthRadioUnified(track: Track): UnifiedSearchItem {
+  return {
+    id: `merged-${track.provider}-${track.id}-studio`,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    coverUrl: track.coverUrl,
+    duration: track.duration,
+    sources: [
+      {
+        platform: track.provider,
+        trackId: track.id,
+        hasCopyright: true,
+        url: track.audioUrl,
+        mediaMid: track.mediaMid,
+        vipLocked: track.vipLocked,
+        noPreview: track.noPreview,
+      },
+    ],
+    bestSource: track.provider,
+    versionType: 'studio',
+    versions: [],
+  };
+}
