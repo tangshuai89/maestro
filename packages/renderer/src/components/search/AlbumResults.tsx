@@ -137,10 +137,17 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
       const res = await searchAlbums(keyword, nextPage, PAGE_SIZE, controller.signal);
       if (controller.signal.aborted) return;
       setAlbums((prev) => {
-        if (!append) return res.items;
-        // 按 id 去重：翻页时同一张专辑可能因为合并结果变化而重复出现
-        const seen = new Set(prev.map((a) => a.id));
-        return [...prev, ...res.items.filter((a) => !seen.has(a.id))];
+        // 按 id 去重：服务端合并出的 `merged-*` id 可能在一页里重复出现
+        // （同 normalizeKey 但曲数分歧未合并的两条记录），不去重会触发
+        // React duplicate-key 警告并可能渲染重复行。
+        const seen = new Set(append ? prev.map((a) => a.id) : []);
+        const next = append ? [...prev] : [];
+        for (const a of res.items) {
+          if (seen.has(a.id)) continue;
+          seen.add(a.id);
+          next.push(a);
+        }
+        return next;
       });
       setPage(res.page);
       setHasMore(res.page * res.pageSize < res.total);

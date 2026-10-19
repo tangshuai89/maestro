@@ -804,6 +804,10 @@ export interface CrossPlatformLikeTotal {
   display: string;
   /** 累加来源平台列表（顺序 = sources 顺序），用于上标 ¹/² 渲染 */
   platforms: Array<'qq' | 'netease'>;
+  /** 逐项展示串。HUD 要 `5700w+¹ + 2,500²`——上标紧跟各自分数；display 那条
+   *  拼好的串做不到（会渲染成 `5700w+ + 2,500¹²`，上标全粘末尾）。
+   *  顺序 = sources 序。老数据可能没有（服务端未升级）→ HUD 兜回单块 display。 */
+  parts?: Array<{ platform: 'qq' | 'netease'; display: string }>;
 }
 
 /** 统一搜索结果里每个平台的源信息（服务端 SourceInfo 的前端镜像）。 */
@@ -1060,23 +1064,44 @@ export async function searchOne(
  * 实时跨平台匹配：当前 track（provider + 元数据）播放失败（code=4）时，请求
  * 服务端去其余已登录平台搜同名同时长的等价曲目，拿一个可直接播放的 source
  * 回来。找不到返回 null。严格匹配（歌名+歌手+时长 ±3s）在服务端做。
+ *
+ * `excludeId`（当前挂掉的曲目 id）：服务端会先做「同平台换版本」兜底——同一
+ * 首歌常有多个 songmid（专辑版需单购 vs 单曲版可播），排除死 mid 重新匹配
+ * 并实探过流后才返回。
+ *
+ * `reason`：找不到时附带的失败分类，前端据此给分级文案：
+ *  - vip-locked：找到了歌但全部候选都是 VIP 锁
+ *  - stream-failed：同平台换到版本但实探不出流
+ *  - no-match：其它平台连候选都没搜到
  */
+export type EquivalentFailReason = 'vip-locked' | 'stream-failed' | 'no-match';
+
+export interface EquivalentSourceResult {
+  source: UnifiedSourceInfo | null;
+  reason: EquivalentFailReason | null;
+}
+
 export async function findEquivalentSource(
   provider: MusicProvider,
   meta: LikeMeta,
-): Promise<UnifiedSourceInfo | null> {
+  excludeId?: string,
+): Promise<EquivalentSourceResult> {
   const params = new URLSearchParams({
     provider,
     title: meta.title,
     artist: meta.artist,
     duration: String(meta.duration),
   });
-  const res = await json<{ source: UnifiedSourceInfo | null }>(
+  if (excludeId) params.set('trackId', excludeId);
+  const res = await json<{
+    source: UnifiedSourceInfo | null;
+    reason?: EquivalentFailReason | null;
+  }>(
     await fetchWithToken(`${API_BASE}/music/equivalents?${params.toString()}`, {
       credentials: 'include',
     }),
   );
-  return res.source;
+  return { source: res.source ?? null, reason: res.reason ?? null };
 }
 
 /**
@@ -1671,5 +1696,10 @@ export function recomputeCrossPlatformLikeTotal(item: {
   const count = buckets.reduce((a, b) => a + b.count, 0);
   const display = buckets.map((b) => b.display).join(' + ');
   const platforms = buckets.map((b) => b.source);
-  item.crossPlatformLikeTotal = { count, display, platforms };
+  // parts 与 display 同源但保留逐项切分——HUD 要把上标插回每个数字后面。
+  // ⚠️ 这份是 server/src/music/search.util.ts 的**镜像**：server 侧加字段时
+  // 必须同步加，否则 fire-and-forget 走 client 路径填出来的对象没有 parts，
+  // HUD 会静默退化成"一个数字 + 一串上标"。见 CLAUDE.md 跨包归一工具的约定。
+  const parts = buckets.map((b) => ({ platform: b.source, display: b.display }));
+  item.crossPlatformLikeTotal = { count, display, platforms, parts };
 }

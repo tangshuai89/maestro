@@ -14,7 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { MusicService, type LikeMeta } from './music.service';
+import { MusicService, type EquivalentFailReason, type LikeMeta } from './music.service';
 import { QqMusicProvider } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { LyricsService } from './lyrics.service';
@@ -671,21 +671,27 @@ export class MusicController {
     @Query('title') title: string,
     @Query('artist') artist: string,
     @Query('duration') duration: string,
+    @Query('trackId') trackId: string | undefined,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ source: SourceInfo | null }> {
+  ): Promise<{ source: SourceInfo | null; reason: EquivalentFailReason | null }> {
     const seedProvider = normalizeProvider(provider);
     const dur = Number(duration);
     if (!title && !artist) {
-      return { source: null };
+      return { source: null, reason: 'no-match' };
     }
     const session = this.sessionService.resolve(req, res);
-    const source = await this.musicService.findPlayableEquivalent(session, seedProvider, {
-      title: title ?? '',
-      artist: artist ?? '',
-      duration: Number.isFinite(dur) ? dur : 0,
-    });
-    return { source };
+    const { source, reason } = await this.musicService.findPlayableEquivalent(
+      session,
+      seedProvider,
+      {
+        title: title ?? '',
+        artist: artist ?? '',
+        duration: Number.isFinite(dur) ? dur : 0,
+      },
+      { ...(trackId ? { excludeTrackId: trackId } : {}) },
+    );
+    return { source, reason };
   }
 
   @SkipInternalToken()

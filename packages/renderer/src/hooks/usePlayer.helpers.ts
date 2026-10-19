@@ -270,3 +270,113 @@ export function shouldStopWpsBeforeTransition(
   // (B), and (C): provider changed, wpsReady flipped, or the id changed.
   return true;
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// 播放失败后的处置策略（2026-10-19 报障「启动后不播放」）
+//
+// 背景：QQ 的 GetVkey 对**部分歌曲**不返 purl（版权 / 绿钻覆盖，实测《演员》
+// 能放、《晴天》不能）。这是既有上游行为，但它暴露了降级链的两个洞：
+//   1. transient 重试**无次数上限**且成功后立刻把 guard 清零 —— 源一直坏
+//      时会「error → 重试 → 成功 resolve → 清零 → 再 error」无限循环，
+//      永远走不到跨平台兜底。
+//   2. radio 路径的 track **没有 unified**，`tryFallbackSource` 第一行就
+//      `if (!unified) return false` —— 于是电台歌放不了时**一条兜底都没有**，
+//      界面停在「等待播放」还显示 READY。
+//
+// 下面三个纯函数把这套策略从 hook 里抠出来，便于白盒测试。
+// ─────────────────────────────────────────────────────────────────────
+
+/** 单首歌最多允许几次 transient 同源重试。0 = 不重试，直接兜底。 */
+export const TRANSIENT_RETRY_MAX = 2;
+
+/** 多久算「重试后根本没出声」：play() resolve 了但进度一点没动。 */
+export const STALL_PROBE_MS = 1500;
+
+/**
+ * 这次 `error` 该不该做同源 transient 重试。
+ *
+ * `wantPlay` = 用户当前是不是想播（暂停后切歌等场景不要重试）。
+ * `attempts` = 本首歌**已经重试过几次**——跨 error 事件累加，靠上限收敛，
+ * 否则坏源会无限重试（这是修掉的那个洞）。
+ */
+export function shouldTransientRetry(input: {
+  attempts: number;
+  wantPlay: boolean | undefined;
+  max?: number;
+}): boolean {
+  if (!input.wantPlay) return false; // 用户已暂停 / 已切歌
+  const max = input.max ?? TRANSIENT_RETRY_MAX;
+  return input.attempts < max;
+}
+
+/**
+ * 该不该走「用 title/artist 去服务端找等价源」这条兜底。
+ *
+ * - 没有 track → 没什么可搜的。
+ * - **没有 unified 也照样能搜** —— 这是修掉的洞 #2：`findEquivalentSource`
+ *   只吃 `{title, artist, duration}`，radio track 一样有这三个字段。
+ *   旧代码在这里直接 `return false`，电台歌放不了时零兜底。
+ * - 同一首歌只搜一次（`alreadyTried`），否则会在 qq↔netease 之间来回换源
+ *   —— radio 的 `presentTrack` 没有 unified 会把它当新歌重置 triedPlatforms。
+ */
+export function shouldSearchEquivalent(input: {
+  hasTrack: boolean;
+  alreadyTried: boolean;
+}): boolean {
+  return input.hasTrack && !input.alreadyTried;
+}
+
+/**
+ * 重试「成功」了但其实没出声 → 判定为卡死，继续走兜底。
+ *
+ * `play()` 的 Promise resolve 只说明"浏览器接受了播放请求"，不代表出了声：
+ * 坏源上它经常 resolve，然后 `currentTime` 永远停在 0（用户看到 00:00 /
+ * 「等待播放」，而 HUD 还写着 READY）。
+ *
+ * @param currentTime 重试后观察到的播放位置
+ * @param elapsedMs   距离发起重试过了多久
+ */
+export function isPlaybackStalled(input: {
+  currentTime: number;
+  elapsedMs: number;
+  probeAfterMs?: number;
+}): boolean {
+  const probe = input.probeAfterMs ?? STALL_PROBE_MS;
+  // 观察窗口没到就还不能下结论（否则会把正常起播误判成卡死）
+  return input.elapsedMs >= probe && !(input.currentTime > 0);
+}
+
+/**
+ * 电台 / 单平台 Track 合成的最小 UnifiedSearchItem —— 服务端
+ * `/music/like/detect` 只需要 mergedId + sources + meta 三样，全部可从
+ * Track 推导。电台路径没有真实 unified item，但红心检测/角标同样需要跑。
+ *
+ * mergedId 沿用 server 单平台合并键约定 `merged-{provider}-{trackId}-studio`
+ * （search.util.ts 同款），让电台 fanOut 落在与统一搜索同一 key 空间；
+ * 服务端 canonicalMergedId 还能按 `platform:trackId` 命中 toggleLike 写的
+ * `single:{p}:{id}` 记录（电台 ❤ 的 keyspace）——两个键空间按 trackId 打通。
+ */
+export function synthRadioUnified(track: Track): UnifiedSearchItem {
+  return {
+    id: `merged-${track.provider}-${track.id}-studio`,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    coverUrl: track.coverUrl,
+    duration: track.duration,
+    sources: [
+      {
+        platform: track.provider,
+        trackId: track.id,
+        hasCopyright: true,
+        url: track.audioUrl,
+        mediaMid: track.mediaMid,
+        vipLocked: track.vipLocked,
+        noPreview: track.noPreview,
+      },
+    ],
+    bestSource: track.provider,
+    versionType: 'studio',
+    versions: [],
+  };
+}

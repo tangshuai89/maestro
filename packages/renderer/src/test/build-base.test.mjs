@@ -72,20 +72,29 @@ function main() {
   // 注意它不是"回退到 none"就能接受的静默失败，视觉上像布局随机歪掉。
   check('3. dist 产物里有 --tw-transform 系变量的 `*{}` 兜底初始化', () => {
     let found = false;
+    let sawDist = false;
     for (const entry of ['index.html', 'lyrics.html']) {
       const file = resolve(pkgRoot, 'dist', entry);
       if (!existsSync(file)) continue;
+      sawDist = true;
       // HTML 里内联的 CSS 也算（dev 模式与产物两条路径都要覆盖）
       const html = readFileSync(file, 'utf8');
       if (/--tw-translate-x:\s*0/.test(html)) found = true;
     }
     const assetsDir = resolve(pkgRoot, 'dist', 'assets');
     if (existsSync(assetsDir)) {
+      sawDist = true;
       for (const f of readdirSync(assetsDir)) {
         if (!f.endsWith('.css')) continue;
         const css = readFileSync(resolve(assetsDir, f), 'utf8');
         if (/--tw-translate-x:\s*0/.test(css)) found = true;
       }
+    }
+    // 与 2/4 项同约定：CI 只构建 common、不构建 renderer dist，
+    // 没产物可查时跳过而非误报（此前每次 CI 都打印一条假 ❌）。
+    if (!sawDist) {
+      console.log('   （跳过：dist 未构建）');
+      return;
     }
     assert.ok(
       found,

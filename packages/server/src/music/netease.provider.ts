@@ -1,10 +1,17 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Optional,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Track } from './types';
 import type { VipCategory, RemotePlaylist, RemotePlaylistMeta } from './types';
 import { type LyricLine, parseLrc } from '../common/lyrics';
-import { ProviderSession } from '../common/session';
+import { ProviderSession, SessionService } from '../common/session';
 import { QqQuality } from './qq.provider';
 import { withTimeout } from '../common/timeout';
+import { ENTITLEMENT_TTL_MS, type EntitlementSnapshot } from './entitlement';
 import type { AlbumSource } from './album-types';
 
 /**
@@ -72,6 +79,11 @@ interface SongUrlItem {
   type?: string;
   level?: string;
   code?: number;
+  time?: number;
+  freeTrialInfo?: {
+    start?: number;
+    end?: number;
+  } | null;
 }
 
 interface SongUrlResponse {
@@ -135,13 +147,19 @@ const NETEASE_LEVEL: Record<QqQuality, string> = {
 
 /** 网易云 privilege 子对象的最小类型（仅取检测需要的字段）。 */
 export interface NeteasePrivilege {
+  id?: number;
   /** 当前账号可播最高码率 (bps)；0/缺失 = 完全不能播。 */
   pl?: number;
-  /** 价格/付费代码。0 = 免费，1 = 数字专辑，4/8 = VIP 付费单曲等。
+  /** 价格/付费代码。0 = 免费，1 = 数字专辑/VIP，4/8 = 付费单曲/VIP 试听等。
    *  > 0 一律锁——付费内容不是仅靠 pl > 0 就能给完整曲。 */
   fee?: number;
   /** 状态码（vip 项展开用，检测未用到，预留）。 */
   st?: number;
+  freeTrialPrivilege?: {
+    resConsumable?: boolean;
+    userConsumable?: boolean;
+    cannotListenReason?: number | null;
+  } | null;
 }
 
 /**
@@ -149,18 +167,18 @@ export interface NeteasePrivilege {
  * 见 spec/paid-album-detection。
  *
  * 判定逻辑：
- *   1. fee > 0 → 一律锁（数字专辑 / 付费单曲 / 任何付费形式）。
+ *   1. freeTrialPrivilege.cannotListenReason 非空 → 明确只能试听/不可播 → 锁。
+ *   2. fee > 0 → 一律锁（数字专辑 / 付费单曲 / 任何付费形式）。
  *      这是修「台北车站」类 bug 的关键——原代码只看 pl > 0，把数字专辑
  *      的 128kbps 试听 pl 判成"已解锁"，实际只能给 30 秒预览。
- *   2. 否则沿用旧逻辑：pl > 0 → 不锁；pl <= 0 → 锁。
- *   3. p 整体缺失 → 不锁（调用方在 netease.provider.ts:329-331 还有
- *      「未知 = 按 neteaseVip 兜底」的第二层兜底，这里只做基于 p 的
- *      确定判断）。
+ *   3. 否则沿用旧逻辑：pl > 0 → 不锁；pl <= 0 → 锁。
+ *   4. p 整体缺失 → 不锁（调用方还有「未知 = 按 neteaseVip 兜底」的第二层兜底）。
  *
  * 与 QQ 同款抽成模块顶层函数，便于单测 import 直接验证。
  */
 export function detectNeteaseVipLocked(p: NeteasePrivilege | undefined): boolean {
   if (!p) return false;
+  if (p.freeTrialPrivilege?.cannotListenReason != null) return true;
   // 付费内容（数字专辑/付费单曲）→ 绿胶/VIP 也得买，不能放完整曲
   if (typeof p.fee === 'number' && p.fee > 0) return true;
   // 老逻辑：pl > 0 视为可播
@@ -195,6 +213,23 @@ export function detectNeteaseVipCategory(s: {
 @Injectable()
 export class NeteaseMusicProvider {
   private readonly logger = new Logger(NeteaseMusicProvider.name);
+  private readonly sessionIdBySession = new WeakMap<ProviderSession, string>();
+  private readonly entitlementCache = new Map<string, EntitlementSnapshot>();
+
+  constructor(@Optional() private readonly sessions?: SessionService) {}
+
+  bindSessionId(session: ProviderSession, sessionId: string): void {
+    this.sessionIdBySession.set(session, sessionId);
+  }
+
+  private syncVipToSession(session: ProviderSession, vip: boolean): void {
+    if (session.neteaseVip === vip) return;
+    session.neteaseVip = vip;
+    const sessionId = this.sessionIdBySession.get(session);
+    if (sessionId && this.sessions) {
+      this.sessions.persistNetease(sessionId, session);
+    }
+  }
 
   isConfigured(session: ProviderSession | undefined): boolean {
     return Boolean(session?.musicU);
@@ -272,7 +307,7 @@ export class NeteaseMusicProvider {
       return [];
     }
 
-    // 3. 歌单详情（含完整 tracks 列表）
+    // 3. 歌单详情（含完整 tracks 列表 + 顶层 privileges 数组）
     const detail = await this.apiCall<{
       playlist?: {
         tracks?: Array<{
@@ -281,21 +316,38 @@ export class NeteaseMusicProvider {
           ar?: { id: number; name: string }[];
           al?: { id: number; name: string; picUrl?: string };
           dt?: number;
+          fee?: number;
+          privilege?: NeteasePrivilege;
         }>;
       };
+      privileges?: NeteasePrivilege[];
     }>(session, 'https://music.163.com/api/v6/playlist/detail', { id: String(fav.id), n: '1000' });
+    const privById = new Map<number, NeteasePrivilege>();
+    for (const pr of detail.privileges ?? []) {
+      if (typeof pr?.id === 'number') privById.set(pr.id, pr);
+    }
     const tracks = (detail.playlist?.tracks ?? []).slice(0, maxTracks);
-    return tracks.map((t) => ({
-      id: String(t.id),
-      provider: 'netease' as const,
-      title: t.name,
-      artist: t.ar?.map((a) => a.name).join(' / ') ?? '未知艺人',
-      album: t.al?.name ?? '',
-      coverUrl: t.al?.picUrl ?? '',
-      audioUrl: '',
-      duration: Math.round((t.dt ?? 0) / 1000),
-      liked: true, // 来源就是"我喜欢的音乐"，全部视为已 ❤
-    }));
+    return tracks.map((t) => {
+      const priv = t.privilege ?? privById.get(t.id);
+      const hasFeeOrPriv = Boolean(priv) || typeof t.fee === 'number';
+      return {
+        id: String(t.id),
+        provider: 'netease' as const,
+        title: t.name,
+        artist: t.ar?.map((a) => a.name).join(' / ') ?? '未知艺人',
+        album: t.al?.name ?? '',
+        coverUrl: t.al?.picUrl ?? '',
+        audioUrl: '',
+        duration: Math.round((t.dt ?? 0) / 1000),
+        liked: true, // 来源就是"我喜欢的音乐"，全部视为已 ❤
+        ...(hasFeeOrPriv
+          ? {
+              vipLocked: detectNeteaseVipLocked({ ...priv, fee: priv?.fee ?? t.fee }),
+              vipCategory: detectNeteaseVipCategory({ fee: t.fee ?? priv?.fee, privilege: priv }),
+            }
+          : {}),
+      };
+    });
   }
 
   /**
@@ -303,14 +355,17 @@ export class NeteaseMusicProvider {
    * 静默返回空）。
    *
    * 抽出来是因为 `fetchLiked` 与 `listPlaylists`（specs/remote-playlist）都要走
-   * 同一步 `/api/nuser/account/get`。
+   * 同一步 `/api/nuser/account/get`。顺带根据 `account.vipType` 实时修正
+   * `session.neteaseVip`（零额外请求）。
    */
   private async currentUid(session: ProviderSession, ctx: string): Promise<number | null> {
-    const account = await this.apiCall<{ account?: { id?: number } }>(
-      session,
-      'https://music.163.com/api/nuser/account/get',
-      {},
-    );
+    const account = await this.apiCall<{
+      account?: { id?: number; vipType?: number; paidFee?: boolean };
+    }>(session, 'https://music.163.com/api/nuser/account/get', {});
+    if (account.account && typeof account.account.vipType === 'number') {
+      const vip = account.account.vipType > 0 || account.account.paidFee === true;
+      this.syncVipToSession(session, vip);
+    }
     const uid = account.account?.id;
     if (!uid) {
       this.logger.warn(`netease ${ctx}: no uid from /nuser/account/get`);
@@ -408,6 +463,7 @@ export class NeteaseMusicProvider {
           privilege?: NeteasePrivilege;
         }>;
       };
+      privileges?: NeteasePrivilege[];
     }>(session, 'https://music.163.com/api/v6/playlist/detail', {
       id: String(playlistId),
       n: String(Math.min(maxTracks, 1000)),
@@ -422,27 +478,32 @@ export class NeteaseMusicProvider {
       throw new NotFoundException({ error: 'playlist_not_found', playlistId });
     }
 
+    const privById = new Map<number, NeteasePrivilege>();
+    for (const pr of detail.privileges ?? []) {
+      if (typeof pr?.id === 'number') privById.set(pr.id, pr);
+    }
+
     const tracks: Track[] = (p.tracks ?? [])
       .filter((t): t is typeof t & { id: number } => typeof t.id === 'number')
       .slice(0, maxTracks)
-      .map((t) => ({
-        id: String(t.id),
-        provider: 'netease' as const,
-        title: t.name ?? '',
-        artist: t.ar?.map((a) => a.name).join(' / ') ?? '未知艺人',
-        album: t.al?.name ?? '',
-        coverUrl: t.al?.picUrl ?? '',
-        audioUrl: '', // 由 getStreamPath 在播放时动态获取
-        duration: Math.round((t.dt ?? 0) / 1000),
-        liked: false, // 远端歌单 ≠ ❤ 列表，liked 交给 detectLikedAndSync 判定
-        // ⚠️ detectNeteaseVipLocked 只读 privilege.fee / privilege.pl，而
-        // v6/playlist/detail 实测与 cloudsearch/pc 同款：privilege 常为 null、
-        // fee 落在 **track 顶层**（见 NeteaseSearchSong.fee 的注释）。直接传
-        // t.privilege 会把付费歌判成「可播」——所以先把顶层 fee 兜进 privilege，
-        // 让共享 helper 的「fee>0 → 一律锁」语义生效。
-        vipLocked: detectNeteaseVipLocked({ ...t.privilege, fee: t.privilege?.fee ?? t.fee }),
-        vipCategory: detectNeteaseVipCategory({ fee: t.fee, privilege: t.privilege }),
-      }));
+      .map((t) => {
+        const priv = t.privilege ?? privById.get(t.id);
+        return {
+          id: String(t.id),
+          provider: 'netease' as const,
+          title: t.name ?? '',
+          artist: t.ar?.map((a) => a.name).join(' / ') ?? '未知艺人',
+          album: t.al?.name ?? '',
+          coverUrl: t.al?.picUrl ?? '',
+          audioUrl: '', // 由 getStreamPath 在播放时动态获取
+          duration: Math.round((t.dt ?? 0) / 1000),
+          liked: false, // 远端歌单 ≠ ❤ 列表，liked 交给 detectLikedAndSync 判定
+          // ⚠️ v6/playlist/detail 实测：track 内联 privilege 常缺失，完整权限对象
+          // 在响应顶层的 detail.privileges[] 里，且 fee 也落在 track 顶层。
+          vipLocked: detectNeteaseVipLocked({ ...priv, fee: priv?.fee ?? t.fee }),
+          vipCategory: detectNeteaseVipCategory({ fee: t.fee ?? priv?.fee, privilege: priv }),
+        };
+      });
 
     return {
       provider: 'netease',
@@ -477,6 +538,60 @@ export class NeteaseMusicProvider {
    *
    * @returns 失败/超时/服务下线 → null；成功 → `{ count, display }`。
    */
+  /**
+   * 查账号状态：**凭据有效** + **黑胶权益**（ADR-110）。
+   *
+   * 为什么不能用 `session.neteaseVip`：那是**登录那一刻**抓的快照，永不更新。
+   * 2026-10-19 实测：storage 里 `neteaseVip: true`，而同一时刻
+   * `account/get` 返回 `vipType: 0` —— 用户的黑胶已经没了，App 却还在
+   * 按「是会员」判 `vipLocked`，把付费曲标成可播，用户点进去才發現放不了。
+   *
+   * `vipType > 0` 即有付费会员（黑胶 / SVIP 都走这个字段）。
+   * **返回 unknown 而不是猜**：查不到就 unknown，让上层按"不知道"处理，
+   * 绝不拿测不准的信号断言会员状态。
+   */
+  async fetchEntitlement(session: ProviderSession): Promise<EntitlementSnapshot> {
+    if (!session.musicU) {
+      return { credential: 'expired', entitlement: 'unknown', checkedAt: Date.now() };
+    }
+    const key = session.musicU.slice(0, 24);
+    const cached = this.entitlementCache.get(key);
+    if (cached && Date.now() - cached.checkedAt < ENTITLEMENT_TTL_MS) {
+      return cached;
+    }
+    const checkedAt = Date.now();
+    try {
+      const data = await this.apiCall<{
+        code?: number;
+        account?: { id?: number; vipType?: number; paidFee?: boolean; ban?: number } | null;
+      }>(session, 'https://music.163.com/api/nuser/account/get', {});
+      if (data.code === 301 || (data.code === 200 && !data.account?.id)) {
+        const snap: EntitlementSnapshot = {
+          credential: 'expired',
+          entitlement: 'unknown',
+          checkedAt,
+        };
+        this.entitlementCache.set(key, snap);
+        return snap;
+      }
+      if (data.code !== 200 || !data.account) {
+        return { credential: 'unknown', entitlement: 'unknown', checkedAt };
+      }
+      const vip = Number(data.account.vipType ?? 0) > 0 || data.account.paidFee === true;
+      this.syncVipToSession(session, vip);
+      const snap: EntitlementSnapshot = {
+        credential: 'valid',
+        entitlement: vip ? 'valid' : 'expired',
+        checkedAt,
+      };
+      this.entitlementCache.set(key, snap);
+      return snap;
+    } catch (err) {
+      this.logger.warn(`netease fetchEntitlement failed: ${(err as Error).message}`);
+      return { credential: 'unknown', entitlement: 'unknown', checkedAt };
+    }
+  }
+
   async getTrackLikeCount(
     session: ProviderSession,
     songId: string,
@@ -555,7 +670,14 @@ export class NeteaseMusicProvider {
         audioUrl: '', // 由 getStreamPath 在播放时动态获取
         duration: Math.round((durationMs ?? 0) / 1000),
         liked: false,
-        vipLocked: s.privilege ? detectNeteaseVipLocked(s.privilege) : !isVip,
+        vipLocked:
+          s.privilege || typeof s.fee === 'number'
+            ? detectNeteaseVipLocked({
+                ...s.privilege,
+                pl: s.privilege?.pl ?? (isVip ? 320000 : 0),
+                fee: s.privilege?.fee ?? s.fee,
+              })
+            : !isVip,
         // 付费分类（数字专辑/付费单曲/VIP 独占），比 vipLocked 二元更细。
         // cloudsearch/pc 实际把 fee 放到 song 顶层、privilege 是 null，所以
         // 这里从 song.fee 直接读，不要只看 privilege.fee。
@@ -640,7 +762,27 @@ export class NeteaseMusicProvider {
         `netease stream url missing for ${songId}: code=${item?.code ?? 'n/a'}`,
       );
     }
+    if (item.freeTrialInfo) {
+      this.logger.warn(
+        `netease getStreamPath(${songId}): 仅返回试听片段 (time=${item.time ?? '?'}ms, start=${item.freeTrialInfo.start ?? 0}, end=${item.freeTrialInfo.end ?? 30})`,
+      );
+    }
     return item.url;
+  }
+
+  /**
+   * 只读探测：这首歌当前能不能给**完整**流（非 30s 试听）。
+   * 同平台换版本兜底专用（findPlayableEquivalent → probePlayable）——搜索
+   * 元数据的 fee/pl/vipLocked 与真实可播性经常不一致，只有 player/url 返回
+   * 的 freeTrialInfo 才算数。任何异常 / 无 url / 仅试听 → false。
+   */
+  async probeFullStream(session: ProviderSession, songId: string): Promise<boolean> {
+    try {
+      const item = await this.fetchSongUrl(session, songId, 'standard');
+      return Boolean(item?.url) && !item?.freeTrialInfo;
+    } catch {
+      return false;
+    }
   }
 
   private async fetchSongUrl(

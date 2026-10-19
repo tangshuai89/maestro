@@ -9,6 +9,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **fix(player): QQ 取不到流时零兜底 → 界面卡在「等待播放」**（2026-10-19 报障）
+
+  报障现象：启动后不播放，进度条 `00:00`、HUD 显示 READY、没有任何报错。
+
+  **先分清责任**：用 provider 直连 QQ 复现，证实「取不到流」是**既有上游行为**，
+  与本仓库改动无关，且是**逐首**的——《演员》能拿到 purl，《晴天》《天外来物》
+  拿不到（同账号同时间）。真正的缺陷是应用对这种情况**一条兜底都没有**。
+
+  三处修法：
+
+  - **transient 重试加次数上限**（`shouldTransientRetry`）。旧实现是
+    「重试成功后把 guard 清零」，而 `play()` 在坏源上照样 resolve → 清零 →
+    下一个 `error` 又满足条件 → 「error → 重试 → resolve → 清零 → 再 error」
+    无限循环，永远走不到跨平台兜底。改成按本首歌累加次数（`presentTrack` 重置）。
+  - **重试后加卡死探测**（`isPlaybackStalled`）。`play()` resolve 只代表浏览器
+    接受了播放请求，不代表出了声：坏源上进度永远停在 0。起一个 1.5s 探测定时器，
+    到点还在 `00:00` 就走兜底，不让界面停在「等待播放」。
+  - **radio 路径也能兜底**（`shouldSearchEquivalent`）。`tryFallbackSource`
+    第一行原本是 `if (!unified || !cur) return false` —— QQ 电台 track 由服务端
+    单平台生成、没有 unified，于是直接被踢出兜底链。而 `findEquivalentSource`
+    只吃 `{title, artist, duration}`，radio track 一样有。同时把跨 await 的竞态
+    守卫从「只比 unified id」换成 **song epoch**：radio 路径下 id 前后都是
+    `undefined`，旧守卫等于没有（切歌了旧结果照样生效）。
+  - 顺带：radio 兜底加了「同歌只换一次源」的闸，否则换源后 `presentTrack` 会把
+    「已搜过」标记清成 false，可能 qq↔netease 无限来回换。
+  - **QQ 探针日志带 purl 比例**。`alive=true reason=purl_present` 极具误导性：
+    判定是「3 首探针歌里有 1 首能出流就算活」（保守优先，怕误报登录过期），
+    于是「探针说活着」和「用户点的歌一首都放不了」可以同时成立——排查当天
+    我自己就被这句带偏过。现在日志打 `purl=1/3`。判定口径不变（保守是对的），
+    只是把区别显示出来。
+
+  测试：策略纯函数 11 条（`usePlayer.test.mjs` 51–61）+ 接线契约 8 条
+  （`playbackFallback.test.mjs`，源码层守「兜底没被删」）+ 探针比例 3 条。
+  三次变异验证：去掉重试上限 → 2 条红；恢复 unified 早退 → F1 红；删掉
+  radio 兜底闸的读/写任一侧 → F3 红。**纯函数测不到接线**（第二次变异暴露的
+  盲区），所以必须有源码契约那一层——和上次 `<audio>` src 那次同一类错误。
+
+- **fix(player): 交叉淡入淡出接线引入的回归 —— 切音质 / 试听降标准后卡在 00:00**
+  （crossfade 的下一个 commit 修的，2026-10-19 报障）
+
+  - **根因**：crossfade 要求"旧歌留在原元素继续播"，所以 `<audio>` 的 `src`
+    从 React 绑定（`src={track.audioUrl}`）改成了命令式装载。这条隐式契约是
+    「**改 audioUrl 必须同时真的装载元素**」——而有两处旧代码只写
+    `setTrack({...prev, audioUrl})`，靠的正是 React 绑定去加载。改成命令式后
+    它们只改了 React 状态、元素纹丝不动 → 用户看到「降了标准音质，但歌还是
+    00:00 不出声」。
+  - **受影响路径**：`handleTrialDetected` 的「VIP 试听降到标准音质同平台重试」、
+    Settings 的 `changeQuality`（QQ / 网易云切音质）。两处都补了
+    `reloadActiveWithUrl(url)`。
+  - **为什么全部测试都绿**：纯逻辑（决策 / 调度）是对的，断的是"接线"——
+    单元测试根本碰不到 DOM 与元素的 src。补了
+    `src/hooks/audioSrcBinding.test.mjs` 从**源码层**守这条契约：凡改
+    audioUrl 的地方附近必须有命令式装载、两个 `<audio>` 不得绑 src、
+    reload 不得动 `wantPlay`。变异验证（删掉一处调用）能让它变红。
+  - 顺带说明：报障日志里的 `QQ GetVkey 无 purl` 是 QQ 侧没给播放 URL（VIP
+    锁），应用降标准重试是既有行为——只是降下去之后没真去加载，才表现为卡死。
+
+- **交叉淡入淡出 crossfade**（`specs/audio-fx` C 组）——切歌时前后两首重叠渐变，
+  时长 1–8s 可选、**默认关闭**。做法：
+
+  - **A/B 双 `<audio>` 常驻**（`lib/audioSlots.ts`）。淡变的本质是"旧歌留在原元素
+    继续播"，所以两个元素缺一不可。为了不让"当前播放元素"这层隐含假设散落
+    在 20 处调用点里，槽位之上包了一层只读代理 —— `audioRef.current` 照旧写，
+    但每次读都返回当前活跃元素，crossfade 开关对调用方完全透明。
+  - **src 改成命令式装载**（`lib/crossfadeRunner.ts` 的 `load()`）。React 绑定
+    `src` 会在切歌瞬间把新 URL 甩到同一个元素上、掐断正在淡出的歌；连带删掉
+    App 里那个「track.audioUrl 变 → audio.load()」的 effect。
+  - **每槽一条 Web Audio 链**：`source → EQ×10 → fadeGain → analyser →
+destination`。`createMediaElementSource` 每元素只能调一次且不共享，所以两条
+    链必须分开建；fadeGain 夹在 EQ 与 analyser 之间，淡出时声波环跟着暗。
+  - **淡变一律 `setTargetAtTime`**：不用 `linearRampToValueAtTime`——后者被暂停
+    或连切打断时会把增益**停在半路**，留下一条永远走不完的 ramp。
+
+  测试 21 条 + 变异验证。过程中照出三个真洞：
+
+  - 连按 ⏭ 的护栏判据写错（用"有没有淡变在跑"而不是"还有没有元素没闭嘴"）：
+    连按第 2 次硬切时把标记清了，第 3 次又去 crossfade，新歌装进正在收声的
+    旧槽 → ~120ms **双声叠加**，正是 spec 明令禁止的。
+  - `!(sec > 0)` 挡不住 `Infinity`（脏 localStorage）→ 时间常数变 Infinity，
+    淡变永远走不完。
+  - Settings 里 `useVolume` 其实是死代码：`maestro:volume` 偏好从来没被推给
+    任何元素（`audio.volume` 全仓零赋值），**音量滑块目前不出声**。不在本轮
+    范围，已记进 `specs/audio-fx/tasks.md` 待单独一轮。
+
+  ⚠️ **本轮没有真机验证过听感** —— 21 条测试都是假元素 + 假 gain，钉的是"调了
+  哪些 API、顺序对不对"，不是"好不好听"。
+
+- **跨平台 ❤ 累加（cross-platform-likes）补齐欠账**——功能早已上线但**一条测试都没有**，
+  且 spec 的两条验收其实没实现。本轮三件事：
+
+  1. **likeCount 缓存（真缺）**：此前每次搜索都重打 QQ `SongFavRead` / 网易云
+     `song/detail` 公开接口。现在挂在 `music.service.likeCountCache`——
+     key = `sessionId|platform|trackId`，命中/干净缺席 1h、失败 30s、FIFO 上限 512。
+     放 service 而非 provider：key 含 sessionId，而 provider 是跨 session 单例，
+     放 provider 会让 A 用户命中 B 用户的缓存条目。
+  2. **HUD 上标位置修正（渲染偏离 spec）**：此前渲染成 `5700w+ + 2,500¹²`——
+     两个上标粘在末尾，等于失去指代对象；spec 要的是 `5700w+¹ + 2,500²`。
+     `crossPlatformLikeTotal` 加 `parts` 字段（逐项切分，顺序 = sources 序），
+     HUD 按 parts 逐项渲染，老数据无 `parts` 时兜回单块 display。
+  3. **33 条测试**：provider 字段映射与错误路径（QQ `m_numbers`/`m_show`、
+     网易云 `likedCount`）、service 填充口径 + 缓存三档 + 跨 session 不串号、
+     前端 HUD 四条验收 + 回落链。
+  - 测试做过**变异验证**：短路缓存读 → 2 条红；cacheKey 去掉 sessionId → 1 条红；
+    HUD 改回"上标粘末尾" → 2 条红。跑绿不算数，变异能红才算有牙齿。
+  - `patchLibraryWithSources` 补上填充；`importLiked` **刻意不填**——一次几百首
+    会把公开接口打爆，而库弹窗走 `getLibrary`（已填 + 缓存兜底），效果等价。
+
 - **三语 README 语言纯度 CI 门禁**（`scripts/check-readme-i18n.mjs`，接进
   `npm run test:i18n` 与 `npm run test:ci`）—— README.md 出现未豁免汉字 /
   README.zh-CN.md 出现假名 / README.ja.md 出现简体词即非零退出。三份 README 靠

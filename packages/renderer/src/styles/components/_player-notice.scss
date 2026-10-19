@@ -1,0 +1,113 @@
+// ─────────────────────────────────────────────────────────────────
+// AETHER PlayerNotice — 播放彻底失败后的轻量提示条
+//
+// 底部居中浮条：压在播放器/搜索结果之上（z('player-notice')），不遮罩、
+// 不抢焦点，用户可以继续点歌。autoSkip 倒计时时右上角有「Ns 后自动下一首」。
+// 颜色全部走 token（--glass-*/--error-*/--accent-*/--text-*），不写死色值 ——
+// scan-hardcoded-colors 门禁 + light/dark 主题自适应都靠它。
+// ─────────────────────────────────────────────────────────────────
+
+@use '../abstracts' as *;
+
+.player-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 96px; // 浮在底部 transport bar 之上
+  transform: translateX(-50%);
+  z-index: z('player-notice');
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 48px));
+  padding: 10px 14px;
+
+  background: var(--glass-bg);
+  border: var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+
+  animation: player-notice-in 0.22s ease-out;
+}
+
+@keyframes player-notice-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.player-notice-icon {
+  flex-shrink: 0;
+  color: var(--error-fg);
+  font-size: 13px;
+}
+
+.player-notice-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.player-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.player-notice-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.player-notice-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.player-notice-btn:hover {
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
+}
+
+// 主按钮走 --accent-ui：_tokens.scss 明确「--accent 是 theater 体系（霓虹青），
+// 非 theater 组件改用 --accent-ui」。PlayerNotice 是全局 overlay，非 theater 件。
+.player-notice-btn--primary {
+  border-color: var(--accent-ui);
+  background: var(--accent-soft);
+}
+
+.player-notice-btn--primary:hover {
+  background: color-mix(in oklab, var(--accent-ui) 30%, transparent);
+  border-color: var(--accent-hover);
+}
+
+.player-notice-btn--close {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-secondary);
+}

@@ -37,7 +37,11 @@ const fakeStorage = {
 let neteaseSearchResults: any[] = [];
 let qqSearchResults: any[] = [];
 let spotifySearchResults: any[] = [];
+// 同平台换版本兜底用：null = getStreamPath 全部成功；否则只有集合内 id 出流
+// （模拟 GetVkey 104003 无 purl / 凭据死透）。
+let qqStreamOk: Set<string> | null = null;
 const neteaseLikes: string[] = [];
+const neteaseUnlikes: string[] = [];
 let qqLikedRemote: string[] = [];
 const spotifyLikes: string[] = [];
 const netease = {
@@ -46,13 +50,22 @@ const netease = {
     neteaseLikes.push(id);
     return true;
   },
-  unlike: async () => true,
+  unlike: async (_ps: unknown, id: string) => {
+    neteaseUnlikes.push(id);
+    return true;
+  },
 };
 const qq = {
   search: async () => qqSearchResults,
   like: async () => true,
   unlike: async () => true,
   fetchLikedMidSet: async () => new Set(qqLikedRemote),
+  getStreamPath: async (_ps: unknown, id: string, _mediaMid?: string) => {
+    if (qqStreamOk && !qqStreamOk.has(id)) {
+      throw new Error(`qq getStreamPath(${id}): 104003 no purl`);
+    }
+    return `/music/stream/qq/${id}`;
+  },
 };
 const deezer = {};
 const spotify = {
@@ -265,11 +278,12 @@ async function main() {
   // 前端拿这个端点向服务端实时匹配，应返回带后端代理 URL 的 QQ 源。
   {
     qqSearchResults = [qqTrack('002M8hNI2QgtRY', '突然好想你', '五月天', 265, 'MMQQ')];
-    const src = await svc.findPlayableEquivalent(session, 'netease', {
+    const res = await svc.findPlayableEquivalent(session, 'netease', {
       title: '突然好想你',
       artist: '五月天',
       duration: 266, // 与 QQ 的 265s 差 1s，在 ±3s 内
     });
+    const src = res.source;
     assert.ok(src, 'netease-only 曲目应能匹配到 QQ 等价源');
     assert.strictEqual(src.platform, 'qq', 'fallback 源应是 QQ');
     assert.strictEqual(src.trackId, '002M8hNI2QgtRY', 'trackId 应是 QQ 命中');
@@ -278,6 +292,7 @@ async function main() {
       `url 应是可播放的后端代理路径（实际 ${src.url}）`,
     );
     assert.ok(src.url.includes('mm=MMQQ'), 'QQ 高音质取流应透传 media_mid');
+    assert.strictEqual(res.reason, null, '命中时 reason 应为 null');
     console.log('✅ 6. findPlayableEquivalent → 返回可播放 QQ 源');
   }
 
@@ -287,12 +302,13 @@ async function main() {
     // QQ 搜索结果不同，缓存命中会拿 test 6 的命中 → 误判时长门限失效。
     (svc as any).equivSearchCache?.clear?.();
     qqSearchResults = [qqTrack('wrong', '突然好想你', '五月天', 180)]; // 差 86s
-    const src = await svc.findPlayableEquivalent(session, 'netease', {
+    const res = await svc.findPlayableEquivalent(session, 'netease', {
       title: '突然好想你',
       artist: '五月天',
       duration: 266,
     });
-    assert.strictEqual(src, null, '时长差超容差不应匹配，返回 null');
+    assert.strictEqual(res.source, null, '时长差超容差不应匹配，source=null');
+    assert.strictEqual(res.reason, 'no-match', '没匹配到时 reason=no-match');
     console.log('✅ 7. findPlayableEquivalent 严格时长 gate → null');
   }
 
@@ -302,7 +318,8 @@ async function main() {
   // → 不该返。换源过去仍是 30s 试听，前端 tryUpgradeFromTrial 拿到后又
   // code=4，进 tryFallbackSource 又调到这里，无限循环。
   // 修法（music.service.ts findPlayableEquivalent）：搜到的等价曲若 vipLocked
-  // → 跳过这个平台候选；priority 全锁完 → 返 null，前端 setError 干净退出。
+  // → 跳过这个平台候选；priority 全锁完 → 返 null + reason=vip-locked，
+  // 前端分级文案「需要会员」而不是笼统报错。
   // 不修这条 → PR #88 Settings 完整化 + 渠道优先级上线后，「VIP 独占 Live 版」
   // 这类歌曲必卡死。
   {
@@ -312,13 +329,14 @@ async function main() {
         vipLocked: true,
       }),
     ];
-    const src = await svc.findPlayableEquivalent(session, 'netease', {
+    const res = await svc.findPlayableEquivalent(session, 'netease', {
       title: '浓缩蓝鲸 (Live)',
       artist: '彭忠豪',
       duration: 283,
     });
-    assert.strictEqual(src, null, '候选 vipLocked=true → 跳过 → 返 null（不再盲切）');
-    console.log('✅ 36. findPlayableEquivalent vipLocked 守卫');
+    assert.strictEqual(res.source, null, '候选 vipLocked=true → 跳过 → 返 null（不再盲切）');
+    assert.strictEqual(res.reason, 'vip-locked', '全锁时 reason=vip-locked（前端分级文案用）');
+    console.log('✅ 36. findPlayableEquivalent vipLocked 守卫 + reason');
   }
 
   // ── 8. 跨平台匹配成功 → 增量补进「我的喜欢」库快照（bug3） ───────────
@@ -1758,7 +1776,125 @@ async function main() {
     console.log('✅ 35. 松散规则收紧：我们≠我們萬歲、告别的时代≠-Live 版');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 36 项通过');
+  // ── 37. findPlayableEquivalent：同平台换版本兜底（2026-10-19「交换余生」报障）──
+  // QQ 红心库《交换余生》是付费专辑版（GetVkey 104003 无 purl），同歌单曲版
+  // 在 QQ 上可播。旧逻辑 candidates 直接 `p !== seedProvider` 把种子平台整体
+  // 排除 → 跨平台全 VIP 锁 → 前端只能报错卡死。修复后：excludeTrackId 触发
+  // 同平台重搜（排除死 mid）+ probePlayable 实探过流才返回。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    qqSearchResults = [
+      qqTrack('dead-mid', '交换余生', '林俊杰', 256, 'MMdead'),
+      qqTrack('live-mid', '交换余生', '林俊杰', 256, 'MMlive'),
+    ];
+    qqStreamOk = new Set(['live-mid']);
+    neteaseSearchResults = []; // 跨平台什么都搜不到，也要命中同平台活 mid
+    const res37 = await svc.findPlayableEquivalent(
+      session,
+      'qq',
+      { title: '交换余生', artist: '林俊杰', duration: 256 },
+      { excludeTrackId: 'dead-mid' },
+    );
+    const src = res37.source;
+    assert.ok(src, '同平台换版本应找到可播 mid');
+    assert.strictEqual(src.platform, 'qq', '应返回同平台源');
+    assert.strictEqual(src.trackId, 'live-mid', '应排除死 mid 选中可播 mid');
+    assert.ok(src.url.includes('/music/stream/qq/'), `url 应是后端代理路径（实际 ${src.url}）`);
+    qqStreamOk = null;
+    console.log('✅ 37. 同平台换版本兜底：排除死 mid + 实探命中活 mid');
+  }
+
+  // ── 38. 同平台换版本但实探全死 → 落到跨平台候选 ──────────────────────
+  // 凭据死透时搜索照样返回 mid——不实探会把另一个死 mid 推给前端白失败一轮。
+  // 实探全挂 → 跳过同平台段，走原跨平台路径。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    qqSearchResults = [
+      qqTrack('dead-mid', '交换余生', '林俊杰', 256),
+      qqTrack('dead-mid-2', '交换余生', '林俊杰', 256),
+    ];
+    qqStreamOk = new Set(); // 全死（模拟凭据过期）
+    neteaseSearchResults = [neTrack('n-jhys', '交换余生', '林俊杰', 256)];
+    const res38 = await svc.findPlayableEquivalent(
+      session,
+      'qq',
+      { title: '交换余生', artist: '林俊杰', duration: 256 },
+      { excludeTrackId: 'dead-mid' },
+    );
+    const src38 = res38.source;
+    assert.ok(src38, '同平台全死时应落到跨平台候选');
+    assert.strictEqual(src38.platform, 'netease', '同平台实探全死 → 跨平台 netease');
+    assert.strictEqual(src38.trackId, 'n-jhys');
+    qqStreamOk = null;
+    console.log('✅ 38. 同平台实探全死 → 不推死 mid，落到跨平台候选');
+  }
+
+  // ── 39. toggleLike（电台 ❤）→ single: fanOut 种子记录 + discover 落地 ──
+  // 旧实现 toggleLike 从不写 state.fanOut → resolveEquivalents 的 T4 守卫
+  // （记录不存在 → 整包丢弃）把电台 ❤ 的跨平台匹配结果扔掉，电台红心从未
+  // 扇出（全历史 49 session 仅 1 条 single: 记录佐证）。修复后：种子平台先
+  // 落 fanOut，discover 正常补齐 netease，detect 按 trackId 桥到 single: key。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    // qqLikedRemote 同步上这首——模拟 qq.like 远端已生效；否则 detect 走
+    // getLikedSet 远端对账时（cache miss / reconcile）会把它当本地脏数据抹掉。
+    qqLikedRemote.push('q-radio');
+    neteaseSearchResults = [neTrack('n-radio', '电台红心歌', '电台歌手', 250)];
+    const r = await svc.toggleLike(session, 'qq', 'q-radio', {
+      title: '电台红心歌',
+      artist: '电台歌手',
+      duration: 251,
+    });
+    assert.strictEqual(r.liked, true, 'toggleLike 应返回 liked=true');
+    const ok = await waitFor(async () => (await likedIds('netease')).includes('n-radio'));
+    assert.ok(ok, '电台 ❤ 的 discover 应把 netease n-radio 加入本地 liked');
+    assert.ok(neteaseLikes.includes('n-radio'), '电台 ❤ 应同步远端 netease.like');
+    // detect 用 renderer 合成的 merged-{p}-{id}-studio key —— canonicalMergedId
+    // 应按 qq:q-radio 桥到 single:qq:q-radio 记录。
+    const d = await svc.detectLikedAndSync(
+      session,
+      'merged-qq-q-radio-studio',
+      [{ platform: 'qq', trackId: 'q-radio' }],
+      { title: '电台红心歌', artist: '电台歌手', duration: 251 },
+    );
+    assert.strictEqual(d.liked, true, 'detect 应读到 qq 已红心');
+    assert.deepStrictEqual(
+      d.fannedOutTo.sort(),
+      ['netease', 'qq'],
+      '角标数应含 qq + discover 补齐的 netease（=2）',
+    );
+    console.log('✅ 39. toggleLike(电台 ❤) → single: 记录 + discover 扇出 + detect 桥接');
+  }
+
+  // ── 40. toggleLike 取消方向 → 按 fanOut 记录反写其余平台 + 删记录 ──────
+  // 与 fanOutLike(false) 同语义：电台取消红心必须把已扇出到 netease 的红心
+  // 一起撤掉（本地 + 远端），否则远端残留红心、detect 又把角标数回来。
+  {
+    const beforeUnlikes = neteaseUnlikes.length;
+    // qq.unlike 远端已生效 → 远端 liked 集不再含它（detect 对账/重拉视角）。
+    qqLikedRemote = qqLikedRemote.filter((id) => id !== 'q-radio');
+    const r = await svc.toggleLike(session, 'qq', 'q-radio', {
+      title: '电台红心歌',
+      artist: '电台歌手',
+      duration: 251,
+    });
+    assert.strictEqual(r.liked, false, '再点 ❤ 应取消（liked=false）');
+    const ok = await waitFor(async () => neteaseUnlikes.length > beforeUnlikes);
+    assert.ok(ok, '取消电台 ❤ 应远端反写已扇出的 netease 平台');
+    assert.ok(neteaseUnlikes.includes('n-radio'), 'netease.unlike 应收到 discover 补的 n-radio');
+    // detect 复跑：qq 已不红心 → liked=false，角标清零。
+    const d = await svc.detectLikedAndSync(
+      session,
+      'merged-qq-q-radio-studio',
+      [{ platform: 'qq', trackId: 'q-radio' }],
+      { title: '电台红心歌', artist: '电台歌手', duration: 251 },
+    );
+    assert.strictEqual(d.liked, false, '取消后 detect 应返回 liked=false');
+    assert.deepStrictEqual(d.fannedOutTo, [], 'fannedOutTo 应为空（角标 0）');
+    console.log('✅ 40. toggleLike 取消 → 反写已扇出平台 + detect 归零');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 40 项通过');
 }
 
 main().catch((err) => {

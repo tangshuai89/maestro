@@ -9,6 +9,7 @@
  *  - buildUnifiedItems：跨平台聚合 + main 选取 + cover 兜底
  *  - isCrossScript：CJK ↔ latin 判定
  *  - mergeCrossScript：跨脚本合并 + 元数据尾缀合并
+ *  - recomputeCrossPlatformLikeTotal：跨平台 ❤ 累加派生量
  */
 export {};
 const assert = require('node:assert');
@@ -23,6 +24,7 @@ const {
   PLAY_PRIORITY,
   VERSION_DURATION_TOLERANCE_SEC,
   sortByRelevance,
+  recomputeCrossPlatformLikeTotal,
 } = require('./search.util');
 import type { Track, SourceInfo, UnifiedSearchItem } from './types';
 import type { MusicProvider } from '../common/provider';
@@ -1283,6 +1285,111 @@ check('R5. sortByRelevance：同分同名按平台内 rank 交错（浓缩蓝鲸
   assert.ok(qi === 1, `裘德（ne rank0）应仅次于 qq rank0（实际第 ${qi} 位）`);
   assert.strictEqual(sorted[0].artist, '翻唱0', 'qq rank0 仍第一');
   assert.strictEqual(sorted[2].artist, '翻唱1', 'qq rank1 第三（被 ne rank0 超过）');
+});
+
+// ── recomputeCrossPlatformLikeTotal（cross-platform-likes）────────────
+function mkItem(sources: SourceInfo[]): UnifiedSearchItem {
+  return {
+    title: '晴天',
+    artist: '周杰伦',
+    album: '叶惠美',
+    coverUrl: '',
+    duration: 269,
+    id: 'item-1',
+    versionType: 'studio',
+    versions: [],
+    sources,
+    bestSource: sources[0]?.platform ?? null,
+  };
+}
+
+function srcWith(platform: MusicProvider, overrides: Partial<SourceInfo> = {}): SourceInfo {
+  return { platform, trackId: `${platform}-id`, hasCopyright: true, ...overrides } as SourceInfo;
+}
+
+check(
+  'L1. 累加：QQ + 网易云都有数 → count 求和 / display 用各自 display / platforms 按 sources 序',
+  () => {
+    const it = mkItem([
+      srcWith('qq', { likeCount: { count: 1000001, display: '5700w+', source: 'qq' } }),
+      srcWith('netease', { likeCount: { count: 2500, display: '2,500', source: 'netease' } }),
+    ]);
+    recomputeCrossPlatformLikeTotal(it);
+    assert.deepStrictEqual(it.crossPlatformLikeTotal, {
+      count: 1002501,
+      display: '5700w+ + 2,500',
+      platforms: ['qq', 'netease'],
+      // parts 与 display 同源，但保留逐项切分——HUD 要把上标插回每个数字后面
+      parts: [
+        { platform: 'qq', display: '5700w+' },
+        { platform: 'netease', display: '2,500' },
+      ],
+    });
+  },
+);
+
+check('L2. 累加：只有 QQ 有数 → platforms 只含 qq（HUD 渲染 ¹）', () => {
+  const it = mkItem([
+    srcWith('qq', { likeCount: { count: 1000001, display: '5700w+', source: 'qq' } }),
+    srcWith('netease'),
+  ]);
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal?.count, 1000001);
+  assert.deepStrictEqual(it.crossPlatformLikeTotal?.platforms, ['qq']);
+});
+
+check('L3. 累加：Deezer / Spotify 的 source（无 ❤ 字段）被跳过，不污染累加', () => {
+  const it = mkItem([
+    srcWith('deezer'),
+    srcWith('spotify'),
+    srcWith('netease', { likeCount: { count: 1173, display: '1,173', source: 'netease' } }),
+  ]);
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal?.count, 1173);
+  assert.deepStrictEqual(it.crossPlatformLikeTotal?.platforms, ['netease']);
+});
+
+check('L4. 累加：全平台都没数 → 整个字段 undefined（不写 0，避免和"0 收藏"混淆）', () => {
+  const it = mkItem([srcWith('qq'), srcWith('netease')]);
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal, undefined);
+  assert.ok(!('crossPlatformLikeTotal' in it), '字段应被 delete 而非留 undefined 键');
+});
+
+check('L5. 累加：重算幂等 + 后到的 source 会覆盖上一次快照', () => {
+  const it = mkItem([srcWith('qq', { likeCount: { count: 10, display: '10', source: 'qq' } })]);
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal?.count, 10);
+  // 补一个网易云数后重算
+  it.sources.push(srcWith('netease', { likeCount: { count: 5, display: '5', source: 'netease' } }));
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal?.count, 15);
+  // 全部 source 被清空后重算 → 字段回落 undefined（不留上一次的 15）
+  for (const s of it.sources) delete s.likeCount;
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal, undefined);
+});
+
+check('L6. 累加：count=0 是合法值，必须保留（"有接口但真的是 0" ≠ 缺席）', () => {
+  const it = mkItem([
+    srcWith('netease', { likeCount: { count: 0, display: '0', source: 'netease' } }),
+  ]);
+  recomputeCrossPlatformLikeTotal(it);
+  assert.strictEqual(it.crossPlatformLikeTotal?.count, 0);
+  assert.deepStrictEqual(it.crossPlatformLikeTotal?.platforms, ['netease']);
+});
+
+check('L7. parts：逐项切分顺序 = sources 出现序（网易云在前 → 上标 ² 在前）', () => {
+  const it = mkItem([
+    srcWith('netease', { likeCount: { count: 1173, display: '1,173', source: 'netease' } }),
+    srcWith('qq', { likeCount: { count: 1000001, display: '5700w+', source: 'qq' } }),
+  ]);
+  recomputeCrossPlatformLikeTotal(it);
+  assert.deepStrictEqual(it.crossPlatformLikeTotal?.platforms, ['netease', 'qq']);
+  assert.deepStrictEqual(it.crossPlatformLikeTotal?.parts, [
+    { platform: 'netease', display: '1,173' },
+    { platform: 'qq', display: '5700w+' },
+  ]);
 });
 
 console.log(`🎉 search.util.test: ${passed} passed, ${failed} failed`);

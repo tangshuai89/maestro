@@ -468,6 +468,50 @@ async function main() {
     );
   });
 
+  // ── 29. fetchVipStatus：redVipLevel=1（历史等级）但 associator.expireTime 已过期 → false
+  reset();
+  mockResponses = [
+    { json: { code: 200, profile: { userId: 1, nickname: 'U', avatarUrl: '' } } },
+    {
+      json: {
+        code: 200,
+        data: {
+          redVipLevel: 1,
+          associator: { vipCode: 100, expireTime: 1770911999000, vipLevel: 1 },
+          musicPackage: { vipCode: 220, expireTime: 1770911999000, vipLevel: 1 },
+        },
+      },
+    },
+  ];
+  {
+    const strategy = new NeteaseAuthStrategy(makeConfig());
+    const session = await strategy.loginWithCookie('test-music-u-12345');
+    expect(
+      '29. redVipLevel=1 但 expireTime 已过期 → neteaseVip=false',
+      session.neteaseVip === false,
+    );
+  }
+
+  // ── 30. fetchVipStatus：associator.expireTime 在未来 → true
+  reset();
+  mockResponses = [
+    { json: { code: 200, profile: { userId: 1, nickname: 'U', avatarUrl: '' } } },
+    {
+      json: {
+        code: 200,
+        data: {
+          redVipLevel: 3,
+          associator: { vipCode: 100, expireTime: Date.now() + 86400_000, vipLevel: 3 },
+        },
+      },
+    },
+  ];
+  {
+    const strategy = new NeteaseAuthStrategy(makeConfig());
+    const session = await strategy.loginWithCookie('test-music-u-12345');
+    expect('30. associator.expireTime 未过期 → neteaseVip=true', session.neteaseVip === true);
+  }
+
   console.log(`\n🎉 netease-auth.strategy.test: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

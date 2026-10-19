@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
 import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
 import { useLyrics } from './hooks/useLyrics';
@@ -10,6 +10,7 @@ import { useDeezerEditorials } from './hooks/useDeezerEditorials';
 import { getLibrary } from './api';
 import type { LibraryImportResult, MusicProvider } from './api';
 import { readCachedLibrary } from './lib/likedCache';
+import { createAudioSlots } from './lib/audioSlots';
 import { readStoredPlayerMode, writeStoredPlayerMode, type PlayerMode } from './lib/storage';
 import { downloadLyricsImage } from './lib/lyricsShare';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
@@ -26,6 +27,7 @@ import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
 import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
+import PlayerNotice from './components/common/PlayerNotice';
 import RecoLoading from './components/common/RecoLoading';
 
 /**
@@ -37,7 +39,10 @@ import RecoLoading from './components/common/RecoLoading';
  * <audio> element.
  */
 export default function App() {
-  const audioRef = useRef<HTMLAudioElement>(null);
+  // A/B 音频槽位（crossfade，specs/audio-fx §2.2）。两个 `<audio>` 都常驻
+  // App、不进条件渲染：重建元素 = Web Audio graph 断链 = 有声变无声。
+  // 谁在出声由 usePlayer 通过 slots.setActive 切换；本文件只负责挂 ref。
+  const audioSlots = useMemo(() => createAudioSlots(), []);
 
   // WPS (Spotify Premium 全曲播放) 和 usePlayer 互相依赖：usePlayer 的
   // transport 要驱动 WPS，而 WPS 的 enabled 又要读 player.provider + auth.tier。
@@ -52,7 +57,7 @@ export default function App() {
   // 播放彻底失败后判定"是不是登录过期"的回调（specs/auth-resilience Phase 10）。
   // 用 ref 是因为 usePlayer 在 useAuth **之前**调用，直接传函数会撞 TDZ。
   const onAuthExpiredRef = useRef<((p: MusicProvider) => void) | null>(null);
-  const player = usePlayer(audioRef, wpsRef, spotifyTierRef, onAuthExpiredRef);
+  const player = usePlayer(audioSlots, wpsRef, spotifyTierRef, onAuthExpiredRef);
   const lyrics = useLyrics(player.track, player.provider, player.currentSources);
 
   // ── 歌词分享图（导出 PNG 到本地下载目录）────────────────────────
@@ -417,17 +422,12 @@ export default function App() {
     });
   }, [player.playing, player.track?.title, player.track?.artist]);
 
-  // audio 元素 src 变时强制 load() 一次 —— 解决暂停+长时间不碰后
-  // 「歌换了但播不了」的场景：Chromium 在 MEDIA_ERR_NETWORK / aborted 状态
-  // 下，src 属性更新不会自动 reload；下次 audio.play() 也卡在 readyState=0
-  // （usePlayer 的 useEffect 看到 readyState<3 会跳过 play）。
-  // 显式 audio.load() 强制清 error 状态、让新 src 真去 fetch。
-  useEffect(() => {
-    const audio = audioRef.current;
-    const url = player.track?.audioUrl;
-    if (!audio || !url) return;
-    audio.load();
-  }, [player.track?.audioUrl]);
+  // ⚠️ 这里曾有一个「track.audioUrl 变 → audio.load()」的 effect（修 Chromium
+  // 在 MEDIA_ERR_NETWORK / aborted 状态下 src 更新不自动 reload 的问题）。
+  // crossfade 落地后**删掉了**：src 改由 usePlayer 的 loadIntoSlots 命令式装载
+  // ——淡入淡出要求"旧歌留在原元素继续播"，而这个 effect 会在 track 变化时把
+  // 当前活跃元素的 src 重置掉，正好掐断正在淡出的歌。强制 reload 的职责跟着
+  // 一起搬进 loadIntoSlots（它在装载后立刻 load()）。
 
   // Demo helper: ?demo=qq / ?demo=netease / ?demo=spotify / ?demo=deezer in the
   // URL forces a provider so the AETHER Theater view can be reviewed without
@@ -531,6 +531,7 @@ export default function App() {
           track={player.track}
           playing={player.playing}
           loading={player.loading}
+          unavailable={Boolean(player.failure)}
           liked={player.track?.liked ?? false}
           fanOutCount={player.fanOutCount}
           currentUnified={player.currentUnified}
@@ -576,12 +577,12 @@ export default function App() {
           built on it stays valid for the whole session — createMediaElement-
           Source can only be called once per element. crossOrigin + the
           server's CORS header make the media CORS-clean for the analyser. */}
-      <audio
-        ref={audioRef}
-        src={player.track?.audioUrl || undefined}
-        crossOrigin="anonymous"
-        preload="auto"
-      />
+      {/* A/B 两个常驻 <audio>（crossfade，specs/audio-fx §2.2）。
+          刻意**不绑 src**：src 由 usePlayer 的 loadIntoSlots 命令式装载 —— 淡变
+          期间正在淡出的那一侧必须保持旧 src 不动，交给 React 绑定必然打架。
+          preload="auto" 让闲置侧提前把下一首拉起来一点。 */}
+      <audio ref={audioSlots.ref('a')} crossOrigin="anonymous" preload="auto" />
+      <audio ref={audioSlots.ref('b')} crossOrigin="anonymous" preload="auto" />
 
       {auth.showCookieFallback && (
         <NeteaseCookieModal
@@ -683,6 +684,7 @@ export default function App() {
           onChangePlayerMode={changePlayerMode}
           audioFx={player.audioFx}
           onEqEnabled={player.setEqEnabled}
+          onCrossfadeSec={player.setCrossfadeSec}
           onEqBandGain={player.setEqBandGain}
           onApplyEqPreset={player.applyEqPreset}
         />
@@ -706,6 +708,24 @@ export default function App() {
               : undefined
           }
           onDismiss={() => auth.handleDismissError?.()}
+        />
+      )}
+
+      {/* 播放兜底链彻底耗尽后的轻量提示：分级文案 + 自动跳下一首倒计时。
+          failure（结构化）优先；普通 error 字符串也借它显示——此前 setError
+          后没有任何组件渲染，用户看到的是"假死"。 */}
+      {(player.failure || player.error) && (
+        <PlayerNotice
+          failure={player.failure}
+          error={player.failure ? null : player.error}
+          onSkipNext={() => {
+            player.dismissFailure();
+            void player.loadNextTrack();
+          }}
+          onDismiss={() => {
+            player.dismissFailure();
+            player.setError(null);
+          }}
         />
       )}
     </div>

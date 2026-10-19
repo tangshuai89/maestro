@@ -51,6 +51,17 @@ export interface SessionProbeResult {
   reason: ProbeReason;
   /** 本次是否真的发了请求（false = 命中缓存）。 */
   fetched: boolean;
+  /**
+   * 探针歌里**拿到 purl 的条数** / 实际读到的条数（2026-10-19 加）。
+   *
+   * 为什么加：`alive=true reason=purl_present` 这行日志**极具误导性**——
+   * 判定是"3 首里有 1 首能出流就算活"（保守优先，怕误报登录过期）。于是
+   * 完全可能出现「探针 alive=true，但用户点的歌一首都放不了」，读日志的人
+   * （包括我自己）会被带进沟里，以为账号/网络有问题。带上比例就一眼可辨：
+   * `purl=1/3` = 账号活着但大部分歌取不到流（版权/绿钻），不是登录过期。
+   */
+  purlCount?: number;
+  songCount?: number;
 }
 
 interface VkeyProbeResponse {
@@ -64,6 +75,19 @@ interface VkeyProbeResponse {
         result?: number;
       }>;
     };
+  };
+  /**
+   * 同一请求顺带调 `music.UserInfo.userInfoServer / GetLoginUserInfo`：
+   * 实测（2026-10-19）`PROBE_SONGMIDS` 里的《演员》《小情歌》在**纯匿名（无 cookie）**
+   * 下也会返回非空 purl，单靠 `purlCount > 0` 会产生 100% 假阳性（把已过期的
+   * `qm_keyst` 判成 alive=true）。而 `GetLoginUserInfo` 在 `qm_keyst` 有效时返
+   * `code=0`，过期时精确返 `code=1000`（或 104400/104401）。
+   *
+   * 兼容策略：真实 QQ 网关会返回 `req_1`，优先按 `req_1.code` 权威判定；
+   * 单测 mock 若只构造了 `req_0`（`req_1` 缺省），则回落到 `req_0` 的 midurlinfo 判定。
+   */
+  req_1?: {
+    code?: number;
   };
 }
 
@@ -107,6 +131,11 @@ export async function probeQqSessionUncached(
         h5guid: guid,
       },
     },
+    req_1: {
+      module: 'music.UserInfo.userInfoServer',
+      method: 'GetLoginUserInfo',
+      param: {},
+    },
   };
 
   // ⚠️ `withTimeout` 只兜超时，**不 catch reject**（见 common/timeout.ts 注释）。
@@ -137,6 +166,30 @@ export async function probeQqSessionUncached(
       const infos = Array.isArray(list)
         ? list.filter((x) => x?.songmid && PROBE_SONGMID_SET.has(x.songmid))
         : [];
+      const songCount = infos.length;
+      const purlCount = infos.filter((i) => i?.purl).length;
+
+      // 优先看 req_1（GetLoginUserInfo）权威登录态返回码：
+      //  - code === 1000 / 104400 / 104401 → 明确未登录 / qm_keyst 过期
+      //  - code === 0 → 明确 qm_keyst 有效
+      const authCode = json?.req_1?.code;
+      if (authCode === 1000 || authCode === 104400 || authCode === 104401) {
+        return {
+          alive: false,
+          reason: 'no_vkey' as const,
+          fetched: true,
+          ...(songCount ? { purlCount, songCount } : {}),
+        };
+      }
+      if (authCode === 0) {
+        return {
+          alive: true,
+          reason: purlCount > 0 ? ('purl_present' as const) : ('vkey_present' as const),
+          fetched: true,
+          ...(songCount ? { purlCount, songCount } : {}),
+        };
+      }
+
       // ⚠️ 结构对不上（midurlinfo 缺失 / 非数组 / 一条探针歌都没回声）时
       // **不能**判成「失效」——那是「探针自己没读懂响应」，属于探针故障，
       // 按保守原则当 alive。只有明确读到探针歌条目、且**全部** purl/vkey
@@ -144,15 +197,27 @@ export async function probeQqSessionUncached(
       if (!infos.length) {
         return { alive: true, reason: 'network_error' as const, fetched: true };
       }
-      if (infos.some((i) => i?.purl)) {
-        return { alive: true, reason: 'purl_present' as const, fetched: true };
+      if (purlCount > 0) {
+        return {
+          alive: true,
+          reason: 'purl_present' as const,
+          fetched: true,
+          purlCount,
+          songCount,
+        };
       }
       // purl 空但 vkey 有：拿不到流地址，但 QQ 认这个登录态 —— 判为可用，
       // 避免把「这首歌恰好受限」误报成「登录过期」。
       if (infos.some((i) => i?.vkey)) {
-        return { alive: true, reason: 'vkey_present' as const, fetched: true };
+        return {
+          alive: true,
+          reason: 'vkey_present' as const,
+          fetched: true,
+          purlCount,
+          songCount,
+        };
       }
-      return { alive: false, reason: 'no_vkey' as const, fetched: true };
+      return { alive: false, reason: 'no_vkey' as const, fetched: true, purlCount, songCount };
     }, PROBE_TIMEOUT_MS);
   } catch {
     // fetch 抛错 / JSON 解析失败 / 结构完全对不上 → 保守当作可用

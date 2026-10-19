@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { UseSpotifyWpsPlayer } from './useSpotifyWpsPlayer';
 import {
   fetchNextTrack,
@@ -15,6 +15,26 @@ import {
   getAuthStatusValidated,
 } from '../api';
 import type { Track, MusicProvider, QqQuality, UnifiedSearchItem, UnifiedSourceInfo } from '../api';
+import type { EquivalentFailReason } from '../api';
+
+/** 播放彻底失败（整条兜底链耗尽）的分级原因 —— PlayerNotice 据此给文案。 */
+export type PlayFailReason =
+  | 'paid-track' // 种子源本身是付费专辑/付费单曲（需单购，VIP 不解）
+  | 'vip-locked' // 其它平台搜到了等价曲但全是 VIP 锁
+  | 'stream-failed' // 同平台换到版本但实探不出流（凭据/版权级拒绝）
+  | 'no-match' // 其它平台连候选都搜不到（≈无版权）
+  | 'generic'; // 未知 / 兜底链根本没走到等价源步
+
+export interface PlayFailure {
+  title: string;
+  artist: string;
+  provider: MusicProvider;
+  trackId?: string;
+  reason: PlayFailReason;
+  detail: string;
+  /** false = 连续多首连挂（≥3）或无下一首 → PlayerNotice 不做倒计时自动跳。 */
+  autoSkip: boolean;
+}
 import {
   readStoredProvider,
   writeStoredProvider,
@@ -26,8 +46,16 @@ import {
   readAudioFx,
   writeAudioFx,
 } from '../lib/storage';
-import { EQ_BANDS, applyPreset, clampGain, type AudioFxPrefs } from '../lib/audioFx';
+import {
+  EQ_BANDS,
+  applyPreset,
+  clampGain,
+  clampCrossfade,
+  type AudioFxPrefs,
+} from '../lib/audioFx';
 import { createEqChain, pushEqGains } from '../lib/eqChain';
+import { activeElementProxy, type AudioSlot, type AudioSlots } from '../lib/audioSlots';
+import { createSlotLoader, type SlotLoader } from '../lib/crossfadeRunner';
 import { useCoverArt } from './useCoverArt';
 import { wpsLog } from '../lib/debug';
 import {
@@ -40,6 +68,11 @@ import {
   shouldStopWpsBeforeTransition,
   isResidualAudio,
   parsePlayableQueue,
+  shouldTransientRetry,
+  shouldSearchEquivalent,
+  isPlaybackStalled,
+  synthRadioUnified,
+  STALL_PROBE_MS,
 } from './usePlayer.helpers.ts';
 
 /**
@@ -58,6 +91,9 @@ import {
 // 这里 re-export 保持外部 import 路径不变（App.tsx / 测试继续
 // `import { ... } from './usePlayer'`）。
 export {
+  // TRANSIENT_RETRY_MAX 生产代码不直接引用（shouldTransientRetry 用它自己的默认
+  // 值），只被 usePlayer.test.mjs 导入 —— 和下面 FULL_SONG_PROVIDERS 同款理由。
+  TRANSIENT_RETRY_MAX,
   FALLBACK_PRIORITY,
   FULL_SONG_PROVIDERS,
   getFullSongProviders,
@@ -69,10 +105,23 @@ export {
   pickFallbackSource,
   pickUpgradeSource,
   parsePlayableQueue,
+  shouldTransientRetry,
+  shouldSearchEquivalent,
+  isPlaybackStalled,
+  synthRadioUnified,
+  STALL_PROBE_MS,
 } from './usePlayer.helpers.ts';
 
 export function usePlayer(
-  audioRef: RefObject<HTMLAudioElement | null>,
+  /**
+   * A/B 音频槽位（specs/audio-fx §2.2 crossfade）。**由调用方创建、这里只消费**——
+   * 因为 `<audio>` 的 JSX 在 App 里，refs 得由创建方 attach。
+   *
+   * 槽位之上包了一层只读代理 `audioRef`：它每次读都返回**当前活跃元素**，
+   * 于是本文件里 14 处 `audioRef.current` 一行都不用改，crossfade 开关对它们
+   * 完全透明（见 lib/audioSlots.ts 的设计说明）。
+   */
+  slots: AudioSlots,
   /**
    * Optional Premium Spotify Web Playback SDK bridge (v2), passed as a ref
    * to break the circular dependency (App needs player.provider to decide
@@ -114,6 +163,9 @@ export function usePlayer(
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 结构化播放失败（兜底链彻底耗尽）：error 字符串之外另存分级原因，
+  // PlayerNotice 据此给「需要会员/付费专辑/无版权」分级文案 + 自动跳下一首。
+  const [failure, setFailure] = useState<PlayFailure | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fanOutCount, setFanOutCount] = useState<number>(0);
   // 当前播放曲目对应的 UnifiedSearchItem（reactive 镜像 — render 用）。
@@ -192,6 +244,15 @@ export function usePlayer(
   // For quality switches: jump back to the original position after reload.
   const pendingSeekRef = useRef<number | null>(null);
   // WPS: 最近一次通过 WPS play() 送出的 spotify track id。用来区分
+  // 当前活跃 <audio> 的只读代理。见签名处的说明：14 处 audioRef.current 不用改。
+  const audioRef = useMemo(() => activeElementProxy(slots), [slots]);
+
+  // 槽位切换版本号：crossfade 换歌会让"当前播放元素"**易主**，而事件监听是
+  // 在 effect 里绑到具体元素上的（audioRef 是稳定代理，effect 不会因此重跑）。
+  // 靠订阅槽位变更 bump 版本号，把监听重绑到新的活跃元素。
+  const [slotVersion, setSlotVersion] = useState(0);
+  useEffect(() => slots.subscribe(() => setSlotVersion((v) => v + 1)), [slots]);
+
   // "切到新歌 → play(newUri)" 和 "同一首暂停后恢复 → resume()"。
   const wpsPlayedIdRef = useRef<string | null>(null);
 
@@ -203,6 +264,11 @@ export function usePlayer(
   //    保留红心态，避免把 track 塞进各 effect 的依赖数组。
   const currentUnifiedRef = useRef<UnifiedSearchItem | undefined>(undefined);
   const triedPlatformsRef = useRef<Set<MusicProvider>>(new Set());
+  // 已试过的具体曲目源（platform:trackId）：triedPlatforms 是平台级粗粒度，
+  // 同平台换版本兜底（QQ 一首歌多个 songmid，专辑版死/单曲版活）需要细到
+  // 曲目级 —— 否则会拦住「同平台另一 mid」这个唯一活路。presentTrack 里
+  // isNewSong 时重置，每次上源（含 fallback）都登记。
+  const triedTrackIdsRef = useRef<Set<string>>(new Set());
   const trackRef = useRef<Track | null>(null);
   // audio 元素当前 src 的镜像：onError 的"同源重试 1 次"延迟 800ms 后用这个判
   // 用户这期间切歌没；切了就不该重试旧 src，应直接 fallback / 报错。
@@ -210,6 +276,38 @@ export function usePlayer(
   // onError 重试同源 1 次的 guard flag：避免同一波错误反复触发而不停重试。
   // 切歌时（presentTrack）重置。
   const retryAttemptedRef = useRef(false);
+  // ⚠️ 同源重试**次数**（2026-10-19 修）：原实现是「重试成功后把 guard 清零」，
+  // 而 play() 在坏源上照样 resolve → 清零 → 下一个 error 又满足重试条件 →
+  // 「error → 重试 → resolve → 清零 → 再 error」无限循环，永远走不到跨平台
+  // 兜底。改成按本首歌累加次数（presentTrack 重置），由 shouldTransientRetry
+  // 收敛到 TRANSIENT_RETRY_MAX 次。
+  const transientAttemptsRef = useRef(0);
+  // 「重试 resolve 了但其实没出声」的探测定时器。
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current != null) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      clearStallTimer();
+    },
+    [clearStallTimer],
+  );
+  // 换歌 / 换源计数。跨 await 的竞态守卫**不能只靠 currentUnifiedRef 的 id**：
+  // radio 路径的 track 没有 unified（id 是 undefined），`undefined === undefined`
+  // 在切歌后依然成立 —— 结果就是"用户已经切歌了，回调的旧结果照样生效"。
+  const songEpochRef = useRef(0);
+  // radio 路径的兜底闸：同**一首歌**只许换一次源。
+  //
+  // unified 路径天然安全（presentFallbackSource 带着同一个 unified 回去，
+  // isNewSong=false → triedPlatforms / serverEquivTried 都不重置）。radio
+  // 不行：它没有 unified，presentTrack 把它当**新歌** → 把
+  // serverEquivTriedRef 清成 false → 新源再失败就又去搜 → 可能搜回原平台，
+  // qq↔netease 无限来回换。所以这里按「歌的身份」而不是「换了没换歌」来记。
+  const radioFallbackKeyRef = useRef<string | null>(null);
   trackRef.current = track;
   // 本首歌是否已经问过服务端要跨平台等价源（每首歌只问一次，避免死循环）。
   // 用于「unified item 只有 netease 一个 source、netease 又挂了」时向服务端
@@ -222,6 +320,12 @@ export function usePlayer(
   //    onLoadedMetadata/onDurationChange 重复触发；每次 presentTrack 重置）。
   const trialServerTriedRef = useRef(false);
   const trialEvaluatedRef = useRef(false);
+  // 兜底链记忆：最近一次 findEquivalentSource 服务端给的失败原因
+  // （vip-locked / no-match / stream-failed），reportPlayFailure 组合分级文案。
+  const lastEquivReasonRef = useRef<EquivalentFailReason | null>(null);
+  // 连续播放失败计数：每首歌兜底耗尽 +1，onTimeUpdate 真出声时清零。
+  // ≥3 首连挂时 PlayerNotice 停止自动跳下一首（防整库不可用时无限跳）。
+  const consecutiveFailuresRef = useRef(0);
   // 本首歌是否已就"试听"降到过标准音质重试（每首一次）。很多 VIP 试听其实是
   // "无损/极高是 VIP、标准免费全曲"，降标准通常直接拿到全曲；每首歌只降一次，
   // 标准仍是试听才继续跨平台。换新歌时在 presentTrack 里重置。
@@ -232,13 +336,31 @@ export function usePlayer(
   // (not a ref) because the bass RAF effect below reads it as a dependency
   // and needs a real re-render when the graph comes online.
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const mediaSrcRef = useRef<MediaElementAudioSourceNode | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+
+  /**
+   * 每个槽位一条独立的 Web Audio 链（specs/audio-fx §2.2）：
+   *
+   *     <audio> → source → f0 … f9 → fadeGain → analyser → destination
+   *                                            └──────────┘
+   *
+   * `createMediaElementSource` **每个元素只能调一次且永久改路由**，所以两条链
+   * 必须分别建、分别记住；把两个元素接同一张图 = 没法分别淡入淡出。
+   * fadeGain 夹在 EQ 与 analyser 之间：淡变是"用户听到的音量"的一部分，
+   * 放在 analyser 之后会让声波环在淡出时还显示满格。
+   * 两个槽位共用**同一个 AudioContext**（浏览器限制：一个元素只能被一个
+   * context 的 MediaElementSource 接管，但反过来多个元素可以共用一个 context）。
+   */
+  const slotGraphsRef = useRef<
+    Partial<
+      Record<AudioSlot, { filters: BiquadFilterNode[]; fade: GainNode; analyser: AnalyserNode }>
+    >
+  >({});
 
   // ── EQ（specs/audio-fx §2.1）────────────────────────────────
   // 10 个 peaking 滤波器在 graph **建立时**一次性插入链里，之后只改 gain
   // 参数、绝不 disconnect 重连 —— 重连发生在正在出声的时刻，会咔哒。
-  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  /** EQ 滤波器已随每槽链建好；这里只做"当前活跃槽的曲线镜像"，推参数时遍历全部槽。 */
   const [audioFx, setAudioFx] = useState<AudioFxPrefs>(() => readAudioFx());
   // graph 可能还没建（首次播放前），届时用 ref 里的最新偏好初始化滤波器。
   const audioFxRef = useRef<AudioFxPrefs>(audioFx);
@@ -254,72 +376,177 @@ export function usePlayer(
    */
   const pushEqToFilters = useCallback((prefs: AudioFxPrefs): void => {
     const ctx = audioCtxRef.current;
-    pushEqGains(eqFiltersRef.current, prefs.eqGains, ctx?.currentTime ?? 0, prefs.eqEnabled);
+    const at = ctx?.currentTime ?? 0;
+    // 两槽都要推：EQ 开着时次槽正在淡入，它的曲线也得是用户的曲线。
+    for (const g of Object.values(slotGraphsRef.current)) {
+      if (g) pushEqGains(g.filters, prefs.eqGains, at, prefs.eqEnabled);
+    }
   }, []);
 
   const { bgLayerRef, coverBackdropRef, presentCover, presentPlaceholder } = useCoverArt();
 
   /**
-   * Lazily attach a Web Audio analyser to the live <audio> element.
-   * source → analyser → ctx.destination. createMediaElementSource can only
-   * be called ONCE per element and permanently reroutes its output through
-   * the graph — so we MUST connect to ctx.destination or playback goes
-   * silent. Guarded with mediaSrcRef so a second call is a no-op.
+   * 惰性建某个槽位的 Web Audio 链（specs/audio-fx §2.1 EQ + §2.2 crossfade）：
+   *
+   *     <audio> → source → f0 … f9 → fadeGain → analyser → destination
+   *
+   * 两个关键约束（都来自 spec §7，写错了不报错、只表现为"不响 / 发糊 / 咔哒"）：
+   *  - `createMediaElementSource` **每个元素只能调一次且永久改路由**：漏掉
+   *    `connect` 就是全静音且无报错（2026-09-29 真踩过）。
+   *  - EQ 节点在**建链时**就全部插好（哪怕增益全 0），之后只改 gain 参数、
+   *    绝不 disconnect 重连 —— 重连发生在正在出声的时刻必然咔哒。
+   *
+   * fadeGain 初始为 1（不因为建了 crossfade 就默认变小）。
    */
+  const ensureSlotGraph = useCallback(
+    (slot: AudioSlot): GainNode | null => {
+      const audioEl = slots.el(slot);
+      if (!audioEl) return null;
+      const existing = slotGraphsRef.current[slot];
+      if (existing) {
+        // 已建 —— 只确保 context 在跑（失焦时某些系统会挂起它）。
+        const ctx = audioCtxRef.current;
+        if (ctx?.state === 'suspended') {
+          void ctx.resume().catch((e) => console.warn('[audio] context resume() rejected:', e));
+        }
+        return existing.fade;
+      }
+      try {
+        const Ctor: typeof AudioContext =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = audioCtxRef.current ?? new Ctor();
+        audioCtxRef.current = ctx;
+        const src = ctx.createMediaElementSource(audioEl);
+
+        const filters = createEqChain(ctx, EQ_BANDS, src);
+        // 淡变用的乘法增益。EQ 之后、analyser 之前（声波环要反映用户听到的
+        // 音量：淡出到一半时频谱就该跟着暗下去）。
+        const fade = ctx.createGain();
+        fade.gain.value = 1;
+        filters[filters.length - 1]?.connect(fade);
+
+        const node = ctx.createAnalyser();
+        node.fftSize = 256;
+        node.smoothingTimeConstant = 0.72;
+        // 单路串到 destination：绝不要再把 fade 单独接一次 destination，
+        // destination 会把同一份信号相加（凭空 +6dB）。
+        fade.connect(node);
+        node.connect(ctx.destination);
+        slotGraphsRef.current[slot] = { filters, fade, analyser: node };
+
+        // graph 刚建好，把当前偏好一次性灌进去（之前调过 EQ 也会保留）。
+        const ctx2 = audioCtxRef.current;
+        pushEqGains(
+          filters,
+          audioFxRef.current.eqGains,
+          ctx2?.currentTime ?? 0,
+          audioFxRef.current.eqEnabled,
+        );
+        if (ctx.state === 'suspended') {
+          void ctx
+            .resume()
+            .catch((e) => console.warn('[audio] initial context resume() rejected:', e));
+        }
+        // analyser 是"当前活跃槽"的状态：建好新槽时同步一次，声波环才能跟着
+        // crossfade 换元素读。
+        if (slot === slots.active()) setAnalyser(node);
+        return fade;
+      } catch (e) {
+        console.error(`[audio] failed to build audio graph for slot ${slot}`, e);
+        return null;
+      }
+    },
+    [slots],
+  );
+
+  /** 兼容旧调用点：建/取**活跃槽**的 analyser。 */
   const ensureAudioGraph = useCallback((): AnalyserNode | null => {
-    if (audioCtxRef.current && analyser) {
-      // Already built — just make sure the context is running (it gets
-      // suspended when the window loses focus on some OSes).
-      if (audioCtxRef.current.state === 'suspended') {
-        void audioCtxRef.current.resume().catch((e) => {
-          console.warn('[audio] context resume() rejected:', e);
-        });
-      }
-      return analyser;
-    }
-    const audioEl = audioRef.current;
-    if (!audioEl) return null;
-    try {
-      const Ctor: typeof AudioContext =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new Ctor();
-      const src = mediaSrcRef.current ?? ctx.createMediaElementSource(audioEl);
-      mediaSrcRef.current = src;
+    ensureSlotGraph(slots.active());
+    return analyser;
+  }, [analyser, ensureSlotGraph, slots]);
 
-      // EQ 链（specs/audio-fx §2.1）：10 段 peaking **在建立时就插进去**，
-      // 即使增益全 0。之后只改 gain 参数，绝不重连 —— 重连发生在正在出声的
-      // 时刻必然咔哒（详见 spec §7 风险）。
-      // source 一起传进去：createMediaElementSource 之后 <audio> 的输出**永久**
-      // 改路由到这张图上，不显式 connect 就是全静音（无报错，见 eqChain.ts 注释）。
-      const filters = createEqChain(ctx, EQ_BANDS, src);
-      eqFiltersRef.current = filters;
+  /**
+   * 把 analyser 状态切到当前活跃槽（crossfade 换槽后调用）。
+   *
+   * 声波环（bass RAF effect）读的是 state 里的 analyser，所以"逻辑上当前在播
+   * 哪个元素"变了就得同步换观察点——否则淡入淡出过程中频谱还在读旧元素，
+   * 而旧元素正在淡出（越来越小声）却显示满格。
+   */
+  const syncAnalyserToActiveSlot = useCallback(() => {
+    setAnalyser(slotGraphsRef.current[slots.active()]?.analyser ?? null);
+  }, [slots]);
 
-      const node = ctx.createAnalyser();
-      node.fftSize = 256;
-      node.smoothingTimeConstant = 0.72;
-      // 串成 source → f0 → … → f9 → analyser → destination（**单路**）：
-      // analyser 放在 EQ 之后，声波环要反映用户听到的声音（EQ 开了就该看到频谱
-      // 变化），不是反映 EQ 之前的原始信号。
-      // 千万别再把 f9 单独接一次 destination —— destination 会把两条路上的
-      // 同一份信号相加，白白 +6dB。
-      filters[filters.length - 1]?.connect(node);
-      node.connect(ctx.destination);
-      audioCtxRef.current = ctx;
-      setAnalyser(node);
-      // graph 刚建好，把当前偏好一次性灌进去（之前调过 EQ 也会保留）
-      pushEqToFilters(audioFxRef.current);
-      if (ctx.state === 'suspended') {
-        void ctx.resume().catch((e) => {
-          console.warn('[audio] initial context resume() rejected:', e);
-        });
-      }
-      return node;
-    } catch (e) {
-      console.error('[audio] failed to build audio graph', e);
-      return null;
+  /**
+   * 切歌执行器（specs/audio-fx §2.2）。实现全在 lib/crossfadeRunner.ts —— 这里
+   * 只把 usePlayer 的内部状态注入进去，并且**只在依赖变化时重建**（它内部有
+   * 定时器，重建必须先 dispose，否则旧定时器会孤儿 pause 元素）。
+   */
+  const slotLoaderRef = useRef<SlotLoader | null>(null);
+  const loaderDepsRef = useRef({
+    ensureSlotGraph,
+    slots,
+    syncAnalyserToActiveSlot,
+    getFade: (slot: AudioSlot) => slotGraphsRef.current[slot]?.fade ?? null,
+    now: () => audioCtxRef.current?.currentTime ?? 0,
+  });
+  loaderDepsRef.current = {
+    ensureSlotGraph,
+    slots,
+    syncAnalyserToActiveSlot,
+    getFade: (slot: AudioSlot) => slotGraphsRef.current[slot]?.fade ?? null,
+    now: () => audioCtxRef.current?.currentTime ?? 0,
+  };
+  if (!slotLoaderRef.current) {
+    const deps = loaderDepsRef.current;
+    slotLoaderRef.current = createSlotLoader({
+      slots: deps.slots,
+      getFade: (s) => loaderDepsRef.current.getFade(s),
+      now: () => loaderDepsRef.current.now(),
+      ensureGraph: (s) => loaderDepsRef.current.ensureSlotGraph(s),
+      onActiveChanged: () => loaderDepsRef.current.syncAnalyserToActiveSlot(),
+    });
+  }
+  // 卸载时清掉孤儿定时器（真机上它会 pause 元素 / 改增益）。
+  useEffect(
+    () => () => {
+      slotLoaderRef.current?.dispose();
+      slotLoaderRef.current = null;
+    },
+    [],
+  );
+
+  /**
+   * **同一首歌**换 URL（切音质 / VIP 试听降标准重试）——把新 URL 装回**当前活跃
+   * 元素**，不换槽、不淡变（还是那首歌，淡入淡出没有意义）。
+   *
+   * ⚠️ 这条路径以前靠 React 的 `src={track.audioUrl}` 绑定生效：src 改成命令式
+   * 装载（crossfade 必需）之后，`setTrack({...prev, audioUrl})` 只会改 React
+   * 状态，元素永远不去加载新 URL —— 表现为「音质切了 / 降标准了，但还是 00:00
+   * 不出声」。凡是改 audioUrl 的地方都必须显式走这里。
+   *
+   * 刻意**不动** `dataset.wantPlay`：保持改动前的行为（用户暂停着切音质 → 不
+   * 会因为这次 reload 突然自己播起来）。
+   */
+  const reloadActiveWithUrl = useCallback((url: string) => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.src = url;
+    el.load();
+  }, []);
+
+  const loadIntoSlots = useCallback((url: string, wpsActive: boolean) => {
+    const loader = slotLoaderRef.current;
+    if (!loader) {
+      // ⚠️ 到这里 = 切歌执行器被卸载清理掉了还没重建（ref 为 null）。原来的
+      // `?.load()` 是**静默 no-op**：React 状态照变、界面照更新，但音频元素
+      // 从头到尾没被装载过一次 —— 症状是「歌名封面都换了，就是 00:00 不出声」，
+      // 而且日志里什么都看不到。这条必须炸出来。
+      console.error('[audio] slot loader 缺失 —— 切歌被静默跳过（audioUrl=' + url + '）');
+      return;
     }
-  }, [analyser, audioRef, pushEqToFilters]);
+    loader.load(url, wpsActive, audioFxRef.current.crossfadeSec);
+  }, []);
 
   // Present a Track to the player: resolve absolute audioUrl, swap cover,
   // set play intent. Shared by the server radio and search-result paths.
@@ -339,6 +566,7 @@ export function usePlayer(
       if (unified) void fillLikeCountForCurrentTrack(unified, setCurrentUnified);
       if (isNewSong) {
         triedPlatformsRef.current = new Set();
+        triedTrackIdsRef.current = new Set();
         serverEquivTriedRef.current = false;
         trialServerTriedRef.current = false;
         forcedStandardRef.current = false;
@@ -350,6 +578,7 @@ export function usePlayer(
         wpsPlayedIdRef.current = null;
       }
       triedPlatformsRef.current.add(next.provider);
+      triedTrackIdsRef.current.add(`${next.provider}:${next.id}`);
       // 每次上源（含跨平台切换）都要对新源重做一次试听判定。
       trialEvaluatedRef.current = false;
       // 新上的源默认按用户选的音质播——清掉"试听回退到标准"的标记。standard
@@ -359,6 +588,8 @@ export function usePlayer(
       // 每次上歌/换源都先清掉上一次的报错——切到下一首/降级成功后不该再
       // 残留旧的 "音频加载失败" 弹窗。真正失败会在 onError 里重新 setError。
       setError(null);
+      setFailure(null);
+      lastEquivReasonRef.current = null;
       // Audit A3 (consistency-fixes T1): use the live sidecar origin
       // instead of the module-load snapshot so radio next-track previews
       // fired after `sidecar-ready` see the real URL.
@@ -404,13 +635,23 @@ export function usePlayer(
       // 同源重试的 guard 在每次 presentTrack 重置——跨平台 fallback 算新 URL,
       // 给 1 次重试机会。
       retryAttemptedRef.current = false;
+      // 重试次数按「本首歌」计数，切歌归零（否则第一首的坏源会吃掉后面的额度）。
+      transientAttemptsRef.current = 0;
+      clearStallTimer();
+      // 换歌计数 +1：跨 await 的兜底回调靠它判"用户是不是已经切歌了"。
+      songEpochRef.current += 1;
       // 清掉可能残留的「同源重试保位」——上一首歌的 transient 重试若在换歌前
       // 没落地（load 失败 → loadedmetadata 没 fire），pendingSeekRef 会漏到这首
       // 新歌把它错误地 seek 过去。换歌一律从 0 起。
       pendingSeekRef.current = null;
       setCurrentTime(0);
-      const audio = audioRef.current;
-      if (audio) audio.dataset.wantPlay = '1';
+      // ── 装载 + 起播（含 crossfade，specs/audio-fx §2.2）────────────
+      //
+      // src **不再**由 React 的 `src={track.audioUrl}` 绑定：淡入淡出要求"旧歌
+      // 留在原元素上继续播、新歌进另一个元素"，而 React 改 src 会立刻把新 URL
+      // 甩到同一个元素上、把正在淡出的歌掐断。所以这里改成命令式装载（App 里
+      // 的 `<audio>` 不再绑 src），并在最后显式 load()。
+      loadIntoSlots(audioUrl, Boolean(wpsRef?.current?.wpsReady));
       setPlaying(true);
       // 同步 queueSnapshot（idx / items）给 reactive consumer；只有 idx 真变了
       // 才 setState，避免同首跨平台 fallback 重复 presentTrack 时无意义 re-render。
@@ -424,7 +665,7 @@ export function usePlayer(
       // gesture. The graph is built lazily on the first play (onPlay /
       // handlePlayPause). Until then audio plays through the default path.
     },
-    [presentCover, presentPlaceholder, audioRef, wpsRef, setQueueSnapshot],
+    [presentCover, presentPlaceholder, loadIntoSlots, wpsRef, setQueueSnapshot, clearStallTimer],
   );
 
   /** 用一个跨平台 source + 展示元数据构造 fallback Track 并重播。同一首歌
@@ -496,6 +737,15 @@ export function usePlayer(
     [onAuthExpiredRef],
   );
 
+  /** 还有没有「下一首」可跳：队列模式 >1 首才跳（单曲队列会绕回自己），
+   *  radio 模式服务端总能 refill。用 trackRef 而非 provider state —— 本函数
+   *  被 useCallback([]) 的 reportPlayFailure 捕获，读 state 会拿到首渲染旧值。 */
+  const hasNextTrack = (): boolean => {
+    const q = queueRef.current;
+    if (q && q.tracks.length) return q.tracks.length > 1;
+    return Boolean(trackRef.current?.provider);
+  };
+
   /**
    * 播放彻底失败后的收尾（spec: specs/auth-resilience Phase 10）。
    *
@@ -520,53 +770,142 @@ export function usePlayer(
         } catch {
           /* 探不通就按普通播放失败处理 —— 宁可少提示，不要卡住用户 */
         }
+        // 结构化失败：分级文案（种子源 vipCategory 优先，其次服务端等价源
+        // 搜索结论）+ 自动跳下一首（连挂 ≥3 首停用，防整库死歌无限跳）。
+        consecutiveFailuresRef.current += 1;
+        const cur = trackRef.current;
+        const seedSrc = currentUnifiedRef.current?.sources.find(
+          (s) => s.platform === cur?.provider && s.trackId === cur?.id,
+        );
+        const cat = seedSrc?.vipCategory;
+        const reason: PlayFailReason =
+          cat === 'paid-album' || cat === 'paid-track'
+            ? 'paid-track'
+            : cat === 'vip-only' || cat === 'vip-month'
+              ? 'vip-locked'
+              : (lastEquivReasonRef.current ?? 'generic');
+        setFailure({
+          title: cur?.title ?? '',
+          artist: cur?.artist ?? '',
+          provider: failedProvider,
+          trackId: cur?.id,
+          reason,
+          detail: `音频加载失败（${code}）`,
+          autoSkip: consecutiveFailuresRef.current < 3 && hasNextTrack(),
+        });
         setError(`音频加载失败（${code}），请尝试切歌`);
       })();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onAuthExpiredRef],
   );
 
   const tryFallbackSource = useCallback(async (): Promise<boolean> => {
     const unified = currentUnifiedRef.current;
     const cur = trackRef.current;
-    if (!unified || !cur) return false;
+    if (!cur) return false;
     const tried = triedPlatformsRef.current;
-    const display = {
-      title: unified.title,
-      artist: unified.artist,
-      album: unified.album,
-      coverUrl: unified.coverUrl,
-      duration: unified.duration,
-    };
+    // 展示元数据：有 unified 用它（更全，有 album/cover），radio track 用 track 自己。
+    const display = unified
+      ? {
+          title: unified.title,
+          artist: unified.artist,
+          album: unified.album,
+          coverUrl: unified.coverUrl,
+          duration: unified.duration,
+        }
+      : {
+          title: cur.title,
+          artist: cur.artist,
+          album: cur.album,
+          coverUrl: cur.coverUrl,
+          duration: cur.duration,
+        };
 
-    // 1) item 内其它平台 source。
-    const inItem = FALLBACK_PRIORITY.filter((p) => !tried.has(p))
-      .map((p) =>
-        // Bug #3 防御性：过滤 vipLocked——否则 code=4 后切到 vipLocked 源仍是 30s。
-        unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
-      )
-      .find((s): s is UnifiedSourceInfo => Boolean(s));
-    if (inItem) {
-      presentFallbackSource(inItem, unified, display);
-      return true;
+    // 1) item 内其它平台 source（**需要 unified**：radio track 没有跨平台源表）。
+    if (unified) {
+      const inItem = FALLBACK_PRIORITY.filter((p) => !tried.has(p))
+        .map((p) =>
+          // Bug #3 防御性：过滤 vipLocked——否则 code=4 后切到 vipLocked 源仍是 30s。
+          unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
+        )
+        .find((s): s is UnifiedSourceInfo => Boolean(s));
+      if (inItem) {
+        presentFallbackSource(inItem, unified, display);
+        return true;
+      }
     }
 
     // 2) 服务端实时跨平台匹配（每首歌一次）。
-    if (serverEquivTriedRef.current) return false;
-    serverEquivTriedRef.current = true;
-    const songId = unified.id; // 快照：await 期间用户可能切歌，回来要校验。
-    try {
-      const src = await findEquivalentSource(cur.provider, {
-        title: unified.title,
-        artist: unified.artist,
-        duration: unified.duration,
-      });
-      // 竞态守卫：await 期间已切到别的歌 → 丢弃结果。
-      if (currentUnifiedRef.current?.id !== songId) return false;
-      if (src && !triedPlatformsRef.current.has(src.platform)) {
-        presentFallbackSource(src, currentUnifiedRef.current, display);
-        return true;
+    //
+    // ⚠️ **unified 不是前置条件**（2026-10-19 修的洞）：QQ 电台 track 由服务端
+    // 单平台生成、没有 unified，旧代码在这里直接 `return false` —— 于是电台歌
+    // 在 QQ 拿不到流时**一条兜底都没有**，界面停在「等待播放」还显示 READY。
+    // `findEquivalentSource` 只吃 {title, artist, duration}，radio track 一样有。
+    // radio（无 unified）按歌身份去重，unified 路径沿用 per-song 的 guard。
+    const radioKey = unified ? null : `${cur.title}|${cur.artist}`;
+    const alreadyTried = radioKey
+      ? radioFallbackKeyRef.current === radioKey
+      : serverEquivTriedRef.current;
+    if (!shouldSearchEquivalent({ hasTrack: true, alreadyTried })) {
+      if (!unified) {
+        console.warn(`[audio] "${cur.title}" 兜底跳过：同歌已换过一次源（防 qq↔netease 来回换）`);
       }
+      return false;
+    }
+    if (radioKey) radioFallbackKeyRef.current = radioKey;
+    else serverEquivTriedRef.current = true;
+    const songId = unified?.id; // 快照：await 期间用户可能切歌，回来要校验。
+    const epoch = songEpochRef.current; // radio 路径没有 id，只能靠这个判"没换歌"
+    try {
+      // excludeId=cur.id：让服务端先做「同平台换版本」兜底（排除刚挂掉的 mid
+      // 重匹配 + 实探出流才返回），再跨平台。交换余生：专辑版 104003、单曲版
+      // 003qWps4042iNf 可播——没有这个参数服务端会跳过整个 QQ 平台。
+      const equiv = await findEquivalentSource(
+        cur.provider,
+        {
+          title: display.title,
+          artist: display.artist,
+          duration: display.duration,
+        },
+        cur.id,
+      );
+      const src = equiv.source;
+      // 失败原因留给 reportPlayFailure 分级文案（它届时已没有这次搜索的上下文）。
+      lastEquivReasonRef.current = equiv.reason;
+      // 竞态守卫：await 期间已切到别的歌 → 丢弃结果。
+      // ⚠️ 不能只看 unified id：radio 路径下它前后都是 undefined，切歌了也
+      // 照样相等 —— 旧守卫在 radio 上等于没有。
+      if (songEpochRef.current !== epoch) {
+        console.warn('[audio] 兜底结果已过期（期间切歌了），丢弃');
+        return false;
+      }
+      if (unified && currentUnifiedRef.current?.id !== songId) return false;
+      // 可观测性：这条链之前是全黑的（搜到了不切、切了不出声，日志都看不出）。
+      if (!src) {
+        console.warn(
+          `[audio] "${display.title}" 服务端没找到可播的等价源` +
+            `（其它平台都是 VIP 锁 / 搜不到）→ 只能报错`,
+        );
+        return false;
+      }
+      const sameProviderAlt = src.platform === cur.provider && src.trackId !== cur.id;
+      if (triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`)) {
+        console.warn(
+          `[audio] "${display.title}" 兜底到 ${src.platform}/${src.trackId}，但该源已试过`,
+        );
+        return false;
+      }
+      if (triedPlatformsRef.current.has(src.platform) && !sameProviderAlt) {
+        console.warn(`[audio] "${display.title}" 兜底到 ${src.platform}，但该平台本首歌已试过`);
+        return false;
+      }
+      console.warn(
+        `[audio] "${display.title}" 在 ${cur.provider} 播放失败，` +
+          `兜底切到 ${src.platform} 源（${unified ? 'unified' : 'radio 无 unified'}）`,
+      );
+      presentFallbackSource(src, currentUnifiedRef.current, display);
+      return true;
     } catch {
       // 网络/匹配失败 → 静默走报错。
     }
@@ -624,16 +963,26 @@ export function usePlayer(
     trialServerTriedRef.current = true;
     const songId = unified.id;
     try {
-      const src = await findEquivalentSource(cur.provider, {
-        title: display.title,
-        artist: display.artist,
-        duration: display.duration,
-      });
+      // excludeId=cur.id：同平台换版本兜底——VIP 专辑版试听、同歌单曲版可能
+      // 出全曲流（服务端实探过才返回，不会推回同一个试听 mid）。
+      const equiv = await findEquivalentSource(
+        cur.provider,
+        {
+          title: display.title,
+          artist: display.artist,
+          duration: display.duration,
+        },
+        cur.id,
+      );
+      const src = equiv.source;
+      lastEquivReasonRef.current = equiv.reason;
       if (currentUnifiedRef.current?.id !== songId) return;
+      const sameProviderAlt = !!src && src.platform === cur.provider && src.trackId !== cur.id;
       if (
         src &&
         fullProviders.includes(src.platform) &&
-        !triedPlatformsRef.current.has(src.platform)
+        !triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`) &&
+        (!triedPlatformsRef.current.has(src.platform) || sameProviderAlt)
       ) {
         console.warn(
           `[audio] "${display.title}" 30s 试听，服务端匹配到 ${src.platform} ` + `全曲源，升级`,
@@ -660,11 +1009,11 @@ export function usePlayer(
   const handleTrialDetected = useCallback(async () => {
     const cur = trackRef.current;
     if (!cur) return;
-    // QQ 出现试听片段有两种可能：「这首歌是 VIP 独占」或「登录态掉了被降权」。
+    // QQ 出现试听片段有两种可能：「这首歌是 VIP 独占」或「登录态掉了被降权」
+    // （也可能是原 QQ 源失败后 tryFallbackSource 切到了网易云/Deezer 30s 试听）。
     // 无法从时长分辨，所以**异步**跑一次 validate=1 探针：过期 → 立即弹重登；
-    // 有效 → 当普通 VIP 处理继续走音质降级/跨平台升级。netease 的等价探针
-    // 还没做（Phase 11），这里只对 qq 补查。
-    if (cur.provider === 'qq') {
+    // 有效 → 当普通 VIP 处理继续走音质降级/跨平台升级。
+    if (cur.provider === 'qq' || triedPlatformsRef.current.has('qq')) {
       checkProviderAuthExpired('qq');
     }
     // 1) 同平台降标准音质重试。
@@ -689,6 +1038,9 @@ export function usePlayer(
       // 重试会误判"用户切歌了"直接跳过同源重试。
       currentSrcRef.current = stdUrl;
       setTrack((prev) => (prev ? { ...prev, audioUrl: stdUrl } : prev));
+      // src 不再由 React 绑定 —— 必须自己把新 URL 装进元素，否则「降到标准」
+      // 只改了状态、声音永远停在 00:00（crossfade 落地时踩过一次）。
+      reloadActiveWithUrl(stdUrl);
       return;
     }
     // 2) 跨平台换完整曲流源。
@@ -767,7 +1119,12 @@ export function usePlayer(
    * 中途换歌 / ❤↔取消 / 触发新一轮 refresh 时旧轮询自动让位（generation 计数）。
    */
   const refreshLikedState = useCallback(() => {
-    void detectAndApplyLiked(currentUnifiedRef.current);
+    void detectAndApplyLiked(
+      // 电台曲目没有 unified item —— 回退到 Track 合成的单源 unified，
+      // 否则电台路径的角标刷新永远早退（currentUnifiedRef undefined）。
+      currentUnifiedRef.current ??
+        (trackRef.current ? synthRadioUnified(trackRef.current) : undefined),
+    );
   }, [detectAndApplyLiked]);
 
   /**
@@ -798,7 +1155,11 @@ export function usePlayer(
     let stableHits = 0;
     while (Date.now() - startTs < HARD_TIMEOUT_MS) {
       if (likedRefreshGenRef.current !== myGen) return null; // 让位给新一轮
-      const unified = currentUnifiedRef.current;
+      // 电台曲目没有 unified item —— 用 Track 合成，否则电台 ❤ 后角标
+      // 轮询直接 return null，永远拿不到 discover 落定后的平台数。
+      const unified =
+        currentUnifiedRef.current ??
+        (trackRef.current ? synthRadioUnified(trackRef.current) : undefined);
       if (!unified) return null;
       // T6 (consistency-fixes D3)：detect 轮询只在用户当前 liked=true 时启动。
       // 用户手动翻转（❤→不 ❤）后，`trackRef.current?.liked` 与期望不符，
@@ -914,10 +1275,11 @@ export function usePlayer(
       void detectAndApplyLiked(q.unifiedItems?.[q.idx]);
       return;
     }
-    // Radio (server) track: not a unified item, so there's no fan-out. Clear
-    // the badge, otherwise it keeps showing the last search song's platform
-    // count on top of unrelated radio tracks. `next.liked` (from the server)
-    // still drives the ❤ fill via presentTrack.
+    // Radio (server) track: no unified item — synth a single-source one so
+    // liked-detect still runs (heart-sync spec #7 的旧妥协是 radio 不 detect、
+    // 角标恒清 0；但服务端 detect 只要 mergedId+sources+meta，电台 Track
+    // 全都有)。fetch 前先清角标，避免上一首搜索歌的平台数残留在电台曲目上。
+    // `next.liked`（服务端快照）先驱动 ❤ 填充，detect 回来后按真值校正。
     // T6 (consistency-fixes D4)：radio 路径 await 期间用户可能切了平台 /
     // preset（API 不支持中途切，UI 限制先于这点；但保险起见守护）。快照
     // 启动时的 provider + preset，await 回来不一致就丢弃（让新的 loadNextTrack
@@ -929,6 +1291,9 @@ export function usePlayer(
     setError(null);
     try {
       const next = await fetchNextTrack(startedProvider, startedPreset);
+      // 服务端约定永返 Track（空队列回占位），但 null/204 空体等异常响应
+      // 不应崩进 presentTrack —— 视为「无下一首」保持 idle。
+      if (!next) return;
       // D4 守护：await 期间 provider / preset 变了 → 旧的 fetchNextTrack 结果
       // 丢弃（让新的 loadNextTrack 自然 presentTrack 正确曲）。
       if (
@@ -938,6 +1303,10 @@ export function usePlayer(
         return;
       }
       presentTrack(next);
+      // 电台也要跑红心检测：qq 已 ❤ 的歌会触发后台 discover 把 netease /
+      // spotify 等价源并进 fanOut，角标随 refreshLikedStateUntilStable
+      // （App 侧 track.id/liked 变化的 effect）收敛到真实平台数。
+      void detectAndApplyLiked(synthRadioUnified(next));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1019,7 +1388,16 @@ export function usePlayer(
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    // crossfade 换槽后 duration 不会自己冒出来（loadedmetadata 打在新元素上，
+    // 而绑定发生在换槽之后）。主动补一次，否则进度条会拿旧时长算百分比。
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      setDuration(audio.duration);
+    }
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      // 真出声了才算这首成功 —— 连续失败计数清零，下一首失败重新允许自动跳。
+      if (audio.currentTime > 0.5) consecutiveFailuresRef.current = 0;
+    };
     const onDurationChange = () => {
       if (trackRef.current?.provider === 'spotify' && wpsRef?.current?.wpsReady) return;
       setDuration(audio.duration || 0);
@@ -1116,9 +1494,19 @@ export function usePlayer(
       // 红心、queue 位置。等 800ms 让上游 stream 重新 fetch，再 audio.load() +
       // audio.play() 重试；还错才进跨平台 fallback。
       //
-      // 同一时间只允许一个重试 in-flight，避免 onError 反复触发时不停重试。
-      if (!retryAttemptedRef.current && audio.dataset.wantPlay === '1') {
+      // 同源 transient 重试：**有次数上限**（shouldTransientRetry）。
+      // 旧实现无上限且"重试成功就清零 guard"，而 play() 在坏源上照样 resolve
+      // → 清零 → 下一个 error 又满足条件 → 无限重试，永远走不到跨平台兜底
+      // （2026-10-19 报障：QQ 对部分歌曲不返 purl，界面卡在「等待播放」）。
+      if (
+        !retryAttemptedRef.current &&
+        shouldTransientRetry({
+          attempts: transientAttemptsRef.current,
+          wantPlay: audio.dataset.wantPlay === '1',
+        })
+      ) {
         retryAttemptedRef.current = true;
+        transientAttemptsRef.current += 1;
         setTimeout(() => {
           const stillOnTrack =
             audio.dataset.wantPlay === '1' && audio.src === currentSrcRef.current;
@@ -1126,28 +1514,48 @@ export function usePlayer(
             // 用户这期间切歌 / 暂停了 → 不重试，进 fallback
             retryAttemptedRef.current = false;
             void tryFallbackSource().then((ok) => {
-              if (!ok) setError(`音频加载失败（${code}），请尝试切歌`);
+              if (!ok) reportPlayFailure(failedProvider, code);
             });
             return;
           }
-          console.warn('[audio] transient — 重试同源 1 次');
+          console.warn(`[audio] transient — 重试同源（第 ${transientAttemptsRef.current} 次）`);
           // 保住播放位置：mid-stream 掉线（"放着放着 code 4"）重载后应从断点续，
           // 而不是跳回 0。复用 changeQuality 的 pendingSeekRef 机制——
           // onLoadedMetadata 会在 load() 触发的重新加载后 seek 回去。
           if (audio.currentTime > 0) pendingSeekRef.current = audio.currentTime;
+          const startedAt = Date.now();
           audio.load();
+          const afterRetry = (why: string) => {
+            retryAttemptedRef.current = false;
+            clearStallTimer();
+            console.warn(`[audio] 同源重试未成功（${why}）→ 跨平台兜底`);
+            void tryFallbackSource().then((ok) => {
+              if (!ok) reportPlayFailure(failedProvider, code);
+            });
+          };
           void audio.play().then(
             () => {
-              // 重试成功。重置 guard，给下次错误机会（也可能是切歌后新源的错）。
+              // ⚠️ play() resolve 只代表"浏览器接受了播放请求"，不代表出了声：
+              // 坏源上它经常 resolve，然后 currentTime 永远停在 0。起一个探测
+              // 定时器，到点还在 00:00 就走兜底，别让界面停在「等待播放」。
               retryAttemptedRef.current = false;
+              clearStallTimer();
+              stallTimerRef.current = setTimeout(() => {
+                stallTimerRef.current = null;
+                if (
+                  !isPlaybackStalled({
+                    currentTime: audio.currentTime,
+                    elapsedMs: Date.now() - startedAt,
+                  })
+                ) {
+                  return; // 已经在走了 → 正常播放
+                }
+                // 用户已暂停 / 已切歌 → 不是"卡死"，别打扰
+                if (audio.dataset.wantPlay !== '1' || audio.src !== currentSrcRef.current) return;
+                afterRetry('重试后 00:00 不出声');
+              }, STALL_PROBE_MS);
             },
-            () => {
-              // 重试失败。重置 guard **并** 进 fallback——避免无限重试循环。
-              retryAttemptedRef.current = false;
-              void tryFallbackSource().then((ok) => {
-                if (!ok) reportPlayFailure(failedProvider, code);
-              });
-            },
+            () => afterRetry('play() rejected'),
           );
         }, 800);
         return;
@@ -1190,6 +1598,8 @@ export function usePlayer(
     };
   }, [
     track,
+    // crossfade 换槽 = "当前播放元素"易主 → 必须重绑事件到新元素。
+    slotVersion,
     loadNextTrack,
     ensureAudioGraph,
     audioRef,
@@ -1379,6 +1789,8 @@ export function usePlayer(
       // 同步 onError 的 src 镜像（见 handleTrialDetected 里同款注释）。
       currentSrcRef.current = nextUrl;
       setTrack((prev) => (prev ? { ...prev, audioUrl: nextUrl } : prev));
+      // 同上：src 是命令式装载的，setTrack 不会让元素去加载。
+      reloadActiveWithUrl(nextUrl);
     }
   };
 
@@ -1432,6 +1844,20 @@ export function usePlayer(
     },
     [pushEqToFilters],
   );
+
+  /**
+   * crossfade 时长（秒）。0 = 关闭（默认，见 audioFx.ts 的取值说明）。
+   *
+   * 改的是**偏好**，不是正在进行的淡变：用户拖滑块时正在播的歌不会重新淡一次
+   * （那会突然把音量拽下去）。下一次切歌才按新时长走。
+   */
+  const setCrossfadeSec = useCallback((sec: number) => {
+    setAudioFx((prev) => {
+      const next: AudioFxPrefs = { ...prev, crossfadeSec: clampCrossfade(sec) };
+      writeAudioFx(next);
+      return next;
+    });
+  }, []);
 
   const handlePlayPause = () => {
     // Build the graph the first time the user hits play; later clicks just
@@ -1551,7 +1977,12 @@ export function usePlayer(
         return;
       }
       setTrack((prev) => (prev ? { ...prev, liked: result.liked } : prev));
-      setFanOutCount(0);
+      // 取消红心 → 角标直接清零（liked=false 时 App 的 refresh effect 不触发，
+      // 没人会把残留数字清掉）。收藏方向不清零：toggleLike 的服务端 discover
+      // 会往 `single:{p}:{id}` fanOut 记录里补其它平台，App 侧 liked 变 true
+      // 触发的 refreshLikedStateUntilStable 会用合成的电台 unified 轮询
+      // detect 收敛到真实平台数。
+      if (!result.liked) setFanOutCount(0);
       if (result.liked) {
         reportRecoSignal({
           type: 'like',
@@ -1673,6 +2104,8 @@ export function usePlayer(
     loading,
     error,
     setError,
+    failure,
+    dismissFailure: () => setFailure(null),
     searchOpen,
     setSearchOpen,
     fanOutCount,
@@ -1712,5 +2145,11 @@ export function usePlayer(
     setEqEnabled,
     setEqBandGain,
     applyEqPreset,
+    setCrossfadeSec,
+    // ── A/B 音频槽位（crossfade，specs/audio-fx §2.2）──────────────
+    /** 两个常驻 `<audio>` 的槽位。App 用 `slots.ref('a' / 'b')` 挂 ref。 */
+    slots,
+    /** 当前活跃元素的只读代理（给 useVolume 等需要 RefObject 形状的调用方）。 */
+    audioRef,
   };
 }

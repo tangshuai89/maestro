@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   Logger,
   BadRequestException,
   NotFoundException,
@@ -7,7 +8,8 @@ import {
 } from '@nestjs/common';
 import { Track } from './types';
 import type { VipCategory } from './types';
-import { ProviderSession } from '../common/session';
+import { ProviderSession, SessionService } from '../common/session';
+import { RefreshCoordinator } from '../auth/refresh-coordinator';
 import { type LyricLine, parseLrc } from '../common/lyrics';
 import { randomBytes, createHash } from 'node:crypto';
 import { encryptRequest, decryptResponse, zzcSign } from './qq-crypto';
@@ -308,6 +310,221 @@ export class QqMusicProvider {
   private readonly logger = new Logger(QqMusicProvider.name);
 
   /**
+   * QQ 音乐 `qm_keyst` / `qqmusic_key` 服务端寿命为 72h（`keyExpiresIn = 259200` 秒），
+   * 而第一层 QQ OAuth `psrf_qqrefresh_token` / `psrf_qqaccess_token` 寿命为 60 天。
+   * 距 `psrf_musickey_createtime` 超过 60h（提前 12h 缓冲）即主动用 refresh_token 续期。
+   */
+  private static readonly MUSICKEY_PRE_REFRESH_AGE_SEC = 60 * 3600;
+
+  private readonly sessionIdBySession = new WeakMap<ProviderSession, string>();
+
+  constructor(
+    @Optional() private readonly refreshCoordinator?: RefreshCoordinator,
+    @Optional() private readonly sessions?: SessionService,
+  ) {}
+
+  bindSessionId(session: ProviderSession, sessionId: string): void {
+    this.sessionIdBySession.set(session, sessionId);
+  }
+
+  private sessionIdFor(session: ProviderSession): string | null {
+    return this.sessionIdBySession.get(session) ?? null;
+  }
+
+  /**
+   * 解析当前 session 的 cookie map（优先用 qqCookies，缺失时从 qqCookie 字符串兜底）。
+   */
+  private parseCookies(session: ProviderSession): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const part of (session.qqCookie ?? '').split(';')) {
+      const idx = part.indexOf('=');
+      if (idx <= 0) continue;
+      const k = part.slice(0, idx).trim();
+      const v = part.slice(idx + 1).trim();
+      if (k) out[k] = v;
+    }
+    if (session.qqCookies) {
+      for (const [k, v] of Object.entries(session.qqCookies)) {
+        if (v !== undefined) out[k] = v;
+      }
+    }
+    return out;
+  }
+
+  /** 是否持有可用于自动续期 musickey 的第一层 OAuth token。 */
+  hasRefreshableTokens(session: ProviderSession): boolean {
+    const c = this.parseCookies(session);
+    return Boolean(c.psrf_qqrefresh_token || c.psrf_qqaccess_token || c.wxrefresh_token);
+  }
+
+  /** `qm_keyst` 是否已接近或超过 72h 寿命（按 60h 预续期阈值判断）。 */
+  isMusickeyStale(session: ProviderSession, nowMs: number = Date.now()): boolean {
+    const c = this.parseCookies(session);
+    const createdSec = Number(c.psrf_musickey_createtime || 0);
+    if (!Number.isFinite(createdSec) || createdSec <= 0) return false;
+    return Math.floor(nowMs / 1000) - createdSec >= QqMusicProvider.MUSICKEY_PRE_REFRESH_AGE_SEC;
+  }
+
+  /**
+   * 若 `qm_keyst` 已超过 60h 且持有 refresh_token，主动在后台/请求前续期。
+   */
+  async ensureFreshSession(session: ProviderSession): Promise<boolean> {
+    if (!this.isMusickeyStale(session) || !this.hasRefreshableTokens(session)) {
+      return false;
+    }
+    return this.refreshSession(session);
+  }
+
+  /**
+   * 用第一层 QQ / 微信 OAuth 凭据（`psrf_qqrefresh_token` / `psrf_qqaccess_token`）
+   * 调 `music.login.LoginServer / Login` 换取新的 72h `qm_keyst` / `qqmusic_key`。
+   * 同 session 并发单飞，成功后原地更新 session 并通过 SessionService.persistQq 落盘。
+   */
+  async refreshSession(session: ProviderSession): Promise<boolean> {
+    if (!this.hasRefreshableTokens(session)) return false;
+    const sessionId = this.sessionIdFor(session);
+    if (!sessionId || !this.refreshCoordinator) {
+      return this.doRefreshSession(session, sessionId);
+    }
+    return this.refreshCoordinator.run<boolean>('qq', sessionId, () =>
+      this.doRefreshSession(session, sessionId),
+    );
+  }
+
+  private async doRefreshSession(
+    session: ProviderSession,
+    sessionId: string | null,
+  ): Promise<boolean> {
+    const c = this.parseCookies(session);
+    const musickey = c.qm_keyst || c.qqmusic_key || '';
+    const uinNum = Number(
+      session.qqUin || (c.uin ?? '').replace(/^o/i, '').replace(/^0+/, '') || 0,
+    );
+    const tmeLoginType = Number(c.tmeLoginType || (musickey.startsWith('W_X_') ? 1 : 2));
+    const param =
+      tmeLoginType === 1
+        ? {
+            openid: c.wxopenid || c.psrf_qqopenid || '',
+            refresh_token: c.wxrefresh_token || c.psrf_qqrefresh_token || '',
+            str_musicid: String(uinNum || session.qqUin || ''),
+            musickey,
+            unionid: c.wxunionid || c.psrf_qqunionid || '',
+            refresh_key: c.wxrefresh_token || '',
+            loginMode: 2,
+          }
+        : {
+            openid: c.psrf_qqopenid || '',
+            access_token: c.psrf_qqaccess_token || '',
+            refresh_token: c.psrf_qqrefresh_token || '',
+            expired_in: Number(c.psrf_access_token_expiresAt || 0),
+            musicid: uinNum,
+            musickey,
+            refresh_key: c.wxrefresh_token || '',
+            unionid: c.psrf_qqunionid || '',
+            loginMode: 2,
+          };
+
+    const body = {
+      comm: {
+        cv: 4747474,
+        ct: 24,
+        format: 'json',
+        inCharset: 'utf-8',
+        outCharset: 'utf-8',
+        notice: 0,
+        platform: 'yqq.json',
+        needNewCode: 1,
+        uin: uinNum,
+        tmeAppID: 'qqmusic',
+        tmeLoginType,
+      },
+      req_0: {
+        module: 'music.login.LoginServer',
+        method: 'Login',
+        param,
+      },
+    };
+
+    try {
+      const res = await withTimeout(
+        async () => {
+          const r = await fetch(
+            'https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&inCharset=utf8&outCharset=utf-8',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': QqMusicProvider.UA,
+                Referer: 'https://y.qq.com/',
+                Cookie: session.qqCookie ?? '',
+              },
+              body: JSON.stringify(body),
+            },
+          );
+          return (await r.json()) as {
+            code?: number;
+            req_0?: {
+              code?: number;
+              data?: {
+                musickey?: string;
+                musicid?: number | string;
+                musickeyCreateTime?: number;
+                keyExpiresIn?: number;
+                access_token?: string;
+                refresh_token?: string;
+                expired_at?: number;
+                encryptUin?: string;
+              };
+            };
+          };
+        },
+        5_000,
+        () => this.logger.warn('QQ refreshSession timed out (5s)'),
+      );
+      const reqCode = res?.req_0?.code;
+      const data = res?.req_0?.data;
+      if (reqCode !== 0 || !data?.musickey) {
+        this.logger.warn(
+          `QQ refreshSession failed: req_0.code=${reqCode ?? 'null'}, hasMusickey=${Boolean(data?.musickey)}`,
+        );
+        return false;
+      }
+
+      const nextCookies: Record<string, string> = {
+        ...c,
+        qm_keyst: data.musickey,
+        qqmusic_key: data.musickey,
+        psrf_musickey_createtime: String(data.musickeyCreateTime || Math.floor(Date.now() / 1000)),
+      };
+      if (data.access_token) nextCookies.psrf_qqaccess_token = data.access_token;
+      if (data.refresh_token) {
+        if (tmeLoginType === 1) nextCookies.wxrefresh_token = data.refresh_token;
+        else nextCookies.psrf_qqrefresh_token = data.refresh_token;
+      }
+      if (data.expired_at) nextCookies.psrf_access_token_expiresAt = String(data.expired_at);
+      if (data.encryptUin) nextCookies.euin = data.encryptUin;
+
+      session.qqCookies = nextCookies;
+      session.qqCookie = Object.entries(nextCookies)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('; ');
+      if (data.musicid) session.qqUin = String(data.musicid);
+
+      if (sessionId && this.sessions) {
+        this.sessions.persistQq(sessionId, session);
+      }
+      this.logger.log(
+        `QQ musickey auto-refreshed for uin=${maskUin(session.qqUin)} ` +
+          `(keyExpiresIn=${data.keyExpiresIn ?? '?'}s)`,
+      );
+      return true;
+    } catch (err) {
+      this.logger.warn(`QQ refreshSession error: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
    * 登录态探针缓存（spec: specs/auth-resilience Phase 10）。
    * 进程内、per-session key、TTL 10min —— 一次播放失败会走「同源重试 →
    * 跨平台 fallback → 兜底探针」多条路径，没缓存就会对 QQ 连打好几发。
@@ -362,9 +579,7 @@ export class QqMusicProvider {
    */
   async fetchLiked(session: ProviderSession, maxTracks = 1000): Promise<Track[]> {
     if (!this.isConfigured(session)) return [];
-
-    const cookie = session.qqCookie ?? '';
-    const euin = session.qqCookies?.euin ?? /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ?? '';
+    await this.ensureFreshSession(session);
 
     interface CgiGetDissSong {
       mid?: string;
@@ -380,8 +595,11 @@ export class QqMusicProvider {
     const PAGE = 1000;
     const collected: Track[] = [];
     let begin = 0;
+    let retriedRefresh = false;
     for (;;) {
       if (collected.length >= maxTracks) break;
+      const cookie = session.qqCookie ?? '';
+      const euin = session.qqCookies?.euin ?? /(?:^|;\s*)euin=([^;]+)/.exec(cookie)?.[1] ?? '';
       const num = Math.min(PAGE, maxTracks - collected.length);
       const body = {
         comm: { ct: 24, cv: 0 },
@@ -426,6 +644,10 @@ export class QqMusicProvider {
       };
       const reqCode = j.req_0?.code ?? j.code;
       if (reqCode === 1000 || reqCode === 301) {
+        if (!retriedRefresh && (await this.refreshSession(session))) {
+          retriedRefresh = true;
+          continue;
+        }
         throw new BadRequestException('not_logged_in');
       }
       if (reqCode !== 0) {
@@ -449,6 +671,8 @@ export class QqMusicProvider {
             duration: s.interval ?? 0,
             liked: true, // 来源就是"我喜欢"，全部视为已 ❤
             mediaMid: s.file?.media_mid ?? s.file?.strMediaMid ?? '',
+            vipLocked: detectQqVipLocked(s.pay, session.qqVip),
+            vipCategory: detectQqVipCategory(s.pay),
           })),
       );
       const hasmore = j.req_0?.data?.hasmore ?? false;
@@ -512,14 +736,16 @@ export class QqMusicProvider {
       });
     }
 
-    const cookie = session.qqCookie ?? '';
+    await this.ensureFreshSession(session);
     const PAGE = 100;
     const collected: QqPlayListSong[] = [];
     let info: QqPlayListDirInfo | undefined;
     let begin = 0;
+    let retriedRefresh = false;
 
     for (;;) {
       if (collected.length >= maxTracks) break;
+      const cookie = session.qqCookie ?? '';
       const num = Math.min(PAGE, maxTracks - collected.length);
       const r = await this.dissInfo(session, cookie, {
         disstid,
@@ -533,6 +759,10 @@ export class QqMusicProvider {
         throw new NotFoundException({ error: 'playlist_not_found', playlistId });
       }
       if (r.code === 1000 || r.code === 301) {
+        if (!retriedRefresh && (await this.refreshSession(session))) {
+          retriedRefresh = true;
+          continue;
+        }
         throw new BadRequestException('not_logged_in');
       }
       if (r.code !== 0) {
@@ -1074,16 +1304,30 @@ export class QqMusicProvider {
    * 上层要据此决定是提示"重新登录"还是当作匿名用户。
    */
   async probeSession(session: ProviderSession): Promise<SessionProbeResult> {
-    const cookie = session.qqCookie ?? '';
-    const uin = session.qqUin ?? '';
-    if (!cookie || !uin) {
+    if (!session.qqCookie || !session.qqUin) {
       return { alive: false, reason: 'no_cookie', fetched: false };
     }
+    await this.ensureFreshSession(session);
+    const cookie = session.qqCookie ?? '';
+    const uin = session.qqUin ?? '';
     // key 用 cookie 的哈希前 16 位 + uin：同一 session 稳定，换登录立即失效
     const key = `${uin}:${createHash('sha256').update(cookie).digest('hex').slice(0, 16)}`;
-    const res = await this.probeCache.resolve(key, () => probeQqSessionUncached(cookie, uin));
+    let res = await this.probeCache.resolve(key, () => probeQqSessionUncached(cookie, uin));
+    // 若探针判定 qm_keyst 已失效，且持有 60 天期的 psrf_qqrefresh_token → 自动续期一次
+    if (!res.alive && res.reason !== 'no_cookie' && this.hasRefreshableTokens(session)) {
+      const refreshed = await this.refreshSession(session);
+      if (refreshed) {
+        const newCookie = session.qqCookie ?? '';
+        const newUin = session.qqUin ?? uin;
+        const newKey = `${newUin}:${createHash('sha256').update(newCookie).digest('hex').slice(0, 16)}`;
+        res = await this.probeCache.resolve(newKey, () =>
+          probeQqSessionUncached(newCookie, newUin),
+        );
+      }
+    }
     this.logger.log(
-      `QQ session probe: alive=${res.alive} reason=${res.reason} cached=${!res.fetched}`,
+      `QQ session probe: alive=${res.alive} reason=${res.reason} cached=${!res.fetched}` +
+        (res.songCount ? ` purl=${res.purlCount ?? 0}/${res.songCount}` : ''),
     );
     return res;
   }
@@ -1094,6 +1338,9 @@ export class QqMusicProvider {
     mediaMid?: string,
     quality: QqQuality = 'standard',
   ): Promise<string> {
+    await this.ensureFreshSession(session);
+    const cookieBefore = session.qqCookie;
+
     // 高音质需要 media_mid 拼 filename；没有就退回默认 m4a。
     const spec = QqMusicProvider.QUALITY[quality];
     const filename = spec && mediaMid ? [`${spec.prefix}${mediaMid}${spec.ext}`] : undefined;
@@ -1114,23 +1361,33 @@ export class QqMusicProvider {
         `QQ GetVkey 无 purl: mid=${songmid}, errtype=${info?.errtype}, ` +
           `hasCookie=${Boolean(session.qqCookie)}, uin=${maskUin(session.qqUin)}`,
       );
-      // 拿不到流有三种可能：无版权 / 需付费 / **登录态已失效**。errtype 区分不了
-      // （实测失效 cookie 下 errtype 为空串），所以回落探针歌判据来分辨 ——
-      // 探针说登录也死了，那就是登录过期，必须让上层能提示「重新登录」，
-      // 否则用户只会看到"放不了"却不知道为什么（spec Phase 10 报障）。
+      // 拿不到流有三种可能：无版权 / 需付费 / **登录态已失效**。
+      // probeSession 内部若发现 qm_keyst 失效且持有 refresh_token 会自动续期；
+      // 若续期成功（session.qqCookie 更新），立即用新 cookie 重试一次 fetchVkey。
       const probe = await this.probeSession(session);
-      if (!probe.alive && probe.reason !== 'no_cookie') {
-        this.logger.warn(
-          `QQ 登录态已失效（探针 reason=${probe.reason}），抛 AUTH_EXPIRED：${songmid}`,
-        );
-        throw new BadRequestException({
-          error: 'AUTH_EXPIRED',
-          message: 'QQ 登录已过期，请重新登录',
-        });
+      if (probe.alive && session.qqCookie !== cookieBefore) {
+        this.logger.log(`QQ musickey 已自动续期，重试 GetVkey：${songmid}`);
+        vkey = await this.fetchVkey(session, [songmid], filename);
+        info = vkey?.data?.midurlinfo?.[0];
+        if (!info?.purl && filename) {
+          vkey = await this.fetchVkey(session, [songmid]);
+          info = vkey?.data?.midurlinfo?.[0];
+        }
       }
-      throw new BadRequestException(
-        `QQ vkey missing purl for ${songmid}: errtype=${info?.errtype}（可能无版权/需会员/登录态失效）`,
-      );
+      if (!info?.purl) {
+        if (!probe.alive && probe.reason !== 'no_cookie') {
+          this.logger.warn(
+            `QQ 登录态已失效（探针 reason=${probe.reason}），抛 AUTH_EXPIRED：${songmid}`,
+          );
+          throw new BadRequestException({
+            error: 'AUTH_EXPIRED',
+            message: 'QQ 登录已过期，请重新登录',
+          });
+        }
+        throw new BadRequestException(
+          `QQ vkey missing purl for ${songmid}: errtype=${info?.errtype}（可能无版权/需会员/登录态失效）`,
+        );
+      }
     }
     const sips = vkey?.data?.sip ?? [];
     if (sips.length > 1) {

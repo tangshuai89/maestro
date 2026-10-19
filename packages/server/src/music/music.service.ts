@@ -86,6 +86,16 @@ const EQUIV_MATCH_CACHE_TTL_MS = 60 * 60 * 1000;
 const EQUIV_FAIL_CACHE_TTL_MS = 30_000;
 const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
 
+/** likeCount（QQ m_numbers / 网易云 likedCount）拉取结果的 TTL 档
+ *  （specs/cross-platform-likes「缓存策略」）。语义与 equivSearchCache 的
+ *  `clean` 完全一致，只是换 key：命中 / 干净缺席 1h（"这首歌 QQ 上有 5700 收藏"
+ *  是稳定事实）；失败 / 超时 30s（网络抖动 ≠ 缺席，留重试窗口）。
+ *  挂在 service 而不是 provider 上：key 含 sessionId，而 provider 是跨 session
+ *  单例——放 provider 会让 A 用户的 ❤ 计数命中 B 用户的缓存条目。 */
+const LIKE_COUNT_TTL_CLEAN_MS = 60 * 60 * 1000;
+const LIKE_COUNT_TTL_DIRTY_MS = 30_000;
+const LIKE_COUNT_CACHE_MAX = 512;
+
 // IS_LYRIC_SOURCE_PRIORITY：仅 getLyricsByName 用（其它歌词聚合逻辑已迁
 // LyricsService）。getLyricsByName 留 MusicService 是因为它依赖本类的
 // searchEquivalent——避免循环依赖。
@@ -150,6 +160,17 @@ const NOOP_SOURCE_HEALTH: SourceHealthService = {
     /* no-op */
   },
 } as unknown as SourceHealthService;
+
+/** 等价源兜底失败原因分类（/music/equivalents 返回给前端做分级文案）：
+ *  - vip-locked：找到了歌但全部候选都是 VIP 锁
+ *  - stream-failed：同平台换到版本但实探不出流（凭据/版权级拒绝）
+ *  - no-match：其它平台连候选都没搜到 */
+export type EquivalentFailReason = 'vip-locked' | 'stream-failed' | 'no-match';
+
+export interface EquivalentResult {
+  source: SourceInfo | null;
+  reason: EquivalentFailReason | null;
+}
 
 @Injectable()
 export class MusicService {
@@ -420,7 +441,11 @@ export class MusicService {
       // ProviderSession 本身不带 sessionId——在这里把 id 绑上去，refresh 才能
       // 走 RefreshCoordinator 单飞（同 session 并发只 POST 一次 /api/token）
       // 并且 refresh 后的新 token 才能持久化到 state.json。
-      this.spotify.bindSessionId(ps, session.id);
+      this.spotify.bindSessionId?.(ps, session.id);
+    } else if (provider === 'qq') {
+      this.qq.bindSessionId?.(ps, session.id);
+    } else if (provider === 'netease') {
+      this.netease.bindSessionId?.(ps, session.id);
     }
     return ps;
   }
@@ -557,13 +582,59 @@ export class MusicService {
     session: Session,
     seedProvider: MusicProvider,
     seed: LikeMeta,
-  ): Promise<SourceInfo | null> {
+    opts?: { excludeTrackId?: string },
+  ): Promise<EquivalentResult> {
+    // 失败原因累计：给前端分级文案用（「要会员」vs「音源挂了」vs「搜不到」
+    // 是完全不同的用户动作）。优先级：stream-failed > vip-locked > no-match
+    // —— 同平台换版本实探失败意味着「歌在、流不给」，最接近真相。
+    let sawLocked = false;
+    let sawStreamFail = false;
+    // 0) 同平台换版本兜底（2026-10-19「交换余生」报障）：QQ/网易云同一首歌常有
+    //    多个 songmid——专辑版可能需单购无 purl，单曲版却能出全曲流。跨平台搜
+    //    不到的"死歌"，同平台另一版本可能活着。**先于**跨平台执行：同账号同
+    //    音质偏好，且 probePlayable 实探过流才返回——凭据死透时搜索照样返回
+    //    mid，不实探会把另一个死 mid 推给前端白失败一轮、还烧掉一次性兜底。
+    if (opts?.excludeTrackId && this.canSyncLike(session, seedProvider)) {
+      const alt = await this.searchEquivalent(
+        session,
+        seedProvider,
+        seed,
+        new Set([opts.excludeTrackId]),
+      );
+      if (alt) {
+        if (await this.probePlayable(session, seedProvider, alt)) {
+          const playable = this.toPlayableTrack(alt);
+          this.logger.log(
+            `equivalent same-provider alt: ${seedProvider}/${opts.excludeTrackId} → ` +
+              `${alt.id} "${alt.title} - ${alt.artist}"`,
+          );
+          return {
+            source: {
+              platform: seedProvider,
+              trackId: alt.id,
+              hasCopyright: true,
+              url: playable.audioUrl,
+              mediaMid: alt.mediaMid,
+              vipLocked: false, // 实探已出流，不信元数据锁标
+            },
+            reason: null,
+          };
+        }
+        sawStreamFail = true; // 换到的版本也出不了流
+      }
+    }
+
     // §6.2：用用户渠道优先级，只在 canSyncLike（已登录且能写红心）的子集里
     // 查找。Deezer 不参与（匿名+不可写红心），缺省排序里也通常排在末位。
     const userPriority = this.readChannelPriority(session);
     const priority = userPriority.filter((p) => p !== 'deezer');
     const candidates = priority.filter((p) => p !== seedProvider && this.canSyncLike(session, p));
-    if (!candidates.length) return null;
+    if (!candidates.length) {
+      return {
+        source: null,
+        reason: sawStreamFail ? 'stream-failed' : 'no-match',
+      };
+    }
 
     const found = await Promise.all(
       candidates.map(async (p) => {
@@ -584,20 +655,55 @@ export class MusicService {
       // 全锁完 → 落到方法末尾返 null，前端拿到 null 后 setError 干净退出。
       // 复刻自用户实测「浓缩蓝鲸 (Live) - 彭忠豪」：网易云 + QQ 两平台都 VIP
       // 锁，不带这个守卫会无限 code=4。
-      if (t.vipLocked === true) continue;
+      if (t.vipLocked === true) {
+        sawLocked = true;
+        continue;
+      }
       const playable = this.toPlayableTrack(t);
       return {
-        platform: p,
-        trackId: t.id,
-        hasCopyright: true,
-        url: playable.audioUrl,
-        mediaMid: t.mediaMid,
-        // 透传 vipLocked: false（已校验，前端可放心切；保留字段保 SourceInfo
-        // 接口一致，未来前端做更细粒度过滤时有数据可读）。
-        vipLocked: false,
+        source: {
+          platform: p,
+          trackId: t.id,
+          hasCopyright: true,
+          url: playable.audioUrl,
+          mediaMid: t.mediaMid,
+          // 透传 vipLocked: false（已校验，前端可放心切；保留字段保 SourceInfo
+          // 接口一致，未来前端做更细粒度过滤时有数据可读）。
+          vipLocked: false,
+        },
+        reason: null,
       };
     }
-    return null;
+    return {
+      source: null,
+      reason: sawStreamFail ? 'stream-failed' : sawLocked ? 'vip-locked' : 'no-match',
+    };
+  }
+
+  /**
+   * 同平台换版本兜底的「实探」：搜索元数据说的 vipLocked 与真实可播性经常
+   * 不一致（QQ `pay_album` 标的「需单购」实际可能放行、反之亦然），只有真的
+   * 调一次取流接口才算数。QQ 直接 getStreamPath（内含续期+探针）；网易云要求
+   * **完整流**（freeTrialInfo 的 30s 试听不算——前端会再判一次，白切）。
+   */
+  private async probePlayable(
+    session: Session,
+    provider: MusicProvider,
+    track: Track,
+  ): Promise<boolean> {
+    try {
+      const ps = this.requireProviderSession(session, provider);
+      if (provider === 'qq') {
+        await this.qq.getStreamPath(ps!, track.id, track.mediaMid);
+        return true;
+      }
+      if (provider === 'netease') {
+        return await this.netease.probeFullStream(ps!, track.id);
+      }
+      return false; // spotify/deezer 不做同平台换版本（preview 语义不同）
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -748,20 +854,40 @@ export class MusicService {
    * 同 provider 重入（不同 trackId）并发上限 4，与 runPlatformSearch 同模式。
    */
   fillLikeCountsForItems(session: Session, items: UnifiedSearchItem[]): void {
-    // 拍快照：构建 (platform, trackId) 拉取任务列表，去重
+    // 拍快照：构建 (platform, trackId) 拉取任务列表，去重。
+    // 缓存命中的**不走网络**——同步落地，下一帧 HUD 就有数。
     const tasks: Array<{
       itemIdx: number;
       sourceIdx: number;
       platform: 'qq' | 'netease';
       trackId: string;
+      cacheKey: string;
     }> = [];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       for (let j = 0; j < it.sources.length; j++) {
         const s = it.sources[j];
-        if ((s.platform === 'qq' || s.platform === 'netease') && s.likeCount === undefined) {
-          tasks.push({ itemIdx: i, sourceIdx: j, platform: s.platform, trackId: s.trackId });
+        if ((s.platform !== 'qq' && s.platform !== 'netease') || s.likeCount !== undefined) {
+          continue;
         }
+        const cacheKey = `${session.id}|${s.platform}|${s.trackId}`;
+        const cached = this.readLikeCountCache(cacheKey);
+        if (cached) {
+          if (cached.value) {
+            s.likeCount = { ...cached.value, source: s.platform };
+            recomputeCrossPlatformLikeTotal(it);
+          }
+          // 缓存里的 null = 干净缺席（"这首歌 QQ 上没人收藏"）：保持 undefined，
+          // HUD 按"该平台无数据"渲染，不写 0（spec §不做什么）。
+          continue;
+        }
+        tasks.push({
+          itemIdx: i,
+          sourceIdx: j,
+          platform: s.platform,
+          trackId: s.trackId,
+          cacheKey,
+        });
       }
     }
     if (tasks.length === 0) return;
@@ -782,8 +908,12 @@ export class MusicService {
         );
         for (let k = 0; k < settled.length; k++) {
           const r = settled[k];
-          if (r.status !== 'fulfilled' || !r.value.r) continue;
+          // rejected 不写缓存：provider 侧已 try/catch 兜到 null，走不到这里；
+          // 真到了说明是代码级异常，让下一轮重试而不是缓存 30s。
+          if (r.status !== 'fulfilled') continue;
           const { t, r: lr } = r.value;
+          this.writeLikeCountCache(t.cacheKey, lr, lr !== null);
+          if (!lr) continue;
           const it = items[t.itemIdx];
           if (!it) continue;
           // 写回 source.likeCount（按 trackId 匹配，可能已被 UI 替换过 source）
@@ -798,6 +928,43 @@ export class MusicService {
     void withTimeout(run, 2000).catch((err) => {
       this.logger.warn(`fillLikeCountsForItems error: ${(err as Error).message}`);
     });
+  }
+
+  /**
+   * likeCount 缓存：(sessionId|platform|trackId) → 最近一次拉取结果。
+   * **null 也缓存**——"干净缺席"是需要复用的稳定事实（见 LIKE_COUNT_TTL_CLEAN_MS
+   * 注释）。过期条目在读时顺手删，不做后台清扫。
+   */
+  private readonly likeCountCache = new Map<
+    string,
+    { at: number; value: { count: number; display: string } | null; clean: boolean }
+  >();
+
+  /** 命中返回 `{ value }`（value 可能为 null = 干净缺席）；过期 / 未命中返回 null。 */
+  private readLikeCountCache(
+    key: string,
+  ): { value: { count: number; display: string } | null } | null {
+    const hit = this.likeCountCache.get(key);
+    if (!hit) return null;
+    const ttl = hit.clean ? LIKE_COUNT_TTL_CLEAN_MS : LIKE_COUNT_TTL_DIRTY_MS;
+    if (Date.now() - hit.at > ttl) {
+      this.likeCountCache.delete(key);
+      return null;
+    }
+    return { value: hit.value };
+  }
+
+  /** 写缓存 + FIFO 淘汰（与 pruneEquivSearchCache 同口径：满了丢最旧的）。 */
+  private writeLikeCountCache(
+    key: string,
+    value: { count: number; display: string } | null,
+    clean: boolean,
+  ): void {
+    if (this.likeCountCache.size >= LIKE_COUNT_CACHE_MAX) {
+      const oldest = this.likeCountCache.keys().next();
+      if (!oldest.done) this.likeCountCache.delete(oldest.value);
+    }
+    this.likeCountCache.set(key, { at: Date.now(), value, clean });
   }
 
   /**
@@ -1000,6 +1167,9 @@ export class MusicService {
   async probeSession(session: Session, provider: MusicProvider): Promise<SessionProbeResult> {
     if (provider === 'qq') {
       const ps = (session.providers.qq ?? {}) as ProviderSession;
+      if (session.providers.qq) {
+        this.qq.bindSessionId?.(ps, session.id);
+      }
       return this.qq.probeSession(ps);
     }
     // 未实现的平台：保守当作可用，避免误报过期打断正常使用
@@ -1228,7 +1398,10 @@ export class MusicService {
    */
   private async ensureQqVip(session: Session): Promise<void> {
     const ps = session.providers.qq;
-    if (!ps?.qqCookie || ps.qqVip !== undefined) return;
+    if (!ps?.qqCookie) return;
+    this.qq.bindSessionId?.(ps, session.id);
+    await this.qq.ensureFreshSession?.(ps);
+    if (ps.qqVip !== undefined || typeof this.qq.probeVipAccess !== 'function') return;
     const vip = await this.qq.probeVipAccess(ps);
     if (vip === undefined) return;
     // ⚠️ vip=false 不能直接落库：cookie 失效 / 探针故障都会让 VIP 曲返回
@@ -1239,12 +1412,26 @@ export class MusicService {
     // 探针判死则返回不写（保持 qqVip=undefined，下次搜索重试），把过期的
     // 暴露留给 getStreamPath / validate=1 两条主链路。
     if (vip === false) {
+      const cookieBefore = ps.qqCookie;
       const probe = await this.qq.probeSession(ps);
       if (!probe.alive) {
         this.logger.warn(
           `qq vip probe → false 但登录态探针判死（reason=${probe.reason}），` +
             `不写 qqVip=false（避免把登录过期误记成非会员）`,
         );
+        return;
+      }
+      // 若 probeSession 内部刚刚通过 refreshSession 续期了 qm_keyst，
+      // 之前的 probeVipAccess=false 是旧过期票据测出来的，必须用新票据重测一次！
+      if (ps.qqCookie !== cookieBefore) {
+        const retriedVip = await this.qq.probeVipAccess(ps);
+        if (retriedVip === undefined) return;
+        if (this.sessions) {
+          this.sessions.setProvider(session, 'qq', { qqVip: retriedVip });
+        } else {
+          ps.qqVip = retriedVip;
+        }
+        this.logger.log(`qq vip probe (after refresh) → qqVip=${retriedVip}`);
         return;
       }
     }
@@ -1825,6 +2012,9 @@ export class MusicService {
     // 命中 cache 后 return 旧 stored（newSources 不存在）→ likedPlatforms
     // 看不到新平台，badge 漏算直到重启。delete 让下次 getLibrary 重新 load。
     this.libraryCache.delete(session.id);
+    // 补进来的新平台 source 若没有 ❤ 数（cross-platform-likes task 6），异步填一次。
+    // 只填这一个 item：patch 每次只动一条，全库重填会把 QQ/网易云公开接口打爆。
+    this.fillLikeCountsForItems(session, [item]);
     this.logger.log(
       `library patched: "${item.title} - ${item.artist}" += ` +
         newSources.map((s) => s.platform).join(', '),
@@ -2101,9 +2291,18 @@ export class MusicService {
     session: Session,
     platform: MusicProvider,
     meta: LikeMeta,
+    excludeIds?: Set<string>,
   ): Promise<Track | null> {
     const kw = `${meta.title} ${meta.artist}`.trim();
     if (!kw) return null;
+    // 排除集语义（同平台换版本兜底）：要返回「非刚挂掉 mid」的次优匹配，与
+    // 常驻缓存「记首个命中」的语义冲突——混用会把 exclude 后的亚军写进缓存
+    // 污染 like-sync，或把含死 mid 的缓存结果回给兜底。绕过缓存直搜，
+    // 失败路径低频，可接受。
+    if (excludeIds?.size) {
+      const r = await this.searchEquivalentUncached(session, platform, meta, kw, excludeIds);
+      return r.track;
+    }
     // 结果缓存：同一 session 对同一 (platform, kw, 时长分桶) 的等价曲搜索返回
     // 同样结果——like sync 的 resolveEquivalents 与 renderer 的
     // tryUpgradeFromTrial 都会调 searchEquivalent，二者经常并发（VIP 试听
@@ -2164,6 +2363,7 @@ export class MusicService {
     platform: MusicProvider,
     meta: LikeMeta,
     kw: string,
+    excludeIds?: Set<string>,
   ): Promise<{ track: Track | null; clean: boolean }> {
     try {
       // 准备 N 组搜索变体 + 各自的 limit。对每个变体跑「搜索 → 4 tier 匹配」，
@@ -2257,7 +2457,7 @@ export class MusicService {
           `${v.tag}=${v.kw}→${tracks.length}` + (samples.length ? ` [${samples.join(', ')}]` : ''),
         );
         if (tracks.length === 0) continue;
-        const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag);
+        const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag, excludeIds);
         if (matched) return { track: matched, clean: true };
       }
       // 全部变体都跑过且没命中 → 记日志，明确告诉调用方"试过哪些变体 + 各自
@@ -2329,12 +2529,15 @@ export class MusicService {
   }
 
   /** 4 tier 匹配：strict → loose → title-exact → cross-script。
-   *  任一命中即返回 + 写日志。tag 用于日志标注命中来自哪个搜索变体。 */
+   *  任一命中即返回 + 写日志。tag 用于日志标注命中来自哪个搜索变体。
+   *  `excludeIds`：同平台换版本兜底时排除刚挂掉的 trackId，否则首个命中
+   *  永远是同一个死源。 */
   private matchEquivalentTrack(
     platform: MusicProvider,
     meta: LikeMeta,
     tracks: Track[],
     tag: string,
+    excludeIds?: Set<string>,
   ): Track | null {
     const wantKey = this.normalizeKey(meta.title, meta.artist);
     const wantTitleKey = this.normalizeKey(meta.title, '');
@@ -2353,6 +2556,7 @@ export class MusicService {
     //   - 任一侧是 COVER 且另一侧不是 → 拒
     //   - 两侧都是 COVER → 仍走后续 tier（同翻唱底版的另外翻唱匹配，照常）
     const filtered = tracks.filter((t) => {
+      if (excludeIds?.has(t.id)) return false; // 同平台兜底：挂掉的 mid 不参与
       const cv = extractVersionTag(t.title);
       if (wantVersion === 'COVER' && cv !== 'COVER') return false;
       if (cv === 'COVER' && wantVersion !== 'COVER') return false;
@@ -3312,6 +3516,8 @@ export class MusicService {
     // 用户点 ❤（toggleLike）→ 立刻取消 ❤（enqueue 触发的 detect 发现已心
     // 然后 state.liked 又被覆盖）。锁住写段避免 lost update。
     let nowLiked = false;
+    let canonicalId = `single:${provider}:${trackId}`;
+    let unlikeTargets: Array<{ platform: MusicProvider; trackId: string }> = [];
     await this.withStateLock(session.id, async () => {
       const state = this.loadState(session);
       // T2 (consistency-fixes B2)：radio ❤ 路径。旧实现用 applyLikeToggle
@@ -3321,17 +3527,43 @@ export class MusicService {
       const wasLiked = state.providers[provider].liked.has(trackId);
       nowLiked = !wasLiked;
       this.writeLike(session, state, provider, trackId, nowLiked);
+      // fanOut 记录是 detect/角标与 discover 落地的 canonical 凭据。种子平台
+      // 必须自己先落账 —— 否则 resolveEquivalents 的 T4 守卫
+      // （`!state.fanOut[fullCanonicalId]` → 视为"用户中途取消"整包丢弃）把
+      // 电台 ❤ 的跨平台匹配结果扔掉，电台红心永远扇不出去（全历史 49 个
+      // session 只有 1 条 single: 记录佐证）。canonicalMergedId 会在该曲目
+      // 已有 merged-* 记录（搜索路径 fan-out 过）时归一到那个 key。
+      canonicalId = this.canonicalMergedId(state, canonicalId, [{ platform: provider, trackId }]);
+      if (nowLiked) {
+        state.fanOut[canonicalId] = this.mergeFanOutEntries(state.fanOut[canonicalId] ?? [], [
+          { platform: provider, trackId },
+        ]);
+      } else {
+        // 取消方向与 fanOutLike(false) 同语义：按记录反写其余已扇出平台 +
+        // 删记录 —— 否则远端残留红心、记录残留，detect 下一轮又把角标数回来。
+        const record = state.fanOut[canonicalId] ?? [];
+        unlikeTargets = record
+          .filter((e) => e.trackId && e.platform !== provider)
+          .map((e) => ({ platform: e.platform, trackId: e.trackId as string }));
+        for (const e of unlikeTargets) {
+          this.writeLike(session, state, e.platform, e.trackId, false);
+        }
+        delete state.fanOut[canonicalId];
+      }
       this.saveState(session, state);
     });
     // 远端同步走队列（best-effort + 重试，不阻塞本地）。单平台用一个稳定
     // 的合成 key，避免和统一搜索的 mergedId 撞车。
     // discover：这是电台单平台 track（如 QQ 私人 FM），点 ❤ 时顺带去其余
-    // 已登录平台跨平台匹配，把红心同步过去（仅收藏方向，取消不匹配）。
+    // 已登录平台跨平台匹配，把红心同步过去（仅收藏方向，取消不匹配——取消
+    // 方向按 fanOut 记录反写其余平台，见上）。
     this.enqueueLikeSync(
       session,
-      `single:${provider}:${trackId}`,
+      canonicalId,
       nowLiked,
-      [{ platform: provider, trackId }],
+      nowLiked
+        ? [{ platform: provider, trackId }]
+        : [{ platform: provider, trackId }, ...unlikeTargets],
       nowLiked ? this.buildDiscover(meta, [provider]) : undefined,
     );
     return { success: true, liked: nowLiked };
@@ -3523,6 +3755,7 @@ export class MusicService {
           error: 'not_logged_in',
         });
       } else {
+        this.netease.bindSessionId?.(ps, session.id);
         // 单平台硬超时（IMPORT_FETCH_TIMEOUT_MS）。music.163.com 风控严、
         // 单个端点偶尔挂几十秒——不兜底整个 import 会一直等着。单平台失败按
         // absent 处理，sources[].error='timeout'，不阻塞其他平台也不抛 5xx。
@@ -3564,6 +3797,8 @@ export class MusicService {
           error: 'not_logged_in',
         });
       } else {
+        this.qq.bindSessionId?.(ps, session.id);
+        await this.ensureQqVip(session);
         // 上限 2000（fetchLiked 内部按 1000/页分页）—— 覆盖绝大多数用户的
         // 收藏规模；1093 首的用户不会被 1000 截断。
         const tracks = await this.fetchLikedWithTimeout(() => this.qq.fetchLiked(ps, 2000), 'qq');

@@ -387,7 +387,26 @@ async function main() {
       '25c. body.req_0.param.vec_uin = ["999"]',
       JSON.stringify(body.req_0.param.vec_uin) === '["999"]',
     );
+    expect(
+      '25d. body.req_1.module = music.UserInfo.userInfoServer',
+      body.req_1?.module === 'music.UserInfo.userInfoServer',
+    );
   }
+
+  // ── 26. fetchProfile：GetLoginUserInfo 返回 code=1000 → 拒绝过期 cookie ──
+  reset();
+  mockResponse = {
+    text: JSON.stringify({
+      req_0: { data: { map_userinfo: { '123': { nick: '唐帅' } } } },
+      req_1: { code: 1000 },
+    }),
+  };
+  await test('26. req_1.code=1000（qm_keyst 过期）→ 即使 map_userinfo 有 nick 也抛 AUTH_INVALID', async () => {
+    await assert.rejects(
+      () => strategy.loginWithCookie('qm_keyst=expired12345', '123'),
+      (e: any) => e.response?.error === 'AUTH_INVALID',
+    );
+  });
 
   console.log(`\n🎉 qq.strategy.test: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

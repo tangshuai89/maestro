@@ -689,7 +689,65 @@ async function main() {
     console.log(`✅ 32. fetchLiked 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 netease.provider.test 全部 36 项通过');
+  // ── 33. fetchLiked: 结合顶层 privileges[] 标记 vipLocked 并同步 session.neteaseVip ──
+  {
+    let callIdx = 0;
+    const restore = mockFetch(() => {
+      callIdx++;
+      if (callIdx === 1) {
+        return { code: 200, account: { id: 999, vipType: 0, paidFee: false } };
+      }
+      if (callIdx === 2) {
+        return {
+          code: 200,
+          playlist: [{ id: 555, name: '我喜欢的音乐', specialType: 5, creator: { userId: 999 } }],
+        };
+      }
+      return {
+        code: 200,
+        playlist: {
+          tracks: [
+            {
+              id: 65589,
+              name: '寂寞，好了',
+              ar: [{ id: 1, name: '蔡旻佑' }],
+              al: { id: 20, name: '寂寞，好了', picUrl: 'https://p.example.com/20.jpg' },
+              dt: 346000,
+              fee: 1,
+            },
+          ],
+        },
+        privileges: [
+          {
+            id: 65589,
+            fee: 1,
+            pl: 0,
+            freeTrialPrivilege: { cannotListenReason: 1 },
+          },
+        ],
+      };
+    });
+    const staleVipSession: any = { musicU: 'test-u', csrfToken: 'c', neteaseVip: true };
+    const tracks = await prov.fetchLiked(staleVipSession, 100);
+    restore();
+    assert.strictEqual(
+      staleVipSession.neteaseVip,
+      false,
+      'account.vipType=0 应将 session.neteaseVip 修正为 false',
+    );
+    assert.strictEqual(tracks.length, 1);
+    assert.strictEqual(
+      tracks[0].vipLocked,
+      true,
+      'fee=1 / pl=0 的歌在 fetchLiked 中应标记 vipLocked=true',
+    );
+    assert.strictEqual(tracks[0].vipCategory, 'paid-album');
+    console.log(
+      '✅ 33. fetchLiked: 顶层 privileges[] 标记 vipLocked=true + 实时修正 neteaseVip=false',
+    );
+  }
+
+  console.log('\n🎉 netease.provider.test 全部 37 项通过');
 }
 
 main().catch((err) => {
