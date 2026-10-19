@@ -133,6 +133,14 @@
   color: color-mix(in srgb, var(--text-main) 35%, transparent);
 }
 
+// 子分组标题（如「音频」节里的「交叉淡入淡出」）：同色但加重，避免 h4 用
+// 浏览器默认字号/粗细后在暗色 AETHER 面板里跟正文糊成一片。
+.set-section-hint--strong {
+  font-weight: 600;
+  color: color-mix(in srgb, var(--white) 82%, transparent);
+  margin-top: 4px;
+}
+
 .set-section-actions {
   display: flex;
   align-items: center;

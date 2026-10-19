@@ -61,6 +61,8 @@ interface Props {
    */
   audioFx: AudioFxPrefs;
   onEqEnabled: (enabled: boolean) => void;
+  /** crossfade 时长（秒）。0 = 关闭（默认）。 */
+  onCrossfadeSec: (sec: number) => void;
   onEqBandGain: (index: number, dB: number) => void;
   onApplyEqPreset: (presetId: string) => void;
 }
@@ -102,6 +104,7 @@ export default function SettingsModal({
   onChangePlayerMode,
   audioFx,
   onEqEnabled,
+  onCrossfadeSec,
   onEqBandGain,
   onApplyEqPreset,
 }: Props) {
@@ -361,11 +364,35 @@ export default function SettingsModal({
               </p>
             )}
 
-            {/* 诚实提示（spec §1.1 / §4 验收）：WPS 由 SDK 自己解码输出，
-                renderer 的 <audio> 不参与，所以这条路径上 EQ 一定无效。
-                写成"适用范围"而不是"bug"——它不是缺陷，是路径的客观边界。 */}
+            {/* ── 交叉淡入淡出（specs/audio-fx §2.2，C 组）────────────
+                默认 0 = 关闭。档位用按钮组而不是滑块：淡入淡出要么不要，
+                一开就该是用户明确选的 1–8s 之一，滑块会停在 0.4s 这种
+                "说不清是关了还是开了"的中间值。 */}
+            <h4 className="set-section-hint set-section-hint--strong">交叉淡入淡出</h4>
             <p className="set-section-hint">
-              适用范围：Spotify Premium 全曲（WPS）路径下 EQ 不生效 —— 该路径由 SDK 直接解码输出
+              切歌时前后两首重叠渐变；默认关闭。快速连按下一首会硬切，不会叠音。
+            </p>
+            <div className="audio-fx-presets" role="group" aria-label="交叉淡入淡出时长">
+              {[0, 1, 2, 3, 5, 8].map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  className={`set-btn${audioFx.crossfadeSec === sec ? ' set-btn--accent' : ''}`}
+                  aria-pressed={audioFx.crossfadeSec === sec}
+                  onClick={() => onCrossfadeSec(sec)}
+                >
+                  {sec === 0 ? '关' : `${sec}s`}
+                </button>
+              ))}
+            </div>
+
+            {/* 诚实提示（spec §1.1 / §4 验收）：WPS 由 SDK 自己解码输出，
+                renderer 的 <audio> 不参与，所以这条路径上 EQ 与 crossfade
+                一定无效。写成"适用范围"而不是"bug"——它不是缺陷，
+                是路径的客观边界。 */}
+            <p className="set-section-hint">
+              适用范围：Spotify Premium 全曲（WPS）路径下 EQ 与交叉淡入淡出都不生效 —— 该路径由 SDK
+              直接解码输出
             </p>
           </section>
 

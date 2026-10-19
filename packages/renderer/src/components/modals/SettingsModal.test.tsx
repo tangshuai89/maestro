@@ -144,6 +144,7 @@ const baseProps = (over: Partial<React.ComponentProps<typeof SettingsModal>> = {
   onChangePlayerMode: () => {},
   audioFx: flatEq,
   onEqEnabled: () => {},
+  onCrossfadeSec: () => {},
   onEqBandGain: () => {},
   onApplyEqPreset: () => {},
   ...over,
@@ -534,5 +535,41 @@ describe('SettingsModal', () => {
       expect(readouts[2]).toHaveTextContent('0.0');
       expect(readouts[2].textContent).not.toMatch(/[+-]/);
     });
+  });
+});
+
+/** crossfade 档位 UI（specs/audio-fx §2.2 C 组）。默认关 = 默认偏好 0s。 */
+describe('SettingsModal · 交叉淡入淡出', () => {
+  it('默认显示「关」为选中（默认必须关：首次听感变化大）', () => {
+    render(<SettingsModal {...baseProps()} />);
+    const group = screen.getByRole('group', { name: '交叉淡入淡出时长' });
+    const off = within(group).getByRole('button', { name: '关' });
+    expect(off).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('点 3s → 回调 onCrossfadeSec(3) 并把该档标成选中', async () => {
+    const onCrossfadeSec = vi.fn();
+    render(<SettingsModal {...baseProps({ onCrossfadeSec })} />);
+    const group = screen.getByRole('group', { name: '交叉淡入淡出时长' });
+    await userEvent.click(within(group).getByRole('button', { name: '3s' }));
+    expect(onCrossfadeSec).toHaveBeenCalledWith(3);
+  });
+
+  it('已有 2s 偏好时选中「2s」而不是「关」', () => {
+    render(<SettingsModal {...baseProps({ audioFx: { ...flatEq, crossfadeSec: 2 } })} />);
+    const group = screen.getByRole('group', { name: '交叉淡入淡出时长' });
+    expect(within(group).getByRole('button', { name: '2s' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(group).getByRole('button', { name: '关' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('WPS 适用范围提示同时覆盖 EQ 与 crossfade（诚实标注边界）', () => {
+    render(<SettingsModal {...baseProps()} />);
+    expect(screen.getByText(/EQ 与交叉淡入淡出都不生效/)).toBeInTheDocument();
   });
 });

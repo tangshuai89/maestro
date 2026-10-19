@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **交叉淡入淡出 crossfade**（`specs/audio-fx` C 组）——切歌时前后两首重叠渐变，
+  时长 1–8s 可选、**默认关闭**。做法：
+
+  - **A/B 双 `<audio>` 常驻**（`lib/audioSlots.ts`）。淡变的本质是"旧歌留在原元素
+    继续播"，所以两个元素缺一不可。为了不让"当前播放元素"这层隐含假设散落
+    在 20 处调用点里，槽位之上包了一层只读代理 —— `audioRef.current` 照旧写，
+    但每次读都返回当前活跃元素，crossfade 开关对调用方完全透明。
+  - **src 改成命令式装载**（`lib/crossfadeRunner.ts` 的 `load()`）。React 绑定
+    `src` 会在切歌瞬间把新 URL 甩到同一个元素上、掐断正在淡出的歌；连带删掉
+    App 里那个「track.audioUrl 变 → audio.load()」的 effect。
+  - **每槽一条 Web Audio 链**：`source → EQ×10 → fadeGain → analyser →
+destination`。`createMediaElementSource` 每元素只能调一次且不共享，所以两条
+    链必须分开建；fadeGain 夹在 EQ 与 analyser 之间，淡出时声波环跟着暗。
+  - **淡变一律 `setTargetAtTime`**：不用 `linearRampToValueAtTime`——后者被暂停
+    或连切打断时会把增益**停在半路**，留下一条永远走不完的 ramp。
+
+  测试 21 条 + 变异验证。过程中照出三个真洞：
+
+  - 连按 ⏭ 的护栏判据写错（用"有没有淡变在跑"而不是"还有没有元素没闭嘴"）：
+    连按第 2 次硬切时把标记清了，第 3 次又去 crossfade，新歌装进正在收声的
+    旧槽 → ~120ms **双声叠加**，正是 spec 明令禁止的。
+  - `!(sec > 0)` 挡不住 `Infinity`（脏 localStorage）→ 时间常数变 Infinity，
+    淡变永远走不完。
+  - Settings 里 `useVolume` 其实是死代码：`maestro:volume` 偏好从来没被推给
+    任何元素（`audio.volume` 全仓零赋值），**音量滑块目前不出声**。不在本轮
+    范围，已记进 `specs/audio-fx/tasks.md` 待单独一轮。
+
+  ⚠️ **本轮没有真机验证过听感** —— 21 条测试都是假元素 + 假 gain，钉的是"调了
+  哪些 API、顺序对不对"，不是"好不好听"。
+
 - **跨平台 ❤ 累加（cross-platform-likes）补齐欠账**——功能早已上线但**一条测试都没有**，
   且 spec 的两条验收其实没实现。本轮三件事：
 

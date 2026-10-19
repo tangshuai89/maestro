@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { UseSpotifyWpsPlayer } from './useSpotifyWpsPlayer';
 import {
   fetchNextTrack,
@@ -26,8 +26,16 @@ import {
   readAudioFx,
   writeAudioFx,
 } from '../lib/storage';
-import { EQ_BANDS, applyPreset, clampGain, type AudioFxPrefs } from '../lib/audioFx';
+import {
+  EQ_BANDS,
+  applyPreset,
+  clampGain,
+  clampCrossfade,
+  type AudioFxPrefs,
+} from '../lib/audioFx';
 import { createEqChain, pushEqGains } from '../lib/eqChain';
+import { activeElementProxy, type AudioSlot, type AudioSlots } from '../lib/audioSlots';
+import { createSlotLoader, type SlotLoader } from '../lib/crossfadeRunner';
 import { useCoverArt } from './useCoverArt';
 import { wpsLog } from '../lib/debug';
 import {
@@ -72,7 +80,15 @@ export {
 } from './usePlayer.helpers.ts';
 
 export function usePlayer(
-  audioRef: RefObject<HTMLAudioElement | null>,
+  /**
+   * A/B 音频槽位（specs/audio-fx §2.2 crossfade）。**由调用方创建、这里只消费**——
+   * 因为 `<audio>` 的 JSX 在 App 里，refs 得由创建方 attach。
+   *
+   * 槽位之上包了一层只读代理 `audioRef`：它每次读都返回**当前活跃元素**，
+   * 于是本文件里 14 处 `audioRef.current` 一行都不用改，crossfade 开关对它们
+   * 完全透明（见 lib/audioSlots.ts 的设计说明）。
+   */
+  slots: AudioSlots,
   /**
    * Optional Premium Spotify Web Playback SDK bridge (v2), passed as a ref
    * to break the circular dependency (App needs player.provider to decide
@@ -192,6 +208,15 @@ export function usePlayer(
   // For quality switches: jump back to the original position after reload.
   const pendingSeekRef = useRef<number | null>(null);
   // WPS: 最近一次通过 WPS play() 送出的 spotify track id。用来区分
+  // 当前活跃 <audio> 的只读代理。见签名处的说明：14 处 audioRef.current 不用改。
+  const audioRef = useMemo(() => activeElementProxy(slots), [slots]);
+
+  // 槽位切换版本号：crossfade 换歌会让"当前播放元素"**易主**，而事件监听是
+  // 在 effect 里绑到具体元素上的（audioRef 是稳定代理，effect 不会因此重跑）。
+  // 靠订阅槽位变更 bump 版本号，把监听重绑到新的活跃元素。
+  const [slotVersion, setSlotVersion] = useState(0);
+  useEffect(() => slots.subscribe(() => setSlotVersion((v) => v + 1)), [slots]);
+
   // "切到新歌 → play(newUri)" 和 "同一首暂停后恢复 → resume()"。
   const wpsPlayedIdRef = useRef<string | null>(null);
 
@@ -232,13 +257,31 @@ export function usePlayer(
   // (not a ref) because the bass RAF effect below reads it as a dependency
   // and needs a real re-render when the graph comes online.
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const mediaSrcRef = useRef<MediaElementAudioSourceNode | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+
+  /**
+   * 每个槽位一条独立的 Web Audio 链（specs/audio-fx §2.2）：
+   *
+   *     <audio> → source → f0 … f9 → fadeGain → analyser → destination
+   *                                            └──────────┘
+   *
+   * `createMediaElementSource` **每个元素只能调一次且永久改路由**，所以两条链
+   * 必须分别建、分别记住；把两个元素接同一张图 = 没法分别淡入淡出。
+   * fadeGain 夹在 EQ 与 analyser 之间：淡变是"用户听到的音量"的一部分，
+   * 放在 analyser 之后会让声波环在淡出时还显示满格。
+   * 两个槽位共用**同一个 AudioContext**（浏览器限制：一个元素只能被一个
+   * context 的 MediaElementSource 接管，但反过来多个元素可以共用一个 context）。
+   */
+  const slotGraphsRef = useRef<
+    Partial<
+      Record<AudioSlot, { filters: BiquadFilterNode[]; fade: GainNode; analyser: AnalyserNode }>
+    >
+  >({});
 
   // ── EQ（specs/audio-fx §2.1）────────────────────────────────
   // 10 个 peaking 滤波器在 graph **建立时**一次性插入链里，之后只改 gain
   // 参数、绝不 disconnect 重连 —— 重连发生在正在出声的时刻，会咔哒。
-  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  /** EQ 滤波器已随每槽链建好；这里只做"当前活跃槽的曲线镜像"，推参数时遍历全部槽。 */
   const [audioFx, setAudioFx] = useState<AudioFxPrefs>(() => readAudioFx());
   // graph 可能还没建（首次播放前），届时用 ref 里的最新偏好初始化滤波器。
   const audioFxRef = useRef<AudioFxPrefs>(audioFx);
@@ -254,72 +297,149 @@ export function usePlayer(
    */
   const pushEqToFilters = useCallback((prefs: AudioFxPrefs): void => {
     const ctx = audioCtxRef.current;
-    pushEqGains(eqFiltersRef.current, prefs.eqGains, ctx?.currentTime ?? 0, prefs.eqEnabled);
+    const at = ctx?.currentTime ?? 0;
+    // 两槽都要推：EQ 开着时次槽正在淡入，它的曲线也得是用户的曲线。
+    for (const g of Object.values(slotGraphsRef.current)) {
+      if (g) pushEqGains(g.filters, prefs.eqGains, at, prefs.eqEnabled);
+    }
   }, []);
 
   const { bgLayerRef, coverBackdropRef, presentCover, presentPlaceholder } = useCoverArt();
 
   /**
-   * Lazily attach a Web Audio analyser to the live <audio> element.
-   * source → analyser → ctx.destination. createMediaElementSource can only
-   * be called ONCE per element and permanently reroutes its output through
-   * the graph — so we MUST connect to ctx.destination or playback goes
-   * silent. Guarded with mediaSrcRef so a second call is a no-op.
+   * 惰性建某个槽位的 Web Audio 链（specs/audio-fx §2.1 EQ + §2.2 crossfade）：
+   *
+   *     <audio> → source → f0 … f9 → fadeGain → analyser → destination
+   *
+   * 两个关键约束（都来自 spec §7，写错了不报错、只表现为"不响 / 发糊 / 咔哒"）：
+   *  - `createMediaElementSource` **每个元素只能调一次且永久改路由**：漏掉
+   *    `connect` 就是全静音且无报错（2026-09-29 真踩过）。
+   *  - EQ 节点在**建链时**就全部插好（哪怕增益全 0），之后只改 gain 参数、
+   *    绝不 disconnect 重连 —— 重连发生在正在出声的时刻必然咔哒。
+   *
+   * fadeGain 初始为 1（不因为建了 crossfade 就默认变小）。
    */
+  const ensureSlotGraph = useCallback(
+    (slot: AudioSlot): GainNode | null => {
+      const audioEl = slots.el(slot);
+      if (!audioEl) return null;
+      const existing = slotGraphsRef.current[slot];
+      if (existing) {
+        // 已建 —— 只确保 context 在跑（失焦时某些系统会挂起它）。
+        const ctx = audioCtxRef.current;
+        if (ctx?.state === 'suspended') {
+          void ctx.resume().catch((e) => console.warn('[audio] context resume() rejected:', e));
+        }
+        return existing.fade;
+      }
+      try {
+        const Ctor: typeof AudioContext =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = audioCtxRef.current ?? new Ctor();
+        audioCtxRef.current = ctx;
+        const src = ctx.createMediaElementSource(audioEl);
+
+        const filters = createEqChain(ctx, EQ_BANDS, src);
+        // 淡变用的乘法增益。EQ 之后、analyser 之前（声波环要反映用户听到的
+        // 音量：淡出到一半时频谱就该跟着暗下去）。
+        const fade = ctx.createGain();
+        fade.gain.value = 1;
+        filters[filters.length - 1]?.connect(fade);
+
+        const node = ctx.createAnalyser();
+        node.fftSize = 256;
+        node.smoothingTimeConstant = 0.72;
+        // 单路串到 destination：绝不要再把 fade 单独接一次 destination，
+        // destination 会把同一份信号相加（凭空 +6dB）。
+        fade.connect(node);
+        node.connect(ctx.destination);
+        slotGraphsRef.current[slot] = { filters, fade, analyser: node };
+
+        // graph 刚建好，把当前偏好一次性灌进去（之前调过 EQ 也会保留）。
+        const ctx2 = audioCtxRef.current;
+        pushEqGains(
+          filters,
+          audioFxRef.current.eqGains,
+          ctx2?.currentTime ?? 0,
+          audioFxRef.current.eqEnabled,
+        );
+        if (ctx.state === 'suspended') {
+          void ctx
+            .resume()
+            .catch((e) => console.warn('[audio] initial context resume() rejected:', e));
+        }
+        // analyser 是"当前活跃槽"的状态：建好新槽时同步一次，声波环才能跟着
+        // crossfade 换元素读。
+        if (slot === slots.active()) setAnalyser(node);
+        return fade;
+      } catch (e) {
+        console.error(`[audio] failed to build audio graph for slot ${slot}`, e);
+        return null;
+      }
+    },
+    [slots],
+  );
+
+  /** 兼容旧调用点：建/取**活跃槽**的 analyser。 */
   const ensureAudioGraph = useCallback((): AnalyserNode | null => {
-    if (audioCtxRef.current && analyser) {
-      // Already built — just make sure the context is running (it gets
-      // suspended when the window loses focus on some OSes).
-      if (audioCtxRef.current.state === 'suspended') {
-        void audioCtxRef.current.resume().catch((e) => {
-          console.warn('[audio] context resume() rejected:', e);
-        });
-      }
-      return analyser;
-    }
-    const audioEl = audioRef.current;
-    if (!audioEl) return null;
-    try {
-      const Ctor: typeof AudioContext =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new Ctor();
-      const src = mediaSrcRef.current ?? ctx.createMediaElementSource(audioEl);
-      mediaSrcRef.current = src;
+    ensureSlotGraph(slots.active());
+    return analyser;
+  }, [analyser, ensureSlotGraph, slots]);
 
-      // EQ 链（specs/audio-fx §2.1）：10 段 peaking **在建立时就插进去**，
-      // 即使增益全 0。之后只改 gain 参数，绝不重连 —— 重连发生在正在出声的
-      // 时刻必然咔哒（详见 spec §7 风险）。
-      // source 一起传进去：createMediaElementSource 之后 <audio> 的输出**永久**
-      // 改路由到这张图上，不显式 connect 就是全静音（无报错，见 eqChain.ts 注释）。
-      const filters = createEqChain(ctx, EQ_BANDS, src);
-      eqFiltersRef.current = filters;
+  /**
+   * 把 analyser 状态切到当前活跃槽（crossfade 换槽后调用）。
+   *
+   * 声波环（bass RAF effect）读的是 state 里的 analyser，所以"逻辑上当前在播
+   * 哪个元素"变了就得同步换观察点——否则淡入淡出过程中频谱还在读旧元素，
+   * 而旧元素正在淡出（越来越小声）却显示满格。
+   */
+  const syncAnalyserToActiveSlot = useCallback(() => {
+    setAnalyser(slotGraphsRef.current[slots.active()]?.analyser ?? null);
+  }, [slots]);
 
-      const node = ctx.createAnalyser();
-      node.fftSize = 256;
-      node.smoothingTimeConstant = 0.72;
-      // 串成 source → f0 → … → f9 → analyser → destination（**单路**）：
-      // analyser 放在 EQ 之后，声波环要反映用户听到的声音（EQ 开了就该看到频谱
-      // 变化），不是反映 EQ 之前的原始信号。
-      // 千万别再把 f9 单独接一次 destination —— destination 会把两条路上的
-      // 同一份信号相加，白白 +6dB。
-      filters[filters.length - 1]?.connect(node);
-      node.connect(ctx.destination);
-      audioCtxRef.current = ctx;
-      setAnalyser(node);
-      // graph 刚建好，把当前偏好一次性灌进去（之前调过 EQ 也会保留）
-      pushEqToFilters(audioFxRef.current);
-      if (ctx.state === 'suspended') {
-        void ctx.resume().catch((e) => {
-          console.warn('[audio] initial context resume() rejected:', e);
-        });
-      }
-      return node;
-    } catch (e) {
-      console.error('[audio] failed to build audio graph', e);
-      return null;
-    }
-  }, [analyser, audioRef, pushEqToFilters]);
+  /**
+   * 切歌执行器（specs/audio-fx §2.2）。实现全在 lib/crossfadeRunner.ts —— 这里
+   * 只把 usePlayer 的内部状态注入进去，并且**只在依赖变化时重建**（它内部有
+   * 定时器，重建必须先 dispose，否则旧定时器会孤儿 pause 元素）。
+   */
+  const slotLoaderRef = useRef<SlotLoader | null>(null);
+  const loaderDepsRef = useRef({
+    ensureSlotGraph,
+    slots,
+    syncAnalyserToActiveSlot,
+    getFade: (slot: AudioSlot) => slotGraphsRef.current[slot]?.fade ?? null,
+    now: () => audioCtxRef.current?.currentTime ?? 0,
+  });
+  loaderDepsRef.current = {
+    ensureSlotGraph,
+    slots,
+    syncAnalyserToActiveSlot,
+    getFade: (slot: AudioSlot) => slotGraphsRef.current[slot]?.fade ?? null,
+    now: () => audioCtxRef.current?.currentTime ?? 0,
+  };
+  if (!slotLoaderRef.current) {
+    const deps = loaderDepsRef.current;
+    slotLoaderRef.current = createSlotLoader({
+      slots: deps.slots,
+      getFade: (s) => loaderDepsRef.current.getFade(s),
+      now: () => loaderDepsRef.current.now(),
+      ensureGraph: (s) => loaderDepsRef.current.ensureSlotGraph(s),
+      onActiveChanged: () => loaderDepsRef.current.syncAnalyserToActiveSlot(),
+    });
+  }
+  // 卸载时清掉孤儿定时器（真机上它会 pause 元素 / 改增益）。
+  useEffect(
+    () => () => {
+      slotLoaderRef.current?.dispose();
+      slotLoaderRef.current = null;
+    },
+    [],
+  );
+
+  const loadIntoSlots = useCallback((url: string, wpsActive: boolean) => {
+    slotLoaderRef.current?.load(url, wpsActive, audioFxRef.current.crossfadeSec);
+  }, []);
 
   // Present a Track to the player: resolve absolute audioUrl, swap cover,
   // set play intent. Shared by the server radio and search-result paths.
@@ -409,8 +529,13 @@ export function usePlayer(
       // 新歌把它错误地 seek 过去。换歌一律从 0 起。
       pendingSeekRef.current = null;
       setCurrentTime(0);
-      const audio = audioRef.current;
-      if (audio) audio.dataset.wantPlay = '1';
+      // ── 装载 + 起播（含 crossfade，specs/audio-fx §2.2）────────────
+      //
+      // src **不再**由 React 的 `src={track.audioUrl}` 绑定：淡入淡出要求"旧歌
+      // 留在原元素上继续播、新歌进另一个元素"，而 React 改 src 会立刻把新 URL
+      // 甩到同一个元素上、把正在淡出的歌掐断。所以这里改成命令式装载（App 里
+      // 的 `<audio>` 不再绑 src），并在最后显式 load()。
+      loadIntoSlots(audioUrl, Boolean(wpsRef?.current?.wpsReady));
       setPlaying(true);
       // 同步 queueSnapshot（idx / items）给 reactive consumer；只有 idx 真变了
       // 才 setState，避免同首跨平台 fallback 重复 presentTrack 时无意义 re-render。
@@ -424,7 +549,7 @@ export function usePlayer(
       // gesture. The graph is built lazily on the first play (onPlay /
       // handlePlayPause). Until then audio plays through the default path.
     },
-    [presentCover, presentPlaceholder, audioRef, wpsRef, setQueueSnapshot],
+    [presentCover, presentPlaceholder, loadIntoSlots, wpsRef, setQueueSnapshot],
   );
 
   /** 用一个跨平台 source + 展示元数据构造 fallback Track 并重播。同一首歌
@@ -1019,6 +1144,11 @@ export function usePlayer(
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    // crossfade 换槽后 duration 不会自己冒出来（loadedmetadata 打在新元素上，
+    // 而绑定发生在换槽之后）。主动补一次，否则进度条会拿旧时长算百分比。
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      setDuration(audio.duration);
+    }
     const onTimeUpdate = () => setCurrentTime(audio.currentTime);
     const onDurationChange = () => {
       if (trackRef.current?.provider === 'spotify' && wpsRef?.current?.wpsReady) return;
@@ -1190,6 +1320,8 @@ export function usePlayer(
     };
   }, [
     track,
+    // crossfade 换槽 = "当前播放元素"易主 → 必须重绑事件到新元素。
+    slotVersion,
     loadNextTrack,
     ensureAudioGraph,
     audioRef,
@@ -1432,6 +1564,20 @@ export function usePlayer(
     },
     [pushEqToFilters],
   );
+
+  /**
+   * crossfade 时长（秒）。0 = 关闭（默认，见 audioFx.ts 的取值说明）。
+   *
+   * 改的是**偏好**，不是正在进行的淡变：用户拖滑块时正在播的歌不会重新淡一次
+   * （那会突然把音量拽下去）。下一次切歌才按新时长走。
+   */
+  const setCrossfadeSec = useCallback((sec: number) => {
+    setAudioFx((prev) => {
+      const next: AudioFxPrefs = { ...prev, crossfadeSec: clampCrossfade(sec) };
+      writeAudioFx(next);
+      return next;
+    });
+  }, []);
 
   const handlePlayPause = () => {
     // Build the graph the first time the user hits play; later clicks just
@@ -1712,5 +1858,11 @@ export function usePlayer(
     setEqEnabled,
     setEqBandGain,
     applyEqPreset,
+    setCrossfadeSec,
+    // ── A/B 音频槽位（crossfade，specs/audio-fx §2.2）──────────────
+    /** 两个常驻 `<audio>` 的槽位。App 用 `slots.ref('a' / 'b')` 挂 ref。 */
+    slots,
+    /** 当前活跃元素的只读代理（给 useVolume 等需要 RefObject 形状的调用方）。 */
+    audioRef,
   };
 }
