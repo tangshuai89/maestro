@@ -3,6 +3,8 @@
 //
 // 底部居中浮条：压在播放器/搜索结果之上（z('player-notice')），不遮罩、
 // 不抢焦点，用户可以继续点歌。autoSkip 倒计时时右上角有「Ns 后自动下一首」。
+// 颜色全部走 token（--glass-*/--error-*/--accent-*/--text-*），不写死色值 ——
+// scan-hardcoded-colors 门禁 + light/dark 主题自适应都靠它。
 // ─────────────────────────────────────────────────────────────────
 
 @use '../abstracts' as *;
@@ -20,14 +22,12 @@
   max-width: min(720px, calc(100vw - 48px));
   padding: 10px 14px;
 
-  background: color-mix(in oklab, var(--bg-elevated, #16161f) 92%, transparent);
-  border: 1px solid color-mix(in oklab, var(--status-warning, #ffb86b) 28%, transparent);
-  border-radius: var(--radius-md, 12px);
-  box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: var(--glass-bg);
+  border: var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 
   animation: player-notice-in 0.22s ease-out;
 }
@@ -45,14 +45,14 @@
 
 .player-notice-icon {
   flex-shrink: 0;
-  color: var(--status-warning, #ffb86b);
+  color: var(--error-fg);
   font-size: 13px;
 }
 
 .player-notice-text {
   font-size: 12.5px;
   line-height: 1.45;
-  color: var(--text-primary, #e8e8f0);
+  color: var(--text-primary);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -68,19 +68,19 @@
 
 .player-notice-count {
   font-size: 11px;
-  color: var(--text-secondary, rgba(232, 232, 240, 0.55));
+  color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .player-notice-btn {
   appearance: none;
-  border: 1px solid color-mix(in oklab, var(--text-primary, #e8e8f0) 18%, transparent);
+  border: 1px solid var(--border);
   background: transparent;
-  color: var(--text-primary, #e8e8f0);
+  color: var(--text-primary);
   font-size: 11.5px;
   padding: 4px 10px;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -89,21 +89,23 @@
 }
 
 .player-notice-btn:hover {
-  background: color-mix(in oklab, var(--text-primary, #e8e8f0) 8%, transparent);
-  border-color: color-mix(in oklab, var(--text-primary, #e8e8f0) 30%, transparent);
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
 }
 
 .player-notice-btn--primary {
-  border-color: color-mix(in oklab, var(--accent, #7c8cff) 55%, transparent);
-  background: color-mix(in oklab, var(--accent, #7c8cff) 18%, transparent);
+  border-color: var(--accent-ui);
+  background: var(--accent-soft);
 }
 
 .player-notice-btn--primary:hover {
-  background: color-mix(in oklab, var(--accent, #7c8cff) 28%, transparent);
+  background: color-mix(in oklab, var(--accent-ui) 30%, transparent);
+  border-color: var(--accent-hover);
 }
 
 .player-notice-btn--close {
   padding: 4px 8px;
   font-size: 13px;
   line-height: 1;
+  color: var(--text-secondary);
 }
