@@ -500,7 +500,16 @@ export function usePlayer(
   }, []);
 
   const loadIntoSlots = useCallback((url: string, wpsActive: boolean) => {
-    slotLoaderRef.current?.load(url, wpsActive, audioFxRef.current.crossfadeSec);
+    const loader = slotLoaderRef.current;
+    if (!loader) {
+      // ⚠️ 到这里 = 切歌执行器被卸载清理掉了还没重建（ref 为 null）。原来的
+      // `?.load()` 是**静默 no-op**：React 状态照变、界面照更新，但音频元素
+      // 从头到尾没被装载过一次 —— 症状是「歌名封面都换了，就是 00:00 不出声」，
+      // 而且日志里什么都看不到。这条必须炸出来。
+      console.error('[audio] slot loader 缺失 —— 切歌被静默跳过（audioUrl=' + url + '）');
+      return;
+    }
+    loader.load(url, wpsActive, audioFxRef.current.crossfadeSec);
   }, []);
 
   // Present a Track to the player: resolve absolute audioUrl, swap cover,
@@ -765,7 +774,12 @@ export function usePlayer(
     const alreadyTried = radioKey
       ? radioFallbackKeyRef.current === radioKey
       : serverEquivTriedRef.current;
-    if (!shouldSearchEquivalent({ hasTrack: true, alreadyTried })) return false;
+    if (!shouldSearchEquivalent({ hasTrack: true, alreadyTried })) {
+      if (!unified) {
+        console.warn(`[audio] "${cur.title}" 兜底跳过：同歌已换过一次源（防 qq↔netease 来回换）`);
+      }
+      return false;
+    }
     if (radioKey) radioFallbackKeyRef.current = radioKey;
     else serverEquivTriedRef.current = true;
     const songId = unified?.id; // 快照：await 期间用户可能切歌，回来要校验。
@@ -779,12 +793,29 @@ export function usePlayer(
       // 竞态守卫：await 期间已切到别的歌 → 丢弃结果。
       // ⚠️ 不能只看 unified id：radio 路径下它前后都是 undefined，切歌了也
       // 照样相等 —— 旧守卫在 radio 上等于没有。
-      if (songEpochRef.current !== epoch) return false;
-      if (unified && currentUnifiedRef.current?.id !== songId) return false;
-      if (src && !triedPlatformsRef.current.has(src.platform)) {
-        presentFallbackSource(src, currentUnifiedRef.current, display);
-        return true;
+      if (songEpochRef.current !== epoch) {
+        console.warn('[audio] 兜底结果已过期（期间切歌了），丢弃');
+        return false;
       }
+      if (unified && currentUnifiedRef.current?.id !== songId) return false;
+      // 可观测性：这条链之前是全黑的（搜到了不切、切了不出声，日志都看不出）。
+      if (!src) {
+        console.warn(
+          `[audio] "${display.title}" 服务端没找到可播的等价源` +
+            `（其它平台都是 VIP 锁 / 搜不到）→ 只能报错`,
+        );
+        return false;
+      }
+      if (triedPlatformsRef.current.has(src.platform)) {
+        console.warn(`[audio] "${display.title}" 兜底到 ${src.platform}，但该平台本首歌已试过`);
+        return false;
+      }
+      console.warn(
+        `[audio] "${display.title}" 在 ${cur.provider} 播放失败，` +
+          `兜底切到 ${src.platform} 源（${unified ? 'unified' : 'radio 无 unified'}）`,
+      );
+      presentFallbackSource(src, currentUnifiedRef.current, display);
+      return true;
     } catch {
       // 网络/匹配失败 → 静默走报错。
     }
