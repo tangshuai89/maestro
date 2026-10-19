@@ -770,6 +770,21 @@ export class NeteaseMusicProvider {
     return item.url;
   }
 
+  /**
+   * 只读探测：这首歌当前能不能给**完整**流（非 30s 试听）。
+   * 同平台换版本兜底专用（findPlayableEquivalent → probePlayable）——搜索
+   * 元数据的 fee/pl/vipLocked 与真实可播性经常不一致，只有 player/url 返回
+   * 的 freeTrialInfo 才算数。任何异常 / 无 url / 仅试听 → false。
+   */
+  async probeFullStream(session: ProviderSession, songId: string): Promise<boolean> {
+    try {
+      const item = await this.fetchSongUrl(session, songId, 'standard');
+      return Boolean(item?.url) && !item?.freeTrialInfo;
+    } catch {
+      return false;
+    }
+  }
+
   private async fetchSongUrl(
     session: ProviderSession,
     songId: string,

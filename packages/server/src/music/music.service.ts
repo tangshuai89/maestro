@@ -571,7 +571,37 @@ export class MusicService {
     session: Session,
     seedProvider: MusicProvider,
     seed: LikeMeta,
+    opts?: { excludeTrackId?: string },
   ): Promise<SourceInfo | null> {
+    // 0) 同平台换版本兜底（2026-10-19「交换余生」报障）：QQ/网易云同一首歌常有
+    //    多个 songmid——专辑版可能需单购无 purl，单曲版却能出全曲流。跨平台搜
+    //    不到的"死歌"，同平台另一版本可能活着。**先于**跨平台执行：同账号同
+    //    音质偏好，且 probePlayable 实探过流才返回——凭据死透时搜索照样返回
+    //    mid，不实探会把另一个死 mid 推给前端白失败一轮、还烧掉一次性兜底。
+    if (opts?.excludeTrackId && this.canSyncLike(session, seedProvider)) {
+      const alt = await this.searchEquivalent(
+        session,
+        seedProvider,
+        seed,
+        new Set([opts.excludeTrackId]),
+      );
+      if (alt && (await this.probePlayable(session, seedProvider, alt))) {
+        const playable = this.toPlayableTrack(alt);
+        this.logger.log(
+          `equivalent same-provider alt: ${seedProvider}/${opts.excludeTrackId} → ` +
+            `${alt.id} "${alt.title} - ${alt.artist}"`,
+        );
+        return {
+          platform: seedProvider,
+          trackId: alt.id,
+          hasCopyright: true,
+          url: playable.audioUrl,
+          mediaMid: alt.mediaMid,
+          vipLocked: false, // 实探已出流，不信元数据锁标
+        };
+      }
+    }
+
     // §6.2：用用户渠道优先级，只在 canSyncLike（已登录且能写红心）的子集里
     // 查找。Deezer 不参与（匿名+不可写红心），缺省排序里也通常排在末位。
     const userPriority = this.readChannelPriority(session);
@@ -612,6 +642,32 @@ export class MusicService {
       };
     }
     return null;
+  }
+
+  /**
+   * 同平台换版本兜底的「实探」：搜索元数据说的 vipLocked 与真实可播性经常
+   * 不一致（QQ `pay_album` 标的「需单购」实际可能放行、反之亦然），只有真的
+   * 调一次取流接口才算数。QQ 直接 getStreamPath（内含续期+探针）；网易云要求
+   * **完整流**（freeTrialInfo 的 30s 试听不算——前端会再判一次，白切）。
+   */
+  private async probePlayable(
+    session: Session,
+    provider: MusicProvider,
+    track: Track,
+  ): Promise<boolean> {
+    try {
+      const ps = this.requireProviderSession(session, provider);
+      if (provider === 'qq') {
+        await this.qq.getStreamPath(ps!, track.id, track.mediaMid);
+        return true;
+      }
+      if (provider === 'netease') {
+        return await this.netease.probeFullStream(ps!, track.id);
+      }
+      return false; // spotify/deezer 不做同平台换版本（preview 语义不同）
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -2199,9 +2255,18 @@ export class MusicService {
     session: Session,
     platform: MusicProvider,
     meta: LikeMeta,
+    excludeIds?: Set<string>,
   ): Promise<Track | null> {
     const kw = `${meta.title} ${meta.artist}`.trim();
     if (!kw) return null;
+    // 排除集语义（同平台换版本兜底）：要返回「非刚挂掉 mid」的次优匹配，与
+    // 常驻缓存「记首个命中」的语义冲突——混用会把 exclude 后的亚军写进缓存
+    // 污染 like-sync，或把含死 mid 的缓存结果回给兜底。绕过缓存直搜，
+    // 失败路径低频，可接受。
+    if (excludeIds?.size) {
+      const r = await this.searchEquivalentUncached(session, platform, meta, kw, excludeIds);
+      return r.track;
+    }
     // 结果缓存：同一 session 对同一 (platform, kw, 时长分桶) 的等价曲搜索返回
     // 同样结果——like sync 的 resolveEquivalents 与 renderer 的
     // tryUpgradeFromTrial 都会调 searchEquivalent，二者经常并发（VIP 试听
@@ -2262,6 +2327,7 @@ export class MusicService {
     platform: MusicProvider,
     meta: LikeMeta,
     kw: string,
+    excludeIds?: Set<string>,
   ): Promise<{ track: Track | null; clean: boolean }> {
     try {
       // 准备 N 组搜索变体 + 各自的 limit。对每个变体跑「搜索 → 4 tier 匹配」，
@@ -2355,7 +2421,7 @@ export class MusicService {
           `${v.tag}=${v.kw}→${tracks.length}` + (samples.length ? ` [${samples.join(', ')}]` : ''),
         );
         if (tracks.length === 0) continue;
-        const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag);
+        const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag, excludeIds);
         if (matched) return { track: matched, clean: true };
       }
       // 全部变体都跑过且没命中 → 记日志，明确告诉调用方"试过哪些变体 + 各自
@@ -2427,12 +2493,15 @@ export class MusicService {
   }
 
   /** 4 tier 匹配：strict → loose → title-exact → cross-script。
-   *  任一命中即返回 + 写日志。tag 用于日志标注命中来自哪个搜索变体。 */
+   *  任一命中即返回 + 写日志。tag 用于日志标注命中来自哪个搜索变体。
+   *  `excludeIds`：同平台换版本兜底时排除刚挂掉的 trackId，否则首个命中
+   *  永远是同一个死源。 */
   private matchEquivalentTrack(
     platform: MusicProvider,
     meta: LikeMeta,
     tracks: Track[],
     tag: string,
+    excludeIds?: Set<string>,
   ): Track | null {
     const wantKey = this.normalizeKey(meta.title, meta.artist);
     const wantTitleKey = this.normalizeKey(meta.title, '');
@@ -2451,6 +2520,7 @@ export class MusicService {
     //   - 任一侧是 COVER 且另一侧不是 → 拒
     //   - 两侧都是 COVER → 仍走后续 tier（同翻唱底版的另外翻唱匹配，照常）
     const filtered = tracks.filter((t) => {
+      if (excludeIds?.has(t.id)) return false; // 同平台兜底：挂掉的 mid 不参与
       const cv = extractVersionTag(t.title);
       if (wantVersion === 'COVER' && cv !== 'COVER') return false;
       if (cv === 'COVER' && wantVersion !== 'COVER') return false;

@@ -37,6 +37,9 @@ const fakeStorage = {
 let neteaseSearchResults: any[] = [];
 let qqSearchResults: any[] = [];
 let spotifySearchResults: any[] = [];
+// 同平台换版本兜底用：null = getStreamPath 全部成功；否则只有集合内 id 出流
+// （模拟 GetVkey 104003 无 purl / 凭据死透）。
+let qqStreamOk: Set<string> | null = null;
 const neteaseLikes: string[] = [];
 let qqLikedRemote: string[] = [];
 const spotifyLikes: string[] = [];
@@ -53,6 +56,12 @@ const qq = {
   like: async () => true,
   unlike: async () => true,
   fetchLikedMidSet: async () => new Set(qqLikedRemote),
+  getStreamPath: async (_ps: unknown, id: string, _mediaMid?: string) => {
+    if (qqStreamOk && !qqStreamOk.has(id)) {
+      throw new Error(`qq getStreamPath(${id}): 104003 no purl`);
+    }
+    return `/music/stream/qq/${id}`;
+  },
 };
 const deezer = {};
 const spotify = {
@@ -1758,7 +1767,58 @@ async function main() {
     console.log('✅ 35. 松散规则收紧：我们≠我們萬歲、告别的时代≠-Live 版');
   }
 
-  console.log('\n🎉 cross-platform-match.e2e 全部 36 项通过');
+  // ── 37. findPlayableEquivalent：同平台换版本兜底（2026-10-19「交换余生」报障）──
+  // QQ 红心库《交换余生》是付费专辑版（GetVkey 104003 无 purl），同歌单曲版
+  // 在 QQ 上可播。旧逻辑 candidates 直接 `p !== seedProvider` 把种子平台整体
+  // 排除 → 跨平台全 VIP 锁 → 前端只能报错卡死。修复后：excludeTrackId 触发
+  // 同平台重搜（排除死 mid）+ probePlayable 实探过流才返回。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    qqSearchResults = [
+      qqTrack('dead-mid', '交换余生', '林俊杰', 256, 'MMdead'),
+      qqTrack('live-mid', '交换余生', '林俊杰', 256, 'MMlive'),
+    ];
+    qqStreamOk = new Set(['live-mid']);
+    neteaseSearchResults = []; // 跨平台什么都搜不到，也要命中同平台活 mid
+    const src = await svc.findPlayableEquivalent(
+      session,
+      'qq',
+      { title: '交换余生', artist: '林俊杰', duration: 256 },
+      { excludeTrackId: 'dead-mid' },
+    );
+    assert.ok(src, '同平台换版本应找到可播 mid');
+    assert.strictEqual(src.platform, 'qq', '应返回同平台源');
+    assert.strictEqual(src.trackId, 'live-mid', '应排除死 mid 选中可播 mid');
+    assert.ok(src.url.includes('/music/stream/qq/'), `url 应是后端代理路径（实际 ${src.url}）`);
+    qqStreamOk = null;
+    console.log('✅ 37. 同平台换版本兜底：排除死 mid + 实探命中活 mid');
+  }
+
+  // ── 38. 同平台换版本但实探全死 → 落到跨平台候选 ──────────────────────
+  // 凭据死透时搜索照样返回 mid——不实探会把另一个死 mid 推给前端白失败一轮。
+  // 实探全挂 → 跳过同平台段，走原跨平台路径。
+  {
+    (svc as any).equivSearchCache?.clear?.();
+    qqSearchResults = [
+      qqTrack('dead-mid', '交换余生', '林俊杰', 256),
+      qqTrack('dead-mid-2', '交换余生', '林俊杰', 256),
+    ];
+    qqStreamOk = new Set(); // 全死（模拟凭据过期）
+    neteaseSearchResults = [neTrack('n-jhys', '交换余生', '林俊杰', 256)];
+    const src = await svc.findPlayableEquivalent(
+      session,
+      'qq',
+      { title: '交换余生', artist: '林俊杰', duration: 256 },
+      { excludeTrackId: 'dead-mid' },
+    );
+    assert.ok(src, '同平台全死时应落到跨平台候选');
+    assert.strictEqual(src.platform, 'netease', '同平台实探全死 → 跨平台 netease');
+    assert.strictEqual(src.trackId, 'n-jhys');
+    qqStreamOk = null;
+    console.log('✅ 38. 同平台实探全死 → 不推死 mid，落到跨平台候选');
+  }
+
+  console.log('\n🎉 cross-platform-match.e2e 全部 38 项通过');
 }
 
 main().catch((err) => {

@@ -1064,10 +1064,15 @@ export async function searchOne(
  * 实时跨平台匹配：当前 track（provider + 元数据）播放失败（code=4）时，请求
  * 服务端去其余已登录平台搜同名同时长的等价曲目，拿一个可直接播放的 source
  * 回来。找不到返回 null。严格匹配（歌名+歌手+时长 ±3s）在服务端做。
+ *
+ * `excludeId`（当前挂掉的曲目 id）：服务端会先做「同平台换版本」兜底——同一
+ * 首歌常有多个 songmid（专辑版需单购 vs 单曲版可播），排除死 mid 重新匹配
+ * 并实探过流后才返回。
  */
 export async function findEquivalentSource(
   provider: MusicProvider,
   meta: LikeMeta,
+  excludeId?: string,
 ): Promise<UnifiedSourceInfo | null> {
   const params = new URLSearchParams({
     provider,
@@ -1075,6 +1080,7 @@ export async function findEquivalentSource(
     artist: meta.artist,
     duration: String(meta.duration),
   });
+  if (excludeId) params.set('trackId', excludeId);
   const res = await json<{ source: UnifiedSourceInfo | null }>(
     await fetchWithToken(`${API_BASE}/music/equivalents?${params.toString()}`, {
       credentials: 'include',

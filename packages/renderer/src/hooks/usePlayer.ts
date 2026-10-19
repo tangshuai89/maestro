@@ -239,6 +239,11 @@ export function usePlayer(
   //    保留红心态，避免把 track 塞进各 effect 的依赖数组。
   const currentUnifiedRef = useRef<UnifiedSearchItem | undefined>(undefined);
   const triedPlatformsRef = useRef<Set<MusicProvider>>(new Set());
+  // 已试过的具体曲目源（platform:trackId）：triedPlatforms 是平台级粗粒度，
+  // 同平台换版本兜底（QQ 一首歌多个 songmid，专辑版死/单曲版活）需要细到
+  // 曲目级 —— 否则会拦住「同平台另一 mid」这个唯一活路。presentTrack 里
+  // isNewSong 时重置，每次上源（含 fallback）都登记。
+  const triedTrackIdsRef = useRef<Set<string>>(new Set());
   const trackRef = useRef<Track | null>(null);
   // audio 元素当前 src 的镜像：onError 的"同源重试 1 次"延迟 800ms 后用这个判
   // 用户这期间切歌没；切了就不该重试旧 src，应直接 fallback / 报错。
@@ -530,6 +535,7 @@ export function usePlayer(
       if (unified) void fillLikeCountForCurrentTrack(unified, setCurrentUnified);
       if (isNewSong) {
         triedPlatformsRef.current = new Set();
+        triedTrackIdsRef.current = new Set();
         serverEquivTriedRef.current = false;
         trialServerTriedRef.current = false;
         forcedStandardRef.current = false;
@@ -541,6 +547,7 @@ export function usePlayer(
         wpsPlayedIdRef.current = null;
       }
       triedPlatformsRef.current.add(next.provider);
+      triedTrackIdsRef.current.add(`${next.provider}:${next.id}`);
       // 每次上源（含跨平台切换）都要对新源重做一次试听判定。
       trialEvaluatedRef.current = false;
       // 新上的源默认按用户选的音质播——清掉"试听回退到标准"的标记。standard
@@ -785,11 +792,18 @@ export function usePlayer(
     const songId = unified?.id; // 快照：await 期间用户可能切歌，回来要校验。
     const epoch = songEpochRef.current; // radio 路径没有 id，只能靠这个判"没换歌"
     try {
-      const src = await findEquivalentSource(cur.provider, {
-        title: display.title,
-        artist: display.artist,
-        duration: display.duration,
-      });
+      // excludeId=cur.id：让服务端先做「同平台换版本」兜底（排除刚挂掉的 mid
+      // 重匹配 + 实探出流才返回），再跨平台。交换余生：专辑版 104003、单曲版
+      // 003qWps4042iNf 可播——没有这个参数服务端会跳过整个 QQ 平台。
+      const src = await findEquivalentSource(
+        cur.provider,
+        {
+          title: display.title,
+          artist: display.artist,
+          duration: display.duration,
+        },
+        cur.id,
+      );
       // 竞态守卫：await 期间已切到别的歌 → 丢弃结果。
       // ⚠️ 不能只看 unified id：radio 路径下它前后都是 undefined，切歌了也
       // 照样相等 —— 旧守卫在 radio 上等于没有。
@@ -806,7 +820,14 @@ export function usePlayer(
         );
         return false;
       }
-      if (triedPlatformsRef.current.has(src.platform)) {
+      const sameProviderAlt = src.platform === cur.provider && src.trackId !== cur.id;
+      if (triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`)) {
+        console.warn(
+          `[audio] "${display.title}" 兜底到 ${src.platform}/${src.trackId}，但该源已试过`,
+        );
+        return false;
+      }
+      if (triedPlatformsRef.current.has(src.platform) && !sameProviderAlt) {
         console.warn(`[audio] "${display.title}" 兜底到 ${src.platform}，但该平台本首歌已试过`);
         return false;
       }
@@ -873,16 +894,24 @@ export function usePlayer(
     trialServerTriedRef.current = true;
     const songId = unified.id;
     try {
-      const src = await findEquivalentSource(cur.provider, {
-        title: display.title,
-        artist: display.artist,
-        duration: display.duration,
-      });
+      // excludeId=cur.id：同平台换版本兜底——VIP 专辑版试听、同歌单曲版可能
+      // 出全曲流（服务端实探过才返回，不会推回同一个试听 mid）。
+      const src = await findEquivalentSource(
+        cur.provider,
+        {
+          title: display.title,
+          artist: display.artist,
+          duration: display.duration,
+        },
+        cur.id,
+      );
       if (currentUnifiedRef.current?.id !== songId) return;
+      const sameProviderAlt = !!src && src.platform === cur.provider && src.trackId !== cur.id;
       if (
         src &&
         fullProviders.includes(src.platform) &&
-        !triedPlatformsRef.current.has(src.platform)
+        !triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`) &&
+        (!triedPlatformsRef.current.has(src.platform) || sameProviderAlt)
       ) {
         console.warn(
           `[audio] "${display.title}" 30s 试听，服务端匹配到 ${src.platform} ` + `全曲源，升级`,

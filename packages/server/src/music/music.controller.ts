@@ -671,6 +671,7 @@ export class MusicController {
     @Query('title') title: string,
     @Query('artist') artist: string,
     @Query('duration') duration: string,
+    @Query('trackId') trackId: string | undefined,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ source: SourceInfo | null }> {
@@ -684,6 +685,7 @@ export class MusicController {
       title: title ?? '',
       artist: artist ?? '',
       duration: Number.isFinite(dur) ? dur : 0,
+      ...(trackId ? { excludeTrackId: trackId } : {}),
     });
     return { source };
   }
