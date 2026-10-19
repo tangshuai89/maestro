@@ -1082,8 +1082,12 @@ export class QqMusicProvider {
     // key 用 cookie 的哈希前 16 位 + uin：同一 session 稳定，换登录立即失效
     const key = `${uin}:${createHash('sha256').update(cookie).digest('hex').slice(0, 16)}`;
     const res = await this.probeCache.resolve(key, () => probeQqSessionUncached(cookie, uin));
+    // ⚠️ 别把这行读成"账号一切正常"：判 alive 只要求**3 首探针歌里有 1 首**
+    // 能出流（保守优先，怕误报登录过期）。purl=1/3 的真实含义是"账号活着，
+    // 但大部分歌取不到流"（版权 / 绿钻覆盖）——2026-10-19 排查时就被这句带偏过。
     this.logger.log(
-      `QQ session probe: alive=${res.alive} reason=${res.reason} cached=${!res.fetched}`,
+      `QQ session probe: alive=${res.alive} reason=${res.reason} cached=${!res.fetched}` +
+        (res.songCount ? ` purl=${res.purlCount ?? 0}/${res.songCount}` : ''),
     );
     return res;
   }

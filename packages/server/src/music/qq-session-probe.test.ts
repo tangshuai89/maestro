@@ -300,6 +300,41 @@ async function main() {
     ok('15. 并发同 key 单飞（播放失败的多条兜底路径不会连打 QQ）');
   }
 
+  // ── 16. purl 比例（2026-10-19 加：日志误导性修复）─────────────────
+  //
+  // alive=true 只要求 3 首里有 1 首能出流。这在"判登录是否过期"的场景下是
+  // 对的（保守优先），但会让排查的人以为"账号一切正常"——2026-10-19 报障
+  // 就是被这句带偏的：探针 alive=true，而用户点的歌一首都放不了。
+  // purlCount/songCount 就是为了让这层区别在日志里可见。
+  {
+    const restore = mockFetch(() =>
+      vkey({ purl: 'C400a.m4a', vkey: 'V1' }, { vkey: 'V2' }, { vkey: 'V3' }),
+    );
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, true, '1/3 有 purl 仍判活（保守原则不变）');
+    assert.strictEqual(r.purlCount, 1);
+    assert.strictEqual(r.songCount, 3);
+    ok('16. 只有 1/3 能出流 → 仍 alive，但带上 purl=1/3 供排查');
+  }
+  {
+    const restore = mockFetch(() => vkey({ purl: 'a' }, { purl: 'b' }, { purl: 'c' }));
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.purlCount, 3);
+    assert.strictEqual(r.songCount, 3);
+    ok('17. 3/3 能出流 → purlCount=3');
+  }
+  {
+    const restore = mockFetch(() => vkey({}, {}, {}));
+    const r = await probeQqSessionUncached(COOKIE, UIN);
+    restore();
+    assert.strictEqual(r.alive, false);
+    assert.strictEqual(r.purlCount, 0);
+    assert.strictEqual(r.songCount, 3);
+    ok('18. 0/3 → 判失效，比例照样带上');
+  }
+
   console.log(`\n${pass} 个用例全部通过 ✅`);
 }
 

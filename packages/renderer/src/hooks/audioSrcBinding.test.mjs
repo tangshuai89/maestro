@@ -64,8 +64,10 @@ check('C2. 每一处改 audioUrl 的 setTrack 附近都有命令式装载', () =
   const hit = [];
   code.forEach((line, i) => {
     if (!/setTrack\(/.test(line)) return;
-    // 往后 20 行内必须出现装载调用（presentTrack 那处隔了十几行才到 loadIntoSlots）
-    const window = code.slice(i, i + 21).join('\n');
+    // 往后 40 行内必须出现装载调用。presentTrack 的 setTrack 与 loadIntoSlots
+    // 之间夹着十几行状态维护（重试计数 / epoch / pendingSeek 清零…），窗口太窄
+    // 会因为「加了无关代码」而假阳性——已经踩过一次（2026-10-19）。
+    const window = code.slice(i, i + 41).join('\n');
     if (!/audioUrl/.test(window)) return; // 只改 liked 等字段，不算
     hit.push({
       line: i + 1,

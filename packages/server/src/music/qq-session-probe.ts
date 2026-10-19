@@ -51,6 +51,17 @@ export interface SessionProbeResult {
   reason: ProbeReason;
   /** 本次是否真的发了请求（false = 命中缓存）。 */
   fetched: boolean;
+  /**
+   * 探针歌里**拿到 purl 的条数** / 实际读到的条数（2026-10-19 加）。
+   *
+   * 为什么加：`alive=true reason=purl_present` 这行日志**极具误导性**——
+   * 判定是"3 首里有 1 首能出流就算活"（保守优先，怕误报登录过期）。于是
+   * 完全可能出现「探针 alive=true，但用户点的歌一首都放不了」，读日志的人
+   * （包括我自己）会被带进沟里，以为账号/网络有问题。带上比例就一眼可辨：
+   * `purl=1/3` = 账号活着但大部分歌取不到流（版权/绿钻），不是登录过期。
+   */
+  purlCount?: number;
+  songCount?: number;
 }
 
 interface VkeyProbeResponse {
@@ -141,18 +152,32 @@ export async function probeQqSessionUncached(
       // **不能**判成「失效」——那是「探针自己没读懂响应」，属于探针故障，
       // 按保守原则当 alive。只有明确读到探针歌条目、且**全部** purl/vkey
       // 都空，才判 no_vkey（多歌共识：一首歌受限不再能单独判死会话）。
+      const songCount = infos.length;
+      const purlCount = infos.filter((i) => i?.purl).length;
       if (!infos.length) {
         return { alive: true, reason: 'network_error' as const, fetched: true };
       }
-      if (infos.some((i) => i?.purl)) {
-        return { alive: true, reason: 'purl_present' as const, fetched: true };
+      if (purlCount > 0) {
+        return {
+          alive: true,
+          reason: 'purl_present' as const,
+          fetched: true,
+          purlCount,
+          songCount,
+        };
       }
       // purl 空但 vkey 有：拿不到流地址，但 QQ 认这个登录态 —— 判为可用，
       // 避免把「这首歌恰好受限」误报成「登录过期」。
       if (infos.some((i) => i?.vkey)) {
-        return { alive: true, reason: 'vkey_present' as const, fetched: true };
+        return {
+          alive: true,
+          reason: 'vkey_present' as const,
+          fetched: true,
+          purlCount,
+          songCount,
+        };
       }
-      return { alive: false, reason: 'no_vkey' as const, fetched: true };
+      return { alive: false, reason: 'no_vkey' as const, fetched: true, purlCount, songCount };
     }, PROBE_TIMEOUT_MS);
   } catch {
     // fetch 抛错 / JSON 解析失败 / 结构完全对不上 → 保守当作可用

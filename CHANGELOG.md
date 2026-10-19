@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **fix(player): QQ 取不到流时零兜底 → 界面卡在「等待播放」**（2026-10-19 报障）
+
+  报障现象：启动后不播放，进度条 `00:00`、HUD 显示 READY、没有任何报错。
+
+  **先分清责任**：用 provider 直连 QQ 复现，证实「取不到流」是**既有上游行为**，
+  与本仓库改动无关，且是**逐首**的——《演员》能拿到 purl，《晴天》《天外来物》
+  拿不到（同账号同时间）。真正的缺陷是应用对这种情况**一条兜底都没有**。
+
+  三处修法：
+
+  - **transient 重试加次数上限**（`shouldTransientRetry`）。旧实现是
+    「重试成功后把 guard 清零」，而 `play()` 在坏源上照样 resolve → 清零 →
+    下一个 `error` 又满足条件 → 「error → 重试 → resolve → 清零 → 再 error」
+    无限循环，永远走不到跨平台兜底。改成按本首歌累加次数（`presentTrack` 重置）。
+  - **重试后加卡死探测**（`isPlaybackStalled`）。`play()` resolve 只代表浏览器
+    接受了播放请求，不代表出了声：坏源上进度永远停在 0。起一个 1.5s 探测定时器，
+    到点还在 `00:00` 就走兜底，不让界面停在「等待播放」。
+  - **radio 路径也能兜底**（`shouldSearchEquivalent`）。`tryFallbackSource`
+    第一行原本是 `if (!unified || !cur) return false` —— QQ 电台 track 由服务端
+    单平台生成、没有 unified，于是直接被踢出兜底链。而 `findEquivalentSource`
+    只吃 `{title, artist, duration}`，radio track 一样有。同时把跨 await 的竞态
+    守卫从「只比 unified id」换成 **song epoch**：radio 路径下 id 前后都是
+    `undefined`，旧守卫等于没有（切歌了旧结果照样生效）。
+  - 顺带：radio 兜底加了「同歌只换一次源」的闸，否则换源后 `presentTrack` 会把
+    「已搜过」标记清成 false，可能 qq↔netease 无限来回换。
+  - **QQ 探针日志带 purl 比例**。`alive=true reason=purl_present` 极具误导性：
+    判定是「3 首探针歌里有 1 首能出流就算活」（保守优先，怕误报登录过期），
+    于是「探针说活着」和「用户点的歌一首都放不了」可以同时成立——排查当天
+    我自己就被这句带偏过。现在日志打 `purl=1/3`。判定口径不变（保守是对的），
+    只是把区别显示出来。
+
+  测试：策略纯函数 11 条（`usePlayer.test.mjs` 51–61）+ 接线契约 8 条
+  （`playbackFallback.test.mjs`，源码层守「兜底没被删」）+ 探针比例 3 条。
+  三次变异验证：去掉重试上限 → 2 条红；恢复 unified 早退 → F1 红；删掉
+  radio 兜底闸的读/写任一侧 → F3 红。**纯函数测不到接线**（第二次变异暴露的
+  盲区），所以必须有源码契约那一层——和上次 `<audio>` src 那次同一类错误。
+
 - **fix(player): 交叉淡入淡出接线引入的回归 —— 切音质 / 试听降标准后卡在 00:00**
   （crossfade 的下一个 commit 修的，2026-10-19 报障）
 

@@ -59,6 +59,11 @@ const {
   pickUpgradeSource,
   shouldApplyLikeResult,
   shouldStopWpsBeforeTransition,
+  shouldTransientRetry,
+  shouldSearchEquivalent,
+  isPlaybackStalled,
+  TRANSIENT_RETRY_MAX,
+  STALL_PROBE_MS,
   parsePlayableQueue,
   TRIAL_MAX_SEC,
   TRIAL_GAP_SEC,
@@ -687,6 +692,96 @@ async function main() {
     '50. spotify→spotify 空 id → true',
     shouldStopWpsBeforeTransition('sp-A', { provider: 'spotify', id: '' }, true),
     true,
+  );
+
+  // ── 播放失败处置策略（2026-10-19 报障「启动后不播放」）──────────────
+  //
+  // 这三条守的是两个真实洞：
+  //  A. transient 重试无上限 + 成功后清零 guard → 坏源无限重试，永远走不到兜底
+  //  B. radio track 没有 unified → tryFallbackSource 直接 return false → 零兜底
+
+  // 51. wantPlay=0（暂停/切歌后）→ 不重试，直接兜底
+  check(
+    '51. wantPlay=0 → 不做 transient 重试',
+    shouldTransientRetry({ attempts: 0, wantPlay: false }),
+    false,
+  );
+
+  // 52. wantPlay 未定义（同上，等价于没在播）→ 不重试
+  check(
+    '52. wantPlay=undefined → 不做 transient 重试',
+    shouldTransientRetry({ attempts: 0, wantPlay: undefined }),
+    false,
+  );
+
+  // 53. 次数未到上限 → 重试
+  check(
+    '53. attempts=0 且在播 → 重试',
+    shouldTransientRetry({ attempts: 0, wantPlay: true }),
+    true,
+  );
+
+  // 54. 达到上限 → 不再重试（这正是无限重试那个洞）
+  check(
+    '54. attempts 达上限 → 停止重试并走兜底',
+    shouldTransientRetry({ attempts: TRANSIENT_RETRY_MAX, wantPlay: true }),
+    false,
+  );
+
+  // 55. 上限可配；attempts 超过上限同样为 false
+  check(
+    '55. attempts 超上限 / 自定义 max',
+    [
+      shouldTransientRetry({ attempts: 9, wantPlay: true }),
+      shouldTransientRetry({ attempts: 1, wantPlay: true, max: 1 }),
+      shouldTransientRetry({ attempts: 0, wantPlay: true, max: 0 }),
+    ],
+    [false, false, false],
+  );
+
+  // 56. 没有 track → 不搜等价源
+  check(
+    '56. 无 track → 不搜等价源',
+    shouldSearchEquivalent({ hasTrack: false, alreadyTried: false }),
+    false,
+  );
+
+  // 57. **没有 unified 也要能搜** —— radio 路径零兜底那个洞。helper 的入参
+  //     里刻意没有 unified：它不该是前置条件（findEquivalentSource 只吃
+  //     title/artist/duration）。
+  check(
+    '57. 无 unified 语境下仍允许搜等价源',
+    shouldSearchEquivalent({ hasTrack: true, alreadyTried: false }),
+    true,
+  );
+
+  // 58. 同一首歌只搜一次 —— 否则 qq↔netease 来回换（radio 的 presentTrack
+  //     没有 unified，会把每次换源当新歌重置 triedPlatforms）
+  check(
+    '58. 同歌已搜过 → 不再搜（防来回换源）',
+    shouldSearchEquivalent({ hasTrack: true, alreadyTried: true }),
+    false,
+  );
+
+  // 59. 观察窗口没到 → 不能判定卡死（否则把正常起播误判成坏源）
+  check(
+    '59. elapsed 未到探测窗口 → 不判卡死',
+    isPlaybackStalled({ currentTime: 0, elapsedMs: STALL_PROBE_MS - 1 }),
+    false,
+  );
+
+  // 60. 窗口到了 + 进度为 0 → 卡死（play() resolve 了但没出声）
+  check(
+    '60. 窗口到了仍 00:00 → 判卡死',
+    isPlaybackStalled({ currentTime: 0, elapsedMs: STALL_PROBE_MS }),
+    true,
+  );
+
+  // 61. 窗口到了但已经在走 → 正常
+  check(
+    '61. 窗口到了且有进度 → 不判卡死',
+    isPlaybackStalled({ currentTime: 1.2, elapsedMs: STALL_PROBE_MS + 500 }),
+    false,
   );
 
   console.log(`\n🎉 usePlayer.test 通过 ${passed} 项，失败 ${failed} 项`);

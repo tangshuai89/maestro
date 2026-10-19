@@ -48,6 +48,10 @@ import {
   shouldStopWpsBeforeTransition,
   isResidualAudio,
   parsePlayableQueue,
+  shouldTransientRetry,
+  shouldSearchEquivalent,
+  isPlaybackStalled,
+  STALL_PROBE_MS,
 } from './usePlayer.helpers.ts';
 
 /**
@@ -66,6 +70,9 @@ import {
 // 这里 re-export 保持外部 import 路径不变（App.tsx / 测试继续
 // `import { ... } from './usePlayer'`）。
 export {
+  // TRANSIENT_RETRY_MAX 生产代码不直接引用（shouldTransientRetry 用它自己的默认
+  // 值），只被 usePlayer.test.mjs 导入 —— 和下面 FULL_SONG_PROVIDERS 同款理由。
+  TRANSIENT_RETRY_MAX,
   FALLBACK_PRIORITY,
   FULL_SONG_PROVIDERS,
   getFullSongProviders,
@@ -77,6 +84,10 @@ export {
   pickFallbackSource,
   pickUpgradeSource,
   parsePlayableQueue,
+  shouldTransientRetry,
+  shouldSearchEquivalent,
+  isPlaybackStalled,
+  STALL_PROBE_MS,
 } from './usePlayer.helpers.ts';
 
 export function usePlayer(
@@ -235,6 +246,38 @@ export function usePlayer(
   // onError 重试同源 1 次的 guard flag：避免同一波错误反复触发而不停重试。
   // 切歌时（presentTrack）重置。
   const retryAttemptedRef = useRef(false);
+  // ⚠️ 同源重试**次数**（2026-10-19 修）：原实现是「重试成功后把 guard 清零」，
+  // 而 play() 在坏源上照样 resolve → 清零 → 下一个 error 又满足重试条件 →
+  // 「error → 重试 → resolve → 清零 → 再 error」无限循环，永远走不到跨平台
+  // 兜底。改成按本首歌累加次数（presentTrack 重置），由 shouldTransientRetry
+  // 收敛到 TRANSIENT_RETRY_MAX 次。
+  const transientAttemptsRef = useRef(0);
+  // 「重试 resolve 了但其实没出声」的探测定时器。
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current != null) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      clearStallTimer();
+    },
+    [clearStallTimer],
+  );
+  // 换歌 / 换源计数。跨 await 的竞态守卫**不能只靠 currentUnifiedRef 的 id**：
+  // radio 路径的 track 没有 unified（id 是 undefined），`undefined === undefined`
+  // 在切歌后依然成立 —— 结果就是"用户已经切歌了，回调的旧结果照样生效"。
+  const songEpochRef = useRef(0);
+  // radio 路径的兜底闸：同**一首歌**只许换一次源。
+  //
+  // unified 路径天然安全（presentFallbackSource 带着同一个 unified 回去，
+  // isNewSong=false → triedPlatforms / serverEquivTried 都不重置）。radio
+  // 不行：它没有 unified，presentTrack 把它当**新歌** → 把
+  // serverEquivTriedRef 清成 false → 新源再失败就又去搜 → 可能搜回原平台，
+  // qq↔netease 无限来回换。所以这里按「歌的身份」而不是「换了没换歌」来记。
+  const radioFallbackKeyRef = useRef<string | null>(null);
   trackRef.current = track;
   // 本首歌是否已经问过服务端要跨平台等价源（每首歌只问一次，避免死循环）。
   // 用于「unified item 只有 netease 一个 source、netease 又挂了」时向服务端
@@ -543,6 +586,11 @@ export function usePlayer(
       // 同源重试的 guard 在每次 presentTrack 重置——跨平台 fallback 算新 URL,
       // 给 1 次重试机会。
       retryAttemptedRef.current = false;
+      // 重试次数按「本首歌」计数，切歌归零（否则第一首的坏源会吃掉后面的额度）。
+      transientAttemptsRef.current = 0;
+      clearStallTimer();
+      // 换歌计数 +1：跨 await 的兜底回调靠它判"用户是不是已经切歌了"。
+      songEpochRef.current += 1;
       // 清掉可能残留的「同源重试保位」——上一首歌的 transient 重试若在换歌前
       // 没落地（load 失败 → loadedmetadata 没 fire），pendingSeekRef 会漏到这首
       // 新歌把它错误地 seek 过去。换歌一律从 0 起。
@@ -568,7 +616,7 @@ export function usePlayer(
       // gesture. The graph is built lazily on the first play (onPlay /
       // handlePlayPause). Until then audio plays through the default path.
     },
-    [presentCover, presentPlaceholder, loadIntoSlots, wpsRef, setQueueSnapshot],
+    [presentCover, presentPlaceholder, loadIntoSlots, wpsRef, setQueueSnapshot, clearStallTimer],
   );
 
   /** 用一个跨平台 source + 展示元数据构造 fallback Track 并重播。同一首歌
@@ -673,40 +721,66 @@ export function usePlayer(
   const tryFallbackSource = useCallback(async (): Promise<boolean> => {
     const unified = currentUnifiedRef.current;
     const cur = trackRef.current;
-    if (!unified || !cur) return false;
+    if (!cur) return false;
     const tried = triedPlatformsRef.current;
-    const display = {
-      title: unified.title,
-      artist: unified.artist,
-      album: unified.album,
-      coverUrl: unified.coverUrl,
-      duration: unified.duration,
-    };
+    // 展示元数据：有 unified 用它（更全，有 album/cover），radio track 用 track 自己。
+    const display = unified
+      ? {
+          title: unified.title,
+          artist: unified.artist,
+          album: unified.album,
+          coverUrl: unified.coverUrl,
+          duration: unified.duration,
+        }
+      : {
+          title: cur.title,
+          artist: cur.artist,
+          album: cur.album,
+          coverUrl: cur.coverUrl,
+          duration: cur.duration,
+        };
 
-    // 1) item 内其它平台 source。
-    const inItem = FALLBACK_PRIORITY.filter((p) => !tried.has(p))
-      .map((p) =>
-        // Bug #3 防御性：过滤 vipLocked——否则 code=4 后切到 vipLocked 源仍是 30s。
-        unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
-      )
-      .find((s): s is UnifiedSourceInfo => Boolean(s));
-    if (inItem) {
-      presentFallbackSource(inItem, unified, display);
-      return true;
+    // 1) item 内其它平台 source（**需要 unified**：radio track 没有跨平台源表）。
+    if (unified) {
+      const inItem = FALLBACK_PRIORITY.filter((p) => !tried.has(p))
+        .map((p) =>
+          // Bug #3 防御性：过滤 vipLocked——否则 code=4 后切到 vipLocked 源仍是 30s。
+          unified.sources.find((s) => s.platform === p && s.hasCopyright && !s.vipLocked),
+        )
+        .find((s): s is UnifiedSourceInfo => Boolean(s));
+      if (inItem) {
+        presentFallbackSource(inItem, unified, display);
+        return true;
+      }
     }
 
     // 2) 服务端实时跨平台匹配（每首歌一次）。
-    if (serverEquivTriedRef.current) return false;
-    serverEquivTriedRef.current = true;
-    const songId = unified.id; // 快照：await 期间用户可能切歌，回来要校验。
+    //
+    // ⚠️ **unified 不是前置条件**（2026-10-19 修的洞）：QQ 电台 track 由服务端
+    // 单平台生成、没有 unified，旧代码在这里直接 `return false` —— 于是电台歌
+    // 在 QQ 拿不到流时**一条兜底都没有**，界面停在「等待播放」还显示 READY。
+    // `findEquivalentSource` 只吃 {title, artist, duration}，radio track 一样有。
+    // radio（无 unified）按歌身份去重，unified 路径沿用 per-song 的 guard。
+    const radioKey = unified ? null : `${cur.title}|${cur.artist}`;
+    const alreadyTried = radioKey
+      ? radioFallbackKeyRef.current === radioKey
+      : serverEquivTriedRef.current;
+    if (!shouldSearchEquivalent({ hasTrack: true, alreadyTried })) return false;
+    if (radioKey) radioFallbackKeyRef.current = radioKey;
+    else serverEquivTriedRef.current = true;
+    const songId = unified?.id; // 快照：await 期间用户可能切歌，回来要校验。
+    const epoch = songEpochRef.current; // radio 路径没有 id，只能靠这个判"没换歌"
     try {
       const src = await findEquivalentSource(cur.provider, {
-        title: unified.title,
-        artist: unified.artist,
-        duration: unified.duration,
+        title: display.title,
+        artist: display.artist,
+        duration: display.duration,
       });
       // 竞态守卫：await 期间已切到别的歌 → 丢弃结果。
-      if (currentUnifiedRef.current?.id !== songId) return false;
+      // ⚠️ 不能只看 unified id：radio 路径下它前后都是 undefined，切歌了也
+      // 照样相等 —— 旧守卫在 radio 上等于没有。
+      if (songEpochRef.current !== epoch) return false;
+      if (unified && currentUnifiedRef.current?.id !== songId) return false;
       if (src && !triedPlatformsRef.current.has(src.platform)) {
         presentFallbackSource(src, currentUnifiedRef.current, display);
         return true;
@@ -1268,9 +1342,19 @@ export function usePlayer(
       // 红心、queue 位置。等 800ms 让上游 stream 重新 fetch，再 audio.load() +
       // audio.play() 重试；还错才进跨平台 fallback。
       //
-      // 同一时间只允许一个重试 in-flight，避免 onError 反复触发时不停重试。
-      if (!retryAttemptedRef.current && audio.dataset.wantPlay === '1') {
+      // 同源 transient 重试：**有次数上限**（shouldTransientRetry）。
+      // 旧实现无上限且"重试成功就清零 guard"，而 play() 在坏源上照样 resolve
+      // → 清零 → 下一个 error 又满足条件 → 无限重试，永远走不到跨平台兜底
+      // （2026-10-19 报障：QQ 对部分歌曲不返 purl，界面卡在「等待播放」）。
+      if (
+        !retryAttemptedRef.current &&
+        shouldTransientRetry({
+          attempts: transientAttemptsRef.current,
+          wantPlay: audio.dataset.wantPlay === '1',
+        })
+      ) {
         retryAttemptedRef.current = true;
+        transientAttemptsRef.current += 1;
         setTimeout(() => {
           const stillOnTrack =
             audio.dataset.wantPlay === '1' && audio.src === currentSrcRef.current;
@@ -1282,24 +1366,44 @@ export function usePlayer(
             });
             return;
           }
-          console.warn('[audio] transient — 重试同源 1 次');
+          console.warn(`[audio] transient — 重试同源（第 ${transientAttemptsRef.current} 次）`);
           // 保住播放位置：mid-stream 掉线（"放着放着 code 4"）重载后应从断点续，
           // 而不是跳回 0。复用 changeQuality 的 pendingSeekRef 机制——
           // onLoadedMetadata 会在 load() 触发的重新加载后 seek 回去。
           if (audio.currentTime > 0) pendingSeekRef.current = audio.currentTime;
+          const startedAt = Date.now();
           audio.load();
+          const afterRetry = (why: string) => {
+            retryAttemptedRef.current = false;
+            clearStallTimer();
+            console.warn(`[audio] 同源重试未成功（${why}）→ 跨平台兜底`);
+            void tryFallbackSource().then((ok) => {
+              if (!ok) reportPlayFailure(failedProvider, code);
+            });
+          };
           void audio.play().then(
             () => {
-              // 重试成功。重置 guard，给下次错误机会（也可能是切歌后新源的错）。
+              // ⚠️ play() resolve 只代表"浏览器接受了播放请求"，不代表出了声：
+              // 坏源上它经常 resolve，然后 currentTime 永远停在 0。起一个探测
+              // 定时器，到点还在 00:00 就走兜底，别让界面停在「等待播放」。
               retryAttemptedRef.current = false;
+              clearStallTimer();
+              stallTimerRef.current = setTimeout(() => {
+                stallTimerRef.current = null;
+                if (
+                  !isPlaybackStalled({
+                    currentTime: audio.currentTime,
+                    elapsedMs: Date.now() - startedAt,
+                  })
+                ) {
+                  return; // 已经在走了 → 正常播放
+                }
+                // 用户已暂停 / 已切歌 → 不是"卡死"，别打扰
+                if (audio.dataset.wantPlay !== '1' || audio.src !== currentSrcRef.current) return;
+                afterRetry('重试后 00:00 不出声');
+              }, STALL_PROBE_MS);
             },
-            () => {
-              // 重试失败。重置 guard **并** 进 fallback——避免无限重试循环。
-              retryAttemptedRef.current = false;
-              void tryFallbackSource().then((ok) => {
-                if (!ok) reportPlayFailure(failedProvider, code);
-              });
-            },
+            () => afterRetry('play() rejected'),
           );
         }, 800);
         return;
