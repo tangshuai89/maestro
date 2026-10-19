@@ -330,3 +330,134 @@ describe('TheaterView 超长当前行歌词降级', () => {
     expect(onExportLyrics).toHaveBeenCalledWith(XLONG);
   });
 });
+
+/**
+ * HUD 跨平台 ❤ 累加渲染（specs/cross-platform-likes §UI 样式 D.1）。
+ * 关键不变量：**每个数字后面紧跟自己的上标**（`5700w+¹ + 2,500²`），
+ * 不是 `5700w+ + 2,500¹²`（上标粘末尾 = 上标失去指代对象）。
+ */
+describe('TheaterView HUD 跨平台 ❤ 累加', () => {
+  /** 在**本次 render 的容器内**查询——文件里前面的 describe 有留 DOM 的用例，
+   *  用 screen.* 会命中多个（getByTitle 报 multiple elements）。 */
+  function mountHud(over: Partial<TheaterViewProps>) {
+    const utils = render(<TheaterView {...makeProps(over)} />);
+    const root = utils.container;
+    const totalEl = root.querySelector<HTMLElement>('.th-hud-like-total');
+    const syncText = () =>
+      (root.querySelector('.th-hud-sync')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    // 回落分支（无 crossPlatformLikeTotal）读整块 .th-hud-sync——它含 ❤ 图标，
+    // 所以断言时按末尾数值比对，别把 ♥ 也算进期望值。
+    const text = () => (totalEl?.textContent ?? syncText()).replace(/\s+/g, ' ').trim();
+    const hudNumber = () => syncText().replace('♥', '').trim();
+    return {
+      ...utils,
+      root,
+      totalEl,
+      text,
+      hudNumber,
+      sups: () => root.querySelectorAll('.th-hud-like-sup'),
+    };
+  }
+
+  function sample(
+    parts: Array<{ platform: 'qq' | 'netease'; display: string }>,
+  ): NonNullable<TheaterViewProps['currentUnified']> {
+    return {
+      crossPlatformLikeTotal: {
+        // count 只是 HUD 用不到的派生值；这里只保证是个合法数字。
+        count: parts.reduce((a, p) => a + (Number(p.display.replace(/[^\d]/g, '')) || 0), 0),
+        display: parts.map((p) => p.display).join(' + '),
+        platforms: parts.map((p) => p.platform),
+        parts,
+      },
+    };
+  }
+
+  it('QQ + 网易云都有数 → 「5700w+¹ + 2,500²」，上标紧跟各自分数', () => {
+    const v = mountHud({
+      currentUnified: sample([
+        { platform: 'qq', display: '5700w+' },
+        { platform: 'netease', display: '2,500' },
+      ]),
+    });
+    expect(v.text()).toBe('5700w+¹ + 2,500²');
+    v.unmount();
+  });
+
+  it('上标必须紧跟数字（DOM 顺序断言，不能只比对拼好的文本）', () => {
+    const v = mountHud({
+      currentUnified: sample([
+        { platform: 'qq', display: '5700w+' },
+        { platform: 'netease', display: '2,500' },
+      ]),
+    });
+    const sups = v.sups();
+    expect(sups).toHaveLength(2);
+    expect(sups[0].previousSibling?.textContent).toContain('5700w+');
+    expect(sups[0].textContent).toBe('¹');
+    expect(sups[1].previousSibling?.textContent).toContain('2,500');
+    expect(sups[1].textContent).toBe('²');
+    v.unmount();
+  });
+
+  it('只有 QQ 有数 → 只出 ¹（不冒出第二个上标）', () => {
+    const v = mountHud({ currentUnified: sample([{ platform: 'qq', display: '5700w+' }]) });
+    expect(v.text()).toBe('5700w+¹');
+    expect(v.sups()).toHaveLength(1);
+    v.unmount();
+  });
+
+  it('只有网易云有数 → 只出 ²', () => {
+    const v = mountHud({ currentUnified: sample([{ platform: 'netease', display: '1,173' }]) });
+    expect(v.text()).toBe('1,173²');
+    v.unmount();
+  });
+
+  it('tooltip 解释上标来源（¹ = QQ / ² = 网易云）', () => {
+    const v = mountHud({
+      currentUnified: sample([
+        { platform: 'qq', display: '1' },
+        { platform: 'netease', display: '2' },
+      ]),
+    });
+    expect(v.totalEl?.getAttribute('title')).toBe('QQ + 网易云');
+    v.unmount();
+  });
+
+  it('老数据没有 parts → 兜回单块 display，不渲染空白（不崩）', () => {
+    const v = mountHud({
+      currentUnified: {
+        crossPlatformLikeTotal: {
+          count: 1000001,
+          display: '5700w+',
+          platforms: ['qq'],
+        } as never,
+      },
+    });
+    expect(v.text()).toBe('5700w+¹');
+    v.unmount();
+  });
+
+  it('无 crossPlatformLikeTotal → 回落链不受影响（likedCount → fanOutCount → —）', () => {
+    const dash = mountHud({ likedCount: 0, fanOutCount: 0 });
+    expect(dash.totalEl).toBeNull();
+    expect(dash.hudNumber()).toBe('—');
+    dash.unmount();
+    const liked = mountHud({ likedCount: 42, fanOutCount: 0 });
+    expect(liked.hudNumber()).toBe('42');
+    liked.unmount();
+    const fan = mountHud({ likedCount: 0, fanOutCount: 3 });
+    expect(fan.hudNumber()).toBe('3/4');
+    fan.unmount();
+  });
+
+  it('crossPlatformLikeTotal 优先于 likedCount / fanOutCount（不双计）', () => {
+    const v = mountHud({
+      likedCount: 999,
+      fanOutCount: 4,
+      currentUnified: sample([{ platform: 'netease', display: '1,173' }]),
+    });
+    expect(v.text()).toBe('1,173²');
+    v.unmount();
+  });
+});

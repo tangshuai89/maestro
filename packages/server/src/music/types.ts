@@ -163,9 +163,16 @@ export interface UnifiedSearchItem {
    * 见 `specs/cross-platform-likes`。 */
   crossPlatformLikeTotal?: {
     count: number;
+    /** 全部累加项拼起来的 UI 串（"5700w+ + 2,500"），tooltip / 非 HUD 场景用 */
     display: string;
     /** 累加来源平台列表（顺序 = sources 顺序），用于上标渲染 */
     platforms: Array<'qq' | 'netease'>;
+    /**
+     * 逐项展示串。HUD 要的是 `5700w+¹ + 2,500²`——**每个数字后面紧跟自己的
+     * 上标**，所以光有拼好的 display + platforms 无法把上标插回中间（会渲染成
+     * `5700w+ + 2,500¹²`，上标全粘末尾，违反 spec 验收标准）。
+     */
+    parts: Array<{ platform: 'qq' | 'netease'; display: string }>;
   };
 }
 

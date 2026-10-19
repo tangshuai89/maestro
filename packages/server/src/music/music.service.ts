@@ -86,6 +86,16 @@ const EQUIV_MATCH_CACHE_TTL_MS = 60 * 60 * 1000;
 const EQUIV_FAIL_CACHE_TTL_MS = 30_000;
 const EQUIV_SEARCH_CACHE_MAX_PER_SESSION = 256;
 
+/** likeCount（QQ m_numbers / 网易云 likedCount）拉取结果的 TTL 档
+ *  （specs/cross-platform-likes「缓存策略」）。语义与 equivSearchCache 的
+ *  `clean` 完全一致，只是换 key：命中 / 干净缺席 1h（"这首歌 QQ 上有 5700 收藏"
+ *  是稳定事实）；失败 / 超时 30s（网络抖动 ≠ 缺席，留重试窗口）。
+ *  挂在 service 而不是 provider 上：key 含 sessionId，而 provider 是跨 session
+ *  单例——放 provider 会让 A 用户的 ❤ 计数命中 B 用户的缓存条目。 */
+const LIKE_COUNT_TTL_CLEAN_MS = 60 * 60 * 1000;
+const LIKE_COUNT_TTL_DIRTY_MS = 30_000;
+const LIKE_COUNT_CACHE_MAX = 512;
+
 // IS_LYRIC_SOURCE_PRIORITY：仅 getLyricsByName 用（其它歌词聚合逻辑已迁
 // LyricsService）。getLyricsByName 留 MusicService 是因为它依赖本类的
 // searchEquivalent——避免循环依赖。
@@ -748,20 +758,40 @@ export class MusicService {
    * 同 provider 重入（不同 trackId）并发上限 4，与 runPlatformSearch 同模式。
    */
   fillLikeCountsForItems(session: Session, items: UnifiedSearchItem[]): void {
-    // 拍快照：构建 (platform, trackId) 拉取任务列表，去重
+    // 拍快照：构建 (platform, trackId) 拉取任务列表，去重。
+    // 缓存命中的**不走网络**——同步落地，下一帧 HUD 就有数。
     const tasks: Array<{
       itemIdx: number;
       sourceIdx: number;
       platform: 'qq' | 'netease';
       trackId: string;
+      cacheKey: string;
     }> = [];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       for (let j = 0; j < it.sources.length; j++) {
         const s = it.sources[j];
-        if ((s.platform === 'qq' || s.platform === 'netease') && s.likeCount === undefined) {
-          tasks.push({ itemIdx: i, sourceIdx: j, platform: s.platform, trackId: s.trackId });
+        if ((s.platform !== 'qq' && s.platform !== 'netease') || s.likeCount !== undefined) {
+          continue;
         }
+        const cacheKey = `${session.id}|${s.platform}|${s.trackId}`;
+        const cached = this.readLikeCountCache(cacheKey);
+        if (cached) {
+          if (cached.value) {
+            s.likeCount = { ...cached.value, source: s.platform };
+            recomputeCrossPlatformLikeTotal(it);
+          }
+          // 缓存里的 null = 干净缺席（"这首歌 QQ 上没人收藏"）：保持 undefined，
+          // HUD 按"该平台无数据"渲染，不写 0（spec §不做什么）。
+          continue;
+        }
+        tasks.push({
+          itemIdx: i,
+          sourceIdx: j,
+          platform: s.platform,
+          trackId: s.trackId,
+          cacheKey,
+        });
       }
     }
     if (tasks.length === 0) return;
@@ -782,8 +812,12 @@ export class MusicService {
         );
         for (let k = 0; k < settled.length; k++) {
           const r = settled[k];
-          if (r.status !== 'fulfilled' || !r.value.r) continue;
+          // rejected 不写缓存：provider 侧已 try/catch 兜到 null，走不到这里；
+          // 真到了说明是代码级异常，让下一轮重试而不是缓存 30s。
+          if (r.status !== 'fulfilled') continue;
           const { t, r: lr } = r.value;
+          this.writeLikeCountCache(t.cacheKey, lr, lr !== null);
+          if (!lr) continue;
           const it = items[t.itemIdx];
           if (!it) continue;
           // 写回 source.likeCount（按 trackId 匹配，可能已被 UI 替换过 source）
@@ -798,6 +832,43 @@ export class MusicService {
     void withTimeout(run, 2000).catch((err) => {
       this.logger.warn(`fillLikeCountsForItems error: ${(err as Error).message}`);
     });
+  }
+
+  /**
+   * likeCount 缓存：(sessionId|platform|trackId) → 最近一次拉取结果。
+   * **null 也缓存**——"干净缺席"是需要复用的稳定事实（见 LIKE_COUNT_TTL_CLEAN_MS
+   * 注释）。过期条目在读时顺手删，不做后台清扫。
+   */
+  private readonly likeCountCache = new Map<
+    string,
+    { at: number; value: { count: number; display: string } | null; clean: boolean }
+  >();
+
+  /** 命中返回 `{ value }`（value 可能为 null = 干净缺席）；过期 / 未命中返回 null。 */
+  private readLikeCountCache(
+    key: string,
+  ): { value: { count: number; display: string } | null } | null {
+    const hit = this.likeCountCache.get(key);
+    if (!hit) return null;
+    const ttl = hit.clean ? LIKE_COUNT_TTL_CLEAN_MS : LIKE_COUNT_TTL_DIRTY_MS;
+    if (Date.now() - hit.at > ttl) {
+      this.likeCountCache.delete(key);
+      return null;
+    }
+    return { value: hit.value };
+  }
+
+  /** 写缓存 + FIFO 淘汰（与 pruneEquivSearchCache 同口径：满了丢最旧的）。 */
+  private writeLikeCountCache(
+    key: string,
+    value: { count: number; display: string } | null,
+    clean: boolean,
+  ): void {
+    if (this.likeCountCache.size >= LIKE_COUNT_CACHE_MAX) {
+      const oldest = this.likeCountCache.keys().next();
+      if (!oldest.done) this.likeCountCache.delete(oldest.value);
+    }
+    this.likeCountCache.set(key, { at: Date.now(), value, clean });
   }
 
   /**
@@ -1825,6 +1896,9 @@ export class MusicService {
     // 命中 cache 后 return 旧 stored（newSources 不存在）→ likedPlatforms
     // 看不到新平台，badge 漏算直到重启。delete 让下次 getLibrary 重新 load。
     this.libraryCache.delete(session.id);
+    // 补进来的新平台 source 若没有 ❤ 数（cross-platform-likes task 6），异步填一次。
+    // 只填这一个 item：patch 每次只动一条，全库重填会把 QQ/网易云公开接口打爆。
+    this.fillLikeCountsForItems(session, [item]);
     this.logger.log(
       `library patched: "${item.title} - ${item.artist}" += ` +
         newSources.map((s) => s.platform).join(', '),

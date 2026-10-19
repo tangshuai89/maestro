@@ -70,7 +70,10 @@ export function recomputeCrossPlatformLikeTotal(item: UnifiedSearchItem): void {
   const count = buckets.reduce((a, b) => a + b.count, 0);
   const display = buckets.map((b) => b.display).join(' + ');
   const platforms = buckets.map((b) => b.source);
-  item.crossPlatformLikeTotal = { count, display, platforms };
+  // parts 与 display 同源，只是保留逐项切分——HUD 要把上标插回每个数字后面
+  // （`5700w+¹ + 2,500²`），display 那条拼好的串做不到这件事。
+  const parts = buckets.map((b) => ({ platform: b.source, display: b.display }));
+  item.crossPlatformLikeTotal = { count, display, platforms, parts };
 }
 
 export function dedupTracks(all: RawSearchEntry[]): Map<string, Track> {

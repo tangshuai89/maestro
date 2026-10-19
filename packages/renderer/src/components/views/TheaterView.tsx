@@ -517,18 +517,26 @@ export default function TheaterView(props: TheaterViewProps) {
                   // （specs/cross-platform-likes）。fallback 链：crossPlat → likedCount → fanOutCount/4 → —
                   const t = currentUnified?.crossPlatformLikeTotal;
                   if (t) {
-                    // 上标：QQ→¹、网易云→²；按 platforms 顺序拼接
-                    const sup = t.platforms.map((p) => (p === 'qq' ? '¹' : '²')).join('');
+                    // D.1：每个数字后面紧跟自己的上标（`5700w+¹ + 2,500²`），
+                    // 所以按 parts 逐项渲染——不能用拼好的 display（那样上标会
+                    // 全粘在末尾：`5700w+ + 2,500¹²`）。parts 缺失的老数据兜回
+                    // 单块 display。
+                    const parts = t.parts?.length
+                      ? t.parts
+                      : [{ platform: 'qq' as const, display: t.display }];
+                    const tooltip = parts
+                      .map((p) => (p.platform === 'qq' ? 'QQ' : '网易云'))
+                      .join(' + ');
                     return (
-                      <>
-                        {t.display}
-                        <sup
-                          className="th-hud-like-sup"
-                          title={t.platforms.map((p) => (p === 'qq' ? 'QQ' : '网易云')).join(' + ')}
-                        >
-                          {sup}
-                        </sup>
-                      </>
+                      <span className="th-hud-like-total" title={tooltip}>
+                        {parts.map((p, i) => (
+                          <span key={p.platform + i} className="th-hud-like-part">
+                            {i > 0 && ' + '}
+                            {p.display}
+                            <sup className="th-hud-like-sup">{p.platform === 'qq' ? '¹' : '²'}</sup>
+                          </span>
+                        ))}
+                      </span>
                     );
                   }
                   if (likedCount > 0) return likedCount.toLocaleString();

@@ -245,6 +245,25 @@
 .th-hud-heart {
   color: var(--heart);
 }
+/* D.1 跨平台 ❤ 累加：紧凑加号 + 紧跟数字的上标（specs/cross-platform-likes）。
+   纯排版，不引入新颜色——颜色沿用 .th-hud-sync 的 currentColor。 */
+.th-hud-like-total {
+  display: inline-flex;
+  align-items: baseline;
+}
+.th-hud-like-part {
+  white-space: nowrap;
+}
+.th-hud-like-sup {
+  /* 上标字符 ¹ ² 本身已是上标位，这里只收小一号并压低不透明度，
+     避免它跟主数字抢视觉层级。vertical-align 必须显式给：HUD 行高被
+     align-items: baseline 接管后 <sup> 的默认偏移会显得偏低。 */
+  font-size: 0.7em;
+  vertical-align: super;
+  opacity: 0.7;
+  margin-left: 1px;
+  cursor: help;
+}
 .th-hud-dot {
   width: 4px;
   height: 4px;

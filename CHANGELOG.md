@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **跨平台 ❤ 累加（cross-platform-likes）补齐欠账**——功能早已上线但**一条测试都没有**，
+  且 spec 的两条验收其实没实现。本轮三件事：
+
+  1. **likeCount 缓存（真缺）**：此前每次搜索都重打 QQ `SongFavRead` / 网易云
+     `song/detail` 公开接口。现在挂在 `music.service.likeCountCache`——
+     key = `sessionId|platform|trackId`，命中/干净缺席 1h、失败 30s、FIFO 上限 512。
+     放 service 而非 provider：key 含 sessionId，而 provider 是跨 session 单例，
+     放 provider 会让 A 用户命中 B 用户的缓存条目。
+  2. **HUD 上标位置修正（渲染偏离 spec）**：此前渲染成 `5700w+ + 2,500¹²`——
+     两个上标粘在末尾，等于失去指代对象；spec 要的是 `5700w+¹ + 2,500²`。
+     `crossPlatformLikeTotal` 加 `parts` 字段（逐项切分，顺序 = sources 序），
+     HUD 按 parts 逐项渲染，老数据无 `parts` 时兜回单块 display。
+  3. **33 条测试**：provider 字段映射与错误路径（QQ `m_numbers`/`m_show`、
+     网易云 `likedCount`）、service 填充口径 + 缓存三档 + 跨 session 不串号、
+     前端 HUD 四条验收 + 回落链。
+  - 测试做过**变异验证**：短路缓存读 → 2 条红；cacheKey 去掉 sessionId → 1 条红；
+    HUD 改回"上标粘末尾" → 2 条红。跑绿不算数，变异能红才算有牙齿。
+  - `patchLibraryWithSources` 补上填充；`importLiked` **刻意不填**——一次几百首
+    会把公开接口打爆，而库弹窗走 `getLibrary`（已填 + 缓存兜底），效果等价。
+
 - **三语 README 语言纯度 CI 门禁**（`scripts/check-readme-i18n.mjs`，接进
   `npm run test:i18n` 与 `npm run test:ci`）—— README.md 出现未豁免汉字 /
   README.zh-CN.md 出现假名 / README.ja.md 出现简体词即非零退出。三份 README 靠

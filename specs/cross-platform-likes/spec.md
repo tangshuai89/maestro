@@ -81,6 +81,13 @@ interface UnifiedSearchItem {
     display: string;
     /** 累加来源平台列表（顺序 = sources 顺序），用于上标渲染 */
     platforms: Array<'qq' | 'netease'>;
+    /**
+     * 逐项展示串（HUD 用）。display 是拼好的「5700w+ + 2,500」，但 HUD 要的是
+     * 「5700w+¹ + 2,500²」——**上标紧跟各自的数字**，拼好的串做不到这件事
+     * （只能渲染成 `5700w+ + 2,500¹²`，两个上标粘在末尾 = 失去指代对象）。
+     * 顺序 = sources 出现序。
+     */
+    parts: Array<{ platform: 'qq' | 'netease'; display: string }>;
   };
 }
 ```
