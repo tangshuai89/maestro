@@ -308,19 +308,52 @@ async function main() {
     } catch (e: any) {
       msg = e.message;
     }
-    assert.ok(msg.includes('not supported'), `不支持的平台应抛明确错误，实际: ${msg}`);
-    ok('10. 未实现 getAlbumTracks 的平台 → 抛「not supported」');
+    // 2026-10-20 修正断言：service 的消息在 6398ce6 之后改成了人话
+    // （`该平台暂不支持专辑详情（${provider}）`）——因为它会**原样透到界面**上。
+    // 旧断言找的是英文子串 'not supported'，跟实际契约对不上 → 长期红灯。
+    // 这里直接断言真实契约：明确的中文说明 + 带平台名。
+    assert.ok(
+      msg.includes('该平台暂不支持专辑详情') && msg.includes('spotify'),
+      `不支持的平台应抛明确错误，实际: ${msg}`,
+    );
+    ok('10. 未实现 getAlbumTracks 的平台 → 抛「该平台暂不支持专辑详情」');
   }
   {
-    const svc = makeSvc({}); // qq 也没有
+    const svc = makeSvc({}); // 四个 provider 的专辑方法全是空 stub
+    let threw = false;
+    let msg = '';
+    try {
+      await svc.getAlbumTracksUnified(anonymous, 'netease', 'x');
+    } catch (e: any) {
+      threw = true;
+      msg = e.message;
+    }
+    // 2026-10-20 修正：网易云 provider 本身**已经实现** getAlbumTracks
+    // （6398ce6 解除了 B1 阻塞），但本用例的 netease 是空 stub，没有该方法
+    // → 仍走「平台不支持」分支。旧注释还写着「未实现（B1 挂起）」，与现状不符。
+    assert.ok(threw, '未实现 getAlbumTracks 的平台应抛错');
+    assert.ok(
+      msg.includes('该平台暂不支持专辑详情') && msg.includes('netease'),
+      `网易云 stub 未实现时应提示平台不支持，实际: ${msg}`,
+    );
+    ok('10b. 网易云 stub 未实现 getAlbumTracks → 抛「该平台暂不支持专辑详情」');
+  }
+  {
+    // 10c. 网易云**已实现** getAlbumTracks，但未登录 → 前置拦截（6398ce6 新增）
+    const svc = makeSvc({
+      netease: { getAlbumTracks: async () => [track('netease', 't1', 'T1')] },
+    });
+    let msg = '';
     let threw = false;
     try {
       await svc.getAlbumTracksUnified(anonymous, 'netease', 'x');
-    } catch {
+    } catch (e: any) {
       threw = true;
+      msg = e.message;
     }
-    assert.ok(threw, '网易云 getAlbumTracks 未实现（B1 挂起）应抛错');
-    ok('10b. 网易云专辑详情未实现 → 抛错（spec 阻塞项 B1）');
+    assert.ok(threw, '网易云未登录拉专辑详情应抛错');
+    assert.ok(msg.includes('请先登录网易云'), `网易云未登录应提示先登录，实际: ${msg}`);
+    ok('10c. 网易云已实现但未登录 → 抛「请先登录网易云」');
   }
 
   // ══════════════════════════════════════════════════════════

@@ -6,10 +6,15 @@
 
 ## 范围
 
-两类：
+三类：
 
 1. **环境/账号阻塞**（A 组）— 代码已就位，缺外部凭据，非代码 bug
 2. **测试覆盖缺口**（B-G 组）— `specs/test-plan/tasks.md` 审计后确认仍未做的 15 项
+3. **覆盖率盲区**（H 组）— 2026-10-20 全量评估实测新增：
+   用 lcov 按行/函数双口径核对后，发现**测试体量够但有效性有洞**——
+   `usePlayer` hook 体（2040 行）与 `reco.service` 主链路（`run`/`evaluate`/
+   `recordSignals`/`callDeepSeekForParse`）**一行没执行**，覆盖率数字把这两个洞
+   藏在了 78.64% 里面。同批次还发现 **CI 测试门禁假绿**（已修，见 G2 修正）。
 
 ## 不在范围
 
@@ -20,7 +25,10 @@
 
 - A 组：A1 EVS 签名后 Premium 播整曲成功；A2 `npm run pack` 出 dmg
 - B-G 组：15 项全部勾选，`npm test` 全绿，覆盖率 ≥60% 行（G3 落地后）
-- 整体：`npm run typecheck && npm run lint && npm test` 全绿
+- H 组：H1（`usePlayer` hook 体）/ H2（`reco.service` 主链路）行覆盖各 ≥60%，
+  H3–H6 补齐，H7 视排期
+- 整体：`npm run typecheck && npm run lint && npm test` 全绿，
+  **且 `npm run test:ci` 在有失败时必须以非零码退出**（G2 修正后的硬要求）
 
 ## 执行顺序建议
 

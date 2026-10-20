@@ -1385,8 +1385,11 @@ export class MusicService {
    * 一张专辑只属于一个平台）。
    *
    * 平台没实现 `getAlbumTracks` → 抛 400 并给明确原因，让 UI 能提示
-   * 「该平台暂不支持专辑详情」而不是静默失败。当前只有 QQ / Deezer 实现了
-   * （网易云被 -462 反爬挡住、Spotify 缺 token，见 spec 阻塞项 B1/B2）。
+   * 「该平台暂不支持专辑详情」而不是静默失败。
+   *
+   * 当前已实现：QQ / Deezer / 网易云（2026-10-20 起，B1 阻塞解除 —— 当年
+   * 记的"-462 反爬"其实是未登录态响应，登录态实测 code=200 曲目完整）。
+   * Spotify 仍缺 token（B2）。
    */
   async getAlbumTracksForProvider(
     session: Session,

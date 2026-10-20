@@ -3,8 +3,18 @@
 # Usage:
 #   npm test                 one-shot run
 #   npm test -- --watch      re-run whenever any *.test.* or src/** changes
-#   npm test -- --ci         CI mode: --bail (first failure exits) + spec reporter
+#   npm test -- --ci         CI mode: spec-style reporter + non-zero exit on any failure
 #   npm test -- --coverage   c8 coverage report + threshold gate (≥60% lines)
+#
+# ── 失败语义（2026-10-20 修）─────────────────────────────────────────
+# 旧实现有两个互相叠加的坑：
+#   1. `--ci` 分支用 `set +e` + `OUTPUT=$(run_all 2>&1)`，而 run_all 最后一条
+#      命令是 `echo "── all tests passed ──"` → `$?` 恒为 0 → **测试挂了 CI 照样绿**。
+#   2. 非 CI 模式全程 `set -e`，server 排第 2 → server 一红，electron(8) +
+#      renderer(41) 共 49 个测试文件**永远不会执行**，信号被截断。
+#
+# 现在统一语义：**跑完全部测试文件，收集失败清单，最后以非零码退出**。
+# 一轮跑完能看到所有断点，而不是修一个再发现下一个。
 set -euo pipefail
 
 WATCH=0
@@ -18,13 +28,11 @@ for arg in "$@"; do
   esac
 done
 
-# ── CI mode: --bail + spec reporter ──────────────────────────────
-# In CI mode, the first failing test file exits immediately with a non-zero
-# code. Each test file's output is prefixed with a spec-style header.
-CI_BAIL=""
-if [ "$CI_MODE" -eq 1 ]; then
-  CI_BAIL="1"
-fi
+# ── 失败收集 ───────────────────────────────────────────────────────
+# FAILED_COUNT / FAILED_FILES 由 run_pkg 累加。**必须是顶层普通变量**，
+# 不能用 `$(...)` 捕获子 shell 的输出——子 shell 里改的变量出不来。
+FAILED_COUNT=0
+FAILED_FILES=""
 
 run_pkg() {
   local pkg="$1"
@@ -40,7 +48,7 @@ run_pkg() {
   mjs_files=$(find "$root/packages/$pkg/src" -type f -name '*.test.mjs' 2>/dev/null | sort)
   tsx_files=$(find "$root/packages/$pkg/src" -type f -name '*.test.tsx' 2>/dev/null | sort)
   files="${ts_files}${mjs_files:+$'\n'${mjs_files}}"
-  if [ -z "$files" ] && [ -z "$tsx_files" ]; then return; fi
+  if [ -z "$files" ] && [ -z "$tsx_files" ]; then return 0; fi
   # 注意：`grep -c .` 零匹配时会**同时**打印 "0" 和以 1 退出，所以 `|| echo 0` 会再补一个 "0"，
   # 命令替换拿到 "0\n0"，算术展开直接语法错误（$(( 4 + 0⏎0 ))）。用 `|| true` 只吞退出码。
   local count=$(( $(printf '%s\n' "$files" 2>/dev/null | grep -c . || true) + $(printf '%s\n' "$tsx_files" 2>/dev/null | grep -c . || true) ))
@@ -52,13 +60,27 @@ run_pkg() {
     if [ "$CI_MODE" -eq 1 ]; then
       echo "  ▸ ${short}"
     fi
+    # 失败**不中断循环**：记进失败清单，跑完全部文件再统一非零退出。
+    # `if ! (...)` 让 errexit 在这条命令上失效，所以外层的 set -e 不会
+    # 把整个循环掐掉（掐掉 = server 一红，后面 49 个文件全不跑）。
+    local ok=1
     if [[ "$f" == *.mjs ]]; then
-      ( cd "$root/packages/$pkg" && node "$f" )
+      if ! ( cd "$root/packages/$pkg" && node "$f" ); then
+        ok=0
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_FILES="${FAILED_FILES} ${short}"
+      fi
     else
-      ( cd "$root/packages/$pkg" && npx ts-node "$f" )
+      if ! ( cd "$root/packages/$pkg" && npx ts-node "$f" ); then
+        ok=0
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_FILES="${FAILED_FILES} ${short}"
+      fi
     fi
     if [ "$CI_MODE" -eq 1 ]; then
-      echo "  ✓ ${short}"
+      # 标记必须反映真实结果 —— 旧实现无论成败都打 ✓，挂掉的文件在日志里
+      # 看着是绿的，只能靠末尾的失败清单才发现。
+      if [ "$ok" -eq 1 ]; then echo "  ✓ ${short}"; else echo "  ✗ ${short}"; fi
     fi
   done
   # React 组件 .test.tsx：仅 renderer 包支持（依赖 vitest + happy-dom）
@@ -71,15 +93,21 @@ run_pkg() {
           echo "  ▸ ${short}"
         fi
         # 显式 -c 避免 npm 装在 monorepo 根时 vitest 找不到 config
-        ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" "$f" --reporter=verbose )
+        local ok=1
+        if ! ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" "$f" --reporter=verbose ); then
+          ok=0
+          FAILED_COUNT=$((FAILED_COUNT + 1))
+          FAILED_FILES="${FAILED_FILES} ${short}"
+        fi
         if [ "$CI_MODE" -eq 1 ]; then
-          echo "  ✓ ${short}"
+          if [ "$ok" -eq 1 ]; then echo "  ✓ ${short}"; else echo "  ✗ ${short}"; fi
         fi
       done
     else
       echo "  ⚠️  跳过 ${pkg} 的 .test.tsx（暂只支持 renderer 包）"
     fi
   fi
+  return 0
 }
 
 run_all() {
@@ -87,20 +115,32 @@ run_all() {
   run_pkg server    "$PWD"
   run_pkg electron  "$PWD"
   run_pkg renderer  "$PWD"
+  if [ "$FAILED_COUNT" -gt 0 ]; then
+    return 1
+  fi
   echo "── all tests passed ──"
+  return 0
 }
 
-# ── CI mode: bail on first failure ───────────────────────────────
+# ── 失败清单 ───────────────────────────────────────────────────────
+report_failures() {
+  echo ""
+  echo "── ${FAILED_COUNT} 个测试文件失败 ──"
+  local f
+  for f in $FAILED_FILES; do
+    echo "  ✗ $f"
+  done
+}
+
+# ── CI mode: 跑完全部 + 有失败就非零退出 ───────────────────────────
+# ⚠️ 这里**不能**用 `OUTPUT=$(run_all 2>&1)` —— 那是子 shell，FAILED_COUNT
+# 的累加留不下来，$? 又只反映最后一条 echo 的状态 → 旧实现就是这么假绿的。
+# 直接流式输出，CI 日志里能实时看到是哪个文件挂了。
 if [ "$CI_MODE" -eq 1 ]; then
-  set +e
-  OUTPUT=$(run_all 2>&1)
-  EXIT_CODE=$?
-  set -e
-  echo "$OUTPUT"
-  if [ "$EXIT_CODE" -ne 0 ]; then
-    echo ""
-    echo "── CI bail: tests failed (exit ${EXIT_CODE}) ──"
-    exit "$EXIT_CODE"
+  run_all || true
+  if [ "$FAILED_COUNT" -gt 0 ]; then
+    report_failures
+    exit 1
   fi
   exit 0
 fi
@@ -122,6 +162,9 @@ if [ "$COVERAGE" -eq 1 ]; then
     [ -z "$files" ] && continue
     echo "── coverage: ${pkg} ──"
     for f in $files; do
+      # c8 会把被测进程的退出码透传出来，所以 rc!=0 就是测试挂了。
+      # 旧写法是 `|| true` —— 失败被整个吞掉，覆盖率步骤永远绿。
+      rc=0
       if [[ "$f" == *.mjs ]]; then
         # --clean=false: don't wipe .tmp between files — we need to accumulate
         # coverage across all test files for a correct merged report.
@@ -129,11 +172,15 @@ if [ "$COVERAGE" -eq 1 ]; then
         # without this c8 only counts .js files and the coverage is 0%.
         ( cd "$PKG_ROOT" && npx c8 --clean=false --reporter=lcov \
             --report-dir="$COVERAGE_DIR" --temp-directory="$COVERAGE_DIR/.tmp" \
-            --extension .ts node "$f" ) || true
+            --extension .ts node "$f" ) || rc=$?
       else
         ( cd "$PKG_ROOT" && npx c8 --clean=false --reporter=lcov \
             --report-dir="$COVERAGE_DIR" --temp-directory="$COVERAGE_DIR/.tmp" \
-            --extension .ts npx ts-node "$f" ) || true
+            --extension .ts npx ts-node "$f" ) || rc=$?
+      fi
+      if [ "$rc" -ne 0 ]; then
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_FILES="${FAILED_FILES} ${f#$PKG_ROOT/}"
       fi
     done
   done
@@ -160,11 +207,19 @@ if [ "$COVERAGE" -eq 1 ]; then
     exit 1
   fi
   echo "── ✅ coverage meets 60% line threshold ──"
+  if [ "$FAILED_COUNT" -gt 0 ]; then
+    report_failures
+    exit 1
+  fi
   exit 0
 fi
 
 if [ "$WATCH" -eq 0 ]; then
-  run_all
+  run_all || true
+  if [ "$FAILED_COUNT" -gt 0 ]; then
+    report_failures
+    exit 1
+  fi
   exit 0
 fi
 
@@ -174,7 +229,7 @@ SENTINEL="$(mktemp -t maestro-test.XXXXXX)"
 touch "$SENTINEL"
 trap 'rm -f "$SENTINEL"' EXIT
 
-run_all
+run_all || true
 echo "── watching for changes (Ctrl-C to exit) ──"
 
 while true; do
@@ -183,7 +238,11 @@ while true; do
     touch "$SENTINEL"
     echo
     echo "── change detected, re-running tests ──"
+    # 每轮重置失败计数，否则上轮的失败会让本轮的结论一直是「failed」
+    FAILED_COUNT=0
+    FAILED_FILES=""
     if ! run_all; then
+      report_failures
       echo "── tests failed; will retry on next change ──"
     fi
   fi

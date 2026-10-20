@@ -202,10 +202,10 @@ export class MusicController {
    * 本来就吃 UnifiedSearchItem（含 versions[] / bestSource），返原始 track
    * 会逼前端再实现一遍合并，等于把 buildUnifiedItems 的逻辑复制一份到前端。
    *
-   * `:provider` 目前只有 qq / deezer 有效（各自只有一张专辑时才是"合并"，
-   * 但统一走这条路让 UI 不用分叉）。网易云被 -462 反爬挡住、Spotify 缺 token
-   * → 这两个平台返 400 `album detail not supported on <p>`（见 spec 阻塞项
-   * B1/B2），UI 据此给明确提示而不是静默失败。
+   * `:provider` 目前 qq / deezer / netease 有效（各自只有一张专辑时才是"合并"，
+   * 但统一走这条路让 UI 不用分叉）。网易云 2026-10-20 起也支持了（B1 阻塞解除）；
+   * Spotify 仍缺 token（B2）→ 返 400「该平台暂不支持专辑详情」，UI 据此给明确
+   * 提示而不是静默失败。
    */
   @Get('albums/:provider/:albumId/tracks')
   async albumTracks(
