@@ -118,7 +118,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `toggleAlbumSave` 明确标注为 **raw / 不落账**（拿不到统一专辑键 → 角标不亮、
   不能用 merged 撤）。
 
-  测试：服务端白盒 15 条 + e2e 6 条 + renderer vitest 9 条 = 30 条；变异验证
+  **二轮 review 残留**（三条，全部处置）：
+
+  - 同平台可能挂**多条不同 albumId**（平台侧换专辑 id，每条都是真实写过的
+    远端对象）→ plan/落账按 `platform:albumId` pair 去重、取消逐条撤；
+    `fannedOutTo` 取消方向 = 该平台**全部撤干净**才计入（撤一半角标不灭）
+  - plan（锁外快照）与落账（锁内）之间的并发窗口写明为**有意取舍** ——
+    落账按"实际撤成功的 pair"摘条目，end state 自洽不产孤儿；消掉窗口要把
+    网络 I/O 塞回锁里（最坏 ≈10s 堵全部 state 写），不值
+  - 搜索角标改**两路注入**：`item.id` 精确 key + sources 的
+    `platform:albumId` 与任一记录重合 —— 兜住 mergedId 漂移后记录留在老
+    key 下、新 key 角标不亮的场景（track 侧 library `ptToFanOutKeys` 同思路）
+
+  测试：服务端白盒 19 条 + e2e 6 条 + renderer vitest 11 条 = 36 条；变异验证
   四轮（不写 `albumFanOut` → 红；取消方向改用请求 sources 反写 → 红；去掉
   异常隔离 → 红；远端写挪回锁内 → 红）。
 

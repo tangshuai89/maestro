@@ -110,15 +110,18 @@
 
 ## 9. 测试
 
-- [x] 9.1 白盒：`album-save.service.test.ts`（9 条）—— 能力矩阵 / 写入 /
+- [x] 9.1 白盒：`album-save.service.test.ts`（19 条）—— 能力矩阵 / 写入 /
       未登录跳过 / 写失败不写 state / 取消幂等 / 取消只动自己的记录 /
-      老 state 兼容 / 定向等价查找 / 源码契约
+      老 state 兼容 / 定向等价查找 / 源码契约 / 异常隔离×3 / trackCount 守卫 /
+      漂移归一 / 锁时序 / 同平台多 albumId / 跨 key 取消 / 角标两路 / 部分撤失败
 - [x] 9.2 白盒：state 序列化 + 幂等反写（不动未收藏过的平台）—— 同上
 - [x] 9.3 e2e：`album-save.e2e.test.ts`（6 条）—— 400 校验 / **路由顺序**
       （`album/save/merged` 不被 `:albumId` 截胡）/ 结构性跳过 / 网易云写入 /
       搜索结果带 `savedPlatforms` / 取消反写
-- [x] 9.3b UI：`AlbumResults.test.tsx`（7 条，vitest）—— ❤ 按钮 / 调用契约 /
-      角标 / 取消 / 空 fannedOutTo 提示 / 失败回滚 / 不触发行展开
+- [x] 9.3b UI：`AlbumResults.test.tsx`（11 条，vitest）—— ❤ 按钮 / 调用契约 /
+      角标 / 取消 / 空 fannedOutTo 提示 / 失败回滚 / 不触发行展开 /
+      换关键词清 override / per-album 保存集合 / sources 带 trackCount /
+      部分取消保留角标
 - [x] 9.4 `npm run typecheck` 通过
 - [x] 9.5 `npm test` 全量绿
 - [x] 9.6 变异验证：① 不写 `albumFanOut` → 红 ② 取消方向改用请求 sources
@@ -146,9 +149,25 @@
       未知平台兜底成 'qq' → `provider=bogus` 静默打到 QQ。专辑端点改用
       `requireAlbumProvider`（未知 → 400），与歌单端点同口径
 - [x] 9.12 🆕 **albumFanOut LRU 上限**（review 低优先级）：`ALBUM_FANOUT_MAX
-  = 1000`，照 `fanOut` 的 `FANOUT_MAX` 口径（state.json 不会无限长）
+= 1000`，照 `fanOut` 的 `FANOUT_MAX` 口径（state.json 不会无限长）
 - [x] 9.13 🆕 **同平台 entry 的 albumId 更新**：请求带来新 albumId 时更新旧的，
       否则 unsave 撤的是旧 id、新的成远端孤儿
+- [x] 9.14 🆕 **同平台多 albumId**（二轮残留）：plan/落账按 `platform:albumId`
+      去重 —— 平台侧换专辑 id（再版/换源）时同一平台可能挂多条，每条都是真实
+      写过的远端对象；取消逐条撤，只撤一条会留远端孤儿。⚠️ 与 9.13 的关系：
+      9.13 是同 platform+同 albumId 的字段更新，本条是同 platform+**不同**
+      albumId 的多记录共存
+- [x] 9.15 🆕 **`fannedOutTo` 取消方向语义**（二轮残留）：= 该平台名下记录
+      **全部撤干净**才计入（撤一半角标不能灭，否则 UI 撒谎）；失败的条目保留
+      在 state 里可重试
+- [x] 9.16 🆕 **角标两路注入**（二轮残留）：`searchAlbumsUnified` 注入
+      `savedPlatforms` 走 ① item.id 精确 key + ② sources 的 platform:albumId
+      与任一记录条目重合 —— 漂移归一把记录留在老 key 下，只靠精确 key 角标会
+      暗（与 track 侧 library `ptToFanOutKeys` 倒排同思路）；按 platform 去重
+- [x] 9.17 🆕 **plan/commit 并发窗口写明为有意取舍**（二轮残留）：plan 读锁外
+      快照、落账锁内重读，之间可能插进并发写 —— 落账按"实际撤成功的 pair"摘
+      条目 → 没撤的保留 ↔ 远端仍收藏，end state 自洽。消掉窗口要把网络 I/O
+      塞回锁里（最坏 ≈10s 堵全部 state 写），不值。见 `fanOutAlbumSave` docstring
 
 ## 10. 知识库沉淀（完工后）
 
@@ -191,6 +210,16 @@ review 提出的 1 个必修 + 4 个中低优先级问题，逐条处置如下�
 **review 的一条判断我修正了**：它说"异常 → 本次已成功平台的写入丢失"。v1 只有
 网易云可写，单平台情况下不存在"部分成功"；但**"远端写成功、本地无记录"**这条
 是真的（`apiCall` 在"请求已发出、响应非 JSON"时抛）—— 同样要修，危害更大。
+
+## 2026-10-20 二轮 review 残留处置
+
+一轮 review 收尾时留下的 3 条已知残留，本轮全部处置：
+
+| #   | 残留                                                                                                                          | 处置                                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unsave 按平台去重：两个漂移 key 各持同平台**不同** albumId 时，只远端撤第一个却把该平台从所有 key 摘掉 → 另一个远端对象成孤儿 | ✅ 修：plan/落账按 `platform:albumId` pair 去重，同平台多条都撤；`fannedOutTo` 取消方向 = 该平台全部撤干净才计入（9.14/9.15，白盒 16/17/19）                                             |
+| 2   | plan（锁外快照）与落账（锁内重读）之间非原子                                                                                  | ⚠️ **写明为有意取舍**（9.17）：落账按"实际撤成功的 pair"摘条目 → 并发新增的记录保留 ↔ 远端仍收藏，end state 自洽不产孤儿；消掉窗口需把网络 I/O 塞回锁（最坏 ≈10s 堵全部 state 写），不值 |
+| 3   | 角标只按 `item.id` 精确 key 注入 → 漂移归一把记录留在老 key 下时，新 key 的卡片角标不亮                                       | ✅ 修：两路注入（9.16，白盒 18）—— 精确 key + sources 的 platform:albumId 重合                                                                                                           |
 
 ## 与 spec 的偏差记录（2026-10-20 实施）
 

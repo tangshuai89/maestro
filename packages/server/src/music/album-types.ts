@@ -60,6 +60,10 @@ export interface UnifiedAlbum {
    * 语义对齐 track 侧的 `likedPlatforms`：**只列真实写入成功的平台**。
    * 结构性跳过（平台没收藏专辑能力 / 未登录）不写 state → 不会出现在这里，
    * 避免角标虚高（"3❤"其实是 1 个平台）。
+   *
+   * 注入走两路（music.service.ts `searchAlbumsUnified`）：item.id 精确 key +
+   * sources 的 platform:albumId 重合 —— 后者兜住 mergedId 漂移（记录在老
+   * key 下）。已按平台去重。
    */
   savedPlatforms?: MusicProvider[];
 }
@@ -133,7 +137,12 @@ export interface AlbumSaveProvider {
   saveAlbum?(session: ProviderSession, albumId: string, saved: boolean): Promise<boolean>;
 }
 
-/** 专辑 fan-out 的持久化条目：某张统一专辑在某个平台上的收藏态。 */
+/** 专辑 fan-out 的持久化条目：某张统一专辑在某个平台上的收藏态。
+ *
+ * ⚠️ 同一平台在同一个 key 下**可能出现多条不同 albumId** 的条目 —— 平台侧
+ * 换了专辑 id（再版/换源）时，每一条都是我们真实写过的远端对象；取消收藏
+ * 按 (platform, albumId) 逐条撤，按平台合并会制造远端孤儿（远端仍收藏、
+ * 记录却没了）。角标计数时要按 platform 去重。 */
 export interface AlbumFanOutEntry {
   platform: MusicProvider;
   /** 该平台内的专辑 id —— 取消收藏时要用它反写，缺了就没法撤。 */

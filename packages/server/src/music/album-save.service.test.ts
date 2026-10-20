@@ -445,6 +445,132 @@ async function test15_remote_write_does_not_hold_lock() {
   console.log('✅ 15. 远端写不占 state 锁（其它写路径不被拖住）');
 }
 
+// ── 16. 同平台多 albumId：全部记录 + 取消时逐条撤 ─────────────
+// 平台侧换了专辑 id（再版/换源）时，同一张统一专辑在同平台挂多条记录。
+// 每条都是我们真实写过的远端对象 —— 取消必须逐条撤，只撤一条会留远端孤儿。
+async function test16_multi_albumid_same_platform() {
+  const calls: Array<{ albumId: string; saved: boolean }> = [];
+  const { ms } = await makeService({
+    saveAlbum: async (_ps: any, albumId: string, saved: boolean) => {
+      calls.push({ albumId, saved });
+      return true;
+    },
+  });
+  const s = makeSession();
+  await ms.fanOutAlbumSave(s, ALBUM_ID, [{ platform: 'netease', albumId: 'ne-1' }], true);
+  await ms.fanOutAlbumSave(s, ALBUM_ID, [{ platform: 'netease', albumId: 'ne-2' }], true);
+  let state = (ms as any).loadState(s);
+  assert.deepStrictEqual(
+    state.albumFanOut[ALBUM_ID],
+    [
+      { platform: 'netease', albumId: 'ne-1' },
+      { platform: 'netease', albumId: 'ne-2' },
+    ],
+    '两条都是真实写过的远端对象，必须都记（只留一条 = 远端孤儿）',
+  );
+  calls.length = 0;
+  const res = await ms.fanOutAlbumSave(s, ALBUM_ID, [], false);
+  assert.deepStrictEqual(
+    calls.map((c) => c.albumId).sort(),
+    ['ne-1', 'ne-2'],
+    '取消必须逐条撤（按 platform:albumId，不按平台）',
+  );
+  assert.deepStrictEqual(res.fannedOutTo, ['netease'], '全部撤干净才算该平台取消成功');
+  state = (ms as any).loadState(s);
+  assert.ok(!state.albumFanOut[ALBUM_ID], '全部撤完记录才清');
+  console.log('✅ 16. 同平台多 albumId：全部记录 + 逐条撤');
+}
+
+// ── 17. 不同 key 的同平台不同 albumId：取消只动匹配到的记录 ────
+async function test17_unsave_only_matched_key() {
+  const calls: Array<{ albumId: string; saved: boolean }> = [];
+  const { ms } = await makeService({
+    saveAlbum: async (_ps: any, albumId: string, saved: boolean) => {
+      calls.push({ albumId, saved });
+      return true;
+    },
+  });
+  const s = makeSession();
+  await ms.fanOutAlbumSave(s, 'key-a', [{ platform: 'netease', albumId: 'ne-1' }], true);
+  await ms.fanOutAlbumSave(s, 'key-b', [{ platform: 'netease', albumId: 'ne-2' }], true);
+  calls.length = 0;
+  // sources 只含 ne-2 → 只能定位到 key-b；key-a 的记录（远端仍收藏）不许碰
+  const res = await ms.fanOutAlbumSave(
+    s,
+    'key-b',
+    [{ platform: 'netease', albumId: 'ne-2' }],
+    false,
+  );
+  assert.deepStrictEqual(res.fannedOutTo, ['netease']);
+  assert.deepStrictEqual(calls, [{ albumId: 'ne-2', saved: false }]);
+  const state = (ms as any).loadState(s);
+  assert.deepStrictEqual(
+    state.albumFanOut['key-a'],
+    [{ platform: 'netease', albumId: 'ne-1' }],
+    'key-a 的 ne-1 远端仍收藏 → 记录必须保留（删了就成孤儿撤不掉）',
+  );
+  assert.ok(!state.albumFanOut['key-b'], 'key-b 撤完应删除');
+  console.log('✅ 17. 取消只动匹配 key：key-a 的 ne-1 记录保留');
+}
+
+// ── 18. 角标两路命中：sources 重合点亮漂移记录的角标 ──────────
+async function test18_badge_via_source_overlap() {
+  const { ms } = await makeService({
+    searchAlbums: async () => [
+      {
+        platform: 'netease',
+        albumId: 'ne-1',
+        title: '范特西',
+        artist: '周杰伦',
+        coverUrl: '',
+        trackCount: 10,
+        year: 2001,
+        rank: 0,
+      },
+    ],
+  });
+  const s = makeSession();
+  // 记录挂在一个"漂移前的老 key"下（搜索产出的 item.id 不会是它）
+  await ms.fanOutAlbumSave(s, 'merged-old-key', [{ platform: 'netease', albumId: 'ne-1' }], true);
+  const res = await ms.searchAlbumsUnified(s, '范特西', 1, 20);
+  const item = res.items.find((i: any) => i.title === '范特西');
+  assert.ok(item, '搜索应有结果');
+  assert.ok(
+    item.id !== 'merged-old-key',
+    '前提：搜索产出的 item.id 与记录 key 不同（这就是漂移场景）',
+  );
+  assert.deepStrictEqual(
+    item.savedPlatforms,
+    ['netease'],
+    'item.sources 含 netease:ne-1 与记录重合 → 角标应点亮',
+  );
+  console.log('✅ 18. 角标两路命中：漂移记录经 sources 重合点亮');
+}
+
+// ── 19. 同平台多 albumId 部分撤失败：只摘成功条目 + 平台不计入 ──
+async function test19_partial_unsave_failure() {
+  const { ms } = await makeService({
+    // 收藏方向都成功；取消方向 ne-2 失败（远端撤不掉）
+    saveAlbum: async (_ps: any, albumId: string, saved: boolean) => saved || albumId !== 'ne-2',
+  });
+  const s = makeSession();
+  await ms.fanOutAlbumSave(s, ALBUM_ID, [{ platform: 'netease', albumId: 'ne-1' }], true);
+  await ms.fanOutAlbumSave(s, ALBUM_ID, [{ platform: 'netease', albumId: 'ne-2' }], true);
+  const res = await ms.fanOutAlbumSave(s, ALBUM_ID, [], false);
+  assert.deepStrictEqual(
+    res.fannedOutTo,
+    [],
+    'ne-2 没撤掉 → netease 不算"取消成功"（否则角标撒谎：远端仍收藏）',
+  );
+  const state = (ms as any).loadState(s);
+  assert.deepStrictEqual(
+    state.albumFanOut[ALBUM_ID],
+    [{ platform: 'netease', albumId: 'ne-2' }],
+    '只摘撤成功的条目，失败记录保留（远端还收藏着）',
+  );
+  console.log('✅ 19. 部分撤失败：只摘成功条目 + 平台不进 fannedOutTo');
+}
+
 async function main() {
   await test1_capability_matrix();
   await test2_netease_writes();
@@ -461,6 +587,10 @@ async function main() {
   await test13_track_count_guard();
   await test14_canonical_merged_id();
   await test15_remote_write_does_not_hold_lock();
+  await test16_multi_albumid_same_platform();
+  await test17_unsave_only_matched_key();
+  await test18_badge_via_source_overlap();
+  await test19_partial_unsave_failure();
   console.log('\n✅ album-save.service.test.ts 全部通过');
 }
 

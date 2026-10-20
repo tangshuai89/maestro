@@ -1287,10 +1287,31 @@ export class MusicService {
     const merged = buildUnifiedAlbums(all, { query: kw });
     // 注入收藏态：用户在哪些平台收藏了这张专辑（只列真实写入成功过的平台）。
     // 结构性跳过（没能力 / 未登录）从没写进 state → 不会出现在这里，角标不虚高。
+    //
+    // 两路命中：① 精确 key（albumFanOut[item.id]）② sources 的
+    // platform:albumId 与任一记录条目重合 —— mergedId 漂移时记录留在老 key
+    // 下（fanOutAlbumSave 按 (platform, albumId) 重合归一），只靠精确 key
+    // 角标会暗（与 track 侧 library 的 ptToFanOutKeys 倒排同一思路）。
     const albumState = this.loadState(session);
+    const savedBySource = new Map<string, Set<MusicProvider>>();
+    for (const entries of Object.values(albumState.albumFanOut)) {
+      for (const e of entries) {
+        const sk = `${e.platform}:${e.albumId}`;
+        let set = savedBySource.get(sk);
+        if (!set) savedBySource.set(sk, (set = new Set()));
+        set.add(e.platform);
+      }
+    }
     for (const item of merged) {
-      const entries = albumState.albumFanOut[item.id];
-      if (entries?.length) item.savedPlatforms = entries.map((e) => e.platform);
+      const platforms = new Set<MusicProvider>();
+      for (const e of albumState.albumFanOut[item.id] ?? []) platforms.add(e.platform);
+      for (const src of item.sources) {
+        const hit = savedBySource.get(`${src.platform}:${src.albumId}`);
+        if (hit) for (const p of hit) platforms.add(p);
+      }
+      // Set 去重：同一平台可能有多条不同 albumId 记录（平台侧换了专辑 id），
+      // 角标按平台计数。
+      if (platforms.size) item.savedPlatforms = [...platforms];
     }
     const start = (safePage - 1) * effectivePageSize;
     return {
@@ -1374,10 +1395,17 @@ export class MusicService {
   ): Promise<AlbumTrack[]> {
     const ap = this.albumProviderOf(provider);
     if (!ap || typeof ap.getAlbumTracks !== 'function') {
-      throw new BadRequestException(`album detail not supported on ${provider}`);
+      // 这条消息会**原样透到界面**上（renderer 直接显示后端的 message），
+      // 所以必须是人话，不能是英文技术串。
+      throw new BadRequestException(`该平台暂不支持专辑详情（${provider}）`);
     }
     if (!albumId) {
       throw new BadRequestException('albumId 不能为空');
+    }
+    // 网易云专辑详情**必须登录**：未登录时端点回 code=-462 反爬（spec 里
+    // 当年记的"不可用"就是这个未登录态）。先拦在本地，别浪费一次请求。
+    if (provider === 'netease' && !session.providers.netease?.musicU) {
+      throw new NotFoundException('请先登录网易云');
     }
     const getAlbumTracks = ap.getAlbumTracks.bind(ap) as (
       ps: ProviderSession,
@@ -3906,6 +3934,12 @@ export class MusicService {
    *   阶段 1 执行远端写（无锁）
    *   阶段 2 落账（锁内，纯内存）
    *
+   * ⚠️ plan（锁外快照）与落账（锁内重读）之间有**有意的并发窗口**：
+   * plan 可能漏掉其间并发新增的记录 —— 但落账按"实际撤成功的
+   * (platform, albumId)"摘条目，没撤的记录保留 → 远端仍收藏 = 记录仍在，
+   * end state 自洽（不会产孤儿，也不会误删）。把 I/O 塞回锁内消掉这个
+   * 窗口的代价是整个 session 的写路径被远端时延拖住，不值。
+   *
    * 写调用**绝不向外抛**：平台写失败（网络 / 风控 / 响应非 JSON）一律当成
    * "这个平台没写成"，整体 success 仍为 true。否则异常会在 saveState 之前
    * 抛出 → 已成功的平台丢失落账 → 远端收藏了但本地无记录（孤儿，撤不掉）。
@@ -3931,7 +3965,6 @@ export class MusicService {
     return this.withStateLock(session.id, async () => {
       const state = this.loadState(session);
       const ok = outcomes.filter((o) => o.ok);
-      const fannedOutTo = ok.map((o) => o.platform);
 
       // 同一张专辑可能存在多条历史 key（mergedId 漂移）→ 全部找出来一起处理
       const keys = new Set<string>();
@@ -3939,34 +3972,50 @@ export class MusicService {
       for (const k of this.matchingAlbumFanOutKeys(state, sources)) keys.add(k);
       const targetKey = keys.size ? [...keys][0] : mergedAlbumId;
 
+      // fannedOutTo 的粒度是「平台」：
+      //  - 收藏方向：该平台写成功即计入；
+      //  - 取消方向：同一平台可能挂着**多条 albumId 记录**（平台侧换了专辑 id
+      //    —— 再版/换源），只有它名下的记录全部撤干净才算"取消成功"。否则前端
+      //    会按"已取消"清角标，而远端还有残留收藏（角标撒谎）。
+      const fannedOutTo: MusicProvider[] = [];
+
       if (saved) {
-        // 合并所有历史 key 的条目 + 本次成功项 → 写进 targetKey，其余 key 删除
+        // 合并所有历史 key 的条目 + 本次成功项 → 写进 targetKey，其余 key 删除。
+        // 条目按 (platform, albumId) 去重 —— **同一平台允许多条不同 albumId**：
+        // 每一条都是我们真实写过的远端对象，取消收藏要逐条撤。若按平台合并
+        // （只留一个 albumId），被丢掉的那条远端仍收藏着、记录却没了 → 远端孤儿。
         const entries: AlbumFanOutEntry[] = [];
-        const seen = new Set<MusicProvider>();
+        const seen = new Set<string>();
+        const push = (platform: MusicProvider, albumId: string) => {
+          const pair = `${platform}:${albumId}`;
+          if (seen.has(pair)) return;
+          seen.add(pair);
+          entries.push({ platform, albumId });
+        };
         for (const k of keys) {
-          for (const e of state.albumFanOut[k] ?? []) {
-            if (seen.has(e.platform)) continue;
-            seen.add(e.platform);
-            entries.push({ ...e });
-          }
+          for (const e of state.albumFanOut[k] ?? []) push(e.platform, e.albumId);
         }
         for (const o of ok) {
-          const ex = entries.find((e) => e.platform === o.platform);
-          if (ex) {
-            // 同平台已有条目但 albumId 变了 → 更新成新的（否则 unsave 会撤旧的，
-            // 新的那条成远端孤儿）
-            ex.albumId = o.albumId;
-          } else {
-            entries.push({ platform: o.platform, albumId: o.albumId });
-          }
+          push(o.platform, o.albumId);
+          if (!fannedOutTo.includes(o.platform)) fannedOutTo.push(o.platform);
         }
         for (const k of keys) delete state.albumFanOut[k];
         if (entries.length) state.albumFanOut[targetKey] = entries;
       } else {
-        // 取消：把所有相关 key 里"已成功撤销"的平台摘掉；撤失败的保留记录
-        const succeeded = new Set(ok.map((o) => o.platform));
+        // 取消：把所有相关 key 里"已成功撤销"的 (platform, albumId) 摘掉；
+        // 撤失败的记录保留 —— 远端仍收藏着，删了记录就再也撤不掉。
+        const succeeded = new Set(ok.map((o) => `${o.platform}:${o.albumId}`));
+        const totals = new Map<MusicProvider, number>();
+        for (const t of plan) totals.set(t.platform, (totals.get(t.platform) ?? 0) + 1);
+        const oks = new Map<MusicProvider, number>();
+        for (const o of ok) oks.set(o.platform, (oks.get(o.platform) ?? 0) + 1);
+        for (const [p, total] of totals) {
+          if ((oks.get(p) ?? 0) === total) fannedOutTo.push(p);
+        }
         for (const k of keys) {
-          const remaining = (state.albumFanOut[k] ?? []).filter((e) => !succeeded.has(e.platform));
+          const remaining = (state.albumFanOut[k] ?? []).filter(
+            (e) => !succeeded.has(`${e.platform}:${e.albumId}`),
+          );
           if (remaining.length) state.albumFanOut[k] = remaining;
           else delete state.albumFanOut[k];
         }
@@ -4025,17 +4074,21 @@ export class MusicService {
         .map(([platform, albumId]) => ({ platform, albumId, saved: true }));
     }
 
-    // 取消方向：按记录反写（mergedId 漂移时把历史 key 一并算进来）
+    // 取消方向：按记录反写（mergedId 漂移时把历史 key 一并算进来）。
+    // 条目按 (platform, albumId) 去重 —— 同一平台可能挂着多条不同 albumId
+    // 的记录（平台侧换了专辑 id），每条都是真实写过的远端对象，必须逐条撤；
+    // 只撤第一条会让另一条成远端孤儿（远端还收藏着、记录却没了）。
     const state = this.loadState(session);
     const keys = new Set<string>();
     if (state.albumFanOut[mergedAlbumId]) keys.add(mergedAlbumId);
     for (const k of this.matchingAlbumFanOutKeys(state, sources)) keys.add(k);
     const out: Array<{ platform: MusicProvider; albumId: string; saved: boolean }> = [];
-    const seen = new Set<MusicProvider>();
+    const seen = new Set<string>();
     for (const k of keys) {
       for (const e of state.albumFanOut[k] ?? []) {
-        if (seen.has(e.platform)) continue;
-        seen.add(e.platform);
+        const pair = `${e.platform}:${e.albumId}`;
+        if (seen.has(pair)) continue;
+        seen.add(pair);
         out.push({ platform: e.platform, albumId: e.albumId, saved: false });
       }
     }

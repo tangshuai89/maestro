@@ -949,6 +949,9 @@ export interface UnifiedAlbum {
    *
    * 只含真实写入成功的平台 —— 结构性跳过（没能力 / 未登录）不在其中。
    * undefined = 没收藏过。
+   *
+   * 服务端注入走两路：item.id 精确 key + sources 的 platform:albumId 重合
+   * （兜住 mergedId 漂移）。已按平台去重，可直接当角标数字用。
    */
   savedPlatforms?: MusicProvider[];
 }
@@ -1011,9 +1014,12 @@ export async function fetchAlbumTracks(
 /**
  * 专辑 fan-out：把「收藏这张专辑」写到所有有收藏专辑能力且已登录的平台。
  *
- * `fannedOutTo` 只含**真实写入成功**的平台 —— 结构性跳过（平台没收藏专辑
- * 能力 / 未登录）不在里面，所以 UI 角标不能拿它当"已收藏平台数"用，得用
- * 搜索结果里的 `savedPlatforms`。
+ * `fannedOutTo` 的粒度是平台：收藏方向 = 真实写入成功的平台；取消方向 =
+ * **该平台名下记录全部撤干净**的平台（同平台可能挂多条 albumId —— 平台侧
+ * 换了专辑 id —— 撤一半不算取消成功，角标不能灭）。
+ *
+ * 结构性跳过（没能力 / 未登录）不在里面，所以 UI 角标不能拿它当"已收藏
+ * 平台数"用，得用搜索结果里的 `savedPlatforms`。
  */
 export async function fanOutAlbumSave(
   mergedAlbumId: string,
