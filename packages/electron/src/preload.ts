@@ -19,7 +19,11 @@ const SUBSCRIBABLE_CHANNELS = new Set([
   'tray:command',
   'desktop-lyrics:changed',
   'spotify:oauth-protocol',
-  'console-message', // forwarded to main for debugging
+  // ⚠️ 这里**只放 main→renderer（main 会 webContents.send）的通道**。
+  // 'console-message' 曾经在这个列表里，但方向是反的：main 侧是
+  // `webContents.on('console-message')` —— **main 收** renderer 的控制台输出，
+  // 不是 main 推给 renderer。留着它 = renderer 可以订阅一个永远不会来的通道
+  // （静默失败，且看起来"配了"）。见 src/ipc-surface.test.ts 第 3 条。
 ]);
 
 export interface QqLoginResult {
