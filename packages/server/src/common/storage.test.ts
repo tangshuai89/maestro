@@ -204,4 +204,42 @@ function makeService() {
   console.log('✅ 8. 已有 0o644 历史文件被收紧到 0o600');
 }
 
-console.log('\n🎉 全部 8 个测试通过');
+// ── 9. gcSessionScoped：回收会话已死的孤儿键 ─────────────────
+// 会话被 TTL 回收后，music:/library:/playlists: 键还留着 → state.json 越滚越大
+// （实测用户机器 48 个 music 键里 46 个是孤儿，1.9MB 纯垃圾，还被抄进每份备份）。
+{
+  const svc = makeService();
+  svc.set('music:alive', { liked: ['x'] });
+  svc.set('music:dead1', { liked: ['y'] });
+  svc.set('library:dead2', { items: [] });
+  svc.set('playlists:dead3', []);
+  // 非 session 作用域的键不能被误伤
+  svc.set('secrets:deepseek', { apiKey: 'k' });
+  svc.set('sessions', { byId: { alive: {} } });
+  svc.set('music:', { weird: true }); // 畸形键名（后缀为空）→ 不动
+
+  const removed = svc.gcSessionScoped(['alive']);
+
+  assert.strictEqual(removed, 3, `应回收 3 个孤儿键，实际 ${removed}`);
+  assert.deepStrictEqual(svc.get('music:alive'), { liked: ['x'] }, '活着的会话数据保留');
+  assert.strictEqual(svc.get('music:dead1'), undefined, '孤儿 music 键被回收');
+  assert.strictEqual(svc.get('library:dead2'), undefined, '孤儿 library 键被回收');
+  assert.strictEqual(svc.get('playlists:dead3'), undefined, '孤儿 playlists 键被回收');
+  assert.deepStrictEqual(svc.get('secrets:deepseek'), { apiKey: 'k' }, 'secrets 不受影响');
+  assert.deepStrictEqual(svc.get('sessions'), { byId: { alive: {} } }, 'sessions blob 不受影响');
+  assert.deepStrictEqual(svc.get('music:'), { weird: true }, '畸形键名不被误删');
+  console.log('✅ 9. gcSessionScoped：只回收死会话的 music:/library:/playlists: 键');
+}
+
+// ── 10. gcSessionScoped 幂等 + 空 liveIds ─────────────────────
+// 跑两次不能伤到第二次（幂等），全死时应该把所有 session 作用域键清空。
+{
+  const svc = makeService();
+  svc.set('music:a', 1);
+  svc.set('library:b', 2);
+  assert.strictEqual(svc.gcSessionScoped([]), 2, '全死 → 清空 2 个');
+  assert.strictEqual(svc.gcSessionScoped([]), 0, '再跑一次 → 0 个（幂等）');
+  console.log('✅ 10. gcSessionScoped 幂等');
+}
+
+console.log('\n🎉 全部 10 个测试通过');

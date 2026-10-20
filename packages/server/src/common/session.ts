@@ -125,12 +125,25 @@ export class SessionService implements OnModuleDestroy {
 
   private evictExpired(): void {
     const now = Date.now();
+    let changed = false;
     for (const [id, s] of Object.entries(this.blob.byId)) {
       const last = s.lastAccessedAt ?? s.createdAt;
       if (now - last > this.cfg.sessionTtlMs) {
         delete this.blob.byId[id];
+        changed = true;
       }
     }
+    // 会话没了，它的数据键也该跟着走 —— 否则 `music:<id>` / `library:<id>` /
+    // `playlists:<id>` 变成孤儿，一直躺在 state.json 里没人回收
+    // （实测 48 个 music 键里 46 个是孤儿，1.9MB 纯垃圾，还会被抄进每份备份）。
+    //
+    // 这条**不依赖本次是否真的过期** —— 老版本留下的孤儿在启动时也要清掉，
+    // 所以每次 evict 都扫一遍（幂等，开销只是扫一遍 key 列表）。
+    const reclaimed = this.storage.gcSessionScoped(Object.keys(this.blob.byId));
+    if (reclaimed > 0) {
+      this.logger.log(`reclaimed ${reclaimed} orphan session-scoped key(s)`);
+    }
+    if (changed) this.persist();
   }
 
   private persist(): void {

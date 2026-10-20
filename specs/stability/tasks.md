@@ -241,3 +241,46 @@
   - `visual.yml` 靠 `paths` 过滤触发，**改后端不跑**
   - 无任何并发/长稳脚本：`music.service.ts` 的 `mergeLibrary`、provider 并发 fan-out、
     like-sync 队列都没验证过
+
+## I. 存储与备份卫生（2026-10-20 实测发现）
+
+> 起因：另一并行 session 实测用户机器上的 `state.json`（5.55MB）与
+> `.storage/backups/`（7 份 × 8.9MB = 62MB 明文凭据副本），
+> 挖出三个**真实存在**的问题。已在本分支落地。
+
+- [x] **I1** 孤儿键 GC —— 会话没了，数据键还留着
+  - 现象：会话被 TTL 回收后，`sessions` blob 里那条没了，可
+    `music:<id>` / `library:<id>` / `playlists:<id>` 还躺在 store 里没人管。
+    实测 48 个 `music:` 键里 **46 个是孤儿**，state.json 里 1.9MB / 5.55MB 是纯垃圾，
+    而且会被**原样抄进每一份备份**。
+  - 修法：`StorageService.gcSessionScoped(liveIds)` 按「session id 是否还在
+    `sessions.byId` 里」回收；`SessionService.evictExpired()` 每次都调一次
+    （**幂等**，老版本遗留的孤儿在升级后第一次启动就会被扫掉）。
+  - 语义边界（重要）：只在**有 sessions blob** 时回收。没有 blob 说明会话全没了，
+    此时不删 —— 那些键可能被一次「导入备份」复活（`POST /storage/import` 能把
+    sessions blob 连同数据一起带回来），保守起见不碰。
+  - 对用户可见的影响：会话过期后 ♤ 库本来就**已经不可达**（没有会话继承机制，
+    新会话是新 id），平台账号里的红心才是真源（`importLiked` 可重新导入）；
+    早先的备份快照仍然保有这份数据，**恢复路径没断**。
+  - 验收：storage.test.ts 新增 2 组（只回收死会话的键 / 幂等）；
+    session.test.ts 新增 2 组（过期会话连带回收 / 启动清理历史孤儿）✅
+
+- [x] **I2** 备份文件权限 0644 → 0600（**明文凭据同机可读**）
+  - 现象：`state.json` 每次写都 chmod 0o600（storage.ts 里写明了「QQ cookie /
+    网易云 MUSIC_U / Spotify token 全是明文」），但**备份路径没收紧** ——
+    备份文件是 umask 默认的 **0644 = 同机其他用户可读**，备份目录 0755。
+  - 修法：备份目录 0700、备份文件 0600（`mkdir`/`writeFile` 的 mode 只在创建时
+    生效，所以两边都再 chmod 一次，覆盖「已存在」的情况）；Windows 上 chmod
+    失败按 best-effort 降级（和 storage.ts 同一套处理）。
+  - 验收：backup e2e 新增 2 组断言（文件 0600 / 目录 0700）✅
+
+- [x] **I3** 「每日备份」被 dev 热重载刷成「最近 7 次重启」+ 备份体积
+  - 现象：`onModuleInit` 每次进程启动都写一份备份。dev 的 `nest start --watch`
+    每次热重载都重启 → 保留的 7 份全成了「最近 7 次重启」，真正的每日备份被挤掉。
+  - 修法：启动时若 24h 内已有备份就跳过（`manual` / `daily` 不受影响）；
+    备份文件名时间戳加到**毫秒**（原来只到秒，同一秒内两次备份会撞名互相覆盖）；
+    备份内容不缩进（`null, 2` 会把 5.5MB 膨胀到 8.9MB，+60%；备份是给机器还原的，
+    需要人看时 `jq . backup-xxx.json`）。
+  - 预期效果：单份备份 8.9MB → ~3.4MB，7 份合计 62MB → ~24MB
+  - 验收：backup e2e 新增 3 组（合法 JSON + 不缩进 / 手动备份不受拦截 /
+    startup 有近期备份时跳过）✅

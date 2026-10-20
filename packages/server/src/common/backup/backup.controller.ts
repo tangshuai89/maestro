@@ -50,7 +50,8 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    // 起来先备一份，之后每 24h 一次。unref 让它不拖住进程退出。
+    // 起来先备一份（24h 内已有备份就跳过），之后每 24h 一次。
+    // unref 让它不拖住进程退出。
     this.runBackup('startup');
     this.autoTimer = setInterval(() => this.runBackup('daily'), DAY_MS);
     this.autoTimer.unref?.();
@@ -128,13 +129,30 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
   /** 拷一份 state.json 到 backupDir，命名带时间戳，然后修剪到 retention 份。 */
   private runBackup(reason: string): string | null {
     try {
-      fs.mkdirSync(this.cfg.backupDir, { recursive: true });
+      // 启动时**只在 24h 内没有备份时才写**。
+      // dev 的 `nest start --watch` 每次热重载都重启进程 → 每次都写一份 →
+      // 保留的 7 份全成了「最近 7 次重启」，真正的每日备份被挤掉。
+      // 「每日备份」得名副其实。
+      if (reason === 'startup' && this.hasRecentBackup()) {
+        this.logger.log('[startup] skipped: 24h 内已有备份');
+        return null;
+      }
+      fs.mkdirSync(this.cfg.backupDir, { recursive: true, mode: 0o700 });
+      // 备份目录里躺的是**明文凭据**（QQ cookie / 网易云 MUSIC_U / Spotify token），
+      // 跟 state.json 同等敏感 → 目录 0700、文件 0600。
+      // 旧实现没收紧，备份文件是 0644 = **同机其他用户可读**（state.json 是 0600，
+      // 保护力度不一致）。mkdir/writeFile 的 mode 只在创建时生效，所以两边都再
+      // chmod 一次，覆盖「目录/文件已存在」的情况。
+      this.chmodQuiet(this.cfg.backupDir, 0o700);
       const snapshot = this.storage.getAll();
       // 空 store 不值得备份（首启还没任何登录）。
       if (Object.keys(snapshot).length === 0) return null;
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 22); // 到毫秒：同一秒内两次备份否则会撞名互相覆盖
       const dest = path.join(this.cfg.backupDir, `backup-${stamp}.json`);
-      fs.writeFileSync(dest, JSON.stringify(snapshot, null, 2));
+      // 不缩进：备份是给机器还原的，`null, 2` 会把 5.5MB 膨胀到 8.9MB（+60%），
+      // 7 份就是 62MB 明文凭据副本。需要人看时 `jq . backup-xxx.json`。
+      fs.writeFileSync(dest, JSON.stringify(snapshot), { mode: 0o600 });
+      this.chmodQuiet(dest, 0o600);
       this.prune();
       this.logger.log(`[${reason}] backup written: ${dest}`);
       return dest;
@@ -142,6 +160,35 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`backup failed: ${(err as Error).message}`);
       return null;
     }
+  }
+
+  /** chmod 失败不阻塞备份（Windows / 只读盘上会失败）——同 storage.ts 的做法。 */
+  private chmodQuiet(target: string, mode: number): void {
+    try {
+      fs.chmodSync(target, mode);
+    } catch (err) {
+      this.logger.debug(`chmod ${mode.toString(8)} skipped: ${(err as Error).message}`);
+    }
+  }
+
+  /** 备份目录里是否已有 24h 内写的备份。 */
+  private hasRecentBackup(): boolean {
+    const newest = this.newestBackupAt();
+    return newest > 0 && Date.now() - newest < DAY_MS;
+  }
+
+  /** 备份目录里最新一份的 mtime（ms epoch）；没有则 0。 */
+  private newestBackupAt(): number {
+    let newest = 0;
+    for (const f of this.listBackups()) {
+      try {
+        const m = fs.statSync(path.join(this.cfg.backupDir, f)).mtimeMs;
+        if (m > newest) newest = m;
+      } catch {
+        // 文件刚被删掉之类 —— 当它不存在
+      }
+    }
+    return newest;
   }
 
   /** backupDir 里所有 backup-*.json，按文件名（含时间戳）降序。 */

@@ -318,6 +318,33 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   且 common/server/electron/renderer **四段全部跑完**（不再互相遮蔽）；
   移除注入后全绿 → 退出码 0。
 
+- **备份文件同机其他用户可读 + 孤儿键把 state.json 撑大**（2026-10-20 实测用户机器）
+
+  三个真实问题，都在存储/备份这条链上：
+
+  - **备份文件是 0644 = 同机其他用户可读**。`state.json` 每次写都 chmod 0o600
+    （storage.ts 里白纸黑字写着「QQ cookie / 网易云 MUSIC_U / Spotify token 全是
+    明文」），但**备份路径从来没收紧过** —— 备份文件是 umask 默认的 0644，
+    备份目录 0755。备份里装的就是同一份明文凭据。
+    修法：目录 0700、文件 0600（`mkdir`/`writeFile` 的 mode 只在创建时生效，
+    两边都再 chmod 一次覆盖「已存在」的情况）。
+  - **孤儿键**：会话被 TTL 回收后，`sessions` blob 里那条没了，可
+    `music:<id>` / `library:<id>` / `playlists:<id>` 还躺在 store 里没人管 ——
+    实测 48 个 `music:` 键里 **46 个是孤儿**，state.json 里 1.9MB / 5.55MB 是纯垃圾，
+    而且会被**原样抄进每一份备份**。
+    修法：`StorageService.gcSessionScoped()` 按「session id 是否还在 `sessions.byId`」
+    回收，`SessionService.evictExpired()` 每次都调（幂等，老版本遗留的孤儿在
+    升级后第一次启动就被扫掉）。
+    语义边界：只在**有 sessions blob** 时回收 —— 没有 blob 说明会话全没了，
+    那些键可能被一次「导入备份」复活，保守起见不碰。
+  - **「每日备份」被 dev 热重载刷成「最近 7 次重启」**。`onModuleInit` 每次进程
+    启动都写一份 → `nest start --watch` 每次热重载都重启 → 保留的 7 份全是重启
+    快照，真正的每日备份被挤掉。
+    修法：启动时若 24h 内已有备份就跳过（`manual` / `daily` 不受影响）；
+    备份文件名时间戳加到**毫秒**（原来只到秒，同一秒内两次备份会撞名互相覆盖）；
+    备份内容不缩进（`null, 2` 把 5.5MB 膨胀到 8.9MB，+60%）。
+    预期效果：单份 8.9MB → ~3.4MB，7 份合计 **62MB → ~24MB**。
+
 - **专辑详情「不支持」断言长期红灯**（2026-10-20）——
   `album-service.e2e.test.ts` 断言错误消息里含英文子串 `'not supported'`，
   但 `6398ce6` 之后 service 的消息已经改成了人话「该平台暂不支持专辑详情（<平台>）」

@@ -189,6 +189,94 @@ async function main() {
         JSON.stringify(json),
       );
     }
+
+    // ── 11. 备份文件权限 0600 + 备份目录 0700 ────────────────────
+    //   备份里是明文凭据（QQ cookie / 网易云 MUSIC_U / Spotify token），
+    //   跟 state.json 同等敏感 —— 旧实现没收紧，文件是 0644 = 同机其他用户可读。
+    {
+      const r = await call('POST', '/storage/backup', {});
+      const json = r.json as { path?: string };
+      const fileMode = fs.statSync(json.path as string).mode & 0o777;
+      expect(
+        '11. 备份文件 mode = 0o600（owner rw only）',
+        fileMode === 0o600,
+        `实际 0o${fileMode.toString(8)}`,
+      );
+      const dirMode = fs.statSync(path.join(tmpDir, 'backups')).mode & 0o777;
+      expect(
+        '11b. 备份目录 mode = 0o700（owner rwx only）',
+        dirMode === 0o700,
+        `实际 0o${dirMode.toString(8)}`,
+      );
+    }
+
+    // ── 12. 备份内容是完整可解析的 JSON（compact，不缩进）────────
+    {
+      const r = await call('GET', '/storage/info');
+      const json = r.json as { backupDir?: string; backupCount?: number };
+      const dir = json.backupDir as string;
+      const files = fs.readdirSync(dir).filter((f) => f.startsWith('backup-'));
+      const newest = files.sort().pop() as string;
+      const raw = fs.readFileSync(path.join(dir, newest), 'utf8');
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = null;
+      }
+      expect('12. 备份文件是合法 JSON', parsed !== null, raw.slice(0, 80));
+      expect(
+        '12b. 备份内容含 store 里的 key',
+        !!parsed && 'test:key' in parsed,
+        Object.keys(parsed ?? {}).join(','),
+      );
+      // compact：不缩进 → 体积显著小于缩进版
+      expect('12c. 备份不缩进（体积可控）', !raw.includes('\n  "'), '不应出现缩进换行');
+    }
+
+    // ── 13. 手动备份不受「24h 内已有备份」的拦截 ────────────────
+    //   （拦截只针对 startup：dev 热重载不该把「每日备份」刷成「最近 7 次重启」）
+    {
+      const before = await call('GET', '/storage/info');
+      const beforeCount = (before.json as { backupCount?: number }).backupCount ?? 0;
+      const r = await call('POST', '/storage/backup', {});
+      expect(
+        '13. 手动备份 → 201（不被 startup 拦截规则影响）',
+        r.status === 201,
+        `实际 ${r.status}`,
+      );
+      const after = await call('GET', '/storage/info');
+      const afterCount = (after.json as { backupCount?: number }).backupCount ?? 0;
+      expect(
+        '13b. 手动备份后份数 +1',
+        afterCount === beforeCount + 1,
+        `${beforeCount} → ${afterCount}`,
+      );
+    }
+
+    // ── 14. startup 备份：24h 内已有备份时跳过 ────────────────────
+    //   dev 的 `nest start --watch` 每次热重载都重启进程 → 旧实现每次启动
+    //   都写一份 → 保留的 7 份全成了「最近 7 次重启」，每日备份被挤掉。
+    {
+      const backupDir = path.join(tmpDir, 'backups');
+      fs.mkdirSync(backupDir, { recursive: true });
+      // 造一份「刚刚写的」备份（判定看 mtime，不看文件名里的时间戳）
+      fs.writeFileSync(path.join(backupDir, 'backup-2020-01-01_00-00-00.json'), '{}');
+      const before = fs.readdirSync(backupDir).filter((f) => f.startsWith('backup-')).length;
+
+      // 新起一个 app → onModuleInit → runBackup('startup')
+      const app2 = await NestFactory.create(AppModule, { logger: false });
+      app2.use(cookieParser('test-secret'));
+      await app2.init();
+      const after = fs.readdirSync(backupDir).filter((f) => f.startsWith('backup-')).length;
+      await app2.close();
+
+      expect(
+        '14. startup 备份在 24h 内已有备份时跳过',
+        after === before,
+        `份数应不变（${before}），实际 ${after}`,
+      );
+    }
   } finally {
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
