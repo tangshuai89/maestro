@@ -93,8 +93,14 @@ run_pkg() {
           echo "  ▸ ${short}"
         fi
         # 显式 -c 避免 npm 装在 monorepo 根时 vitest 找不到 config
+        #
+        # ⚠️ 过滤参数必须用**相对路径**（`$short`）而不是绝对路径 `$f`：
+        # vitest 的 include glob 是基于 realpath 展开的，而命令行 filter 走
+        # 「路径包含」匹配。项目路径里只要有一层软链（macOS 的 /tmp → /private/tmp、
+        # 软链的 HOME、CI 里的挂载点），两者就对不上 → 「No test files found」→
+        # 整段 .test.tsx 静默不跑。相对路径对两种情况都成立。
         local ok=1
-        if ! ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" "$f" --reporter=verbose ); then
+        if ! ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" "$short" --reporter=verbose ); then
           ok=0
           FAILED_COUNT=$((FAILED_COUNT + 1))
           FAILED_FILES="${FAILED_FILES} ${short}"
@@ -214,8 +220,11 @@ if [ "$COVERAGE" -eq 1 ]; then
     if [ "$pkg" = "renderer" ] && [ -n "$tsx_files" ]; then
       for f in $tsx_files; do
         rc=0
+        # 相对路径（见上面 .tsx 段的说明）：vitest 的 include 是 realpath，
+        # 绝对 filter 在有软链的路径下匹配不上 → 整段静默不跑
+        rel="${f#$PWD/}"
         ( cd "$PWD" && npx c8 "${C8_COMMON[@]}" --src "packages/$pkg/src" \
-            npx vitest run -c "packages/$pkg/vitest.config.ts" "$f" --reporter=dot ) || rc=$?
+            npx vitest run -c "packages/$pkg/vitest.config.ts" "$rel" --reporter=dot ) || rc=$?
         if [ "$rc" -ne 0 ]; then
           FAILED_COUNT=$((FAILED_COUNT + 1))
           FAILED_FILES="${FAILED_FILES} ${f#$PKG_ROOT/}"
