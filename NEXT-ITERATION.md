@@ -490,6 +490,30 @@ python3 -m venv ~/.castlabs-evs-venv
   - [ ] 偏好跨重启保留（storage 键已存在，只差没推给元素）
 - **估时**：0.5–1 天（比看上去多，因为要处理双槽 + 新元素初始化时机）
 
+### 7.5 播放失败分级：服务端与 renderer 各有一套，尚未收敛
+
+- **现状**：两套并行的"播放失败该怎么解释"：
+  - 服务端 `packages/server/src/music/entitlement.ts` 的
+    `classifyPlaybackFailure()` → `relogin | entitlement | no-license | unknown`
+    - `playbackFailureMessage()`（ADR-110「凭据有效 ≠ 权益有效」的可执行表述）
+      —— **生产链路里零调用点**（纯死代码）
+  - renderer `usePlayer.ts` 的 `PlayFailReason` →
+    `paid-track | vip-locked | stream-failed | no-match` + `PlayerNotice` 文案
+    —— **已接线**，10-19「播放彻底失败给可见提示」用的就是它
+- **为什么要收敛**：两套词汇、两套判定，迟早漂移；而且"会员失效"这个
+  最重要的第三种情况，服务端能判定（session 里有 neteaseVip / qqVip），
+  renderer 判不了（它只知道"没搜到等价源"）
+- **两条路，二选一**：
+  - (a) **接线服务端那套**：`GET /auth/status?validate=1` 多返一个
+    `failureKind`（服务端用 classifyPlaybackFailure 算）+ renderer 用它给
+    PlayerNotice 换文案 → "会员已失效，重登没用"能被准确说出来
+  - (b) **删掉服务端那套**：保留 renderer 的（它已经接了），把 ADR-110 的
+    表述改成"分类在 renderer 侧做"
+- **成本**：(a) 约半天（auth.controller + api.ts 类型 + usePlayer + PlayerNotice
+  文案）；(b) 约 1 小时（删代码 + 回写 ADR）
+- ⚠️ **别让两套并存**。已补 8 条白盒（`entitlement.classify.test.ts`）钉住
+  语义，接线或删除时都有安全网
+
 ---
 
 ## 8. 长期（≥ 一季度）
