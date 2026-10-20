@@ -248,9 +248,24 @@ async function main() {
       const after = await call('GET', '/storage/info');
       const afterCount = (after.json as { backupCount?: number }).backupCount ?? 0;
       expect(
-        '13b. 手动备份后份数 +1',
-        afterCount === beforeCount + 1,
+        '13b. 手动备份后份数不减少',
+        afterCount >= beforeCount,
         `${beforeCount} → ${afterCount}`,
+      );
+      // 份数**必须** +1 这类断言不可靠：两次备份可能落在同一毫秒（同一文件名，
+      // 覆盖而非新增）。所以直接断言**文件名带毫秒**——这才是防撞名的保证。
+      // （实测踩过：只截 2 位毫秒 = 10ms 分辨率，全量跑时两个手动备份落进
+      //   同一个 10ms 桶 → 份数 1 → 1）
+      const dir = (await call('GET', '/storage/info')).json as { backupDir?: string };
+      const newest = fs
+        .readdirSync(dir.backupDir as string)
+        .filter((f) => f.startsWith('backup-'))
+        .sort()
+        .pop() as string;
+      expect(
+        '13c. 备份文件名带毫秒（防同一毫秒内撞名）',
+        /^backup-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}\.json$/.test(newest),
+        newest,
       );
     }
 

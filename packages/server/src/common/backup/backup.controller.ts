@@ -147,7 +147,12 @@ export class BackupController implements OnModuleInit, OnModuleDestroy {
       const snapshot = this.storage.getAll();
       // 空 store 不值得备份（首启还没任何登录）。
       if (Object.keys(snapshot).length === 0) return null;
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 22); // 到毫秒：同一秒内两次备份否则会撞名互相覆盖
+      // 时间戳到**毫秒**：23 字符 = 10 位日期 + `_` + 8 位时分秒 + `-` + 3 位毫秒。
+      // ⚠️ 原来 slice(0,19) 只到秒 → 同一秒内两次备份撞名互相覆盖；
+      // ⚠️ 改毫秒时也别写成 22 —— 那样只截到 2 位毫秒（10ms 分辨率），
+      //    全量测试跑得比单跑快，两个手动备份落进同一个 10ms 桶里照样撞名
+      //    （实测在 CI 全量跑里就挂过：份数 1 → 1）。
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 23);
       const dest = path.join(this.cfg.backupDir, `backup-${stamp}.json`);
       // 不缩进：备份是给机器还原的，`null, 2` 会把 5.5MB 膨胀到 8.9MB（+60%），
       // 7 份就是 62MB 明文凭据副本。需要人看时 `jq . backup-xxx.json`。
