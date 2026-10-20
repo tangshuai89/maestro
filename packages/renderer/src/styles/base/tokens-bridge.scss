@@ -64,9 +64,9 @@
 
   // ---- AETHER glass 系 (rgba 保留，不转 HSL) ----
   // --sh-border ← AETHER --glass-stroke     rgba(255, 255, 255, 0.12)
-  --sh-border: rgba(255, 255, 255, 0.12);
+  --sh-border: var(--glass-stroke);
   // --sh-input  ← AETHER --glass-fill-strong rgba(255, 255, 255, 0.08)
-  --sh-input: rgba(255, 255, 255, 0.08);
+  --sh-input: var(--glass-fill-strong);
 
   // --sh-ring: AETHER --accent
   --sh-ring: 187 100% 50%;

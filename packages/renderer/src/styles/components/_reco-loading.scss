@@ -13,7 +13,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02020a;
+  background: var(--primitive-bg-bottom);
   color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
@@ -199,7 +199,7 @@
   width: 40%;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, transparent, #b57bff, transparent);
+  background: linear-gradient(90deg, transparent, var(--ai), transparent);
   animation: rl-progress-sweep 1.6s ease-in-out infinite;
 }
 
@@ -224,7 +224,7 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: #b57bff;
+  color: var(--ai);
 }
 
 .rl-step-desc {
@@ -283,5 +283,5 @@
   color: color-mix(in srgb, var(--ai) 50%, transparent);
 }
 .rl-stat--accent .rl-stat-value {
-  color: #b57bff;
+  color: var(--ai);
 }

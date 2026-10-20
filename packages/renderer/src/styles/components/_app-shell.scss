@@ -138,7 +138,7 @@
 .app.theater-mode {
   padding: 0;
   gap: 0;
-  background: #02020a;
+  background: var(--primitive-bg-bottom);
 }
 .app.theater-mode::before {
   display: none; // 胶片颗粒在剧场模式下不需要

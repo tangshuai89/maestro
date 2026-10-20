@@ -158,10 +158,10 @@ const IDLE_LYRIC_HINT = '选一首歌，开始你的宇宙剧场';
 // ── platform badges ──────────────────────────────────────────
 
 const PLATFORM_META: Record<MusicProvider, { letter: string; color: string; name: string }> = {
-  qq: { letter: 'Q', color: '#FFD93D', name: 'QQ 音乐' },
-  netease: { letter: 'N', color: '#FF3B5C', name: '网易云' },
-  deezer: { letter: 'D', color: '#3D9BFF', name: 'Deezer' },
-  spotify: { letter: 'S', color: '#3DFFA2', name: 'Spotify' },
+  qq: { letter: 'Q', color: 'var(--platform-qq)', name: 'QQ 音乐' },
+  netease: { letter: 'N', color: 'var(--platform-netease)', name: '网易云' },
+  deezer: { letter: 'D', color: 'var(--platform-deezer)', name: 'Deezer' },
+  spotify: { letter: 'S', color: 'var(--platform-spotify)', name: 'Spotify' },
 };
 
 // ── icons (lucide-style inline SVG, no CDN) ─────────────────
@@ -598,7 +598,7 @@ export default function TheaterView(props: TheaterViewProps) {
                 className="th-streaks-path"
                 d="M1 1C199.613 2 367.224 89.2524 123.054 64.5371C422.991 168.896 447.655 356.24 141.014 200.961C414.402 447.604 275.085 575.264 39.564 293.923"
                 fill="none"
-                stroke="#00E5FF"
+                stroke="var(--accent)"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
@@ -609,7 +609,8 @@ export default function TheaterView(props: TheaterViewProps) {
               className="th-scan-arc"
               d="M 195 20 A 175 175 0 0 1 316.4 73.6"
               fill="none"
-              stroke="rgba(0, 229, 255, 0.5)"
+              stroke="var(--accent)"
+              strokeOpacity={0.5}
               strokeWidth="3"
               strokeLinecap="round"
             />
@@ -677,9 +678,9 @@ export default function TheaterView(props: TheaterViewProps) {
               <defs>
                 {/* Figma orbit-dot：白核→#8CF2FF→透明青的径向渐变 */}
                 <radialGradient id="thOrbitDotGrad" cx="0.4" cy="0.4" r="0.62">
-                  <stop offset="0" stopColor="#ffffff" />
+                  <stop offset="0" stopColor="var(--white)" />
                   <stop offset="0.45" stopColor="#8CF2FF" stopOpacity="0.9" />
-                  <stop offset="1" stopColor="#00E5FF" stopOpacity="0" />
+                  <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
                 </radialGradient>
               </defs>
               <circle

@@ -215,6 +215,17 @@ export function NLPlaylistModal({
                 <dd>{intent.tempo}</dd>
                 <dt className="text-muted-foreground">语言</dt>
                 <dd>{intent.language}</dd>
+                {intent.genre_artists && intent.genre_artists.length > 0 && (
+                  <>
+                    <dt className="text-muted-foreground">代表艺人</dt>
+                    <dd>
+                      {intent.genre_artists
+                        .flatMap((g) => g.artists)
+                        .slice(0, 6)
+                        .join('、')}
+                    </dd>
+                  </>
+                )}
                 {intent.exclude_artists.length > 0 && (
                   <>
                     <dt className="text-muted-foreground">排除艺人</dt>

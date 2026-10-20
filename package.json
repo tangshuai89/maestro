@@ -37,10 +37,15 @@
     "tokens:pull": "node scripts/figma-tokens-pull.mjs",
     "tokens:hardcoded": "node scripts/scan-hardcoded-colors.mjs",
     "tokens:hardcoded:gate": "node scripts/scan-hardcoded-colors.mjs --gate",
+    "retrofit:analyze": "node scripts/figma-retrofit-analyze.mjs",
+    "retrofit:fixture": "node scripts/figma-retrofit-fixture.mjs",
+    "retrofit:plan": "node scripts/figma-retrofit-plan-to-plugin.mjs",
+    "retrofit:typecheck": "node scripts/figma-retrofit-typecheck.mjs",
     "visual:serve": "cd packages/renderer && npx vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "visual:test": "npm run build:renderer && node scripts/run-playwright.mjs test --config playwright.config.mjs",
     "visual:baseline": "npm run build:renderer && node scripts/run-playwright.mjs test --config playwright.config.mjs --update-snapshots",
-    "reco:eval": "cd packages/server && npx ts-node src/reco/eval-cli.ts"
+    "reco:eval": "cd packages/server && npx ts-node src/reco/eval-cli.ts",
+    "reco:eval:genre": "cd packages/server && npx ts-node src/reco/eval-genre-cli.ts"
   },
   "author": "tangshuai89",
   "license": "MIT",

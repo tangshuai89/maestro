@@ -80,8 +80,13 @@ export class RecoController {
       body.seed.artist.trim()
         ? { title: body.seed.title.trim(), artist: body.seed.artist.trim() }
         : undefined;
+    // ⚠️ **显式挑字段，不做 `...(body ?? {})` 展开**。展开等于把 body 里任意
+    // 字段当成 run() 的内部开关（`noPoolCache` 这类），客户端就能绕过缓存策略
+    // 打平台接口。body 里真正被接受的字段就这几个。
     return this.reco.run(session, {
-      ...(body ?? {}),
+      count: typeof body?.count === 'number' ? body.count : undefined,
+      language: typeof body?.language === 'string' ? body.language : undefined,
+      mood: typeof body?.mood === 'string' ? body.mood : undefined,
       exclude,
       seed,
       intent,

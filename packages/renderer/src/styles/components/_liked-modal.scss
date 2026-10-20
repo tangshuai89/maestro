@@ -16,7 +16,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02020a;
+  background: var(--primitive-bg-bottom);
   color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
@@ -139,7 +139,7 @@
   justify-content: center;
   font-size: 10px;
   font-weight: 700;
-  color: #02020a;
+  color: var(--primitive-bg-bottom);
   background: var(--badge);
   box-shadow: 0 0 8px var(--badge);
 }
@@ -338,28 +338,28 @@
   justify-content: center;
   font-size: 9px;
   font-weight: 700;
-  color: #02020a;
+  color: var(--primitive-bg-bottom);
 }
 
 .lib-badge-qq {
-  background: #ffd93d;
+  background: var(--platform-qq);
 }
 .lib-badge-netease {
-  background: #ff3b5c;
+  background: var(--platform-netease);
   color: var(--white);
 }
 .lib-badge-spotify {
-  background: #3dffa2;
+  background: var(--platform-spotify);
 }
 .lib-badge-deezer {
-  background: #3d9bff;
+  background: var(--platform-deezer);
 }
 
 // 版本染色
 .lib-badges {
   &--live {
     .lib-badge {
-      border-top: 2px solid #3b82f6;
+      border-top: 2px solid var(--accent-blue);
     }
   }
   &--acoustic {
