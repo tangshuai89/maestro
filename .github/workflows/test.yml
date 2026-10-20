@@ -9,9 +9,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ⚠️ Node 版本**不能降回 20**：renderer 的 20 个 `*.test.mjs` 用自实现的
+      # ESM loader 直接 import `*.ts` 源码（不走打包器），依赖 Node ≥ 22.18 的
+      # **type stripping**。Node 20 上 `defaultLoad` 直接抛
+      # `ERR_UNKNOWN_FILE_EXTENSION: Unknown file extension ".ts"` → 整段 .test.mjs
+      # 在 CI 上**从来没跑起来过**。这个失败被旧门禁的 `|| true` + 恒 0 退出码
+      # 盖住了 —— 门禁改成真门禁后（见 scripts/test.sh）它第一次显形。
+      # 本地开发用的也是 22.x，CI 跟本地对齐。
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci

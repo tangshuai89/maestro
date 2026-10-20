@@ -25,12 +25,32 @@ castLabs fork 的免费 `+wvcus` 构建是 **dev VMP 签名**（README 原话：
 Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple Dev
 +EVS 落地"专案。
 
+**2026-10-20 新增交付**：专辑跨平台 fan-out（`specs/album-fanout`）——
+专辑搜索结果里点 ❤ 同步"收藏专辑"到所有有该能力且已登录的平台（v1 落地 =
+网易云），角标显示真实平台数；状态持久化在 `state.json` 的 `albumFanOut`。
+另有远端歌单导入（`specs/remote-playlist`，2026-10-16 合入 PR #106）——
+粘贴链接 → 播放 / 追加 / 存本地（网易云列+读、QQ 只读、Deezer 公开歌单）。
+
+> **2026-10-20 追加解锁**：网易云**专辑详情**（`/api/album/{id}`）—— 当年
+> `specs/album-search` 记的 `-462 "请绑定手机后再试哦~"` 是**未登录态**的响应，
+> 登录态实测 `code=200`、21 首 / 2 碟全对。网易云专辑卡片现在能展开了。
+> 连带：专辑行展开改为**多平台回退**（一个平台拉不到就换下一个源），
+> 英文错误串 `album detail not supported on <p>` 改成中文。
+>
+> **专辑 fan-out 遗留**（都在等外部条件，不是工程债）：
+> ① Spotify 专辑收藏 —— 需先有 Spotify OAuth token（album-search 阻塞项 B2
+> 整条 Spotify 专辑线未实现 → 拿不到 albumId）；
+> ② 网易云收藏专辑端点 `/api/album/sub` 的真伪待**登录态实测**（端点已提为
+> 常量 `NETEASE_ALBUM_SUB_ENDPOINT`，不符时一行可改）；
+> ③ QQ / Deezer 无收藏专辑 API —— 结构性跳过，不是待办。
+
 剩下的工作集中在四类：
 
 1. **Apple Dev + EVS 落地（本期最优先）**：见下 0 节。0 成本 EVS + $99/年 Apple Dev。
 2. **生产化最后一步**：`npm run pack` 端到端冒烟（避开 license 阻塞后）。
 3. **Settings 收尾**：首次启动引导流 + 退出前确认弹窗。
-4. **收尾打磨**：Lite 模式与桌面歌词的手测验收、crossfade、媒体键 / 全局热键。
+4. **收尾打磨**：Lite 模式与桌面歌词的手测验收、媒体键 / 全局热键、
+   **音量功能接线**（`useVolume` 整条是死代码，见 §7.4）。
 
 已交付并从本文件移出的历史条目：歌词多源聚合与分享图、渠道优先级、macOS Tray
 与应用图标、AETHER 剧场视图与 Figma 驱动管线、自然语言歌单。
@@ -323,7 +343,7 @@ python3 -m venv ~/.castlabs-evs-venv
 > （`specs/nl-playlist/`），从本文件删除。
 > 详细分析只在 Notion 维护（个人重要，本地不留副本）→ https://app.notion.com/p/musicbox-2026-07-39c9be628711800b86f1daff4e05ad6b
 
-### 7.1 均衡器 EQ + 交叉淡入淡出 + ReplayGain 音量均衡 — 🟡 **EQ 已落地，crossfade 待做，ReplayGain 明确不做**
+### 7.1 均衡器 EQ + 交叉淡入淡出 + ReplayGain 音量均衡 — ✅ **EQ + crossfade 均已落地，ReplayGain 明确不做**
 
 > 2026-09-29：spec `specs/audio-fx/`。范围从「EQ + crossfade + ReplayGain」
 > **收敛成 EQ + crossfade**。
@@ -331,9 +351,15 @@ python3 -m venv ~/.castlabs-evs-venv
 > - ✅ **EQ 已落地**：10 段 peaking（31Hz–16kHz，Q=1）+ 8 预置 + 总开关，存本地，
 >   Settings「② 音频」节。链构建/参数推送抽成纯函数 `lib/eqChain.ts`（可脱离 React
 >   测连接顺序与"用 setTargetAtTime 而非 .value="这类写错不报错的细节）。
-> - ⏳ **crossfade 待做**（C 组）：关键难点是 `<audio>` 的 `src` 由 React 绑定，
->   双元素方案要把 src 改成命令式管理——**这会动到 P1/P2/P3 都依赖的"src 绑定"
->   不变量**，必须独立一轮 + 自己的回归测试，不适合顺手做。
+> - ✅ **crossfade 已落地**（2026-10-19，commit `3f2aea8`，spec `specs/audio-fx` C 组）：
+>   App 常驻第二个 `<audio>`（`lib/audioSlots.ts` A/B 槽位），每槽独立 Web Audio 链
+>   （source → EQ → fadeGain → analyser），调度用 `setTargetAtTime`（不用
+>   `linearRampToValueAtTime`——后者被中断会把增益停在半路）。切歌路径统一收敛到
+>   `lib/crossfadeRunner.ts`；`crossfadeSec=0` 时行为与改动前逐字相同。21 条测试。
+>   ⚠️ **副作用**：`<audio>` 的 `src` 从 React 绑定改成**命令式装载**，于是"改
+>   audioUrl 必须同时真的装载元素"成了隐式契约 —— 紧接着就踩了一次回归
+>   （切音质 / 试听降标准后卡在 00:00，commit `6a41481` 补了
+>   `reloadActiveWithUrl`）。改这条链时务必先看该 commit。
 > - ❌ **ReplayGain 明确不做**（spec §5 给了三条理由）：`loudness`/`replayGain`/
 >   `gain_db` 在 server types / renderer api / common 里**零命中**（没元数据）；
 >   AnalyserNode 拿到的是"已经播过的那几秒"而不是整轨响度（算法不成立）；
@@ -352,7 +378,11 @@ python3 -m venv ~/.castlabs-evs-venv
   - [x] EQ 开关 + 8 预置 + 10 滑块即时生效、记住偏好（跨页面重开仍在，进备份集）
   - [x] 开关关闭 = 各频段 ramp 到 0 dB（**不是真 disconnect 旁路**：那会在出声时
         咔哒；10 段 peaking @ 0dB 幅频平坦、相位偏移 <1°，听感无差别），曲线保留
-  - [ ] 交叉淡入可开关，切歌无卡顿、无爆音（C 组）
+  - [x] 交叉淡入可开关，切歌无卡顿、无爆音（C 组）
+        —— 代码侧 21 条测试钉死调度写法（`lib/crossfade.test.mjs` 11 条 +
+        `lib/crossfadeRunner.test.mjs` 10 条）；**真机听感未验**（见 spec
+        `specs/audio-fx/tasks.md`「本轮新增的未验证项」：爆音 / 与 EQ 同开 /
+        seek 交互 / 打包模式 preload 四条）
   - [ ] ~~跨平台连播时主观音量一致（响度归一生效）~~ —— **本轮不做**，见 spec §5
 - **风险**：HTML `<audio>` 真 gapless 较难，优先做 crossfade（更可控）；ReplayGain
   精确值要解码分析 —— 但没有 loudness 元数据时"元数据优先 / Analyser 近似"两条路
@@ -438,6 +468,52 @@ python3 -m venv ~/.castlabs-evs-venv
 - **依赖**：并进已实现的 Tray 菜单（`packages/electron/src/main.ts` 的 `createTray`）。
 - **估时**：+1–1.5 天
 
+### 7.4 音量功能接线 — 🔴 **整条是死代码（2026-10-20 发现的真 bug）**
+
+- **问题**：`packages/renderer/src/hooks/useVolume.ts:13` 的 `useVolume` hook
+  **从未被任何组件 import**；`lib/storage.ts` 的 `readStoredVolume` /
+  `writeStoredVolume` 也只有 hook 自己在用。`audio.volume` 全仓**只有一处赋值**
+  ——就在这个没人调用的 hook 里。结果：**`maestro:volume` 偏好从来没被推给任何
+  `<audio>` 元素**，而且 UI 上根本没有音量控件。
+- **断线时间点**：不是 crossfade 引入的，是 `cc5980b`（前端解耦 + SCSS 工程化
+  拆巨石）那次重构之后就没再被接回去。`git log -S useVolume` 能查到。
+- **crossfade 让它变复杂**：现在有 **A/B 两个 `<audio>` 槽位**，音量必须推给
+  **两个**（淡出中的旧槽也要跟着变），否则淡出时音量突变。
+- **范围**：
+  - 接上 `useVolume`（App 持有 `audioRef` → 两个槽位都要能拿到）
+  - Settings 加工音量滑块 + 静音开关（`muted` 语义已在 hook 里写好：静音独立
+    存，取消静音恢复原音量）
+  - 推给 A/B 两个元素；切槽 / 新元素装载时按当前偏好初始化
+- **验收**：
+  - [ ] 拖音量滑块 → 正在播的歌**立刻**变小声/大声（两个槽位都算）
+  - [ ] 静音/取消静音 → 立即生效且取消后恢复原音量
+  - [ ] 偏好跨重启保留（storage 键已存在，只差没推给元素）
+- **估时**：0.5–1 天（比看上去多，因为要处理双槽 + 新元素初始化时机）
+
+### 7.5 播放失败分级：服务端与 renderer 各有一套，尚未收敛
+
+- **现状**：两套并行的"播放失败该怎么解释"：
+  - 服务端 `packages/server/src/music/entitlement.ts` 的
+    `classifyPlaybackFailure()` → `relogin | entitlement | no-license | unknown`
+    - `playbackFailureMessage()`（ADR-110「凭据有效 ≠ 权益有效」的可执行表述）
+      —— **生产链路里零调用点**（纯死代码）
+  - renderer `usePlayer.ts` 的 `PlayFailReason` →
+    `paid-track | vip-locked | stream-failed | no-match` + `PlayerNotice` 文案
+    —— **已接线**，10-19「播放彻底失败给可见提示」用的就是它
+- **为什么要收敛**：两套词汇、两套判定，迟早漂移；而且"会员失效"这个
+  最重要的第三种情况，服务端能判定（session 里有 neteaseVip / qqVip），
+  renderer 判不了（它只知道"没搜到等价源"）
+- **两条路，二选一**：
+  - (a) **接线服务端那套**：`GET /auth/status?validate=1` 多返一个
+    `failureKind`（服务端用 classifyPlaybackFailure 算）+ renderer 用它给
+    PlayerNotice 换文案 → "会员已失效，重登没用"能被准确说出来
+  - (b) **删掉服务端那套**：保留 renderer 的（它已经接了），把 ADR-110 的
+    表述改成"分类在 renderer 侧做"
+- **成本**：(a) 约半天（auth.controller + api.ts 类型 + usePlayer + PlayerNotice
+  文案）；(b) 约 1 小时（删代码 + 回写 ADR）
+- ⚠️ **别让两套并存**。已补 8 条白盒（`entitlement.classify.test.ts`）钉住
+  语义，接线或删除时都有安全网
+
 ---
 
 ## 8. 长期（≥ 一季度）
@@ -458,7 +534,7 @@ python3 -m venv ~/.castlabs-evs-venv
 | **W0.5（前置）** | **#0 Apple Dev + castLabs EVS**：买 Apple Dev（$99，1–3 天批）+ 注册 EVS 账户（**0 成本**，免费 streaming 签名）+ 第一次 VMP 签出 + `?wpsDebug=1` 重跑验证 `hasTrack=true`。**不阻塞其它项**——Apple Dev 申请在后台跑的同时可以继续 W2 起的工作。 |
 | **W1**           | #1 收尾：`npm run pack` 端到端冒烟（EVS-signed dmg 装下来 + Premium 手动验收完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + transport + token 重连不掉播）                                                                                   |
 | **W2**           | 6.3 lite 手测验收 + 7.2 桌面歌词手测验收（两份清单见对应 spec 的 P5 / D15 段）                                                                                                                                                                   |
-| **W3**           | 7.1 crossfade（C 组，`<audio>` 的 src 绑定要改成命令式，建议独立一轮 + 自己的回归测试）                                                                                                                                                          |
+| **W3**           | ~~7.1 crossfade~~ → **2026-10-19 已交付**（W3 空出）· 候选：6.3 lite 手测 + 7.2 桌面歌词手测的补测窗口，或 §5 首次启动引导流                                                                                                                     |
 | **W4**           | 5 首次启动引导流 + 7.3 媒体键 / 全局热键收尾 + bug bash + 发版                                                                                                                                                                                   |
 
 > 不在本期范围：**castLabs 商业 3PL VMP 审计**（`3pl@castlabs.com`）——本项目用标准

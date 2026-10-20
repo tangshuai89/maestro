@@ -47,9 +47,11 @@ import type {
   AlbumSource,
   AlbumTrack,
   AlbumProvider,
+  AlbumSaveProvider,
+  AlbumFanOutEntry,
   UnifiedAlbumSearchResult,
 } from './album-types';
-import { buildUnifiedAlbums } from './album.util';
+import { buildUnifiedAlbums, albumsProbablySame, albumTrackCountsDivergent } from './album.util';
 import type { SessionProbeResult } from './qq-session-probe';
 
 /** unified search 单平台硬超时——5s。超过这个时间视为该平台缺席，
@@ -73,6 +75,15 @@ const IMPORT_FETCH_TIMEOUT_MS = 30_000;
 /** fanOut 状态上限——超过这个数 loadState 时按插入顺序淘汰最早的。
  *  5000 对应重度用户 1-2 年的累计 ❤ 量，再多就是滥用。 */
 const FANOUT_MAX = 5_000;
+
+/** albumFanOut 的条目数上限（照 fanOut 的 LRU 口径）。
+ *
+ * 专辑数比单曲少，但 state.json 会一直长 —— 没上限的话几年后就是几万条
+ * 孤儿记录（每条都要在 loadState 里被扫一遍）。超出后按插入顺序淘汰最早的
+ * （插入顺序 = 被收藏的顺序）。淘汰的专辑下次搜索时会被 detect 重新发现吗？
+ * 不会 —— 但那只是"角标不亮"，用户重新点一次收藏就回来了，代价可接受。
+ */
+const ALBUM_FANOUT_MAX = 1_000;
 
 /** 跨平台等价曲搜索（同 (session, platform, title+artist kw, 时长分桶)）的内存缓存。
  *  TTL 按结果性质分级：
@@ -132,6 +143,14 @@ export interface MusicSessionState {
    *  漂移时按曲目重合归一 + unlike 时兜底定位）。空对象 = 无 fan-out 记录。
    *  老格式（纯平台名数组）在 loadState 时被 coerce 成 trackId 缺省的条目。 */
   fanOut: Record<string, FanOutEntry[]>;
+  /**
+   * 专辑 fan-out 状态：mergedAlbumId → 在哪些平台收藏了这张专辑
+   * （含每平台的 albumId，取消收藏时要靠它反写）。
+   *
+   * 只记**真实写入成功**的平台：结构性跳过（平台没收藏专辑能力 / 未登录）
+   * 不写这里 → 角标不会虚高。空对象 = 从没收藏过专辑。
+   */
+  albumFanOut: Record<string, AlbumFanOutEntry[]>;
 }
 
 /** fanOut 记录里的单个平台条目。trackId 可能缺省（老格式迁移而来）。 */
@@ -322,6 +341,7 @@ export class MusicService {
       spotify: fresh(),
     };
     const fanOut: Record<string, FanOutEntry[]> = {};
+    const albumFanOut: Record<string, AlbumFanOutEntry[]> = {};
 
     const persisted = this.storage.get<Record<string, unknown>>(this.stateKey(session.id));
     if (persisted) {
@@ -369,6 +389,30 @@ export class MusicService {
           if (entries.length) fanOut[k] = entries;
         }
       }
+      // albumFanOut 同理：新加的字段，老持久化文件没有是正常的。
+      // 格式 = { mergedAlbumId: [{platform, albumId}] }。
+      const rawAlbumFanOut = (persisted as { albumFanOut?: unknown }).albumFanOut;
+      if (rawAlbumFanOut && typeof rawAlbumFanOut === 'object') {
+        for (const [k, v] of Object.entries(rawAlbumFanOut)) {
+          if (!Array.isArray(v)) continue;
+          const entries: AlbumFanOutEntry[] = [];
+          for (const item of v) {
+            if (!item || typeof item !== 'object') continue;
+            const e = item as Partial<AlbumFanOutEntry>;
+            if (
+              e.platform === 'qq' ||
+              e.platform === 'netease' ||
+              e.platform === 'deezer' ||
+              e.platform === 'spotify'
+            ) {
+              // albumId 缺省 = 老格式/被手改过 → 跳过（没法反写，留着会误导角标）
+              if (typeof e.albumId !== 'string' || !e.albumId) continue;
+              entries.push({ platform: e.platform, albumId: e.albumId });
+            }
+          }
+          if (entries.length) albumFanOut[k] = entries;
+        }
+      }
     }
     // 匿名源（deezer）无收藏概念：清掉历史 bug 污染进 liked 的记录，
     // 否则 deezer 电台会显示假红心、角标虚高。disliked 是合法的（电台过滤用），保留。
@@ -396,7 +440,13 @@ export class MusicService {
       const drop = keys.length - FANOUT_MAX;
       for (let i = 0; i < drop; i++) delete fanOut[keys[i]];
     }
-    return { providers, fanOut };
+    // albumFanOut 同理：LRU 上限（插入顺序 = 被收藏的顺序）
+    const albumKeys = Object.keys(albumFanOut);
+    if (albumKeys.length > ALBUM_FANOUT_MAX) {
+      const drop = albumKeys.length - ALBUM_FANOUT_MAX;
+      for (let i = 0; i < drop; i++) delete albumFanOut[albumKeys[i]];
+    }
+    return { providers, fanOut, albumFanOut };
   }
 
   private saveState(session: Session, state: MusicSessionState): void {
@@ -424,6 +474,7 @@ export class MusicService {
         },
       },
       fanOut: state.fanOut,
+      albumFanOut: state.albumFanOut,
     };
     this.storage.set(this.stateKey(session.id), serializable);
   }
@@ -1234,6 +1285,34 @@ export class MusicService {
     // 合并 + 相关性排序。**排序必须在分页之前** —— 否则弱相关的平台独占专辑
     // 会被挤出第一页（与 unified-search/tasks.md:18 是同一个问题）。
     const merged = buildUnifiedAlbums(all, { query: kw });
+    // 注入收藏态：用户在哪些平台收藏了这张专辑（只列真实写入成功过的平台）。
+    // 结构性跳过（没能力 / 未登录）从没写进 state → 不会出现在这里，角标不虚高。
+    //
+    // 两路命中：① 精确 key（albumFanOut[item.id]）② sources 的
+    // platform:albumId 与任一记录条目重合 —— mergedId 漂移时记录留在老 key
+    // 下（fanOutAlbumSave 按 (platform, albumId) 重合归一），只靠精确 key
+    // 角标会暗（与 track 侧 library 的 ptToFanOutKeys 倒排同一思路）。
+    const albumState = this.loadState(session);
+    const savedBySource = new Map<string, Set<MusicProvider>>();
+    for (const entries of Object.values(albumState.albumFanOut)) {
+      for (const e of entries) {
+        const sk = `${e.platform}:${e.albumId}`;
+        let set = savedBySource.get(sk);
+        if (!set) savedBySource.set(sk, (set = new Set()));
+        set.add(e.platform);
+      }
+    }
+    for (const item of merged) {
+      const platforms = new Set<MusicProvider>();
+      for (const e of albumState.albumFanOut[item.id] ?? []) platforms.add(e.platform);
+      for (const src of item.sources) {
+        const hit = savedBySource.get(`${src.platform}:${src.albumId}`);
+        if (hit) for (const p of hit) platforms.add(p);
+      }
+      // Set 去重：同一平台可能有多条不同 albumId 记录（平台侧换了专辑 id），
+      // 角标按平台计数。
+      if (platforms.size) item.savedPlatforms = [...platforms];
+    }
     const start = (safePage - 1) * effectivePageSize;
     return {
       q: kw,
@@ -1306,8 +1385,11 @@ export class MusicService {
    * 一张专辑只属于一个平台）。
    *
    * 平台没实现 `getAlbumTracks` → 抛 400 并给明确原因，让 UI 能提示
-   * 「该平台暂不支持专辑详情」而不是静默失败。当前只有 QQ / Deezer 实现了
-   * （网易云被 -462 反爬挡住、Spotify 缺 token，见 spec 阻塞项 B1/B2）。
+   * 「该平台暂不支持专辑详情」而不是静默失败。
+   *
+   * 当前已实现：QQ / Deezer / 网易云（2026-10-20 起，B1 阻塞解除 —— 当年
+   * 记的"-462 反爬"其实是未登录态响应，登录态实测 code=200 曲目完整）。
+   * Spotify 仍缺 token（B2）。
    */
   async getAlbumTracksForProvider(
     session: Session,
@@ -1316,10 +1398,17 @@ export class MusicService {
   ): Promise<AlbumTrack[]> {
     const ap = this.albumProviderOf(provider);
     if (!ap || typeof ap.getAlbumTracks !== 'function') {
-      throw new BadRequestException(`album detail not supported on ${provider}`);
+      // 这条消息会**原样透到界面**上（renderer 直接显示后端的 message），
+      // 所以必须是人话，不能是英文技术串。
+      throw new BadRequestException(`该平台暂不支持专辑详情（${provider}）`);
     }
     if (!albumId) {
       throw new BadRequestException('albumId 不能为空');
+    }
+    // 网易云专辑详情**必须登录**：未登录时端点回 code=-462 反爬（spec 里
+    // 当年记的"不可用"就是这个未登录态）。先拦在本地，别浪费一次请求。
+    if (provider === 'netease' && !session.providers.netease?.musicU) {
+      throw new NotFoundException('请先登录网易云');
     }
     const getAlbumTracks = ap.getAlbumTracks.bind(ap) as (
       ps: ProviderSession,
@@ -3672,6 +3761,425 @@ export class MusicService {
   /** 当前 session 中某 mergedId 是否已被 fan-out 心动过。 */
   isFanOutLiked(state: MusicSessionState, mergedId: string): boolean {
     return (state.fanOut[mergedId]?.length ?? 0) > 0;
+  }
+
+  // ── 专辑 fan-out（spec: specs/album-fanout） ────────────────────────────
+
+  /**
+   * 该平台的 provider 是否实现了「收藏专辑」写能力。
+   *
+   * **feature detection，不用静态标志位**（album-fanout spec 原写法是
+   * `hasAlbumSaveApi` 字段）：标志位与"方法真的实现了"会漂移 —— 改方法名或
+   * 删实现时标志位不会跟着变，于是"声称支持但调用会崩"。方法在就是支持。
+   */
+  private albumSaveProviderOf(provider: MusicProvider): AlbumSaveProvider | null {
+    const raw: unknown =
+      provider === 'qq'
+        ? this.qq
+        : provider === 'netease'
+          ? this.netease
+          : provider === 'deezer'
+            ? this.deezer
+            : provider === 'spotify'
+              ? this.spotify
+              : null;
+    // feature detection 就在这里收口：没有 saveAlbum 方法 = 该平台不支持。
+    if (!raw || typeof (raw as { saveAlbum?: unknown }).saveAlbum !== 'function') return null;
+    return raw as AlbumSaveProvider;
+  }
+
+  /** 平台是否「当前可用」地支持专辑收藏：实现了 saveAlbum + 本 session 已登录。 */
+  private albumSaveCapable(session: Session, provider: MusicProvider): boolean {
+    if (!this.albumSaveProviderOf(provider)) return false;
+    return !!this.providerSessionFor(session, provider);
+  }
+
+  /**
+   * 取某平台的 session —— **不抛异常**版（requireProviderSession 会抛
+   * NotFoundException，那是给"用户明确要这个平台"的路径用的）。
+   *
+   * 这里要的是"这个平台现在能不能写"：未登录 = 结构性跳过，不是错误。
+   *
+   * ⚠️ 这里**不调** `bindSessionId`（requireProviderSession 会调）：
+   * 网易云的 apiCall 不刷新凭据，今天无害；但 Spotify 的 token refresh 靠
+   * `bindSessionId` 才能单飞 + 持久化 —— Spotify album save 落地时必须把
+   * 这行补上（见 ~/knowledge/maestro/spotify.md）。
+   */
+  private providerSessionFor(session: Session, provider: MusicProvider): ProviderSession | null {
+    const ps = session.providers?.[provider];
+    if (!ps) return null;
+    switch (provider) {
+      case 'netease':
+        // 网易云的写接口认 MUSIC_U cookie（无 cookie = 未登录）
+        return ps.musicU ? ps : null;
+      case 'qq':
+        return ps.qqCookie ? ps : null;
+      case 'spotify':
+        return ps.spotify?.accessToken ? ps : null;
+      case 'deezer':
+        // 匿名平台，没有"用户收藏专辑"的概念
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * 找出 state 里**同一张专辑**的所有 albumFanOut key（按 platform+albumId 重合）。
+   *
+   * 为什么需要（照抄 track 侧的 canonicalMergedId，#6 mergedId 漂移归一）：
+   * 专辑的 mergedId = `merged-${normalizeKey(代表源.title, 代表源.artist)}`，
+   * 而**代表源会变** —— 同一张专辑，搜到 QQ 时 rep 是 QQ（id 用 QQ 的写法），
+   * 某次 QQ 缺席只剩 Deezer 时 rep 变成 Deezer（id 用罗马音写法）→ 两个不同的
+   * mergedId → 两条 albumFanOut 记录 → 旧的那条成孤儿（角标不亮 + 撤不掉）。
+   *
+   * albumFanOut 表很小（用户收藏过的专辑数），纯内存扫一遍可接受。
+   */
+  private matchingAlbumFanOutKeys(
+    state: MusicSessionState,
+    sources: Array<{ platform: MusicProvider; albumId: string }>,
+  ): string[] {
+    const wanted = new Set(
+      sources.filter((s) => s?.albumId).map((s) => `${s.platform}:${s.albumId}`),
+    );
+    if (!wanted.size) return [];
+    return Object.entries(state.albumFanOut)
+      .filter(([, entries]) =>
+        entries.some((e) => e.albumId && wanted.has(`${e.platform}:${e.albumId}`)),
+      )
+      .map(([k]) => k);
+  }
+
+  /**
+   * 去某个平台**定向**找等价专辑（拿该平台的 albumId）。
+   *
+   * 为什么需要：统一专辑的 `sources` 只包含"搜到了该专辑的平台"。搜「范特西」
+   * 时网易云没命中 → sources 里没有 netease → 没有 albumId → 收藏写不进去。
+   * 这时用专辑名 + 艺人去目标平台再搜一次，用 albumsProbablySame 判等价。
+   *
+   * 复用 album.util 的等价判定（**不新建第二套归一口径** —— album-fanout
+   * spec 原写法要新建 normalizeAlbumKey / mergeAlbumLibrary，与已上线的
+   * album-search 合并逻辑重复，两套 key 口径必然漂移）。
+   *
+   * **本方法绝不抛**：平台搜索抛错（-460 风控 / 网络失败 / 响应非 JSON）
+   * 一律降级成"没找到" —— 否则整个 fan-out 会被炸穿（见 fanOutAlbumSave 的
+   * 失败策略）。
+   */
+  async findAlbumEquivalentOnPlatform(
+    session: Session,
+    platform: MusicProvider,
+    title: string,
+    artist: string,
+    year?: number,
+    trackCount?: number,
+  ): Promise<AlbumSource | null> {
+    const ap = this.albumProviderOf(platform);
+    if (!ap || typeof ap.searchAlbums !== 'function') return null;
+    const ps = this.providerSessionFor(session, platform);
+    if (!ps) return null;
+
+    const keyword = `${title} ${artist}`.trim();
+    let res: AlbumSource[] | null = null;
+    try {
+      res = await withTimeout(
+        () => ap.searchAlbums!(ps, keyword, 10),
+        UNIFIED_SEARCH_TIMEOUT_MS,
+        () =>
+          this.logger.warn(
+            `album equivalent lookup "${keyword}" on ${platform} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+          ),
+      );
+    } catch (err) {
+      // 平台搜索抛错 → 当"没找到等价专辑"，不炸穿 fan-out。
+      this.logger.warn(
+        `album equivalent lookup "${keyword}" on ${platform} failed: ${(err as Error).message}`,
+      );
+      return null;
+    }
+    if (!res) return null;
+
+    const seed: AlbumSource = {
+      platform,
+      albumId: '',
+      title,
+      artist,
+      coverUrl: '',
+      trackCount: trackCount ?? 0,
+      year: year ?? 0,
+      rank: 0,
+    };
+    for (const cand of res) {
+      // 年份冲突守卫：双方年份都已知且不等 → 不是同一张（再版 / 豪华版）。
+      // albumsProbablySame 不看年份（它只判同名同版本 + 艺人桥接）。
+      if (cand.year && year && cand.year !== year) continue;
+      // 曲目数分歧守卫：同名同艺人同年份但曲目数差 >50% → EP vs LP / 豪华版，
+      // **不是同一张专辑**。这是写路径，选错就是往用户收藏里塞错专辑。
+      if (albumTrackCountsDivergent(cand.trackCount, seed.trackCount)) continue;
+      if (albumsProbablySame(cand, seed)) return cand;
+    }
+    return null;
+  }
+
+  /**
+   * 专辑 fan-out：把「收藏这张专辑」写到所有**有收藏专辑能力且已登录**的平台。
+   *
+   * saved=true：对每个目标平台调 saveAlbum(true)，成功才写进 state.albumFanOut
+   *   （结构性跳过 / 写失败都不写 → 角标不虚高）。
+   * saved=false：**只**按 state.albumFanOut 里记录的 platform + albumId 反写
+   *   （幂等 —— 不动用户原本在别的平台单独收藏过的同一张专辑）。
+   *
+   * 单平台失败不阻塞其它平台，整体 success 恒为 true，失败平台不进 fannedOutTo。
+   *
+   * **三阶段执行，网络 I/O 一律不进 state 锁**（照 track 侧「远端写推队列」
+   * 的思路）：否则一次收藏最坏 ≈ 10s（5s 等价查找 + 5s 写）会把该 session
+   * 所有其它 state 写路径（❤ / 踩 / queue refill）全排队。
+   *   阶段 0 规划目标（无锁，含网络：定向等价查找）
+   *   阶段 1 执行远端写（无锁）
+   *   阶段 2 落账（锁内，纯内存）
+   *
+   * ⚠️ plan（锁外快照）与落账（锁内重读）之间有**有意的并发窗口**：
+   * plan 可能漏掉其间并发新增的记录 —— 但落账按"实际撤成功的
+   * (platform, albumId)"摘条目，没撤的记录保留 → 远端仍收藏 = 记录仍在，
+   * end state 自洽（不会产孤儿，也不会误删）。把 I/O 塞回锁内消掉这个
+   * 窗口的代价是整个 session 的写路径被远端时延拖住，不值。
+   *
+   * 写调用**绝不向外抛**：平台写失败（网络 / 风控 / 响应非 JSON）一律当成
+   * "这个平台没写成"，整体 success 仍为 true。否则异常会在 saveState 之前
+   * 抛出 → 已成功的平台丢失落账 → 远端收藏了但本地无记录（孤儿，撤不掉）。
+   */
+  async fanOutAlbumSave(
+    session: Session,
+    mergedAlbumId: string,
+    sources: Array<{
+      platform: MusicProvider;
+      albumId: string;
+      title?: string;
+      artist?: string;
+      year?: number;
+      trackCount?: number;
+    }>,
+    saved: boolean,
+  ): Promise<{ success: boolean; saved: boolean; fannedOutTo: MusicProvider[] }> {
+    // ── 阶段 0：规划写入目标（无锁）──
+    const plan = await this.planAlbumSave(session, mergedAlbumId, sources, saved);
+    // ── 阶段 1：执行远端写（无锁，单平台失败不影响其它）──
+    const outcomes = await this.executeAlbumWrites(session, plan);
+    // ── 阶段 2：落账（锁内）──
+    return this.withStateLock(session.id, async () => {
+      const state = this.loadState(session);
+      const ok = outcomes.filter((o) => o.ok);
+
+      // 同一张专辑可能存在多条历史 key（mergedId 漂移）→ 全部找出来一起处理
+      const keys = new Set<string>();
+      if (state.albumFanOut[mergedAlbumId]) keys.add(mergedAlbumId);
+      for (const k of this.matchingAlbumFanOutKeys(state, sources)) keys.add(k);
+      const targetKey = keys.size ? [...keys][0] : mergedAlbumId;
+
+      // fannedOutTo 的粒度是「平台」：
+      //  - 收藏方向：该平台写成功即计入；
+      //  - 取消方向：同一平台可能挂着**多条 albumId 记录**（平台侧换了专辑 id
+      //    —— 再版/换源），只有它名下的记录全部撤干净才算"取消成功"。否则前端
+      //    会按"已取消"清角标，而远端还有残留收藏（角标撒谎）。
+      const fannedOutTo: MusicProvider[] = [];
+
+      if (saved) {
+        // 合并所有历史 key 的条目 + 本次成功项 → 写进 targetKey，其余 key 删除。
+        // 条目按 (platform, albumId) 去重 —— **同一平台允许多条不同 albumId**：
+        // 每一条都是我们真实写过的远端对象，取消收藏要逐条撤。若按平台合并
+        // （只留一个 albumId），被丢掉的那条远端仍收藏着、记录却没了 → 远端孤儿。
+        const entries: AlbumFanOutEntry[] = [];
+        const seen = new Set<string>();
+        const push = (platform: MusicProvider, albumId: string) => {
+          const pair = `${platform}:${albumId}`;
+          if (seen.has(pair)) return;
+          seen.add(pair);
+          entries.push({ platform, albumId });
+        };
+        for (const k of keys) {
+          for (const e of state.albumFanOut[k] ?? []) push(e.platform, e.albumId);
+        }
+        for (const o of ok) {
+          push(o.platform, o.albumId);
+          if (!fannedOutTo.includes(o.platform)) fannedOutTo.push(o.platform);
+        }
+        for (const k of keys) delete state.albumFanOut[k];
+        if (entries.length) state.albumFanOut[targetKey] = entries;
+      } else {
+        // 取消：把所有相关 key 里"已成功撤销"的 (platform, albumId) 摘掉；
+        // 撤失败的记录保留 —— 远端仍收藏着，删了记录就再也撤不掉。
+        const succeeded = new Set(ok.map((o) => `${o.platform}:${o.albumId}`));
+        const totals = new Map<MusicProvider, number>();
+        for (const t of plan) totals.set(t.platform, (totals.get(t.platform) ?? 0) + 1);
+        const oks = new Map<MusicProvider, number>();
+        for (const o of ok) oks.set(o.platform, (oks.get(o.platform) ?? 0) + 1);
+        for (const [p, total] of totals) {
+          if ((oks.get(p) ?? 0) === total) fannedOutTo.push(p);
+        }
+        for (const k of keys) {
+          const remaining = (state.albumFanOut[k] ?? []).filter(
+            (e) => !succeeded.has(`${e.platform}:${e.albumId}`),
+          );
+          if (remaining.length) state.albumFanOut[k] = remaining;
+          else delete state.albumFanOut[k];
+        }
+      }
+
+      this.saveState(session, state);
+      return { success: true, saved, fannedOutTo };
+    });
+  }
+
+  /**
+   * 阶段 0：规划这次要写哪些平台、哪些 albumId（**无锁**）。
+   *
+   * 收藏方向：请求里的 sources + 定向等价查找补齐的平台。
+   * 取消方向：state 里记录的条目（幂等 —— 只动我们收藏过的）。
+   */
+  private async planAlbumSave(
+    session: Session,
+    mergedAlbumId: string,
+    sources: Array<{
+      platform: MusicProvider;
+      albumId: string;
+      title?: string;
+      artist?: string;
+      year?: number;
+      trackCount?: number;
+    }>,
+    saved: boolean,
+  ): Promise<Array<{ platform: MusicProvider; albumId: string; saved: boolean }>> {
+    if (saved) {
+      const targets = new Map<MusicProvider, string>();
+      for (const s of sources) {
+        if (!s?.platform || !s.albumId) continue;
+        if (!targets.has(s.platform)) targets.set(s.platform, s.albumId);
+      }
+      // 缺 source 的能力平台 → 去那边定向找等价专辑（否则没 albumId 写不进去）
+      const seed = sources.find((s) => s?.title && s?.artist);
+      if (seed?.title && seed.artist) {
+        for (const platform of MUSIC_PROVIDERS) {
+          if (targets.has(platform)) continue;
+          if (!this.albumSaveCapable(session, platform)) continue;
+          const eq = await this.findAlbumEquivalentOnPlatform(
+            session,
+            platform,
+            seed.title,
+            seed.artist,
+            seed.year,
+            seed.trackCount,
+          );
+          if (eq) targets.set(platform, eq.albumId);
+        }
+      }
+      // 结构性跳过：平台没能力 / 没登录 → 不写（不记假收藏）
+      return [...targets.entries()]
+        .filter(([platform]) => this.albumSaveCapable(session, platform))
+        .map(([platform, albumId]) => ({ platform, albumId, saved: true }));
+    }
+
+    // 取消方向：按记录反写（mergedId 漂移时把历史 key 一并算进来）。
+    // 条目按 (platform, albumId) 去重 —— 同一平台可能挂着多条不同 albumId
+    // 的记录（平台侧换了专辑 id），每条都是真实写过的远端对象，必须逐条撤；
+    // 只撤第一条会让另一条成远端孤儿（远端还收藏着、记录却没了）。
+    const state = this.loadState(session);
+    const keys = new Set<string>();
+    if (state.albumFanOut[mergedAlbumId]) keys.add(mergedAlbumId);
+    for (const k of this.matchingAlbumFanOutKeys(state, sources)) keys.add(k);
+    const out: Array<{ platform: MusicProvider; albumId: string; saved: boolean }> = [];
+    const seen = new Set<string>();
+    for (const k of keys) {
+      for (const e of state.albumFanOut[k] ?? []) {
+        const pair = `${e.platform}:${e.albumId}`;
+        if (seen.has(pair)) continue;
+        seen.add(pair);
+        out.push({ platform: e.platform, albumId: e.albumId, saved: false });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 阶段 1：执行远端写（**无锁**；单平台失败不影响其它平台，**绝不向外抛**）。
+   */
+  private async executeAlbumWrites(
+    session: Session,
+    plan: Array<{ platform: MusicProvider; albumId: string; saved: boolean }>,
+  ): Promise<Array<{ platform: MusicProvider; albumId: string; ok: boolean }>> {
+    const results: Array<{ platform: MusicProvider; albumId: string; ok: boolean }> = [];
+    for (const t of plan) {
+      results.push({
+        platform: t.platform,
+        albumId: t.albumId,
+        ok: await this.saveAlbumOnce(session, t.platform, t.albumId, t.saved),
+      });
+    }
+    return results;
+  }
+
+  /**
+   * 单平台专辑收藏写（不带 fan-out 语义，就是"这张专辑收藏/取消"）。
+   *
+   * 与 fan-out 方向不同，这里**fail loud**：平台不支持 / 未登录都直接抛，
+   * 而不是静默返回 success=false —— 调用方（单平台端点）需要区分
+   * "没做成"和"做成了但状态是反的"。
+   *
+   * ⚠️ **不落账**：单平台端点拿不到统一专辑键（mergedAlbumId），写完远端
+   * 不会有本地记录 → 角标不亮、也无法用 merged 端点撤销。要记账请走
+   * `fanOutAlbumSave`。
+   */
+  async toggleAlbumSave(
+    session: Session,
+    provider: MusicProvider,
+    albumId: string,
+    saved: boolean,
+  ): Promise<{ success: boolean; saved: boolean }> {
+    if (!this.albumSaveProviderOf(provider)) {
+      throw new BadRequestException(`平台 ${provider} 不支持收藏专辑`);
+    }
+    if (!this.providerSessionFor(session, provider)) {
+      throw new NotFoundException(`Not logged in to ${provider}`);
+    }
+    const ok = await this.saveAlbumOnce(session, provider, albumId, saved);
+    // saved 报的是**尝试后的实际状态**（写失败 = 状态没变）
+    return { success: ok, saved: ok ? saved : !saved };
+  }
+
+  /**
+   * 一次专辑收藏写 + 5s 硬超时（超时 = 失败，不阻塞整条 fan-out）。
+   *
+   * ⚠️ **绝不向外抛**：平台写接口可能抛（网络失败 / 响应非 JSON / 风控），
+   * 而 `withTimeout` 不吞 rejection（`Promise.race` 直接传播）—— 不在这里
+   * 兜住，异常会一路穿出 fan-out，导致：
+   *   1) 违反 spec 失败策略（单平台失败不阻塞、success 恒 true）
+   *   2) 异常在 saveState 之前抛出 → 本次已成功平台的落账丢失
+   *   3) UI 看到的是"收藏失败：<底层错误>"，而不是"没有可收藏的平台"
+   * 统一降级成 false（= 这个平台没写成）。
+   */
+  private async saveAlbumOnce(
+    session: Session,
+    platform: MusicProvider,
+    albumId: string,
+    saved: boolean,
+  ): Promise<boolean> {
+    const ap = this.albumSaveProviderOf(platform);
+    const ps = this.providerSessionFor(session, platform);
+    if (!ap || !ps) return false;
+    try {
+      const res = await withTimeout(
+        () => ap.saveAlbum!(ps, albumId, saved),
+        UNIFIED_SEARCH_TIMEOUT_MS,
+        () =>
+          this.logger.warn(
+            `album save ${platform} albumId=${albumId} saved=${saved} timed out (>${UNIFIED_SEARCH_TIMEOUT_MS}ms)`,
+          ),
+      );
+      return res === true;
+    } catch (err) {
+      this.logger.warn(
+        `album save ${platform} albumId=${albumId} saved=${saved} failed: ${(err as Error).message}`,
+      );
+      return false;
+    }
   }
 
   private libraryKey(sessionId: string): string {

@@ -9,6 +9,131 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **fix(album): 网易云专辑详情解锁 —— 展开卡片不再红字「album detail not supported」**
+  （2026-10-20 用户报障：专辑行展开后报 `album detail not supported on netease`）
+
+  **根因不是「网易云不支持」，是「没登录」**。`specs/album-search` 当年把
+  `POST /api/album/{id}` 的 `code:-462 "请绑定手机后再试哦~"` 记成"IP 级反爬"
+  —— 那个结论混着**未登录**这个变量（对照实验 4 header 变体 × 6 次全是在无
+  cookie 下打的）。spec 自己的结语其实写了"需登录态，本机无登录会话无法验证"。
+
+  2026-10-20 用真实登录态复测：`POST /api/album/{id}` → `code=200`、songs 完整
+  （实测「最后的水族馆」21 首 / 2 碟，字段全对）。**端点没问题，缺的是登录态。**
+
+  - `netease.provider.ts` 新增 `getAlbumTracks()`：映射 id/name/artists/
+    duration(ms)/`no`（**碟内**曲序）/`disc`（"01"→碟号 1）/fee
+  - 付费判定只能靠 `song.fee`（专辑端点**不返回 privilege**，单曲搜索才返回）：
+    `fee>0`（数字专辑/付费单曲/试听）→ 标 vipLocked（与单曲搜索同口径，实测
+    两端 fee 都是 8）；`fee=0` → **不标锁**（乐观）—— 反过来"非 VIP 一律标锁"
+    会让整张专辑全变不可播、专辑 tab 直接废掉；`album.paid=true`（已买下整张
+    专辑）→ 不标锁
+  - 未登录 → 明确提示「请先登录网易云」（**不甩 code 给用户看**）；服务端那条
+    英文 `album detail not supported on <p>` 改成中文（它会原样透到界面上）
+  - **UI 多平台回退**：展开专辑时逐个平台试，第一个拉不到就换下一个源 ——
+    以前只用代表源（`sources[0]`），那个平台一失败整张卡片就废了。现在只要
+    **有一个**平台能给曲目，卡片就能用
+  - 测试：provider 单测 +4 条（字段映射 / -462→提示登录 / 空专辑 / paid=true），
+    renderer +2 条（多平台回退 / 全失败保留中文提示）；真实登录态端到端验过
+    21 首全对
+
+- **feat(album): 专辑跨平台 fan-out —— 点 ❤ 把「收藏专辑」同步到所有支持的平台**
+  （spec: specs/album-fanout，2026-10-20）
+
+  专辑搜索结果里点 ❤ → 把"收藏这张专辑"写进所有**有收藏专辑能力且已登录**的
+  平台；再点一次取消。v1 真正落地的是**网易云**（QQ 无收藏专辑 API、Deezer 无
+  per-user album save、Spotify 未实现专辑搜索 → 拿不到 albumId，只留接口位）。
+
+  **写接口**（`netease.provider.ts` 的 `saveAlbum`）：
+
+  - `POST /api/album/sub`（alg=itembased + id + sub=true|false），复用 provider
+    既有的 `apiCall` —— appver / csrf_token / `__csrf` cookie / `X-Real-IP`
+    四件套是网易云写接口不被 -460 风控拦的前提（与红心同族）
+  - `code=405`「操作频繁」= 目标态已达成 → **视为幂等成功**（否则重试会白白
+    退避 7 次 / 64s）
+  - 端点提为常量 `NETEASE_ALBUM_SUB_ENDPOINT`：真伪以登录态实测为准，失败日志
+    打 code + message，实测不符时一行可改
+
+  **能力判定用 feature detection，不用静态 `hasAlbumSaveApi` 标志位**：
+  `common/provider.ts` 里 `MusicProvider` 只是字符串 union、没有 interface 可扩展；
+  且静态标志位会与"方法真的实现了"漂移（改方法名/删实现时标志位不会跟着变），
+  于是"声称支持但调用会崩"。改为 `album-types.ts` 的可选方法接口
+  `AlbumSaveProvider`。
+
+  **三条语义**（都写进测试）：
+
+  1. 结构性跳过（平台没能力 / 未登录）→ **不写 state**。写了就是假收藏污染 +
+     角标虚高（"3❤" 其实只有 1 个平台）
+  2. 单平台失败不阻塞其它 → 整体 `success` 恒 true，失败平台不进 `fannedOutTo`
+  3. 取消方向**只**反写 state 里记过的 platform + albumId → 幂等，且不会动
+     用户原本在别的平台单独收藏过的同一张专辑
+
+  **状态**：`state.json` 新增 `albumFanOut` =
+  `{ mergedAlbumId: [{platform, albumId}] }`。⚠️ 比 spec 原稿多存 `albumId` ——
+  取消收藏要靠它反写，只存平台名撤不掉（track 侧 `FanOutEntry` 存 `trackId`
+  是同一个教训）。老 state 文件无此字段时按空处理，不炸。
+
+  **跨平台补齐**：统一专辑的 `sources` 只含"搜到了该专辑的平台" —— 搜「范特西」
+  网易云没命中就没有 albumId，收藏写不进去。新增
+  `findAlbumEquivalentOnPlatform()`：用专辑名 + 艺人去目标平台再搜一次，用
+  album-search 已有的 `albumsProbablySame` 判等价 + **year 冲突守卫**（双方
+  年份已知且不等 → 拒，挡住再版/豪华版）。⚠️ **没有新建第二套归一口径** ——
+  spec 原稿要新建的 `normalizeAlbumKey` / `mergeAlbumLibrary` /
+  `findEquivalentAlbum` 与 album-search 已上线的合并逻辑重复，两套 key 口径
+  必然漂移（CLAUDE.md 明令禁止）。
+
+  **端点**：`POST /music/album/save/merged` + `POST /music/album/save/:albumId`。
+  ⚠️ 前者必须声明在后者之前 —— Express 按声明顺序匹配，否则 `album/save/merged`
+  被 `album/save/:albumId` 截胡（`like/merged` vs `like/:trackId` 已踩过同一个
+  坑，e2e 专门锁了这条）。`sources` 只在收藏方向必需；取消方向按服务端记录反写。
+
+  **UI**（`AlbumResults.tsx`）：专辑行右侧加 ❤ 按钮（点收藏/再点取消，乐观
+  更新 + 失败回滚），已收藏时显示 ♥ + **真实平台数**角标；点 ❤ 不会触发行展开
+  （`stopPropagation`）。没有可收藏的平台时给明确提示，不静默失败。
+
+  **失败隔离（review 必修）**：平台写接口 / 搜索接口**可能抛**（`withTimeout`
+  不吞 rejection —— `Promise.race` 直接传播；网易云 `apiCall` 在网络失败 /
+  响应非 JSON 时抛 `BadRequestException`，`searchAlbums` 在 `code!=200` 时抛）。
+  抛出点在 `saveState` 之前 → 已成功的平台丢失落账 → **远端收藏了但本地无
+  记录**（孤儿，角标不亮、merged 撤不掉）。现在写调用与等价查找都 catch →
+  降级成"这个平台没写成"，整体 `success` 仍为 true。
+
+  **远端写不进 state 锁**（review 中优先级）：三阶段执行 —— 规划（无锁，含
+  网络：定向等价查找）→ 远端写（无锁）→ 落账（锁内，纯内存）。否则一次收藏
+  最坏 ≈10s 会把该 session 其它 state 写路径（❤ / 踩 / queue refill）全排队
+  （track 侧特意把远端写推队列就是躲这个）。
+
+  **mergedId 漂移归一**（review 中优先级）：专辑 mergedId =
+  `merged-${normalizeKey(代表源.title, 代表源.artist)}`，而**代表源会变**
+  （QQ 缺席时 rep 变 Deezer）→ 同一张专辑两条记录 → 旧条成孤儿。按
+  platform+albumId 重合扫 `albumFanOut` 归一（照 track 侧 `canonicalMergedId`）。
+
+  **trackCount 分歧守卫**（review 中优先级，写路径正确性）：同名 + 同艺人 +
+  同年份但曲目数差 >50% = EP vs LP / 豪华版 → **不是同一张专辑**。sources
+  现在带 `trackCount`（用该平台自己报的那个，不是合并中位数），阈值复用
+  `album.util` 的 `TRACK_COUNT_DIVERGENCE`（不另立一份）。
+
+  另外：平台参数改**严格校验**（未知 → 400，不再被 `normalizeProvider` 静默
+  兜底成 'qq'）；`albumFanOut` 加 LRU 上限（1000，照 `fanOut` 口径）；同平台
+  entry 的 albumId 会更新（否则 unsave 撤旧 id、新的成远端孤儿）；单平台端点
+  `toggleAlbumSave` 明确标注为 **raw / 不落账**（拿不到统一专辑键 → 角标不亮、
+  不能用 merged 撤）。
+
+  **二轮 review 残留**（三条，全部处置）：
+
+  - 同平台可能挂**多条不同 albumId**（平台侧换专辑 id，每条都是真实写过的
+    远端对象）→ plan/落账按 `platform:albumId` pair 去重、取消逐条撤；
+    `fannedOutTo` 取消方向 = 该平台**全部撤干净**才计入（撤一半角标不灭）
+  - plan（锁外快照）与落账（锁内）之间的并发窗口写明为**有意取舍** ——
+    落账按"实际撤成功的 pair"摘条目，end state 自洽不产孤儿；消掉窗口要把
+    网络 I/O 塞回锁里（最坏 ≈10s 堵全部 state 写），不值
+  - 搜索角标改**两路注入**：`item.id` 精确 key + sources 的
+    `platform:albumId` 与任一记录重合 —— 兜住 mergedId 漂移后记录留在老
+    key 下、新 key 角标不亮的场景（track 侧 library `ptToFanOutKeys` 同思路）
+
+  测试：服务端白盒 19 条 + e2e 6 条 + renderer vitest 11 条 = 36 条；变异验证
+  四轮（不写 `albumFanOut` → 红；取消方向改用请求 sources 反写 → 红；去掉
+  异常隔离 → 红；远端写挪回锁内 → 红）。
+
 - **fix(player): QQ 取不到流时零兜底 → 界面卡在「等待播放」**（2026-10-19 报障）
 
   报障现象：启动后不播放，进度条 `00:00`、HUD 显示 READY、没有任何报错。
@@ -160,6 +285,74 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   `buildUnifiedItems`，它按歌名折叠同名条目会让 227 首变 225 首，测试钉死这一点。
 
 ### Fixed
+
+- **CI 测试门禁假绿 —— 测试挂了，CI 照样显示 success**（2026-10-20 评估实测）
+
+  `scripts/test.sh --ci`（= CI workflow 的 `npm run test:ci`）**从来看不见测试失败**。
+  根因是退出码被两处吃掉：
+
+  1. `--ci` 分支用 `OUTPUT=$(run_all 2>&1)` 捕获输出 —— 这是**子 shell**，
+     里面 `set +e` 关掉了提前中止，于是「首个失败即退出」根本没实现，
+     全部文件都跑完了；
+  2. `EXIT_CODE=$?` 取的是 `run_all` **最后一条命令**的退出码，而那行是
+     `echo "── all tests passed ──"` → 恒为 0。
+
+  实测：注入一个必失败的测试文件后，脚本照常打印「all tests passed」、
+  **退出码 0**。也就是说 `.github/workflows/test.yml` 里的
+  `npm run test:ci` 是一道**永远绿的门禁** —— 这个仓库没有任何一道自动门禁
+  能拦住测试失败。（旁证：GitHub Actions 历史上唯一一次红是**颜色令牌门禁**
+  抓的，不是测试抓的。）
+
+  附带第二个坑：非 CI 模式全程 `set -e`，而 server 排在第 2 位 → server 一红，
+  `electron`(8) + `renderer`(41) 共 **49 个测试文件永远不会执行**，信号被截断。
+
+  修法：统一改成**跑完全部测试文件 → 收集失败清单 → 有失败就以非零码退出**。
+  - `run_pkg` 里的失败不再中断循环（`if ! (...)` 让 errexit 在该命令上失效）
+  - `FAILED_COUNT` / `FAILED_FILES` 是**顶层普通变量**（子 shell 里改不出来，
+    这正是旧 bug 的根）
+  - `--ci` 分支改成流式输出（不再用 `$(...)` 捕获），失败清单在末尾打印
+  - `--coverage` 分支原来用 `|| true` 把失败整个吞掉，现在同样计入失败清单
+  - CI 模式的 `✓` 标记改成**只对真通过的文件打**（旧实现无论成败都打 ✓）
+
+  验收（故障注入实测）：注入 1 个必失败文件 → 退出码 **1**、失败清单打印、
+  且 common/server/electron/renderer **四段全部跑完**（不再互相遮蔽）；
+  移除注入后全绿 → 退出码 0。
+
+- **备份文件同机其他用户可读 + 孤儿键把 state.json 撑大**（2026-10-20 实测用户机器）
+
+  三个真实问题，都在存储/备份这条链上：
+
+  - **备份文件是 0644 = 同机其他用户可读**。`state.json` 每次写都 chmod 0o600
+    （storage.ts 里白纸黑字写着「QQ cookie / 网易云 MUSIC_U / Spotify token 全是
+    明文」），但**备份路径从来没收紧过** —— 备份文件是 umask 默认的 0644，
+    备份目录 0755。备份里装的就是同一份明文凭据。
+    修法：目录 0700、文件 0600（`mkdir`/`writeFile` 的 mode 只在创建时生效，
+    两边都再 chmod 一次覆盖「已存在」的情况）。
+  - **孤儿键**：会话被 TTL 回收后，`sessions` blob 里那条没了，可
+    `music:<id>` / `library:<id>` / `playlists:<id>` 还躺在 store 里没人管 ——
+    实测 48 个 `music:` 键里 **46 个是孤儿**，state.json 里 1.9MB / 5.55MB 是纯垃圾，
+    而且会被**原样抄进每一份备份**。
+    修法：`StorageService.gcSessionScoped()` 按「session id 是否还在 `sessions.byId`」
+    回收，`SessionService.evictExpired()` 每次都调（幂等，老版本遗留的孤儿在
+    升级后第一次启动就被扫掉）。
+    语义边界：只在**有 sessions blob** 时回收 —— 没有 blob 说明会话全没了，
+    那些键可能被一次「导入备份」复活，保守起见不碰。
+  - **「每日备份」被 dev 热重载刷成「最近 7 次重启」**。`onModuleInit` 每次进程
+    启动都写一份 → `nest start --watch` 每次热重载都重启 → 保留的 7 份全是重启
+    快照，真正的每日备份被挤掉。
+    修法：启动时若 24h 内已有备份就跳过（`manual` / `daily` 不受影响）；
+    备份文件名时间戳加到**毫秒**（原来只到秒，同一秒内两次备份会撞名互相覆盖）；
+    备份内容不缩进（`null, 2` 把 5.5MB 膨胀到 8.9MB，+60%）。
+    预期效果：单份 8.9MB → ~3.4MB，7 份合计 **62MB → ~24MB**。
+
+- **专辑详情「不支持」断言长期红灯**（2026-10-20）——
+  `album-service.e2e.test.ts` 断言错误消息里含英文子串 `'not supported'`，
+  但 `6398ce6` 之后 service 的消息已经改成了人话「该平台暂不支持专辑详情（<平台>）」
+  （因为它会**原样透到界面上**）。断言没跟着改 → 长期红灯。改成断言真实契约
+  （中文说明 + 平台名）。同文件的 `10b` 注释还写着「网易云未实现（B1 挂起）」，
+  但 `6398ce6` 已经解除了 B1（网易云 provider 已实现 `getAlbumTracks`）——
+  注释与用例同步纠正，并补了 `10c`：网易云**已实现但未登录** → 抛
+  「请先登录网易云」（覆盖 `6398ce6` 新增的前置拦截）。
 
 - **残缺音源静默播完**（用户实测：搜索队列连播到《不染》，音频只有 29 秒，
   界面零反馈）—— `tryUpgradeFromTrial` 的入口条件带
@@ -477,6 +670,45 @@ evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可�
 
 ### Tests
 
+- **覆盖率数字不再骗人 —— 口径从 85.63% 改成诚实的 72.19%**（2026-10-20）
+
+  `npm run test:coverage` 之前报的 85.63% **对代码库没有代表性**。三个缺陷：
+
+  1. **`.test.tsx` 根本不进覆盖率** —— coverage 分支只 glob `*.test.ts` /
+     `*.test.mjs`，17 个组件测试文件（`usePlayer.hook.test.tsx` 等）压根不执行；
+     连带 `.tsx` 源文件也没插桩（`--extension .ts` 只认 `.ts`）→
+     `TheaterView.tsx`（1022 行、**25 个通过的组件测试**）在报告里是 **0%**。
+     修法：c8 包 vitest 跑 `.test.tsx`（worker 继承 NODE_V8_COVERAGE，实测能收到
+     `.tsx` 覆盖数据），并加 `--extension .tsx`。
+  2. **分母 = 「被某个测试 import 过的文件」，不是「所有源文件」** ——
+     从没被 import 的源文件既不计分子也不计分母，被静默排除（renderer 72 个源文件
+     报告里只有 24 个，48 个消失）。修法：采集**与报告**两步都加
+     `--all --src <每包 src>` —— 只在采集步骤加无效，c8 report 默认只输出
+     「V8 覆盖率里出现过的文件」。报告条目 111 → **141**。
+  3. `common/dist` 与 `common/src` 双计 → 虚高 0.98pp。修法：`--exclude` 剔掉
+     `**/dist/**` / `**/*.d.ts` / 测试文件自身。
+
+  落地后 **72.19% 行 / 80.42% 分支 / 74.79% 函数（141 条目）**，≥60% 门禁仍然通过，
+  但这个数字**第一次代表整个代码库**。几个因此「显形」的洞：
+  `usePlayer.ts` 5.3% → **38.8%**（测试早就补了，只是以前测不出来）、
+  `electron/src` 6.2%（`main.ts` / `preload.ts` 0%）、
+  `renderer/src/hooks` 29.32%、`components/layout` 0%。
+
+  另加一条提示：**本次有 N 个测试文件失败 → 覆盖率偏低**。失败的文件不产生
+  （或只产生部分）覆盖数据，于是「某个测试文件跑不起来」会伪装成「这块代码没测」
+  —— 实测踩过：`reco.test.ts` 跑不起来时，`reco.service.ts` 覆盖率从 80.27%
+  塌成 11.1%，看着像天大的覆盖洞，其实只是那个测试文件没跑成。
+  **覆盖率是二手结论**；指认「核心逻辑没测」之前，先确认那个测试文件本身是绿的。
+
+- **测试门禁从「永远绿」改成真门禁**（2026-10-20）—— 见上方 `### Fixed` 条目。
+  配套：`specs/stability/tasks.md` 的 **G2** 条目补记了原验收标准的漏洞
+  （只验了「全绿时跑通」，没验「有失败时会不会红」）。
+- **九层测试覆盖评估（2026-10-20）** —— 产出 `specs/stability/tasks.md` 的
+  **H 组（H1–H7）**，逐条带实测数据与验收标准。关键结论：
+  - `usePlayer.ts` hook 体（2040 行）曾**零执行**（99 项断言全走导出的纯函数）、
+    `reco.service.ts` 曾 11.1% / 函数 4.7% —— 后两项已由并行 session 补齐
+    （`reco.service.ts` 复测 **84.6% / 91.5%**）
+  - **覆盖率数字口径失真的实测影响是 ~24pp，不是 1pp**（见上条，已修）
 - `packages/server/src/reco/eval.test.ts`（新）：5 组口径测试（切分不重叠/可复现/
   至少留 1 首训练、召回与 MRR 含 Top-K 截断与空输入、同艺人分档、多样性、
   多轮平均 + 报告格式 + 基线对比升降标注）。

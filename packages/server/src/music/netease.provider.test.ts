@@ -747,7 +747,122 @@ async function main() {
     );
   }
 
-  console.log('\n🎉 netease.provider.test 全部 37 项通过');
+  // ── 38. getAlbumTracks: 正常返回 → 字段映射（含碟号/曲序）──────
+  {
+    const restore = mockFetch(() => ({
+      code: 200,
+      album: {
+        id: 137919451,
+        name: '最后的水族馆',
+        artists: [{ id: 12038239, name: '裘德' }],
+        picUrl: 'https://p4.music.126.net/cover.jpg',
+        paid: false,
+        songs: [
+          {
+            id: 1905979458,
+            name: '游览指南',
+            artists: [{ id: 12038239, name: '裘德' }],
+            album: { id: 137919451, name: '最后的水族馆' },
+            duration: 100000,
+            no: 1,
+            disc: '01',
+            fee: 8,
+          },
+          {
+            id: 1905979461,
+            name: '磁悬浮列车',
+            artists: [{ id: 12038239, name: '裘德' }],
+            album: { id: 137919451, name: '最后的水族馆' },
+            duration: 312032,
+            no: 1,
+            disc: '02',
+            fee: 0,
+          },
+        ],
+      },
+    }));
+    const tracks = await prov.getAlbumTracks(SESSION, '137919451');
+    restore();
+    assert.strictEqual(tracks.length, 2, '应返回 2 首');
+    const t0 = tracks[0];
+    assert.strictEqual(t0.id, '1905979458');
+    assert.strictEqual(t0.provider, 'netease');
+    assert.strictEqual(t0.title, '游览指南');
+    assert.strictEqual(t0.artist, '裘德');
+    assert.strictEqual(t0.album, '最后的水族馆');
+    assert.strictEqual(t0.coverUrl, 'https://p4.music.126.net/cover.jpg?param=300y300');
+    assert.strictEqual(t0.duration, 100, 'duration(ms) → 秒');
+    assert.strictEqual(t0.trackNumber, 1, 'no = 碟内曲序');
+    assert.strictEqual(t0.discNumber, 1, 'disc "01" → 碟号 1');
+    assert.strictEqual(t0.vipLocked, true, 'fee=8（付费/试听）→ 标锁，与单曲搜索同口径');
+    assert.strictEqual(t0.vipCategory, 'paid-track');
+    // 第二首：disc "02" → 碟号 2；fee=0 → 不标锁（乐观，注释里写了取舍）
+    assert.strictEqual(tracks[1].discNumber, 2, 'disc "02" → 碟号 2');
+    assert.strictEqual(tracks[1].vipLocked, false, 'fee=0 → 不标锁（乐观）');
+    assert.strictEqual(tracks[1].vipCategory, undefined, 'fee=0 → 无付费分类');
+    console.log('✅ 38. getAlbumTracks: 字段映射（曲序/碟号/时长/付费标记）');
+  }
+
+  // ── 39. getAlbumTracks: code=-462（未登录反爬）→ 提示登录 ─────
+  {
+    const restore = mockFetch(() => ({ code: -462, message: '请绑定手机后再试哦~' }));
+    let msg = '';
+    try {
+      await prov.getAlbumTracks(SESSION, '137919451');
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    restore();
+    assert.ok(msg.includes('登录'), `-462 应提示登录（实际：${msg}）`);
+    assert.ok(!msg.includes('-462'), '提示里不该甩 code 给用户看');
+    console.log('✅ 39. getAlbumTracks: -462 → 提示登录（不甩 code）');
+  }
+
+  // ── 40. getAlbumTracks: songs 为空 → 404 语义 ─────────────────
+  {
+    const restore = mockFetch(() => ({ code: 200, album: { id: 1, name: 'x', songs: [] } }));
+    let msg = '';
+    try {
+      await prov.getAlbumTracks(SESSION, '1');
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    restore();
+    assert.ok(msg.includes('没有曲目'), `空专辑应报"没有曲目"（实际：${msg}）`);
+    console.log('✅ 40. getAlbumTracks: 空专辑 → 明确报错');
+  }
+
+  // ── 41. getAlbumTracks: album.paid=true → 不标锁 ───────────────
+  {
+    const restore = mockFetch(() => ({
+      code: 200,
+      album: {
+        id: 2,
+        name: '已购专辑',
+        paid: true,
+        artists: [{ id: 1, name: 'A' }],
+        songs: [
+          {
+            id: 100,
+            name: '歌',
+            artists: [{ id: 1, name: 'A' }],
+            album: { id: 2, name: '已购专辑' },
+            duration: 1000,
+            no: 1,
+            disc: '01',
+            fee: 8,
+          },
+        ],
+      },
+    }));
+    const tracks = await prov.getAlbumTracks(SESSION, '2');
+    restore();
+    assert.strictEqual(tracks[0].vipLocked, false, '已购买整张专辑 → 不该标锁');
+    assert.strictEqual(tracks[0].vipCategory, undefined, '已购买整张专辑 → 不标付费分类');
+    console.log('✅ 41. getAlbumTracks: album.paid=true → 不标锁');
+  }
+
+  console.log('\n🎉 netease.provider.test 全部 41 项通过');
 }
 
 main().catch((err) => {

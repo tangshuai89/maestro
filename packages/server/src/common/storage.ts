@@ -4,6 +4,16 @@ import * as path from 'path';
 import { ConfigService } from './config';
 
 /**
+ * Session-scoped storage key prefixes —— 前缀后面那截就是 session id。
+ * 与三处写入点一一对应：
+ *   - `music:${sessionId}`     → music.service.ts
+ *   - `library:${sessionId}`   → music.service.ts
+ *   - `playlists:${sessionId}` → library/playlist.service.ts
+ * 键名知识集中在这里，GC 时不用去各业务模块猜。
+ */
+const SESSION_SCOPED_PREFIXES = ['music:', 'library:', 'playlists:'] as const;
+
+/**
  * Persists opaque blobs (sessions, cached tokens, pending QR keys) to a
  * single JSON file. Good enough for a desktop client; swap for SQLite when
  * the data set grows or needs queries.
@@ -73,6 +83,36 @@ export class StorageService {
   delete(key: string): void {
     delete this.cache[key];
     this.scheduleWrite();
+  }
+
+  /**
+   * 回收「会话已经不在了、但数据还留着」的孤儿键。
+   *
+   * 背景：会话被 TTL 回收后，`sessions` blob 里那条没了，可
+   * `music:<id>` / `library:<id>` / `playlists:<id>` 还躺在 store 里没人管。
+   * 实测用户机器上 48 个 `music:` 键里 **46 个是孤儿** —— state.json 里
+   * 1.9MB / 5.55MB 是纯垃圾，而且会被原样抄进**每一份备份**（7 份 × 8.9MB）。
+   *
+   * 只按「session id 不在 liveIds 里」判断，不看内容 —— 孤儿键的定义就是
+   * 归属的会话没了。回收是幂等的：跑多次不会伤到活着的会话数据。
+   *
+   * @param liveIds 仍然活着的 session id
+   * @returns 被回收的键数量
+   */
+  gcSessionScoped(liveIds: Iterable<string>): number {
+    const live = new Set(liveIds);
+    let removed = 0;
+    for (const key of Object.keys(this.cache)) {
+      const prefix = SESSION_SCOPED_PREFIXES.find((p) => key.startsWith(p));
+      if (!prefix) continue;
+      const id = key.slice(prefix.length);
+      // 后缀为空（键名畸形）→ 不动它，交给人看
+      if (!id || live.has(id)) continue;
+      delete this.cache[key];
+      removed++;
+    }
+    if (removed) this.scheduleWrite();
+    return removed;
   }
 
   /** Shallow snapshot of the whole store. Used by the backup/export path to

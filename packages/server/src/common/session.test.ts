@@ -308,5 +308,81 @@ check('16. setProvider：additive merge（已有字段保留）', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// ── 17. evictExpired 顺带回收该会话的 music:/library:/playlists: 键 ──
+// 会话被 TTL 回收后，它的数据键如果还留着，就是没人认领的孤儿
+// （实测用户机器 48 个 music 键里 46 个是孤儿，1.9MB 纯垃圾）。
+check('17. evictExpired：连带回收该会话的 music:/library:/playlists: 键', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mbx-session-test-'));
+  const storage = new StorageService({ storageDir: dir });
+  // 手工造两个会话：一个早就过期（lastAccessedAt=0），一个还活着。
+  // 判定口径是「session id 是否还在 sessions.byId 里」，所以必须真的挂两个会话，
+  // 不能拿一个随手编的 id 当「别的会话」—— 那种键本来就是孤儿。
+  const now = Date.now();
+  storage.set('sessions', {
+    byId: {
+      dead: { id: 'dead', createdAt: 0, lastAccessedAt: 0, providers: {} },
+      alive: { id: 'alive', createdAt: now, lastAccessedAt: now, providers: {} },
+    },
+  });
+  storage.set('music:dead', { liked: ['a'] });
+  storage.set('library:dead', { items: [1] });
+  storage.set('playlists:dead', []);
+  storage.set('music:alive', { liked: ['keep'] });
+  // storage.set 是 debounce 写盘（200ms），不 flush 的话下面新建的 StorageService
+  // 读到的还是空文件 → sessions blob 读不到 → evictExpired 压根不会跑。
+  storage.flushSync();
+
+  const cfg = {
+    storageDir: dir,
+    sessionSecret: 's',
+    sessionTtlMs: 60_000, // 1 分钟：dead（lastAccessedAt=0）已过期，alive 没过期
+    backupDir: path.join(dir, 'b'),
+    backupRetention: 7,
+  };
+  const storage2 = new StorageService({ storageDir: dir });
+  new SessionService(storage2, cfg); // 构造函数调 evictExpired
+
+  assert.strictEqual(storage2.get('music:dead'), undefined, '过期会话的 music 键应被回收');
+  assert.strictEqual(storage2.get('library:dead'), undefined, '过期会话的 library 键应被回收');
+  assert.strictEqual(storage2.get('playlists:dead'), undefined, '过期会话的 playlists 键应被回收');
+  assert.deepStrictEqual(
+    storage2.get('music:alive'),
+    { liked: ['keep'] },
+    '还活着的会话的数据不该被回收',
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ── 18. 启动即清老版本留下的孤儿键（不依赖本次是否过期）──────
+// 老版本的 evictExpired 只删会话、不删数据键 → 用户机器上攒了一堆孤儿。
+// 升级后的第一次启动就该把它们扫掉。
+check('18. 启动时清理历史遗留的孤儿键', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mbx-session-test-'));
+  const storage = new StorageService({ storageDir: dir });
+  // 造一个「会话早没了、数据键还在」的现场
+  storage.set('sessions', { byId: {} });
+  storage.set('music:ancient-orphan', { liked: ['x'] });
+  storage.set('library:ancient-orphan', { items: [] });
+  storage.flushSync();
+
+  const cfg = {
+    storageDir: dir,
+    sessionSecret: 's',
+    sessionTtlMs: 7 * 24 * 3600 * 1000,
+    backupDir: path.join(dir, 'b'),
+    backupRetention: 7,
+  };
+  const storage2 = new StorageService({ storageDir: dir });
+  new SessionService(storage2, cfg);
+
+  assert.strictEqual(storage2.get('music:ancient-orphan'), undefined, '历史孤儿 music 键应被清掉');
+  assert.strictEqual(
+    storage2.get('library:ancient-orphan'),
+    undefined,
+    '历史孤儿 library 键应被清掉',
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 console.log(`\n🎉 session.test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

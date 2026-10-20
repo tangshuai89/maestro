@@ -727,6 +727,54 @@
   cursor: help;
 }
 
+/* 专辑收藏按钮（spec: specs/album-fanout）
+ *
+ * 位置在专辑行右侧、caret 左边 —— 不抢整行的点击（整行是展开/收起）。
+ * 已收藏 = 实心 ♥ + 平台数角标；未收藏 = 空心 ♡。
+ * 颜色全部走 var(--token)，与仓库 token 门禁一致。 */
+.sp-album-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: color-mix(in srgb, var(--text-main) 45%, transparent);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.sp-album-save:hover:not(:disabled) {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.sp-album-save.is-on {
+  color: var(--accent);
+}
+
+/* 写入中：淡化 + 不可点（防连点） */
+.sp-album-save.is-busy {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* 角标数字 = 已收藏的平台数 */
+.sp-album-save-n {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
 /* 展开后的曲目容器 */
 .sp-album-tracks {
   display: flex;
