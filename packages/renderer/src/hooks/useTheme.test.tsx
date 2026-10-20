@@ -34,7 +34,7 @@ describe('useTheme', () => {
   });
 
   it('theme=system → 不设 data-theme 属性（交给 prefers-color-scheme）', () => {
-    const { result } = renderHook(() => useTheme());
+    renderHook(() => useTheme());
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
   });
 
