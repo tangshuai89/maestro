@@ -1,26 +1,22 @@
 {
   "_comment": "棘轮门禁：每个文件允许的硬编码颜色数量上限，**只许降不许升**。数字由 `node scripts/scan-hardcoded-colors.mjs --write-budget` 生成（可复现，不要手改）。改完一处硬编码就把对应数字减一；exempt 里的文件是算法生成颜色、不参与门禁（必须写原因）。",
   "budget": {
-    "packages/renderer/src/styles/components/_liked-modal.scss": 44,
-    "packages/renderer/src/styles/components/_theater.scss": 18,
-    "packages/renderer/src/components/search/providerLogos.tsx": 12,
-    "packages/renderer/src/components/views/TheaterView.tsx": 9,
+    "packages/renderer/src/styles/components/_liked-modal.scss": 36,
+    "packages/renderer/src/styles/components/_theater.scss": 10,
     "packages/renderer/src/styles/components/_settings-modal.scss": 9,
     "packages/renderer/src/styles/components/_transport.scss": 7,
     "packages/renderer/src/hooks/useReco.ts": 5,
-    "packages/renderer/src/styles/components/_auth-error-panel.scss": 5,
     "packages/renderer/src/styles/components/_error-panel.scss": 5,
     "packages/renderer/src/styles/components/_netease-modal.scss": 5,
-    "packages/renderer/src/styles/components/_reco-loading.scss": 5,
-    "packages/renderer/src/styles/components/_app-shell.scss": 4,
-    "packages/renderer/src/styles/components/_search-panel.scss": 3,
+    "packages/renderer/src/styles/components/_app-shell.scss": 3,
     "packages/renderer/src/components/modals/SettingsModal.tsx": 2,
-    "packages/renderer/src/styles/base/tokens-bridge.scss": 2,
-    "packages/renderer/src/styles/components/_source-select.scss": 2,
-    "packages/renderer/src/styles/base/_base.scss": 0,
+    "packages/renderer/src/styles/components/_auth-error-panel.scss": 2,
+    "packages/renderer/src/components/views/TheaterView.tsx": 1,
     "packages/renderer/src/styles/base/_reset.scss": 1,
     "packages/renderer/src/styles/components/_modal.scss": 1,
-    "packages/renderer/src/styles/components/_reco-key-modal.scss": 1
+    "packages/renderer/src/styles/components/_reco-key-modal.scss": 1,
+    "packages/renderer/src/styles/components/_reco-loading.scss": 1,
+    "packages/renderer/src/styles/components/_search-panel.scss": 1
   },
   "exempt": {
     "packages/renderer/src/lib/coverColor.ts": "运行时从封面图取色后写进 --cover-accent / --cover-glow（rgb 插值 + 无封面时的兜底色），不是设计令牌的复制品",
@@ -29,6 +25,7 @@
     "packages/renderer/src/lib/debug.ts": "console %c 调试样式色",
     "packages/renderer/src/styles/abstracts/_variables.scss": "compile-time SCSS constants (z-index / breakpoints / overlay palette) — spec §不做什么 \"SCSS 变量集中管\"，不参与 token 化（与 token-adoption spec §S3-7 遗留色板归属决策相符）",
     "packages/renderer/src/components/modals/LikedLibraryModal.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌",
+    "packages/renderer/src/components/search/providerLogos.tsx": "各平台品牌 logo 的简化 inline SVG 填充色（#fff / #000 / 网易云官方红 #e60026 / Spotify 官方绿 #1db954）—— 文件头注释明确「不抄官方 logo 像素（避免品牌版权），只用简化品牌色 + 视觉符号」，属品牌识别色而非 AETHER 主题令牌的复制品（注意：用的是官方品牌色，与上面 3 个文件用的 AETHER provider 色不同值）",
     "packages/renderer/src/components/search/SearchPanel.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌",
     "packages/renderer/src/components/source-select/SourceSelect.tsx": "平台品牌识别色（QQ #FFD93D / 网易云 #FF3B5C / Deezer #3D9BFF / Spotify #3DFFA2）：与 providerLogos.tsx 同源，不归 AETHER 主题令牌",
     "packages/renderer/src/styles/base/_tw-vars.scss": "Tailwind Preflight 的变量清单机械抄写（--tw-ring-color / --tw-ring-offset-color / --tw-shadow-color）——第三方库的默认值，非 AETHER 设计令牌的复制品；换成 var(--token) 反而会改变 Tailwind 行为。背景见该文件头注释。"

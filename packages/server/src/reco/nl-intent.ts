@@ -26,6 +26,12 @@ export interface NLIntent {
   similar_tracks: string[];
   exclude_artists: string[];
   exclude_genres: string[];
+  /**
+   * 流派 → 代表艺人（specs/nl-intent-retrieval/）。**检索种子**，不是 prompt 文本：
+   * 「来点儿爵士乐」→ [{genre:"jazz", artists:["Miles Davis", ...]}]，
+   * 服务端拿这些艺人去平台搜真实可播的爵士曲。
+   */
+  genre_artists: Array<{ genre: string; artists: string[] }>;
   target_count: number;
   rationale: string;
 }
@@ -67,6 +73,14 @@ export function intentToPromptHints(
   if (intent.similar_tracks.length) {
     out.push(`参考曲目（像这些歌的感觉）：${intent.similar_tracks.join('、')}`);
   }
+  // 流派代表艺人：这批人是**检索池的来源**，告诉模型能让它理解候选清单
+  // 为什么是这些歌，也避免模型以为"代表艺人"只是随口一提。
+  if (intent.genre_artists.length) {
+    const lines = intent.genre_artists
+      .filter((g) => g.genre && g.artists.length)
+      .map((g) => `${g.genre}：${g.artists.join('、')}`);
+    if (lines.length) out.push(`本次风格代表艺人：${lines.join('；')}`);
+  }
   if (intent.exclude_genres.length) {
     out.push(`不要这些风格：${intent.exclude_genres.join('、')}`);
   }
@@ -101,8 +115,16 @@ const SYSTEM_PROMPT = `你是 Maestro 播放器的"音乐口味翻译官"。把�
 6. era 给出 {from,to}，支持单边（如 2000 至今 → to 留空）
 7. target_count 默认 12。只在用户明确表达数量意图时才改（"多来点"→16~18，
    "少一点/就几首"→8~10）；没有数量词就填 12，别因为场景"听起来应该很多"而加
+8. **genre_artists（检索种子，重要）**：用户提到任何流派时，给出该流派的
+   2-4 位**公认代表艺人**（要真实存在、且不是冷门到搜不到的那种）。
+   例：用户说"来点儿爵士乐" → genre_artists=[{"genre":"jazz","artists":["Miles Davis",
+   "John Coltrane","Chet Baker","Ella Fitzgerald"]}]。
+   服务端会拿这些艺人去音乐平台搜真实曲目——**这一步决定了最终队列的风格纯度**，
+   填得准比填得多重要。流派没提到就空数组。
+9. similar_tracks 用 "歌名 - 艺人" 格式（如 "Take Five - Dave Brubeck"），
+   便于服务端解析出艺人去检索
 schema：
-{mood:string,genres:string[0-6],tempo:'slow'|'medium'|'fast'|'any',language:'zh'|'en'|'ja'|'ko'|'any',era?:{from?:number,to?:number},similar_artists:string[0-4],similar_tracks:string[0-4],exclude_artists:string[0-8],exclude_genres:string[0-4],target_count:number,rationale:string}`;
+{mood:string,genres:string[0-6],tempo:'slow'|'medium'|'fast'|'any',language:'zh'|'en'|'ja'|'ko'|'any',era?:{from?:number,to?:number},similar_artists:string[0-4],similar_tracks:string[0-4],exclude_artists:string[0-8],exclude_genres:string[0-4],genre_artists:[{genre:string,artists:string[0-4]}],target_count:number,rationale:string}`;
 
 /**
  * 构造 LLM 输入消息。库上下文 ≤ 50 首（normalizeKey 去重），
@@ -253,9 +275,30 @@ function toIntent(b: Record<string, unknown>): NLIntent {
     similar_tracks: toStrArr(b.similar_tracks).slice(0, 4),
     exclude_artists: toStrArr(b.exclude_artists).slice(0, 8),
     exclude_genres: toStrArr(b.exclude_genres).slice(0, 4),
+    genre_artists: toGenreArtists(b.genre_artists),
     target_count,
     rationale: String(b.rationale ?? '').slice(0, 80),
   };
+}
+
+/**
+ * 解析 genre_artists：`[{genre, artists[]}]`。
+ * 非法条目（不是对象 / genre 非字符串 / artists 不是数组）直接丢弃，不炸——
+ * 这一项是"检索种子"，缺了有代码侧映射表兜底，不值得因此让整个意图失败。
+ */
+function toGenreArtists(v: unknown): Array<{ genre: string; artists: string[] }> {
+  if (!Array.isArray(v)) return [];
+  const out: Array<{ genre: string; artists: string[] }> = [];
+  for (const raw of v.slice(0, 3)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const o = raw as Record<string, unknown>;
+    const genre = typeof o.genre === 'string' ? o.genre.trim().slice(0, 40) : '';
+    if (!genre) continue;
+    const artists = toStrArr(o.artists).slice(0, 4);
+    if (!artists.length) continue;
+    out.push({ genre, artists });
+  }
+  return out;
 }
 
 /** intent 里数组字段的白名单——非数组直接 400，而不是静默丢字段。 */
@@ -265,6 +308,7 @@ const INTENT_ARRAY_FIELDS = [
   'similar_tracks',
   'exclude_artists',
   'exclude_genres',
+  'genre_artists',
 ] as const;
 
 /**

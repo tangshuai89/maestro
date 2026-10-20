@@ -64,6 +64,15 @@ export interface CandidatePoolOptions {
   maxPoolSize?: number;
   /** 并发搜索的艺人数（压住对 QQ/网易云的读并发）。 */
   concurrency?: number;
+  /**
+   * 不交错、**按来源分组**（深挖 → 相邻 → 电台）。
+   *
+   * 默认交错是为了让 prompt 里不同来源混着出现（模型注意力更均匀）。但 intent
+   * 模式不一样：那里的"深挖"是**流派代表艺人**（最贴风格），"相邻"是风格
+   * 边缘（可能漂）。交错会让边缘条目插到风格条目中间——模型和"补位"都会先
+   * 撞上它们。分组 = 风格条目连续排在前面。
+   */
+  grouped?: boolean;
 }
 
 export const DEFAULT_CANDIDATE_LIMITS = {
@@ -274,8 +283,12 @@ export async function buildCandidatePool(
     )
     .filter((c): c is RecoCandidate => Boolean(c));
 
-  // ── 4. 交错合并并截断 ──────────────────────────────────
-  const candidates = interleave([deepen, neighbors, radio]).slice(0, limits.maxPoolSize);
+  // ── 4. 合并并截断 ──────────────────────────────────
+  // 默认交错（不同来源混着给模型看）；intent 模式用分组（流派条目连续在前）。
+  const merged = opts.grouped
+    ? [...deepen, ...neighbors, ...radio]
+    : interleave([deepen, neighbors, radio]);
+  const candidates = merged.slice(0, limits.maxPoolSize);
   const byOrigin: Record<CandidateOrigin, number> = {
     artist: 0,
     'related-artist': 0,

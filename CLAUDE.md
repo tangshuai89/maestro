@@ -26,6 +26,11 @@
   必须放 `packages/common/src/normalizer.ts`——server `mergeLibrary` 和 renderer
   `groupLibraryItems` 共用，确保弹窗徽章 = server 实际合并结果。**禁止**在两端
   各写一份独立实现（独立迭代会导致前后端 key 漂移）。
+- **用户意图必须作用在"检索层"（候选集），不能只写进 prompt**——当候选池是
+  硬目录约束时，prompt 里的软提示等于没有：模型面对 40 首全是流行，它变不出
+  爵士。NL 歌单的流派要变成**检索种子**（流派 → 代表艺人 → 平台真实目录），
+  LLM 只负责在已符合风格的候选里策展。详见 `specs/nl-intent-retrieval/`。
+  改这块前先跑 `npm run reco:eval:genre`（风格纯度评测，有量化基线）。
 
 ## Specs 规则
 
@@ -36,10 +41,12 @@
 
 ## 常用命令
 
-| 命令                | 用途                                             |
-| ------------------- | ------------------------------------------------ |
-| `npm run dev`       | 启动完整开发环境（server + renderer + electron） |
-| `npm run build`     | 构建全部三个包                                   |
-| `npm test`          | 跑测试                                           |
-| `npm run lint`      | 跑 lint                                          |
-| `npm run typecheck` | TypeScript 类型检查                              |
+| 命令                      | 用途                                             |
+| ------------------------- | ------------------------------------------------ |
+| `npm run dev`             | 启动完整开发环境（server + renderer + electron） |
+| `npm run build`           | 构建全部三个包                                   |
+| `npm test`                | 跑测试                                           |
+| `npm run lint`            | 跑 lint                                          |
+| `npm run typecheck`       | TypeScript 类型检查                              |
+| `npm run reco:eval`       | 推荐离线评测（留一法，不花钱）                   |
+| `npm run reco:eval:genre` | NL 歌单风格纯度评测（花钱，真实链路）            |

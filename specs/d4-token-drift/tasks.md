@@ -38,8 +38,17 @@
 - [x] **C3** `--status-error` 落地：7 处 `#ff3b5c` + 6 处 `rgba(255,59,92,α)` 改 token
       （`_error-panel` 8 · `_liked-modal` 5 · `_theater` 2 · `_auth-error-panel` 2 ·
       `_search-panel` 1 · `_settings-modal` 1）
-- [ ] **C4** 硬编码 hex 扫描（独立专题）
-- [ ] **C5** 44/52 token 从未被消费的根因收敛（AETHER 调色板/尺寸仍散在各组件硬编码）——见 spec §5.1
+- [x] **C4** 硬编码 hex 扫描（独立专题）—— **已由 `specs/token-adoption` 承接并完成**：
+      `scripts/scan-hardcoded-colors.mjs`（按文件/按色值聚合）+ `token-adoption-budget.json`
+      棘轮门禁 + `--gate` 接进 `test:ci`（S1/S2 全部 ✅）
+- [ ] **C5** token 从未被消费的根因收敛 —— **进行中，数字已过时**：
+      §5.1 记的"52 个里 44 个零消费"是 **2026-09-20** 的快照；生成层实为 **57** 个
+      （含 10 个 primitive），当前 **27/57 已被消费（47%）**。
+      硬编码侧：全仓 **140 → 90 处**（`--write-budget` 生成，棘轮只降不升）。
+      剩余零消费 30 个的构成：**spacing 9 + radius 6 + motion 5**（spec §3 明确不在范围）
+      **+ primitive 7**（中转层，设计如此）**+ 颜色类 3**（`--text-muted` / `--success` /
+      `--accent-warm`）—— **真正的颜色缺口只剩这 3 个**。
+      详情与后续批次见 `specs/token-adoption/tasks.md` S3-10 / S3-11 / S3-12。
 
 ## Phase B 执行记录（2026-09-20）
 

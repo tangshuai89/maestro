@@ -16,7 +16,7 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #02020a;
+  background: var(--primitive-bg-bottom);
   color: var(--text-main);
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   user-select: none;
@@ -134,7 +134,7 @@
 .sp-badge.is-active {
   background: var(--badge);
   border-color: var(--badge);
-  color: #02020a;
+  color: var(--primitive-bg-bottom);
   box-shadow: 0 0 10px var(--badge);
 }
 

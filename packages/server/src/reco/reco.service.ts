@@ -1,10 +1,22 @@
 import { Injectable, Logger, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
+import { splitArtists } from '@maestro/common';
 import { ConfigService } from '../common/config';
 import { StorageService } from '../common/storage';
 import { Session, SessionService } from '../common/session';
 import { MusicService } from '../music/music.service';
 import { normalizeKey } from '../music/search.util';
 import { intentToPromptHints, type NLIntent } from './nl-intent';
+import { buildParseIntentPrompt, parseIntentResponse, pickLibrarySample } from './nl-intent';
+import { buildIntentSeeds, MAX_INTENT_ARTIST_SEEDS, type IntentSeeds } from './genre-seeds';
+import {
+  averageGenrePurity,
+  computeGenrePurity,
+  DEFAULT_GENRE_SCENARIOS,
+  parseGenreTags,
+  type GenrePurityCase,
+  type GenrePurityReport,
+  type GenreScenario,
+} from './eval-genre';
 import type { UnifiedSearchItem } from '../music/types';
 import {
   buildProfileCore,
@@ -98,6 +110,7 @@ const EMPTY_INTENT: NLIntent = {
   similar_tracks: [],
   exclude_artists: [],
   exclude_genres: [],
+  genre_artists: [],
   target_count: 12,
   rationale: '',
 };
@@ -253,6 +266,9 @@ export class RecoService {
       exclude_titles?: string[];
       /** NL playlist 路径：按艺人排除（同上，soft）。 */
       exclude_artists?: string[];
+      /** 跳过候选池缓存（评测/诊断用）。**不从 HTTP 入参透传**——controller
+       *  显式挑字段，客户端设不了这个开关。 */
+      noPoolCache?: boolean;
     } = {},
   ): Promise<RecoResult> {
     const apiKey = this.requireApiKey();
@@ -277,6 +293,21 @@ export class RecoService {
     const signals = this.loadSignals(session);
     const negatives = negativeTracks(signals);
     const exclude = this.mergeExclude(opts.exclude, [...history, ...negatives]);
+    // NL 意图驱动的检索（specs/nl-intent-retrieval/）。
+    //
+    // 背景：「来点儿爵士乐」以前只会变成 prompt 里一行软提示，候选池照样是
+    // 用户库的口味档案（陈奕迅/汪苏泷…）——LLM 面对 40 首流行只能挑流行。
+    // 现在风格指令会**变成检索种子**：流派 → 代表艺人 → 平台真实曲目。
+    const intentSeeds = opts.intent ? buildIntentSeeds(opts.intent) : null;
+    const intentMode = Boolean(intentSeeds?.styleDirective);
+    // 参考曲目只有歌名时（"光辉岁月"），搜一下拿到真艺人再进种子池。
+    if (intentMode && intentSeeds && intentSeeds.tracks.length) {
+      const resolved = await this.resolveTrackArtists(session, intentSeeds.tracks);
+      for (const a of resolved) {
+        if (intentSeeds.artists.length >= MAX_INTENT_ARTIST_SEEDS) break;
+        intentSeeds.artists.push(a);
+      }
+    }
     // NL playlist 路径：把 intent 翻译成额外 prompt hints，并把
     // target_count / language / mood 折进已有 opts。
     // 不传 intent → nlOpts 为空对象，{...opts, ...nlOpts} 与原 opts 等价。
@@ -284,6 +315,7 @@ export class RecoService {
       language?: string;
       mood?: string;
       intentHints?: string[];
+      intentMode?: boolean;
     } = opts.intent
       ? {
           ...(opts.intent.language && opts.intent.language !== 'any'
@@ -294,6 +326,7 @@ export class RecoService {
             exclude_titles: opts.exclude_titles,
             exclude_artists: opts.exclude_artists,
           }),
+          ...(intentMode ? { intentMode: true } : {}),
         }
       : opts.exclude_titles?.length || opts.exclude_artists?.length
         ? {
@@ -339,7 +372,10 @@ export class RecoService {
       bannedArtists,
       // NL 排除艺人是一次性要求——剔除后的池不能读/写共享缓存
       // （cacheKey 不含排除集，否则会污染后续普通推荐最多 10min）。
-      nlExcludeArtistKeys.size ? { noCache: true } : {},
+      // intent 模式的池用独立 key（种子不同），同样不与普通推荐共用。
+      // 评测显式跳过缓存：诊断要测"当前代码"，不能被 10min 前的旧池污染。
+      nlExcludeArtistKeys.size || opts.noPoolCache ? { noCache: true } : {},
+      intentMode && intentSeeds ? { intentSeeds } : {},
     );
     let pool = built.pool;
     // NL 路径：显式排除的艺人从候选池硬剔除（bannedArtists 已在新池构建
@@ -365,12 +401,20 @@ export class RecoService {
       raw = await this.callDeepSeek(
         apiKey,
         this.buildSelectPrompt(profile, listed, {
-          count: Math.min(Math.ceil(count * SELECT_OVERASK), listed.length),
+          // intent 模式：**只要 count 条，不超额要**。
+          // 超额要（1.5x）等于给模型"凑数"的机会——它会从清单里挑风格不符的
+          // 条目来凑（实测「周末慵懒的中文民谣」被塞了 6 首流行 OST）。
+          // 少挑不亏：fillFromPool 按候选池顺序补位，而 intent 模式的池是
+          // **种子优先**，补出来的仍在风格内。
+          count: intentMode
+            ? Math.min(count, listed.length)
+            : Math.min(Math.ceil(count * SELECT_OVERASK), listed.length),
           // NL 路径：intent 的 language/mood 覆盖顶层入参（nlOpts 只在
           // intent 明确给了非 any / 非空值时才设置）。
           language: nlOpts.language ?? opts.language,
           mood: nlOpts.mood ?? opts.mood,
           intentHints: nlOpts.intentHints,
+          intentMode,
           exclude,
           seed: opts.seed,
         }),
@@ -483,6 +527,9 @@ export class RecoService {
       /** NL playlist 路径：额外 hint 行（心情/风格/年代/排除…）。追加在
        *  existing 句尾（avoid 之后、"请按 JSON..."之前）。 */
       intentHints?: string[];
+      /** NL 风格指令模式（specs/nl-intent-retrieval/）：用户这次明确要某个风格，
+       *  「本次要求」是最高优先级，口味库只作兜底参考。 */
+      intentMode?: boolean;
     },
   ): Array<{ role: 'system' | 'user'; content: string }> {
     const libList = library
@@ -524,7 +571,15 @@ export class RecoService {
 # 风格锚点
 - 风格相近 + 有惊喜：不是同质化刷同一歌手，可以跨语言/跨年代/跨子流派，但核心氛围要"在用户舒适圈内又给点新东西"。
 - 不确定怎么选就推**该歌手最知名、最广为发行的录音室单曲**——比推冷门靠谱。
-
+${
+  opts.intentMode
+    ? `
+# 本次用户有明确要求（最高优先级）
+用户消息里有「本次要求」段——**那才是这次要的东西**（例如"风格标签：jazz"就是真的要爵士，
+不是"像爵士的流行"）。严格按它选曲；下面的口味库只是兜底参考，不要因为库里的歌不是这个
+风格就改推别的风格。`
+    : ''
+}
 # 输出格式
 { "items": [ { "title": "...", "artist": "...", "reason": "..." } ] }
 只输出这一个 JSON 对象。`;
@@ -549,7 +604,17 @@ export class RecoService {
             .join('\n')}`
         : '';
     const intentHints = opts.intentHints?.length ? '\n' + opts.intentHints.join('\n') : '';
-    const user = `我的口味库（采样）：\n${libList}${anchor}\n\n${lang}\n${mood}${avoid}${intentHints}\n\n请按 JSON 数组输出 ${opts.count} 首推荐。`;
+    // intent 模式：「本次要求」放最前面（最高优先级），口味库降级为兜底参考。
+    const user = opts.intentMode
+      ? `# 本次要求（最高优先级）\n${opts.intentHints?.join('\n') ?? ''}
+
+我的口味库（采样，仅作兜底参考）：\n${libList}${anchor}
+
+${lang}
+${mood}${avoid}
+
+请按 JSON 数组输出 ${opts.count} 首推荐。`
+      : `我的口味库（采样）：\n${libList}${anchor}\n\n${lang}\n${mood}${avoid}${intentHints}\n\n请按 JSON 数组输出 ${opts.count} 首推荐。`;
 
     return [
       { role: 'system', content: system },
@@ -712,6 +777,144 @@ export class RecoService {
     return report;
   }
 
+  // ── NL 歌单 · 风格纯度评测 ──────────────────────────────
+
+  /**
+   * NL 歌单风格纯度评测（specs/nl-intent-retrieval/）。
+   *
+   * 留一法评测（`evaluate()`）测的是**口味**（能不能推回藏起来的歌）；
+   * 这里测的是**风格**（用户说"来点爵士"，队列里到底有多少真的爵士）。
+   * 2026-10-20 的线上问题（要爵士给 12 首大流行）就是这一维度的塌方，
+   * 而当时没有任何数字能暴露它。
+   *
+   * 每个场景跑**真实链路**：parse-intent（真 DeepSeek）→ 意图种子 → 候选池 →
+   * 挑选 → 填源，然后算三类指标（检索层纯度 / 策展层纯度 / 口味污染）。
+   *
+   * 不写用户的"最近推荐过"历史——评测完不该影响用户自己的推荐。
+   */
+  async evaluateGenrePurity(
+    session: Session,
+    opts: {
+      scenarios?: GenreScenario[];
+      count?: number;
+      /** 是否用 LLM 逐首判流派（关掉则只算检索层 + 污染指标，不花钱）。 */
+      judge?: boolean;
+    } = {},
+  ): Promise<GenrePurityReport> {
+    const apiKey = this.requireApiKey();
+    const lib = this.musicService.getLibrary(session);
+    if (!lib || lib.items.length === 0) {
+      throw new BadRequestException('library_empty：先 POST /music/library/import');
+    }
+    const scenarios = opts.scenarios ?? DEFAULT_GENRE_SCENARIOS;
+    const count = Math.min(Math.max(opts.count ?? 12, 1), 30);
+    const judge = opts.judge !== false;
+
+    // 库艺人（归一后）—— 污染指标的对照集
+    const libraryArtists = new Set<string>();
+    for (const it of lib.items) {
+      for (const raw of splitArtists(it.artist ?? '')) {
+        const k = normalizeKey(raw.trim(), '');
+        if (k) libraryArtists.add(k);
+      }
+    }
+    // 主干艺人 = 污染源（"要爵士给大流行"就是它们在撑）
+    const signals = this.loadSignals(session);
+    const signalScores = artistSignalScores(signals);
+    const profile = this.getTasteProfile(session, lib.items, lib.importedAt, signals, signalScores);
+    const anchorArtists = new Set(profile.anchors.map((a) => normalizeKey(a, '')).filter(Boolean));
+
+    // 评测不该污染用户的"最近推荐过"历史：先存后还原。
+    const histKey = this.historyKey(session.id);
+    const historyBefore = this.storage.get(histKey);
+
+    const cases: GenrePurityCase[] = [];
+    try {
+      for (const scenario of scenarios) {
+        // 1. 解析意图（与线上同一路径：带 ❤ 库上下文）
+        const sample = pickLibrarySample(lib, 50);
+        const messages = buildParseIntentPrompt(scenario.text, sample);
+        const raw = await this.callDeepSeekForParse(apiKey, messages, { maxTokens: 800 });
+        const { intent } = parseIntentResponse(raw);
+        // 条数固定，别让 LLM 自己决定（否则各场景不可比）
+        intent.target_count = count;
+
+        // 2. 检索种子（流派 → 代表艺人）
+        const seeds = buildIntentSeeds(intent);
+
+        // 3. 跑真实流水线（跳过候选池缓存：评测要测当前代码，不能吃旧池）
+        const res = await this.run(session, { intent, noPoolCache: true });
+
+        // 4. 流派判定（一次 LLM 调用标完整条队列）
+        const tags = judge ? await this.judgeGenres(apiKey, res.items) : null;
+
+        // 5. 算指标
+        cases.push(
+          computeGenrePurity(
+            scenario,
+            {
+              items: res.items.map((it) => ({ title: it.title, artist: it.artist })),
+              tags,
+              genres: intent.genres,
+              seeds: seeds.artists,
+              mode: res.mode,
+            },
+            { seeds: seeds.artists, libraryArtists, anchorArtists },
+          ),
+        );
+        this.logger.log(
+          `genre eval[${scenario.id}]: 种子覆盖 ${(cases[cases.length - 1].seedCoverage * 100).toFixed(1)}%` +
+            ` / 流派纯度 ${cases[cases.length - 1].judged ? (cases[cases.length - 1].tagPurity * 100).toFixed(1) + '%' : '未判定'}` +
+            ` / 库污染 ${(cases[cases.length - 1].libraryLeak * 100).toFixed(1)}%`,
+        );
+      }
+    } finally {
+      // 还原历史（评测跑挂了也要还原）
+      this.storage.set(histKey, historyBefore ?? []);
+    }
+
+    return {
+      at: Date.now(),
+      model: DEEPSEEK_MODEL,
+      librarySize: lib.items.length,
+      count,
+      cases,
+      average: averageGenrePurity(cases),
+    };
+  }
+
+  /**
+   * 让 LLM 给整条队列逐首标流派（一次调用标完，不一首一次）。
+   * 失败 → null（该场景降级成"未判定"，只算检索层 + 污染指标）。
+   */
+  private async judgeGenres(
+    apiKey: string,
+    items: Array<{ title: string; artist: string }>,
+  ): Promise<string[][] | null> {
+    if (!items.length) return null;
+    const list = items.map((it, i) => `${i + 1}. ${it.title} - ${it.artist}`).join('\n');
+    try {
+      const raw = await this.callDeepSeek(
+        apiKey,
+        [
+          {
+            role: 'system',
+            content:
+              '你是音乐流派标注员。给下面每首歌标注它的**主要流派**（1-2 个，小写英文，如 jazz / rock / pop / electronic / folk / blues / rnb / hiphop / classical）。\n' +
+              '只输出 JSON：{"tags": [["jazz"], ["pop"], ...]}——数组长度必须与歌单条数相同、顺序一一对应。\n' +
+              '拿不准就给空数组，不要猜。',
+          },
+          { role: 'user', content: list },
+        ],
+        { maxTokens: 800 },
+      );
+      return parseGenreTags(raw, items.length);
+    } catch (err) {
+      this.logger.warn(`genre judge failed: ${(err as Error)?.message}`);
+      return null;
+    }
+  }
+
   /** 口味主干缓存（per session）。主干是**确定性**的：同一份库 → 同一组 anchors，
    *  只有库签名（规模 + 导入时间）变了才重算。种子每轮重采，不进缓存。 */
   private readonly tasteProfileCache = new Map<string, TasteProfileCore>();
@@ -822,17 +1025,43 @@ export class RecoService {
     seed?: { title: string; artist: string },
     bannedArtists?: Set<string>,
     opts: { noCache?: boolean } = {},
+    intentOpts: { intentSeeds?: IntentSeeds } = {},
   ): Promise<{ pool: CandidatePoolResult; cached: boolean }> {
+    // intent 模式（specs/nl-intent-retrieval/）：候选池**只**来自意图种子
+    // （流派代表艺人 / 用户点名的艺人），口味档案与平台 FM 都不参与——
+    // 它们正是"要爵士给大流行"的污染源。
+    //
+    // ⚠️ 判定用 `styleDirective`（意图里有没有风格指令），不是"有没有种子"：
+    // 冷门流派（如 afrobeat）可能既没 LLM 提代表艺人、映射表也没收录 →
+    // 种子为空。此时**仍然**是 intent 模式（不拉 FM、prompt 以意图为准），
+    // 只是候选退回到库口味艺人；两个 intentMode 判定必须一致，否则会出现
+    // "prompt 说要爵士、候选池却是私人 FM 流行"的错配。
+    const intentSeeds = intentOpts.intentSeeds;
+    const intentMode = Boolean(intentSeeds?.styleDirective);
+    const seedArtists = intentSeeds?.artists ?? [];
     // 种子模式（"像这首一样"）下候选围绕种子的艺人展开：主干换成这一位、
     // 相邻艺人也围绕它扩，探索艺人不参与——用户要的是"更多这种"，不是"换口味"。
     const seedArtist = seed?.artist?.trim();
-    const anchors = seedArtist ? [seedArtist] : profile.anchors;
-    const exploreCandidates = seedArtist ? [] : profile.anchors;
+    const anchors = seedArtist
+      ? [seedArtist, ...(intentMode ? seedArtists : [])]
+      : intentMode && seedArtists.length
+        ? seedArtists
+        : profile.anchors;
+    const exploreCandidates = seedArtist || intentMode ? [] : profile.anchors;
     // 缓存 key 刻意**不含信号指纹**：口味档案的 signature 里带了信号条数，
     // 而每播一首歌就会新增一条 play 信号——若把它算进 key，用户边听边点推荐时
     // 缓存永远命中不了，L4 的收益直接归零。真正影响候选池的是"主干是谁"和
     // "库多大"，所以 key 用 (session, 库规模, 主干艺人)。
-    const cacheKey = `${session.id}|${profile.size}|${anchors.join('|')}`;
+    // intent 模式用独立前缀——池的来源完全不同，不能与普通推荐互相命中。
+    //
+    // ⚠️ **版本号**：池的**构建参数**（每人配额/每人候选数/是否分组）也影响池
+    // 的内容，不在 key 里的话，改了参数旧缓存还会命中 10 分钟——症状是"代码
+    // 改了但行为没变"，极难查。2026-10-20 实测：把 intent 模式每人配额 2→4
+    // 后连续三轮评测都还是 2 首/艺人（命中旧缓存）。**改池构建参数就 bump 版本号。**
+    const POOL_VERSION = 'v2';
+    const cacheKey = intentMode
+      ? `intent|${POOL_VERSION}|${session.id}|${profile.size}|${anchors.join('|')}`
+      : `${POOL_VERSION}|${session.id}|${profile.size}|${anchors.join('|')}`;
     const hit = this.poolCache.get(cacheKey);
     // 离线评测走 noCache：评测用的是 train-only 的池，一旦写进产品缓存就会
     // 污染真实推荐（且评测不想被产品缓存命中）。
@@ -844,9 +1073,10 @@ export class RecoService {
       }
     }
 
-    const exploreArtists = seedArtist
-      ? []
-      : pickExploreArtists(profile.artists, exploreCandidates, EXPLORE_ARTIST_COUNT);
+    const exploreArtists =
+      seedArtist || intentMode
+        ? []
+        : pickExploreArtists(profile.artists, exploreCandidates, EXPLORE_ARTIST_COUNT);
     // 被信号拉黑的艺人 / 种子歌自身：不进候选（种子歌本身用户已经在听）。
     const poolExclude = seed ? [...exclude, { title: seed.title, artist: seed.artist }] : exclude;
     const deps = {
@@ -862,7 +1092,11 @@ export class RecoService {
           }),
       findRelatedArtists: (artist: string) =>
         this.musicService.findRelatedArtists(session, artist, RELATED_PER_ANCHOR),
-      fetchRadio: () => this.musicService.fetchRecoRadioCandidates(session, RADIO_PER_PROVIDER),
+      // intent 模式不拉私人 FM——FM 是**账号画像**生成的，最容易把风格带偏
+      // （用户平时听流行 → FM 全是流行）。
+      fetchRadio: intentMode
+        ? undefined
+        : () => this.musicService.fetchRecoRadioCandidates(session, RADIO_PER_PROVIDER),
     };
 
     try {
@@ -875,19 +1109,50 @@ export class RecoService {
         bannedArtists: bannedArtists ? [...bannedArtists] : undefined,
         // 种子模式：只围绕这一位艺人扩相邻，别把口味主干也拉进来搅局。
         neighborAnchorLimit: seedArtist ? 1 : undefined,
+        // intent 模式：种子是流派代表艺人，单个艺人多取一点、每人配额放宽，
+        // 否则 12 首的队列会被少数几位艺人占满（实测中文民谣场景种子只有 4 位
+        // 艺人 → 池里凑不出 12 首民谣 → 模型被迫挑风格外的条目凑数）。
+        // grouped = 流派条目连续排前（相邻艺人可能漂，不插队）。
+        // anchorLimit：普通模式只深挖 3 位主干（口味够了）；intent 模式的种子
+        // **全是流派代表艺人**（每个都在风格内），截断就是白白浪费——全用上。
+        ...(intentMode
+          ? {
+              perArtistCandidates: 6,
+              perArtistCap: 4,
+              grouped: true,
+              anchorLimit: Math.max(anchors.length, 1),
+            }
+          : {}),
       });
+      // intent 模式：风格种子捞不满时，把**库口味艺人**追加到队尾兜底
+      // （宁可掺几首用户常听的，也别交白卷）。口味候选排在后面，模型会优先
+      // 挑前面的风格条目。
+      // 注意：种子为空时（冷门流派没兜底到）池子本身已经是口味池，再兜一次
+      // 只会重复搜索，白等一轮网络。
+      const merged =
+        intentMode && seedArtists.length && pool.candidates.length < count
+          ? await this.appendTasteFallback(
+              session,
+              profile,
+              library,
+              poolExclude,
+              pool,
+              bannedArtists,
+            )
+          : pool;
       this.logger.log(
-        `reco: 候选池 ${pool.candidates.length} 首` +
-          `（深挖 ${pool.byOrigin.artist} / 相邻 ${pool.byOrigin['related-artist']} / 电台 ${pool.byOrigin.radio}）`,
+        `reco: 候选池 ${merged.candidates.length} 首` +
+          `（深挖 ${merged.byOrigin.artist} / 相邻 ${merged.byOrigin['related-artist']} / 电台 ${merged.byOrigin.radio}）` +
+          (intentMode ? ' [intent 模式]' : ''),
       );
       if (!opts.noCache) {
         // 顺手清掉过期条目，避免 map 无限增长（会话少但会长跑）。
         for (const [k, v] of this.poolCache) {
           if (Date.now() - v.at >= POOL_CACHE_TTL_MS) this.poolCache.delete(k);
         }
-        this.poolCache.set(cacheKey, { at: Date.now(), pool });
+        this.poolCache.set(cacheKey, { at: Date.now(), pool: merged });
       }
-      return { pool, cached: false };
+      return { pool: merged, cached: false };
     } catch (err) {
       // 理论上 buildCandidatePool 自己已经兜住了大部分失败；这里再兜一层，
       // 保证候选池的任何意外都不会让"推荐"整体失败。
@@ -910,6 +1175,98 @@ export class RecoService {
   }
 
   /**
+   * intent 模式兜底：风格种子捞不满 count 时，把**库口味艺人**的曲目追加到
+   * 候选池**队尾**。
+   *
+   * 为什么要兜底：冷门流派（"afrobeat"、"drone"）在 QQ/网易云可能搜不到曲，
+   * 宁可掺几首用户常听的，也不要交白卷（spec §验收"候选不足不报错"）。
+   * 兜底候选排在风格候选之后 → LLM 优先挑风格条目，程序补位也补在后面。
+   *
+   * 不拉私人 FM（FM 是账号画像，掺进来等于把流行灌进爵士单）。
+   */
+  private async appendTasteFallback(
+    session: Session,
+    profile: TasteProfile,
+    library: UnifiedSearchItem[],
+    exclude: Array<{ title: string; artist: string }>,
+    intentPool: CandidatePoolResult,
+    bannedArtists?: Set<string>,
+  ): Promise<CandidatePoolResult> {
+    try {
+      const tastePool = await buildCandidatePool(
+        {
+          searchArtist: (artist: string) =>
+            this.musicService
+              .searchUnified(session, artist, 1, CANDIDATE_SEARCH_PAGE_SIZE)
+              .then((r) => r.items)
+              .catch(() => [] as UnifiedSearchItem[]),
+          findRelatedArtists: () => Promise.resolve([] as string[]),
+          // 不拉 FM——兜底只补"用户常听的"，不掺账号画像。
+          fetchRadio: undefined,
+        },
+        {
+          anchors: profile.anchors,
+          library,
+          exclude,
+          bannedArtists: bannedArtists ? [...bannedArtists] : undefined,
+          // 兜底不扩相邻艺人：省一次网络往返，尽快把队列凑满。
+          neighborAnchorLimit: 0,
+          relatedPerAnchor: 0,
+          perArtistCandidates: 4,
+          perArtistCap: 3,
+        },
+      );
+      const seen = new Set(intentPool.candidates.map((c) => normalizeKey(c.title, c.artist)));
+      const extra = tastePool.candidates.filter((c) => {
+        const k = normalizeKey(c.title, c.artist);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      if (!extra.length) return intentPool;
+      this.logger.log(`reco: intent 候选不足，口味兜底追加 ${extra.length} 首（排在队尾）`);
+      return {
+        candidates: [...intentPool.candidates, ...extra],
+        byOrigin: {
+          artist: intentPool.byOrigin.artist + tastePool.byOrigin.artist,
+          'related-artist': intentPool.byOrigin['related-artist'],
+          radio: intentPool.byOrigin.radio,
+        },
+        dropped: {
+          ...intentPool.dropped,
+          inLibrary: intentPool.dropped.inLibrary + tastePool.dropped.inLibrary,
+          badVersion: intentPool.dropped.badVersion + tastePool.dropped.badVersion,
+          duration: intentPool.dropped.duration + tastePool.dropped.duration,
+          duplicate: intentPool.dropped.duplicate + tastePool.dropped.duplicate,
+          overCap: intentPool.dropped.overCap + tastePool.dropped.overCap,
+        },
+      };
+    } catch (err) {
+      this.logger.warn(`reco: intent 口味兜底失败：${(err as Error)?.message}`);
+      return intentPool;
+    }
+  }
+
+  /**
+   * 参考曲目只有歌名时（"光辉岁月"），搜一下拿真艺人名——
+   * 艺人名才是检索的关键（"光辉岁月"搜出来的是一堆翻唱，"Beyond"搜出来的是原曲）。
+   * fail-soft：搜不到就跳过这一条。
+   */
+  private async resolveTrackArtists(session: Session, tracks: string[]): Promise<string[]> {
+    const out: string[] = [];
+    for (const t of tracks) {
+      try {
+        const res = await this.musicService.searchUnified(session, t, 1, 3);
+        const artist = res.items?.[0]?.artist?.trim();
+        if (artist) out.push(artist);
+      } catch (err) {
+        this.logger.warn(`reco: 参考曲目解析失败 "${t}": ${(err as Error)?.message}`);
+      }
+    }
+    return out;
+  }
+
+  /**
    * 挑选模式 prompt：模型面对的是**真实候选清单**，只负责挑与排序。比自由生成
    * 的 prompt 短很多——"别编造/别推 DJ 版/注意时长"那一整套已经由候选池与填源
    * 阶段的确定性代码做掉了，模型注意力留给口味判断。
@@ -926,8 +1283,15 @@ export class RecoService {
       /** NL playlist：intent 派生的额外要求（心情/风格/年代/排除…），
        *  单列「本次要求」段进 prompt——比口味档案更代表"这次想听什么"。 */
       intentHints?: string[];
+      /** NL playlist 的**风格指令模式**（specs/nl-intent-retrieval/）：候选池已经
+       *  按意图（流派/点名艺人）检索过。此时「本次要求」是最高优先级，
+       *  口味档案（最常听的歌手 / 口味采样）**不进 prompt**——留着它们，模型会
+       *  把"用户平时听陈奕迅"当成"用户现在想听陈奕迅"（实测线上就是这么把
+       *  「来点爵士」变成了大流行单）。 */
+      intentMode?: boolean;
     },
   ): Array<{ role: 'system' | 'user'; content: string }> {
+    const intentMode = Boolean(opts.intentMode);
     const system = [
       '你是资深音乐策展人。下面给你一份候选清单——全部来自真实曲库、已确认可播。',
       `请你从中挑选 ${opts.count} 首推荐给这位用户，并给每首一句简短中文理由。`,
@@ -938,8 +1302,14 @@ export class RecoService {
       '# 规则',
       '1. id 必须是候选清单里方括号内的编号——只能从清单里挑，不要新增清单外的歌；',
       '   也不要改写歌名/歌手（系统会按 id 取原始条目）。',
-      '2. 口味优先：挑"贴着档案里的偏好、但他还没听过"的；整批要跨歌手，同一歌手最多挑 1 首。',
-      '3. 兼顾惊喜：可以少量跨语种/跨年代，但核心氛围要在他的舒适圈内。',
+      intentMode
+        ? '2. **本次要求优先**：严格按上面「本次要求」的风格/情绪/语种来挑——用户此刻' +
+          '想要的是那个风格，不是他平时的日常口味；整批要跨歌手，同一歌手最多挑 1 首。'
+        : '2. 口味优先：挑"贴着档案里的偏好、但他还没听过"的；整批要跨歌手，同一歌手最多挑 1 首。',
+      intentMode
+        ? '3. 候选清单已经按「本次要求」检索过了，**不要**因为"这不是他平时听的"就' +
+          '跳过——清单里的歌就是他这次想要的风格。'
+        : '3. 兼顾惊喜：可以少量跨语种/跨年代，但核心氛围要在他的舒适圈内。',
       '4. 跳过 live / 翻唱 / DJ / 伴奏 / 纯音乐等非录音室版本（清单里若混进这类，直接不挑）。',
       '5. 宁愿少挑也不要凑数；同一位歌手、同一张专辑不要重复挑。',
     ].join('\n');
@@ -984,15 +1354,20 @@ export class RecoService {
       : '';
     // NL playlist：用户原话翻译出的要求（心情/风格/年代/排除…）。
     const intentBlock = opts.intentHints?.length
-      ? `\n# 本次要求（用户原话意图，优先于上面的口味档案）\n${opts.intentHints.join('\n')}`
+      ? `\n${intentMode ? '# 本次要求（最高优先级，优先于任何口味偏好）' : '# 本次要求（用户原话意图，优先于上面的口味档案）'}\n${opts.intentHints.join('\n')}`
       : '';
-    const user = `# 口味档案
+    // intent 模式：口味档案整体不进 prompt（见 opts.intentMode 注释）——它只会把
+    // 模型往"用户平时的流行"上带。
+    const tasteBlock = intentMode
+      ? ''
+      : `# 口味档案
 库里共 ${profile.size} 首。${anchorLine}
 口味采样（节选，仅供判断风格）：
 ${sample}
 
-${lang}
-${mood}${seedLine}${intentBlock}${avoid}
+`;
+    const user = `${tasteBlock}${intentBlock}${lang}
+${mood}${seedLine}${avoid}
 
 # 候选清单（只能从这里面挑）
 ${list}
@@ -1014,6 +1389,8 @@ ${list}
       /** NL playlist：intent 派生的额外 hint 行（spec A3）。similar_artists
        *  也走 hint（「想要类似这些艺人的歌」），不混进"最常听"锚点。 */
       intentHints?: string[];
+      /** NL 风格指令模式（specs/nl-intent-retrieval/）。 */
+      intentMode?: boolean;
     },
     exclude: Array<{ title: string; artist: string }>,
     count: number,
@@ -1027,6 +1404,7 @@ ${list}
       exclude,
       topArtists: profile.anchors,
       ...(opts.intentHints?.length ? { intentHints: opts.intentHints } : {}),
+      ...(opts.intentMode ? { intentMode: true } : {}),
     });
   }
 

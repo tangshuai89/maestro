@@ -61,6 +61,54 @@
 - [x] **S3-8c** 无对应令牌的值 —— **2026-09-24 决议**：`rgba(0,0,0,*)` 是功能性 scrim/shadow（modal backdrop、box-shadow halo），`#94a3b8`（slate-400）专用于 `_liked-modal.scss` 的 VersionType 角标色（instrumental/karaoke）—— 都不通用化，保留字面量。S3-8c 关闭。
 - [ ] **S3-9** `_tokens.scss` 手写层与生成层的遮蔽收敛（含 D4 留的 `--text-dim` 决策）—— ⚠️ **决策待 user 拍板**：当前 `_tokens.scss` `--text-dim: rgba(245, 240, 232, 0.55)`（WCAG AA 注释）被 `_tokens.generated.scss` 的 `--text-dim: rgba(245, 240, 232, 0.4)` 静默覆盖（D4 §1 P5 已识别）。两种走法：(a) 走 D4 导出链把 Figma 端改成 0.55；(b) 删手写层 `--text-dim` 接受 0.4。**本 PR 不动代码**，留作 follow-up。
 
+- [x] **S3-10**（2026-10-20）**"故意不收"批 —— 语义双关色的收口**。S3-5c / S3-8 当时把
+      几组色值判为"语义双关 / 无主语义"刻意留着，本批按上下文逐个定案：
+      · **platform brand 徽标色**（`TheaterView.tsx` PLATFORM_META 4 处 + `_liked-modal.scss`
+      `.lib-badge-*` 4 处）→ `var(--platform-qq/netease/deezer/spotify)`。
+      ⚠️ 这 8 处**不是**豁免而是**真消费**：S3-8 原话"4 处是 platform brand（letter color）
+      已含在上文豁免里"与代码实际不符 —— `TheaterView.tsx` 并不在 exempt 名单里，
+      那 4 处是硬编码字面量。本批改为 token 引用后 `--platform-deezer` 才真正有消费者
+      （此前 57 个 token 里它零消费）。
+      · **背景深空色 `#02020a`**（13 处 / 7 文件）→ `var(--primitive-bg-bottom)`；
+      **`#0a0518`**（2 处）→ `var(--primitive-bg-top)`。
+      · **霓虹青 `#00e5ff`**（7 处）→ `var(--accent)`；**电光紫 `#5b2bff`**（1 处）→
+      `var(--accent-purple)`；**酸紫 `#b57bff`**（3 处）→ `var(--ai)`。
+      · **`#3b82f6`**（`_liked-modal.scss` 1 处）→ `var(--accent-blue)`（该 token 此前零消费）。
+      · **`#ffffff`**（`TheaterView.tsx` SVG `stopColor` 1 处）→ `var(--white)`。
+      · **`rgba(0,229,255,0.5)`**（`TheaterView.tsx` `.th-scan-arc` 的 `stroke` 1 处）→
+      `stroke="var(--accent)"` + `strokeOpacity={0.5}` —— 纯色 + 元素级 alpha，与
+      `rgba()` paint 数学等价。
+      · **shadcn bridge 的玻璃层**（`tokens-bridge.scss` 2 处）→ 改引用
+      `var(--glass-stroke)` / `var(--glass-fill-strong)`。**单向引用无循环**（bridge 在
+      `_tokens.generated.scss` 之后加载，AETHER 令牌不引用 `--sh-*`），且顺手消掉了
+      该文件头注释里"改 generated hex 后必须手动同步本文件 HSL"的维护债。
+      · **`providerLogos.tsx` 12 处补豁免** —— S3-8 写明"与 providerLogos.tsx 12 处同源，
+      品牌识别不是设计令牌"，但实际没进 exempt 名单（另外 3 个同源文件进了）。
+      补上时理由单独写：它用的是**官方品牌色**（网易云 #e60026 / Spotify #1db954），
+      与另外 3 个文件用的 AETHER provider 色**不是同值**，不能共用一句话。
+      · **合计 38 处 / 9 文件**；总预算 **140 → 102**（`--write-budget` 生成，**只降不升**；
+      `_source-select.scss` / `tokens-bridge.scss` / `_base.scss` 归零后移出预算表）；
+      再把 `providerLogos.tsx` 12 处移入 exempt → **最终 102 → 90**。
+      · **验证**：`tokens:check` 绿（57 token 一致）；`typecheck` 绿；`lint` 0 error；
+      `token-integrity` 9/9 绿；vitest（TheaterView/SettingsModal/SearchPanel）85/85 绿；
+      **`visual:test` 7/7 绿且一处基线未动** —— 证明 38 处全是同值/等价替换。
+      · ⚠️ **嵌套 var 专项验证**（`--badge: var(--platform-qq)` 嵌进
+      `color-mix(in srgb, var(--badge) 25%, transparent)`）：Chrome 实测
+      嵌套与字面量 computed 值**逐位相同**（`color(srgb 1 0.85098 0.239216 / 0.25)`），
+      alpha 0.25 正确解析 —— 正是 spec §2 警告过的雷区，已排除。
+- [ ] **S3-11**（未做）Tailwind 默认色阶批（`_liked-modal.scss` 36 处 +
+      `_settings-modal.scss` 9 处 + `_transport.scss` 7 处 + `_error-panel.scss` 5 处 +
+      `_netease-modal.scss` 5 处 + `useReco.ts` 5 处）—— 这些是 **shadcn/Tailwind 色阶**
+      （`#3b82f6/#60a5fa/#a855f7/#c084fc/#f97316/#fb923c/#94a3b8/#64748b/#cbd5e1/#fbbf24/#f59e0b`），
+      **不属于 AETHER 设计令牌**，要迁到 shadcn theme 变量
+      （`--sh-primary/--sh-destructive/--sh-muted-foreground/…`），
+      属 `specs/shadcn-migration` Phase 2「批 1：迁移 `_liked-modal.scss` 的 45 处硬编码颜色
+      到 shadcn theme」—— 两个专题在同一批文件上，**必须合并做**，别各开各的。
+- [ ] **S3-12**（未做）provider 健康状态色 / AI 理由色 —— 设计稿里**没有**这套语义
+      （`#ffb800/#ff6b00/#d63031/#c0392b/#6c5ce7/#4834d4/#0f8a3a/#1db954` 是 provider 健康态，
+      `#FF3B3B/#FFD60A/#4CD964/#2D7FFF/#FF2D87` 是 `useReco.ts` 的 AI 推荐理由色标）。
+      要么进 Figma 补变量（走 D4 导出链），要么落成 shadcn token。**需先拍板语义归属**。
+
 ## S4 — 后续（不在本专题）
 
 - [ ] **S4-1** spacing / radius / 字号 的硬编码扫描与替换（方法同 S1/S2，噪音大，单开）

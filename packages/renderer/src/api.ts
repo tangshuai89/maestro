@@ -297,6 +297,11 @@ export interface NLIntent {
   similar_tracks: string[];
   exclude_artists: string[];
   exclude_genres: string[];
+  /**
+   * 流派 → 代表艺人（specs/nl-intent-retrieval/）。服务端拿它当**检索种子**：
+   * 「来点爵士」→ 用 Miles Davis / Coltrane 去平台搜真实爵士曲。
+   */
+  genre_artists?: Array<{ genre: string; artists: string[] }>;
   target_count: number;
   rationale: string;
 }

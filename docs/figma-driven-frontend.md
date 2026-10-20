@@ -8,6 +8,10 @@
 > `figma-aether-spec.md`（v1 规格）、`figma-aether-v2-plan.md`（v2 设计语言）、
 > `figma-v3-command.md`（v3 脚本稿，已废）。当前构建权威：
 > `.superdesign/init/`（代码端组件盘点）+ `.mcp.json`（已配置官方 `figma-remote` MCP）。
+>
+> 📌 **本文档描述的是「把这一份稿子改到位」的手写方案**（v4 已完成，见 `docs/d-series-status.md`）。
+> 若目标是**换一份没被人读过的新老稿**，走通用化管线：`docs/figma-legacy-retrofit.md`
+> （读 → 聚类出组件候选 → 生成 use_figma 段 → 物化），工具在 `scripts/figma-retrofit-*`。
 
 ---
 
@@ -400,3 +404,33 @@ Modal/NeteaseCookie），`figma-code-connect.json` 的 10 个 `TBD-FIGMA` 占位
 - **暴露两条待拍板项**（详见 `@/Users/tangshuai/maestro/specs/d4-token-drift/spec.md` §5）：
   `--text-dim` 手写层的 WCAG 覆盖（0.55）**被生成层 0.4 静默盖掉**，实际生效是 0.4；
   `--ease-spring` / `--ease-out` 手写行是等值死代码。
+
+**D4-C5 增量（2026-10-20）—— "让 token 真正被用起来"批 2**：
+S3 系列（PR #92）把硬编码从 507 压到 140，但那 140 处恰好是**当年有意跳过的
+"语义双关"组**。本批按上下文逐个定案，38 处换成真实令牌消费：
+
+- **platform 徽标色 8 处** → `var(--platform-qq/netease/deezer/spotify)`
+  （`TheaterView.tsx` 的 `PLATFORM_META` + `_liked-modal.scss` 的 `.lib-badge-*`）
+  —— 顺带让 `--platform-deezer` **第一次有了消费者**
+- **背景深空色** `#02020a`（13 处）→ `var(--primitive-bg-bottom)`、
+  `#0a0518`（2 处）→ `var(--primitive-bg-top)`
+- **霓虹青 / 电光紫 / 酸紫** → `var(--accent)` / `var(--accent-purple)` / `var(--ai)`
+- **`#3b82f6`** → `var(--accent-blue)`（此前零消费）
+- **shadcn bridge 玻璃层 2 处** → 改引用 `var(--glass-stroke)` /
+  `var(--glass-fill-strong)`（单向引用无循环；顺手消掉"改 hex 要手动同步 HSL"的维护债）
+- **`providerLogos.tsx` 12 处补豁免** —— S3-8 早写明该豁免但实际漏了（另外 3 个同源文件进了）。
+  理由单独写：它用的是**官方品牌色**（网易云 `#e60026` / Spotify `#1db954`），
+  与另外 3 个文件用的 AETHER provider 色**不是同值**
+
+**账本**：硬编码 **140 → 90**（棘轮只降不升）；生成层令牌消费率 **24/57 → 27/57 (47%)**；
+颜色类零消费只剩 3 个（`--text-muted` / `--success` / `--accent-warm`）。
+
+**验证**：`tokens:check` 绿 · `typecheck` 绿 · `lint` 0 error · `token-integrity` 9/9 ·
+vitest 85/85 · **`visual:test` 7/7 绿且一处基线未动**。另做**嵌套 var 专项验证**：
+`color-mix(in srgb, var(--badge) 25%, transparent)` 里 `--badge` 本身是
+`var(--platform-qq)`（嵌套 var）—— spec §2 警告过的 alpha 雷区，Chrome 实测与字面量
+computed 值逐位相同，alpha 0.25 正确解析。
+
+**剩余**：Tailwind 默认色阶批（**属 shadcn Phase 2 批 1，不是 AETHER 令牌** ——
+两个专题撞在同一批文件上须合并做）；provider 健康状态色 / AI 理由色（设计稿没这套语义，
+需先拍板归属）。

@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **refactor(tokens): D4-C5「让 token 真正被用起来」批 2 —— 38 处硬编码色值换成真实
+  令牌消费**（spec: `specs/token-adoption` S3-10，2026-10-20）
+
+  上游 S3 系列（PR #92 那批）把硬编码从 **507 → 140** 压下来了，但**留下的那 140 处
+  恰好是"语义双关"的**——platform 品牌色、SVG `stopColor`、alpha 派生 rgba、背景深空色
+  这几组当年被有意跳过（当时没有把握判定该落哪个语义）。本批按上下文逐个定案。
+
+  - **platform 徽标色 8 处** → `var(--platform-qq/netease/deezer/spotify)`
+    （`TheaterView.tsx` 的 `PLATFORM_META` 4 处 + `_liked-modal.scss` 的 `.lib-badge-*` 4 处）
+    —— 顺带让 `--platform-deezer` **第一次有了消费者**（此前 57 个 token 里它零消费）
+  - **背景深空色 `#02020a` 13 处 / 7 文件** → `var(--primitive-bg-bottom)`；
+    `#0a0518` 2 处 → `var(--primitive-bg-top)`
+  - **霓虹青 `#00e5ff` 7 处** → `var(--accent)`；**电光紫 `#5b2bff`** → `var(--accent-purple)`；
+    **酸紫 `#b57bff` 3 处** → `var(--ai)`；**`#3b82f6`** → `var(--accent-blue)`（此前零消费）
+  - **`#ffffff`（SVG `stopColor`）** → `var(--white)`
+  - **`rgba(0,229,255,0.5)`（`.th-scan-arc` 的 `stroke`）** → `stroke="var(--accent)"` +
+    `strokeOpacity={0.5}` —— 纯色 + 元素级 alpha，与 `rgba()` paint 数学等价
+  - **shadcn bridge 的玻璃层 2 处** → 改引用 `var(--glass-stroke)` / `var(--glass-fill-strong)`。
+    **单向引用无循环**（bridge 在 `_tokens.generated.scss` 之后加载），且顺手消掉了该文件头
+    注释里"改 generated hex 后必须手动同步本文件 HSL"的维护债
+  - **`providerLogos.tsx` 12 处补豁免** —— S3-8 早已写明"与 providerLogos.tsx 12 处同源，
+    品牌识别不是设计令牌"，但实际没进 exempt 名单（另外 3 个同源文件进了）。补豁免时
+    理由单独写：它用的是**官方品牌色**（网易云 `#e60026` / Spotify `#1db954`），与另外
+    3 个文件用的 AETHER provider 色**不是同值**，不能共用一句话
+
+  **账本**：硬编码 **140 → 90 处**（`--write-budget` 重新生成，**棘轮只降不升**；
+  `_source-select.scss` / `tokens-bridge.scss` / `_base.scss` 归零后移出预算表）；
+  生成层令牌消费率 **24/57 (42%) → 27/57 (47%)**；颜色类零消费从 5 个降到 **3 个**
+  （`--text-muted` / `--success` / `--accent-warm`）。
+
+  **验证**（全部为"同值/等价替换"的硬证据）：
+  - `tokens:check` 绿（57 token 与 Figma dump 一致）
+  - `typecheck` 绿 · `lint` 0 error · `token-integrity` 9/9 绿
+  - vitest（TheaterView / SettingsModal / SearchPanel）85/85 绿
+  - **`visual:test` 7/7 绿且一处基线未动** —— 4 档 density + 2 档 SourceSelect + shadcn smoke
+  - **嵌套 var 专项验证**：`.th-badge.is-active` 用的
+    `color-mix(in srgb, var(--badge) 25%, transparent)`，而 `--badge` 现在是
+    `var(--platform-qq)`（嵌套 var）—— 这正是 spec §2 警告过的 alpha 配方雷区。
+    Chrome 实测嵌套与字面量 computed 值**逐位相同**
+    （`color(srgb 1 0.85098 0.239216 / 0.25)`），alpha 0.25 正确解析，已排除
+
+  **剩余**（记为 S3-11 / S3-12）：Tailwind 默认色阶批（`_liked-modal.scss` 36 处 +
+  `_settings-modal.scss` 9 处等，**属 shadcn Phase 2 批 1，不是 AETHER 令牌**，两个专题
+  撞在同一批文件上须合并做）；provider 健康状态色 / AI 理由色（设计稿里没有这套语义，
+  需先拍板归属）。
+
 - **fix(album): 网易云专辑详情解锁 —— 展开卡片不再红字「album detail not supported」**
   （2026-10-20 用户报障：专辑行展开后报 `album detail not supported on netease`）
 

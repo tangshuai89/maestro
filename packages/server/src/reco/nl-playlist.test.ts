@@ -50,7 +50,11 @@ const {
   assert.match(msgs[0].content, /否定词要落对地方/);
   assert.match(msgs[0].content, /用户本次说的话 > 口味锚点/);
   assert.match(msgs[0].content, /多来点/);
-  console.log('  ✓ buildParseIntentPrompt: empty lib / 80 lib clamp to 50');
+  // 流派代表艺人（specs/nl-intent-retrieval/）：必须要求 LLM 输出，
+  // 否则「来点爵士」没有检索种子（只靠代码侧映射表兜底）。
+  assert.match(msgs[0].content, /genre_artists/);
+  assert.match(msgs[0].content, /代表艺人/);
+  console.log('  ✓ buildParseIntentPrompt: empty lib / 80 lib clamp to 50 / genre_artists 要求');
 }
 
 // ── 2. extractJsonBlock ──────────────────────────────────
@@ -128,6 +132,27 @@ const {
   assert.strictEqual(r9.intent.genres.length, 6);
   assert.strictEqual(r9.intent.similar_artists.length, 4);
   assert.strictEqual(r9.intent.exclude_artists.length, 8);
+
+  // genre_artists（specs/nl-intent-retrieval/）：流派 → 代表艺人（检索种子）
+  const r10 = parseIntentResponse(
+    '<json>{"mood":"放松","genres":["jazz"],"genre_artists":[{"genre":"jazz","artists":["Miles Davis","John Coltrane"]}]}</json>',
+  );
+  assert.deepStrictEqual(r10.intent.genre_artists, [
+    { genre: 'jazz', artists: ['Miles Davis', 'John Coltrane'] },
+  ]);
+  // 缺字段 → 空数组（不是 undefined）
+  assert.deepStrictEqual(r2.intent.genre_artists, []);
+  // 非法条目丢弃，不炸：不是对象 / genre 空 / artists 非数组
+  const r11 = parseIntentResponse(
+    '<json>{"mood":"x","genre_artists":["jazz",{"genre":"","artists":["a"]},{"genre":"jazz"},{"genre":"jazz","artists":5}]}</json>',
+  );
+  assert.deepStrictEqual(r11.intent.genre_artists, []);
+  // 单个流派最多 4 位艺人、最多 3 个流派
+  const r12 = parseIntentResponse(
+    '<json>{"mood":"x","genre_artists":[{"genre":"a","artists":["1","2","3","4","5"]},{"genre":"b","artists":["1"]},{"genre":"c","artists":["1"]},{"genre":"d","artists":["1"]}]}</json>',
+  );
+  assert.strictEqual(r12.intent.genre_artists.length, 3);
+  assert.strictEqual(r12.intent.genre_artists[0].artists.length, 4);
 
   // 非 JSON → 502 (HttpException)
   assert.throws(
@@ -209,6 +234,7 @@ const {
     similar_tracks: [],
     exclude_artists: ['徐梦圆'],
     exclude_genres: ['ballad'],
+    genre_artists: [],
     target_count: 15,
     rationale: '',
   });
@@ -232,6 +258,7 @@ const {
     similar_tracks: [],
     exclude_artists: [],
     exclude_genres: [],
+    genre_artists: [],
     target_count: 12,
     rationale: '',
   });
@@ -248,6 +275,7 @@ const {
     similar_tracks: [],
     exclude_artists: [],
     exclude_genres: [],
+    genre_artists: [],
     target_count: 12,
     rationale: '',
   });
@@ -264,6 +292,7 @@ const {
       similar_tracks: [],
       exclude_artists: [],
       exclude_genres: [],
+      genre_artists: [],
       target_count: 12,
       rationale: '',
     },
@@ -284,6 +313,7 @@ const {
       similar_tracks: [],
       exclude_artists: ['周杰伦'],
       exclude_genres: [],
+      genre_artists: [],
       target_count: 12,
       rationale: '',
     },
@@ -307,6 +337,7 @@ const {
       similar_tracks: ['光辉岁月'],
       exclude_artists: ['薛之谦'],
       exclude_genres: [],
+      genre_artists: [],
       target_count: 12,
       rationale: '',
     },
@@ -320,6 +351,30 @@ const {
     'no dup exclude_artists',
   );
   console.log('  ✓ intentToPromptHints: full / tempo any / era single / extra / merged / combined');
+
+  // genre_artists → 「本次风格代表艺人」行（specs/nl-intent-retrieval/）
+  const out6 = intentToPromptHints({
+    mood: '放松',
+    genres: ['jazz'],
+    tempo: 'any',
+    language: 'any',
+    similar_artists: [],
+    similar_tracks: [],
+    exclude_artists: [],
+    exclude_genres: [],
+    genre_artists: [{ genre: 'jazz', artists: ['Miles Davis', 'John Coltrane'] }],
+    target_count: 12,
+    rationale: '',
+  });
+  assert.ok(
+    out6.some((h: string) => h.includes('本次风格代表艺人') && h.includes('Miles Davis')),
+    'genre_artists line',
+  );
+  // 空 genre_artists → 不出这一行（out2 的 intent 没有 genre_artists 内容）
+  assert.ok(
+    out2.every((h: string) => !h.includes('本次风格代表艺人')),
+    'empty genre_artists → no line',
+  );
 }
 
 // ── 7. normalizeIntentInput —— POST /reco/run 的 intent 校验（400）────
@@ -334,6 +389,7 @@ const {
     similar_tracks: [],
     exclude_artists: [],
     exclude_genres: [],
+    genre_artists: [],
     target_count: 15,
     rationale: '',
   });
@@ -357,6 +413,16 @@ const {
     () => normalizeIntentInput({ genres: 'rock' }),
     (e: any) => e?.response?.statusCode === 400 && e?.response?.error === 'intent_field_invalid',
   );
+  // genre_artists 非数组 → 400（它是检索种子，类型错了必须让客户端知道）
+  assert.throws(
+    () => normalizeIntentInput({ genre_artists: 'jazz' }),
+    (e: any) => e?.response?.statusCode === 400 && e?.response?.error === 'intent_field_invalid',
+  );
+  // genre_artists 合法 → 透传
+  const ga = normalizeIntentInput({
+    genre_artists: [{ genre: 'jazz', artists: ['Miles Davis'] }],
+  });
+  assert.deepStrictEqual(ga.genre_artists, [{ genre: 'jazz', artists: ['Miles Davis'] }]);
   // era 非对象 → 400
   assert.throws(
     () => normalizeIntentInput({ era: 2000 }),
