@@ -257,28 +257,44 @@ describe('usePlayer hook 体', () => {
   });
 
   it('<audio> error → 兜底链耗尽 → 结构化 failure（reason=no-match）', async () => {
-    const { result, a } = setup();
-    act(() => {
-      result.current.playSearch([item('1')], 0);
-    });
-    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
-
-    // 播放失败：<audio> 抛 error → 跨平台兜底（findEquivalentSource 返 no-match）
-    await act(async () => {
-      a.dispatchEvent(new Event('error'));
-      await Promise.resolve();
-    });
     // 兜底链有**故意的时间成本**：同源 transient 重试 800ms + 卡死探测 1500ms
-    // ≈ 2.3s 才走到"彻底无源"。这里等足时间（不用假定时器：那条链里有
-    // Promise + 定时器混用，假定时器容易掩盖真实时序）。
-    await waitFor(() => expect(result.current.failure).not.toBeNull(), { timeout: 10_000 });
-    expect(result.current.failure?.reason).toBe('no-match');
-    expect(result.current.failure?.title).toBe('歌-1');
-    // 兜底链找过等价源（而不是直接弹一条看不懂的英文错误）
-    expect(apiMocks.findEquivalentSource).toHaveBeenCalled();
-    // 显式给测试级超时（默认 5s）：这条链有**真实时间成本**（同源重试 800ms +
-    // 卡死探测 1500ms ≈ 2.3s），机器负载高时会被拖过 5s → 报
-    // "Test timed out in 5000ms"。而上面的 waitFor 给了 10s 预算 —— 测试级
-    // 超时比它还短的话，那 10s 永远用不上。给它 20s 的余量。
-  }, 20_000);
+    // ≈ 2.3s 才走到"彻底无源"。这两段是**真 setTimeout**。
+    //
+    // 为什么用假定时器（2026-10-20 实测踩坑）：CI 上高负载时这两段会被拖到
+    // 10s 以上 → 「加预算」是治标（10s 不够就 20s、20s 不够就 30s，机器再慢
+    // 一点又红）。假定时器把**墙钟依赖整个拿掉** → 这条测试在任何负载下都是
+    // 同样快、同样结果。代价是「假定时器会不会掩盖真实时序」——
+    // 不会：如果生产代码的定时器链坏了（卡死探测不触发 / 退避不重试），
+    // failure 就永远不会被设置，waitFor 照样超时失败。**更严格，不是更松。**
+    vi.useFakeTimers();
+    try {
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+      // 假定时器下 testing-library 的 waitFor **不会**自动推进时钟
+      // （它的 `jestFakeTimersAreEnabled()` 只认 jest 全局，vitest 下返回 false）
+      // → 所以这里不靠 waitFor 等，改成：同步断言 + 手动推进时钟。
+      expect(result.current.track?.title).toBe('歌-1');
+
+      // 播放失败：<audio> 抛 error → 跨平台兜底（findEquivalentSource 返 no-match）
+      await act(async () => {
+        a.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+      });
+      // 推进时钟，走完兜底链的两段等待：同源 transient 重试 800ms +
+      // 卡死探测 1500ms。advanceTimersByTimeAsync 会在每个 tick 之间 flush
+      // 微任务，所以链路上的 promise 链会正常接力。
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(result.current.failure).not.toBeNull();
+      expect(result.current.failure?.reason).toBe('no-match');
+      expect(result.current.failure?.title).toBe('歌-1');
+      // 兜底链找过等价源（而不是直接弹一条看不懂的英文错误）
+      expect(apiMocks.findEquivalentSource).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
