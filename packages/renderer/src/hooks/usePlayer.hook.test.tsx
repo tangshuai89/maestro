@@ -276,5 +276,9 @@ describe('usePlayer hook 体', () => {
     expect(result.current.failure?.title).toBe('歌-1');
     // 兜底链找过等价源（而不是直接弹一条看不懂的英文错误）
     expect(apiMocks.findEquivalentSource).toHaveBeenCalled();
-  });
+    // 显式给测试级超时（默认 5s）：这条链有**真实时间成本**（同源重试 800ms +
+    // 卡死探测 1500ms ≈ 2.3s），机器负载高时会被拖过 5s → 报
+    // "Test timed out in 5000ms"。而上面的 waitFor 给了 10s 预算 —— 测试级
+    // 超时比它还短的话，那 10s 永远用不上。给它 20s 的余量。
+  }, 20_000);
 });
