@@ -12,7 +12,7 @@ import { ProviderSession, SessionService } from '../common/session';
 import { QqQuality } from './qq.provider';
 import { withTimeout } from '../common/timeout';
 import { ENTITLEMENT_TTL_MS, type EntitlementSnapshot } from './entitlement';
-import type { AlbumSource } from './album-types';
+import type { AlbumSource, AlbumTrack } from './album-types';
 
 /**
  * 网易云音乐：私人 FM + 播放 URL + 红心。
@@ -67,6 +67,43 @@ const NETEASE_REAL_IP = '116.25.146.177';
  * 失败日志会打出 code + message，验收时按实测结果修正。
  */
 const NETEASE_ALBUM_SUB_ENDPOINT = 'https://music.163.com/api/album/sub';
+
+/** 网易云专辑详情（`POST /api/album/{id}`）的响应形状。
+ *
+ * 2026-10-20 实测（登录态）：
+ *   - `album.songs[]` 给 id / name / artists[] / album / duration(ms) /
+ *     no（**碟内**曲序，1 起）/ disc（"01"/"02"）/ fee
+ *   - ⚠️ **不带 privilege**（单曲搜索 `cloudsearch/pc` 才带）→ 付费/试听
+ *     判定只能靠 song.fee；见 getAlbumTracks 的注释
+ *   - `album.paid` = 用户是否已购买这张专辑
+ */
+interface NeteaseAlbumDetail {
+  code: number;
+  album?: {
+    id: number;
+    name: string;
+    artists?: Array<{ id: number; name: string }>;
+    picUrl?: string;
+    publishTime?: number;
+    size?: number;
+    /** 用户是否已购买这张专辑（实测是 boolean）。 */
+    paid?: boolean;
+    songs?: Array<{
+      id: number;
+      name: string;
+      artists?: Array<{ id: number; name: string }>;
+      album?: { id: number; name: string; picUrl?: string };
+      /** 时长（ms） */
+      duration?: number;
+      /** 碟内曲序（1 起） */
+      no?: number;
+      /** 碟号（"01" / "02"） */
+      disc?: string | number;
+      /** 付费标记：1=数字专辑 4/8=付费单曲/试听 0=免费 */
+      fee?: number;
+    }>;
+  };
+}
 
 interface NeteaseSong {
   id: number;
@@ -753,6 +790,70 @@ export class NeteaseMusicProvider {
             : 0,
         rank: i,
       }));
+  }
+
+  /**
+   * 取一张专辑的曲目（spec: specs/album-search，2026-10-20 解开阻塞项 B1）。
+   *
+   * **B1 是怎么解开的**：spec 记的 `code:-462 "请绑定手机后再试哦~"` 是
+   * **未登录态**触发的反爬响应（当时本机没有登录会话，无法验证）。2026-10-20
+   * 用真实登录态重测：`POST /api/album/{id}` → `code=200`，songs 完整
+   * （实测「最后的水族馆」21 首 / 2 碟全对）。端点不变，**只是必须登录**。
+   *
+   * 付费判定：专辑端点**不返回 privilege**（单曲搜索才返回），所以只能靠
+   * `song.fee`：
+   *   - `fee > 0`（数字专辑 / 付费单曲 / 试听）→ 标 vipLocked（与单曲搜索
+   *     对同一首歌的结论一致：实测两端 fee 都是 8）
+   *   - `fee == 0` → **不标锁**（乐观）。代价：黑胶独占歌（fee=0 但 pl=0）
+   *     会被标成可播，点了可能只拿到试听 —— 播放器侧有兜底提示。另一种选法
+   *     （非 VIP 一律标锁）会让整张专辑的歌全变"不可播"，专辑 tab 直接废掉，
+   *     明显更糟。
+   *   - `album.paid === true`（用户已买下整张专辑）→ 不标锁
+   */
+  async getAlbumTracks(session: ProviderSession, albumId: string): Promise<AlbumTrack[]> {
+    const data = await this.apiCall<NeteaseAlbumDetail>(
+      session,
+      `https://music.163.com/api/album/${encodeURIComponent(albumId)}`,
+      {},
+    );
+    if (data.code !== 200) {
+      // -462 = 未登录 / 需绑手机（未登录态的经典反爬响应）—— 明确提示去登录，
+      // 而不是甩一个 code 给用户看。
+      if (data.code === -462) {
+        throw new NotFoundException('网易云专辑详情需要登录网易云');
+      }
+      throw new BadRequestException(`网易云专辑详情失败: code=${data.code}`);
+    }
+    const album = data.album;
+    const songs = album?.songs ?? [];
+    if (!album || songs.length === 0) {
+      throw new NotFoundException(`网易云专辑不存在或没有曲目: ${albumId}`);
+    }
+    const albumArtist = album.artists?.map((a) => a.name).join(' / ') ?? '';
+    const coverUrl = album.picUrl ? `${album.picUrl}?param=300y300` : '';
+    const owned = album.paid === true;
+    this.logger.log(`netease getAlbumTracks "${albumId}" → ${songs.length} 首`);
+    return songs.map((s): AlbumTrack => {
+      // disc 形如 "01" / "02"（字符串，带前导零）→ 转 1-based 碟号
+      const disc =
+        typeof s.disc === 'number' ? s.disc : typeof s.disc === 'string' ? Number(s.disc) : 0;
+      return {
+        id: String(s.id),
+        provider: 'netease' as const,
+        title: s.name,
+        artist: s.artists?.map((a) => a.name).join(' / ') || albumArtist || '未知艺人',
+        album: s.album?.name ?? album.name ?? '',
+        coverUrl,
+        audioUrl: '', // 播放时由 getStreamPath 动态获取
+        duration: Math.round((s.duration ?? 0) / 1000),
+        liked: false,
+        vipLocked: !owned && (s.fee ?? 0) > 0,
+        vipCategory: owned ? undefined : detectNeteaseVipCategory({ fee: s.fee }),
+        // no 是**碟内**曲序（实测这张专辑 2 碟：1..11 / 1..11）
+        trackNumber: typeof s.no === 'number' && s.no > 0 ? s.no : undefined,
+        discNumber: disc > 0 ? disc : undefined,
+      };
+    });
   }
 
   /** 取歌曲的真实播放 URL（有时效，即拉即用）。按音质档位选 level。 */

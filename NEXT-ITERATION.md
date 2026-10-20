@@ -31,6 +31,12 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple 
 另有远端歌单导入（`specs/remote-playlist`，2026-10-16 合入 PR #106）——
 粘贴链接 → 播放 / 追加 / 存本地（网易云列+读、QQ 只读、Deezer 公开歌单）。
 
+> **2026-10-20 追加解锁**：网易云**专辑详情**（`/api/album/{id}`）—— 当年
+> `specs/album-search` 记的 `-462 "请绑定手机后再试哦~"` 是**未登录态**的响应，
+> 登录态实测 `code=200`、21 首 / 2 碟全对。网易云专辑卡片现在能展开了。
+> 连带：专辑行展开改为**多平台回退**（一个平台拉不到就换下一个源），
+> 英文错误串 `album detail not supported on <p>` 改成中文。
+>
 > **专辑 fan-out 遗留**（都在等外部条件，不是工程债）：
 > ① Spotify 专辑收藏 —— 需先有 Spotify OAuth token（album-search 阻塞项 B2
 > 整条 Spotify 专辑线未实现 → 拿不到 albumId）；

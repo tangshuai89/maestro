@@ -191,6 +191,43 @@ describe('AlbumResults 专辑收藏', () => {
     release!();
   });
 
+  it('某平台拉不到曲目 → 自动回退到下一个源（不整卡作废）', async () => {
+    // qq 抛错（模拟"该平台专辑详情拿不到"），netease 有数据
+    fetchAlbumTracks.mockImplementation(async (platform: string) => {
+      if (platform === 'qq') throw new Error('该平台暂不支持专辑详情（qq）');
+      return [
+        {
+          id: 'netease:t1',
+          title: '游览指南',
+          artist: '裘德',
+          album: '最后的水族馆',
+          coverUrl: '',
+          duration: 100,
+          bestSource: 'netease',
+          versionType: 'studio',
+          sources: [{ platform: 'netease', trackId: 't1', hasCopyright: true, url: '' }],
+          versions: [{ id: 'v1', duration: 100, sources: [] }],
+        },
+      ] as never;
+    });
+    renderResults();
+    await screen.findByText('叶惠美');
+    await userEvent.click(screen.getByText('叶惠美'));
+    // 回退成功 → 显示曲目，不显示错误
+    expect(await screen.findByText('游览指南')).toBeTruthy();
+    expect(screen.queryByText(/曲目加载失败/)).toBeNull();
+    // 两个源都试过
+    expect(fetchAlbumTracks.mock.calls.map((c) => c[0])).toEqual(['qq', 'netease']);
+  });
+
+  it('所有源都拉不到 → 保留明确的中文错误提示', async () => {
+    fetchAlbumTracks.mockRejectedValue(new Error('请先登录网易云'));
+    renderResults();
+    await screen.findByText('叶惠美');
+    await userEvent.click(screen.getByText('叶惠美'));
+    expect(await screen.findByText(/请先登录网易云/)).toBeTruthy();
+  });
+
   it('点 ❤ 不触发行展开（stopPropagation）', async () => {
     renderResults();
     await screen.findByText('叶惠美');

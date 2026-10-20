@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **fix(album): 网易云专辑详情解锁 —— 展开卡片不再红字「album detail not supported」**
+  （2026-10-20 用户报障：专辑行展开后报 `album detail not supported on netease`）
+
+  **根因不是「网易云不支持」，是「没登录」**。`specs/album-search` 当年把
+  `POST /api/album/{id}` 的 `code:-462 "请绑定手机后再试哦~"` 记成"IP 级反爬"
+  —— 那个结论混着**未登录**这个变量（对照实验 4 header 变体 × 6 次全是在无
+  cookie 下打的）。spec 自己的结语其实写了"需登录态，本机无登录会话无法验证"。
+
+  2026-10-20 用真实登录态复测：`POST /api/album/{id}` → `code=200`、songs 完整
+  （实测「最后的水族馆」21 首 / 2 碟，字段全对）。**端点没问题，缺的是登录态。**
+
+  - `netease.provider.ts` 新增 `getAlbumTracks()`：映射 id/name/artists/
+    duration(ms)/`no`（**碟内**曲序）/`disc`（"01"→碟号 1）/fee
+  - 付费判定只能靠 `song.fee`（专辑端点**不返回 privilege**，单曲搜索才返回）：
+    `fee>0`（数字专辑/付费单曲/试听）→ 标 vipLocked（与单曲搜索同口径，实测
+    两端 fee 都是 8）；`fee=0` → **不标锁**（乐观）—— 反过来"非 VIP 一律标锁"
+    会让整张专辑全变不可播、专辑 tab 直接废掉；`album.paid=true`（已买下整张
+    专辑）→ 不标锁
+  - 未登录 → 明确提示「请先登录网易云」（**不甩 code 给用户看**）；服务端那条
+    英文 `album detail not supported on <p>` 改成中文（它会原样透到界面上）
+  - **UI 多平台回退**：展开专辑时逐个平台试，第一个拉不到就换下一个源 ——
+    以前只用代表源（`sources[0]`），那个平台一失败整张卡片就废了。现在只要
+    **有一个**平台能给曲目，卡片就能用
+  - 测试：provider 单测 +4 条（字段映射 / -462→提示登录 / 空专辑 / paid=true），
+    renderer +2 条（多平台回退 / 全失败保留中文提示）；真实登录态端到端验过
+    21 首全对
+
 - **feat(album): 专辑跨平台 fan-out —— 点 ❤ 把「收藏专辑」同步到所有支持的平台**
   （spec: specs/album-fanout，2026-10-20）
 

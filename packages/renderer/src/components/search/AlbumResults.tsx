@@ -98,11 +98,30 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
         [album.id]: { status: 'loading', items: [] },
       }));
       try {
-        // 一张专辑只属于一个平台 —— 用代表 source 的平台即可。
-        const platform = album.sources[0].platform;
-        const albumId = album.sources[0].albumId;
-        const items = await fetchAlbumTracks(platform, albumId, controller.signal);
-        if (controller.signal.aborted) return;
+        // 逐个平台试：**第一个拉不到就换下一个源**。
+        //
+        // 为什么：一张跨平台合并的专辑，某个平台的专辑详情可能拿不到
+        // （网易云未登录 / 该平台没实现专辑详情 / 上游 5xx）。以前只用
+        // 代表源（sources[0]）—— 那个平台一失败，整张卡片就废了（用户看到
+        // 「曲目加载失败」红字，专辑 tab 变成半残）。现在回退到其它平台，
+        // 只要**有一个**平台能给曲目，卡片就能用。
+        let lastErr: unknown = null;
+        let items: UnifiedSearchItem[] | null = null;
+        for (const src of album.sources) {
+          try {
+            const got = await fetchAlbumTracks(src.platform, src.albumId, controller.signal);
+            if (controller.signal.aborted) return;
+            if (got.length) {
+              items = got;
+              break;
+            }
+            lastErr = new Error('该平台没有返回曲目');
+          } catch (e) {
+            if (controller.signal.aborted) return;
+            lastErr = e;
+          }
+        }
+        if (!items) throw lastErr ?? new Error('没有可用的专辑曲目');
         setTrackLists((prev) => ({
           ...prev,
           [album.id]: { status: 'ok', items },

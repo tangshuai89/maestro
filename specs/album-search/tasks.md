@@ -27,8 +27,11 @@
 
 ### Phase -1 遗留的三个阻塞项
 
-- [ ] **B1** 网易云 `getAlbumTracks` — 需一个**已登录网易云**的会话复测 `/api/album/{id}`。
-      登录后若仍 `-462`，则网易云专辑详情为永久缺口，spec 需再改一次范围
+- [x] **B1** 网易云 `getAlbumTracks` — ✅ **2026-10-20 解除**。
+      复测结论：`POST /api/album/{id}` 在**登录态**下 `code=200`、songs 完整
+      （实测「最后的水族馆」21 首 / 2 碟全对）。当年记的 `-462 "请绑定手机后再试哦~"`
+      是**未登录态**触发的反爬响应 —— spec 自己的结论就是"需登录态，本机无登录
+      会话无法验证"，现在有会话了，验证通过。实现见任务 1.2
 - [ ] **B2** Spotify 整条线 — 需 OAuth token 才能继续任务 1.5 / 1.6
 - [ ] **B3** Deezer 限流阈值 — 需测出「多少次请求/多少时间内」触发，
       以便在 `withTimeout` 之外加请求节流。当前只有定性结论（压测必触发，正常使用未验证）
@@ -44,10 +47,16 @@
 ## Phase 1：Provider 实现
 
 - [x] 1.1 `netease.provider.ts:searchAlbums()` — `cloudsearch/pc` + `type=10`
-- [ ] 1.2 ~~`netease.provider.ts:getAlbumTracks()`~~ → 🔴 **挂起（B1）**
-      Spike 实测 `/api/album/{id}` 返 `code:-462`，与 header 无关的 IP 级反爬，
-      搜索兜底命中 0 首不成立。**等有登录网易云的会话后复测再决定是否实现。**
-      不要现在写。
+- [x] 1.2 `netease.provider.ts:getAlbumTracks()` — ✅ **2026-10-20 实现**（B1 解除）
+      `POST /api/album/{id}` → `album.songs[]`（id/name/artists/duration(ms)/
+      no=碟内曲序/disc="01"/fee）。登录态实测 21 首 / 2 碟全对。
+      ⚠️ **付费判定的取舍**：专辑端点**不返回 privilege**（单曲搜索才返回），
+      只能靠 `song.fee`：`fee>0`（数字专辑/付费单曲/试听）→ 标 vipLocked（与
+      单曲搜索同口径，实测两端 fee 都是 8）；`fee=0` → **不标锁**（乐观）——
+      代价是黑胶独占歌会被标成可播（点了可能只拿到试听，播放器有兜底），
+      反过来"非 VIP 一律标锁"会让整张专辑全变不可播、专辑 tab 直接废掉。
+      `album.paid=true`（已买下整张专辑）→ 不标锁。
+      未登录时端点回 `-462` → 明确提示"请先登录网易云"（不甩 code 给用户看）
 - [x] 1.3 `deezer.provider.ts:searchAlbums()` — `/search/album`
 - [x] 1.4 `deezer.provider.ts:getAlbumTracks()` — `/album/{id}` → `tracks.data[]`
 - [ ] 1.5 ~~`spotify.provider.ts:searchAlbums()`~~ → 🔴 **挂起（B2）**
