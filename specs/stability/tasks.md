@@ -172,15 +172,31 @@
   - 遗留（不算覆盖问题）：该函数在**生产链路里仍零调用点** ——
     renderer 侧另有一套 `PlayFailure.reason` 分级，两套语义要接线
 
-- [ ] **H4** renderer 9 个核心 hook 无任何测试
-  - `useAuth`(700 行) / `useReco` / `useLyrics` / `usePlaylist` / `useVolume` /
-    `useTheme` / `useDeezerEditorials` / `useSpotifyWpsPlayer` / `useDesktopLyrics`
-  - 11 个核心 hook 里只有 `useCoverArt` + `usePlayer` 有测试（且 usePlayer 见 H1）
-  - 另：`LikedLibraryModal`(548) / `NLPlaylistModal`(374) / `RemotePlaylistModal`(271) 无组件测试
+- [ ] **H4** renderer 9 个核心 hook 无任何测试 —— **8/9 已补，剩 useAuth**
+
+  - ✅ **已补（8 个，2026-10-20）**：`useVolume` / `useTheme` / `useDeezerEditorials` /
+    `useLyrics` / `useDesktopLyrics` / `usePlaylist` / `useReco` / `useSpotifyWpsPlayer`
+    —— 共 **72 条新用例**，用 `renderHook` 驱动真实 hook，断言**契约**而非实现细节。
+    复测覆盖率：`useVolume` / `useTheme` / `useDeezerEditorials` / `useLyrics` /
+    `useDesktopLyrics` / `usePlaylist` = **100%**，`useReco` 99.5%，
+    `useSpotifyWpsPlayer` 83.9%
+  - 顺带修掉一条**高负载 flaky**：`usePlayer.hook.test.tsx` 的「兜底链耗尽」用例
+    单独跑 2.3s（全量跑机器负载高时被拖过 vitest 默认 5s → 报 timeout）——
+    显式给 20s 超时。**这条在旧门禁下是完全隐形的**（`|| true` 吞掉 + 退出码恒 0），
+    是门禁改成真失败后才第一次浮出来
+  - ⬜ **剩余**：`useAuth`(700 行) —— reducer + 定时器 + 协议处理，单独一轮
+  - ⬜ **剩余组件（0% 覆盖）**：`LikedLibraryModal`(549) / `NLPlaylistModal` /
+    `RemotePlaylistModal` / `NeteaseCookieModal` / `SourceSelect` /
+    `components/layout/*`（Titlebar / SourceMenu / QualityMenu / DeezerPresetSelect）/
+    `components/ui/*`（5 个）/`PlayerNotice` / `RecoLoading`
+    —— 组件层共 **19 个文件 0% 覆盖**，是 renderer 侧最大的一块空白
 
 - [ ] **H5** `electron/src/main.ts` + `preload.ts` 零覆盖
   - `preload.ts` 暴露约 30 个 IPC channel，只有 `desktop-lyrics:*` 有
     `ipc-contract.test.ts` 守着；其余 channel 无契约保护
+  - 补：`3f7373a` 已加 `electron/src/ipc-surface.test.ts`（5 条全量通道面契约，
+    含 renderer→main / main→renderer / 白名单方向 / 白名单生效），但
+    `main.ts` / `preload.ts` 的**行覆盖**仍是 0（契约测试只断言通道名，不执行实现）
 
 - [x] **H6** 覆盖率数字口径失真（**门禁本身在骗人**）—— 实测影响 **~24pp**，不是 1pp
 
