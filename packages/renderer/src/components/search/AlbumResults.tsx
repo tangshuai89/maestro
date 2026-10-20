@@ -12,6 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   searchAlbums,
   fetchAlbumTracks,
+  fanOutAlbumSave,
   PROVIDER_LABELS,
   isPlayableEntry,
   unplayableText,
@@ -56,6 +57,20 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
   const [platformErrors, setPlatformErrors] = useState<string[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [trackLists, setTrackLists] = useState<Record<string, TrackListState>>({});
+  /**
+   * 专辑收藏态的**本地覆盖**（乐观更新 + 服务端回填），key = album.id。
+   * 服务端搜索结果里的 `savedPlatforms` 是初始真值；用户点 ❤ 后以这里为准。
+   */
+  const [savedOverrides, setSavedOverrides] = useState<Record<string, MusicProvider[]>>({});
+  /**
+   * 正在写收藏的专辑 id 集合（key = album.id）。
+   *
+   * 用集合而不是单个 id：单槽会让"点 A 保存中时点 B"**静默无效**（用户以为
+   * 没点上）。集合 = 各自独立互不阻塞，同时防同一张专辑连点。
+   */
+  const [savingAlbumIds, setSavingAlbumIds] = useState<Record<string, boolean>>({});
+  /** 收藏结果提示（没有可收藏的平台 / 部分平台写失败）。 */
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const trackAbortRef = useRef<AbortController | null>(null);
@@ -125,6 +140,8 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
       // 换关键词时收起展开态 + 清曲目缓存（否则会显示上一关键词的曲目）
       setExpandedId(null);
       setTrackLists({});
+      // 换关键词 → 清掉本地收藏覆盖：新的搜索结果以服务端真值为准
+      setSavedOverrides({});
       trackAbortRef.current?.abort();
     }
 
@@ -239,6 +256,76 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
     onPlay(list.items, index);
   };
 
+  /** 这张专辑当前在哪些平台被收藏了（覆盖优先于服务端返回值）。 */
+  const savedPlatformsOf = useCallback(
+    (album: UnifiedAlbum): MusicProvider[] =>
+      savedOverrides[album.id] ?? album.savedPlatforms ?? [],
+    [savedOverrides],
+  );
+
+  /**
+   * 收藏 / 取消收藏这张专辑（fan-out 到所有有收藏专辑能力且已登录的平台）。
+   *
+   * 乐观更新：取消收藏先清角标（目标平台就是已记录的那些），收藏等回包再落
+   * 真值（回包才知道哪些平台真写成功了 —— 结构性跳过的平台不算）。
+   */
+  const handleToggleAlbumSave = useCallback(
+    async (album: UnifiedAlbum) => {
+      if (savingAlbumIds[album.id]) return;
+      const current = savedPlatformsOf(album);
+      const isSaved = current.length > 0;
+      setSavingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
+      setSaveNotice(null);
+      if (isSaved) setSavedOverrides((prev) => ({ ...prev, [album.id]: [] }));
+      try {
+        const res = await fanOutAlbumSave(
+          album.id,
+          album.sources.map((src) => ({
+            platform: src.platform,
+            albumId: src.albumId,
+            title: album.title,
+            artist: album.artist,
+            year: album.year,
+            // 曲目数用**该平台自己报的那个**（不是合并后的中位数）—— 服务端
+            // 拿它做曲目数分歧守卫（EP vs LP / 豪华版）
+            trackCount: src.trackCount,
+          })),
+          !isSaved,
+        );
+        if (isSaved) {
+          // 取消：写失败（fannedOutTo 不含）的平台保留记录
+          const remaining = current.filter((p) => !res.fannedOutTo.includes(p));
+          setSavedOverrides((prev) => ({ ...prev, [album.id]: remaining }));
+          if (remaining.length) {
+            setSaveNotice(
+              `部分平台取消失败：${remaining.map((p) => PROVIDER_LABELS[p]).join('、')}`,
+            );
+          }
+        } else {
+          setSavedOverrides((prev) => ({ ...prev, [album.id]: res.fannedOutTo }));
+          if (res.fannedOutTo.length === 0) {
+            setSaveNotice('没有可收藏的平台（网易云未登录，或该平台没有收藏专辑能力）');
+          }
+        }
+      } catch (e) {
+        // 失败回滚到服务端给的真值
+        setSavedOverrides((prev) => {
+          const next = { ...prev };
+          delete next[album.id];
+          return next;
+        });
+        setSaveNotice(`收藏失败：${(e as Error).message}`);
+      } finally {
+        setSavingAlbumIds((prev) => {
+          const next = { ...prev };
+          delete next[album.id];
+          return next;
+        });
+      }
+    },
+    [savingAlbumIds, savedPlatformsOf],
+  );
+
   /** 「播放全部」→ 整张专辑入队，从第 1 首开始（不新增队列机制）。 */
   const playAll = (album: UnifiedAlbum) => {
     const list = trackLists[album.id];
@@ -273,6 +360,13 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
           </div>
         )}
 
+        {/* 收藏结果提示（没有可收藏平台 / 部分平台写失败）。 */}
+        {saveNotice && (
+          <div className="sp-album-warn" role="status">
+            {saveNotice}
+          </div>
+        )}
+
         {albums.map((album) => {
           const list = trackLists[album.id];
           const isOpen = expandedId === album.id;
@@ -282,6 +376,7 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
             list?.status === 'ok'
               ? list.items.filter((it) => isPlayableEntry(it, wpsReady)).length
               : 0;
+          const savedPlatforms = savedPlatformsOf(album);
           return (
             <div key={album.id} className={`sp-item${isOpen ? ' is-open' : ''}`}>
               <div
@@ -344,6 +439,30 @@ export default function AlbumResults({ q, onPlay, wpsReady = false, loadMoreRef 
                     </span>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  className={`sp-album-save${savedPlatforms.length ? ' is-on' : ''}${
+                    savingAlbumIds[album.id] ? ' is-busy' : ''
+                  }`}
+                  onClick={(e) => {
+                    // 必须 stopPropagation：整行是 role=button，点一下会展开/收起专辑
+                    e.stopPropagation();
+                    void handleToggleAlbumSave(album);
+                  }}
+                  disabled={!!savingAlbumIds[album.id]}
+                  aria-pressed={savedPlatforms.length > 0}
+                  aria-label={savedPlatforms.length ? '取消收藏专辑' : '收藏专辑'}
+                  title={
+                    savedPlatforms.length
+                      ? `已收藏：${savedPlatforms.map((p) => PROVIDER_LABELS[p]).join('、')}`
+                      : '收藏专辑（同步到所有支持收藏专辑的平台）'
+                  }
+                >
+                  <span aria-hidden="true">{savedPlatforms.length ? '♥' : '♡'}</span>
+                  {savedPlatforms.length > 0 && (
+                    <span className="sp-album-save-n">{savedPlatforms.length}</span>
+                  )}
+                </button>
                 <span className="sp-album-caret" aria-hidden="true">
                   {isOpen ? '▴' : '▾'}
                 </span>

@@ -1,5 +1,10 @@
 # Album 跨平台 fan-out（"收藏专辑"同步）
 
+> ⚠️ **2026-10-20 实施修订**：本 spec 写于 `specs/album-search` 落地**之前**，
+> 下面 6 条"接口规格"的前提已被后续代码推翻。实施以**代码现状**为准，
+> 逐条偏差见 [`tasks.md`](./tasks.md) 文末「与 spec 的偏差记录」。
+> 仍然有效的部分：做什么 / 为什么 / 失败策略 / 平台能力矩阵（已按现状更新）。
+
 > 把"我在 QQ 收藏了这张专辑 / 网易云的"收藏专辑""同步到所有"有能力收藏专辑"
 > 的平台。和 [`heart-fanout`](../heart-fanout/spec.md) 同构——一个在 track 级、
 > 一个在 album 级，**复用同一套 match-engine 的归一键**、同一套"per-platform 调
@@ -111,6 +116,15 @@ POST /music/album/save/:albumId?provider=netease
 
 ## 类型定义（music/types.ts 增量）
 
+> ❌ **已改（2026-10-20）**：`Album` / `UnifiedAlbum` 已由 album-search 落地在
+> **`album-types.ts`**（`AlbumSource` / `UnifiedAlbum` / `AlbumTrack`）——复用，
+> 不在 `types.ts` 新建。本 spec 新增的类型只有：
+> `AlbumSaveProvider`（可选方法 + feature detection）、`AlbumFanOutEntry`
+> （`{platform, albumId}`）、`FanOutAlbumSaveResponse`。
+> `UnifiedAlbum` 增一个字段 `savedPlatforms?: MusicProvider[]`（角标真值来源）。
+>
+> 下面是 spec 原稿（供对照，**未按此实现**）：
+
 ```ts
 export interface Album {
   id: string; // provider-albumId
@@ -158,6 +172,12 @@ export interface FanOutAlbumSaveResponse {
 
 ## 归一键设计（packages/common/src/normalizer.ts 增量）
 
+> ❌ **已取消（2026-10-20）**：专辑归一已由 `album.util.ts` 的
+> `buildUnifiedAlbums` 用 `normalizeKey(title, artist)` 实现并上线
+> （album-search）。新建 `normalizeAlbumKey` = 两套归一口径，必然漂移。
+> 专辑级**年份锚点**改在定向等价查找里做冲突守卫。
+> 以下设计保留作背景，不实现。
+
 ```ts
 /**
  * 专辑级归一键。复用 track 级 normalizeKey 的流水线（stripFeatTags /
@@ -204,9 +224,12 @@ catalog metadata 故意为之）。
     fanOut: {
       "merged-qq-0039MnYb0qxYhV": ["qq", "netease", "deezer"]
     },
-    // 新增
+    // 新增（⚠️ 格式与 spec 原稿不同：必须存每平台的 albumId，
+    // 取消收藏要靠它反写，只存平台名撤不掉）
     albumFanOut: {
-      "merged-album-qq-album-xxxx": ["netease", "spotify"]
+      "merged-album-qq-album-xxxx": [
+        { "platform": "netease", "albumId": "372081313" }
+      ]
     },
     // 已有的 albumsByPlatform（如果之前已有的话）
     albumsByPlatform?: {
@@ -231,6 +254,16 @@ catalog metadata 故意为之）。
 
 > **本 spec 不引入新的能力边界**——能力判定走 `MusicProvider.hasAlbumSaveApi`
 > 静态字段，和 `heart-fanout` 的 `hasCopyright` 判定逻辑完全同构。
+>
+> ⚠️ **2026-10-20 修订**：静态字段方案**未采用** —— `common/provider.ts` 里
+> `MusicProvider` 只是字符串 union，没有 interface 可扩展；且静态标志位会与
+> "方法真的实现了"漂移。改为 `album-types.ts` 的可选方法接口
+> `AlbumSaveProvider` + **feature detection**（`typeof ap.saveAlbum === 'function'`）。
+> 效果等价（QQ/Deezer 缺席），但只有一种真相。
+>
+> ⚠️ **Spotify 降级为留位**：`PUT/DELETE /v1/me/albums` 确实存在，但本项目
+> **未实现 Spotify 专辑搜索**（无 token，见 album-search 阻塞项 B2）→
+> 拿不到 albumId → 本期不实现。
 
 ## 复用点
 

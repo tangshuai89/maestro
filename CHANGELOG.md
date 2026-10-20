@@ -9,6 +9,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **feat(album): 专辑跨平台 fan-out —— 点 ❤ 把「收藏专辑」同步到所有支持的平台**
+  （spec: specs/album-fanout，2026-10-20）
+
+  专辑搜索结果里点 ❤ → 把"收藏这张专辑"写进所有**有收藏专辑能力且已登录**的
+  平台；再点一次取消。v1 真正落地的是**网易云**（QQ 无收藏专辑 API、Deezer 无
+  per-user album save、Spotify 未实现专辑搜索 → 拿不到 albumId，只留接口位）。
+
+  **写接口**（`netease.provider.ts` 的 `saveAlbum`）：
+
+  - `POST /api/album/sub`（alg=itembased + id + sub=true|false），复用 provider
+    既有的 `apiCall` —— appver / csrf_token / `__csrf` cookie / `X-Real-IP`
+    四件套是网易云写接口不被 -460 风控拦的前提（与红心同族）
+  - `code=405`「操作频繁」= 目标态已达成 → **视为幂等成功**（否则重试会白白
+    退避 7 次 / 64s）
+  - 端点提为常量 `NETEASE_ALBUM_SUB_ENDPOINT`：真伪以登录态实测为准，失败日志
+    打 code + message，实测不符时一行可改
+
+  **能力判定用 feature detection，不用静态 `hasAlbumSaveApi` 标志位**：
+  `common/provider.ts` 里 `MusicProvider` 只是字符串 union、没有 interface 可扩展；
+  且静态标志位会与"方法真的实现了"漂移（改方法名/删实现时标志位不会跟着变），
+  于是"声称支持但调用会崩"。改为 `album-types.ts` 的可选方法接口
+  `AlbumSaveProvider`。
+
+  **三条语义**（都写进测试）：
+
+  1. 结构性跳过（平台没能力 / 未登录）→ **不写 state**。写了就是假收藏污染 +
+     角标虚高（"3❤" 其实只有 1 个平台）
+  2. 单平台失败不阻塞其它 → 整体 `success` 恒 true，失败平台不进 `fannedOutTo`
+  3. 取消方向**只**反写 state 里记过的 platform + albumId → 幂等，且不会动
+     用户原本在别的平台单独收藏过的同一张专辑
+
+  **状态**：`state.json` 新增 `albumFanOut` =
+  `{ mergedAlbumId: [{platform, albumId}] }`。⚠️ 比 spec 原稿多存 `albumId` ——
+  取消收藏要靠它反写，只存平台名撤不掉（track 侧 `FanOutEntry` 存 `trackId`
+  是同一个教训）。老 state 文件无此字段时按空处理，不炸。
+
+  **跨平台补齐**：统一专辑的 `sources` 只含"搜到了该专辑的平台" —— 搜「范特西」
+  网易云没命中就没有 albumId，收藏写不进去。新增
+  `findAlbumEquivalentOnPlatform()`：用专辑名 + 艺人去目标平台再搜一次，用
+  album-search 已有的 `albumsProbablySame` 判等价 + **year 冲突守卫**（双方
+  年份已知且不等 → 拒，挡住再版/豪华版）。⚠️ **没有新建第二套归一口径** ——
+  spec 原稿要新建的 `normalizeAlbumKey` / `mergeAlbumLibrary` /
+  `findEquivalentAlbum` 与 album-search 已上线的合并逻辑重复，两套 key 口径
+  必然漂移（CLAUDE.md 明令禁止）。
+
+  **端点**：`POST /music/album/save/merged` + `POST /music/album/save/:albumId`。
+  ⚠️ 前者必须声明在后者之前 —— Express 按声明顺序匹配，否则 `album/save/merged`
+  被 `album/save/:albumId` 截胡（`like/merged` vs `like/:trackId` 已踩过同一个
+  坑，e2e 专门锁了这条）。`sources` 只在收藏方向必需；取消方向按服务端记录反写。
+
+  **UI**（`AlbumResults.tsx`）：专辑行右侧加 ❤ 按钮（点收藏/再点取消，乐观
+  更新 + 失败回滚），已收藏时显示 ♥ + **真实平台数**角标；点 ❤ 不会触发行展开
+  （`stopPropagation`）。没有可收藏的平台时给明确提示，不静默失败。
+
+  **失败隔离（review 必修）**：平台写接口 / 搜索接口**可能抛**（`withTimeout`
+  不吞 rejection —— `Promise.race` 直接传播；网易云 `apiCall` 在网络失败 /
+  响应非 JSON 时抛 `BadRequestException`，`searchAlbums` 在 `code!=200` 时抛）。
+  抛出点在 `saveState` 之前 → 已成功的平台丢失落账 → **远端收藏了但本地无
+  记录**（孤儿，角标不亮、merged 撤不掉）。现在写调用与等价查找都 catch →
+  降级成"这个平台没写成"，整体 `success` 仍为 true。
+
+  **远端写不进 state 锁**（review 中优先级）：三阶段执行 —— 规划（无锁，含
+  网络：定向等价查找）→ 远端写（无锁）→ 落账（锁内，纯内存）。否则一次收藏
+  最坏 ≈10s 会把该 session 其它 state 写路径（❤ / 踩 / queue refill）全排队
+  （track 侧特意把远端写推队列就是躲这个）。
+
+  **mergedId 漂移归一**（review 中优先级）：专辑 mergedId =
+  `merged-${normalizeKey(代表源.title, 代表源.artist)}`，而**代表源会变**
+  （QQ 缺席时 rep 变 Deezer）→ 同一张专辑两条记录 → 旧条成孤儿。按
+  platform+albumId 重合扫 `albumFanOut` 归一（照 track 侧 `canonicalMergedId`）。
+
+  **trackCount 分歧守卫**（review 中优先级，写路径正确性）：同名 + 同艺人 +
+  同年份但曲目数差 >50% = EP vs LP / 豪华版 → **不是同一张专辑**。sources
+  现在带 `trackCount`（用该平台自己报的那个，不是合并中位数），阈值复用
+  `album.util` 的 `TRACK_COUNT_DIVERGENCE`（不另立一份）。
+
+  另外：平台参数改**严格校验**（未知 → 400，不再被 `normalizeProvider` 静默
+  兜底成 'qq'）；`albumFanOut` 加 LRU 上限（1000，照 `fanOut` 口径）；同平台
+  entry 的 albumId 会更新（否则 unsave 撤旧 id、新的成远端孤儿）；单平台端点
+  `toggleAlbumSave` 明确标注为 **raw / 不落账**（拿不到统一专辑键 → 角标不亮、
+  不能用 merged 撤）。
+
+  测试：服务端白盒 15 条 + e2e 6 条 + renderer vitest 9 条 = 30 条；变异验证
+  四轮（不写 `albumFanOut` → 红；取消方向改用请求 sources 反写 → 红；去掉
+  异常隔离 → 红；远端写挪回锁内 → 红）。
+
 - **fix(player): QQ 取不到流时零兜底 → 界面卡在「等待播放」**（2026-10-19 报障）
 
   报障现象：启动后不播放，进度条 `00:00`、HUD 显示 READY、没有任何报错。

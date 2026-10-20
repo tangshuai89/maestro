@@ -944,6 +944,13 @@ export interface UnifiedAlbum {
    * 见 specs/album-search「跨平台合并」节。
    */
   variantMismatch?: boolean;
+  /**
+   * 用户在哪些平台**收藏了这张专辑**（spec: specs/album-fanout）。
+   *
+   * 只含真实写入成功的平台 —— 结构性跳过（没能力 / 未登录）不在其中。
+   * undefined = 没收藏过。
+   */
+  savedPlatforms?: MusicProvider[];
 }
 
 export interface UnifiedAlbumSearchResult {
@@ -999,6 +1006,60 @@ export async function fetchAlbumTracks(
     ),
   );
   return res.items;
+}
+
+/**
+ * 专辑 fan-out：把「收藏这张专辑」写到所有有收藏专辑能力且已登录的平台。
+ *
+ * `fannedOutTo` 只含**真实写入成功**的平台 —— 结构性跳过（平台没收藏专辑
+ * 能力 / 未登录）不在里面，所以 UI 角标不能拿它当"已收藏平台数"用，得用
+ * 搜索结果里的 `savedPlatforms`。
+ */
+export async function fanOutAlbumSave(
+  mergedAlbumId: string,
+  sources: Array<{
+    platform: MusicProvider;
+    albumId: string;
+    title?: string;
+    artist?: string;
+    year?: number;
+    /**
+     * 该平台这张专辑的曲目数。服务端用它做**曲目数分歧守卫**（同名同艺人
+     * 同年份但曲目数差 >50% = EP vs LP / 豪华版 → 不是同一张专辑）。
+     * 不传 = 服务端不判分歧（可能选错专辑）。
+     */
+    trackCount?: number;
+  }>,
+  saved: boolean,
+): Promise<{ success: boolean; saved: boolean; fannedOutTo: MusicProvider[] }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/album/save/merged`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mergedAlbumId, sources, saved }),
+    }),
+  );
+}
+
+/**
+ * 单平台专辑收藏/取消收藏（不走 fan-out）。
+ *
+ * ⚠️ **raw 操作，不落账**：单平台端点拿不到统一专辑键 → 写完远端没有本地
+ * 记录 → 角标不亮、也无法用 fan-out 端点撤销。**优先用 `fanOutAlbumSave()`**。
+ * 本仓库 UI 目前只用 fan-out 版本，这条留着给将来的单平台入口用。
+ */
+export async function toggleAlbumSave(
+  provider: MusicProvider,
+  albumId: string,
+  saved: boolean,
+): Promise<{ success: boolean; saved: boolean }> {
+  return json(
+    await fetchWithToken(
+      `${API_BASE}/music/album/save/${encodeURIComponent(albumId)}?provider=${provider}&saved=${saved}`,
+      { method: 'POST', credentials: 'include' },
+    ),
+  );
 }
 
 /**

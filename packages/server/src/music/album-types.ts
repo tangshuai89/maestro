@@ -54,6 +54,14 @@ export interface UnifiedAlbum {
    * 网易云=王珏子乔 18 首（翻唱）/ Deezer=19 首，不守卫就会把翻唱并进原版。
    */
   variantMismatch?: boolean;
+  /**
+   * 用户当前在哪些平台**收藏了这张专辑**（fan-out 结果，spec: album-fanout）。
+   *
+   * 语义对齐 track 侧的 `likedPlatforms`：**只列真实写入成功的平台**。
+   * 结构性跳过（平台没收藏专辑能力 / 未登录）不写 state → 不会出现在这里，
+   * 避免角标虚高（"3❤"其实是 1 个平台）。
+   */
+  savedPlatforms?: MusicProvider[];
 }
 
 export interface UnifiedAlbumSearchResult {
@@ -92,4 +100,55 @@ export interface AlbumTrack extends Track {
 export interface AlbumProvider {
   searchAlbums?(session: ProviderSession, keyword: string, count: number): Promise<AlbumSource[]>;
   getAlbumTracks?(session: ProviderSession, albumId: string): Promise<AlbumTrack[]>;
+}
+
+/**
+ * 专辑**收藏写**能力的 provider 形状（spec: specs/album-fanout）。
+ *
+ * 与 `AlbumProvider` 同构：**方法全部可选** —— 没实现 = 该平台在专辑收藏里
+ * 缺席，service 层用 feature detection 判定（`typeof ap.saveAlbum === 'function'`）。
+ *
+ * 为什么不设 `hasAlbumSaveApi` 静态字段（album-fanout spec 原写法）：
+ * 静态标志位与"方法是否真的实现了"会漂移 —— 改方法名/删实现时标志位不会跟着变，
+ * 就会出现"声称支持但调用会崩"。feature detection 只有一种真相。
+ *
+ * 平台能力矩阵（2026-10）：
+ *   - NetEase ✅ 收藏/取消收藏专辑（`/api/album/sub`，需登录 cookie）
+ *   - QQ     ❌ 只有「收藏歌单」，没有「收藏专辑」API
+ *   - Deezer ❌ 无 per-user album save API（红心也是同样原因缺席）
+ *   - Spotify ⬜ 有 `PUT/DELETE /v1/me/albums`，但**未实现专辑搜索** →
+ *     拿不到 Spotify 的 albumId，本期不实现（留位，等 OAuth token 到位）
+ */
+export interface AlbumSaveProvider {
+  /**
+   * 收藏 / 取消收藏一张专辑。
+   *
+   * 语义：这是**确保为目标态**（幂等），不是翻转 —— 重复调同一方向应返回
+   * 成功（远端返回 405「操作频繁」= 目标态已达成，provider 应视为成功）。
+   *
+   * @param albumId 平台内的专辑 id（网易云 = 数字 id 的字符串形式）
+   * @param saved true = 收藏，false = 取消收藏
+   * @returns 是否达成目标态（false = 写失败，调用方据此决定是否计入角标）
+   */
+  saveAlbum?(session: ProviderSession, albumId: string, saved: boolean): Promise<boolean>;
+}
+
+/** 专辑 fan-out 的持久化条目：某张统一专辑在某个平台上的收藏态。 */
+export interface AlbumFanOutEntry {
+  platform: MusicProvider;
+  /** 该平台内的专辑 id —— 取消收藏时要用它反写，缺了就没法撤。 */
+  albumId: string;
+}
+
+/** 专辑 fan-out 端点的响应体。 */
+export interface FanOutAlbumSaveResponse {
+  success: boolean;
+  saved: boolean;
+  /**
+   * 本次**真实写入/清除成功**的平台。
+   *
+   * 结构性跳过（平台没收藏专辑能力 / 未登录）与写失败都不在里面 —— 角标
+   * 只能反映"确实收藏了"，不能虚高。
+   */
+  fannedOutTo: MusicProvider[];
 }

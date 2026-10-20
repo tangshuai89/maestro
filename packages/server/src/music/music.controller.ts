@@ -25,6 +25,7 @@ import { QqQuality } from './qq.provider';
 import { RequireInternalTokenGuard } from '../common/guards/require-internal-token.guard';
 import { SkipInternalToken } from '../common/decorators/skip-internal-token.decorator';
 import type { FanOutLikeResponse, SourceInfo } from './types';
+import type { FanOutAlbumSaveResponse } from './album-types';
 import { PLAY_PRIORITY, playlistTracksToUnifiedItems } from './search.util';
 import { SourceHealthService } from './source-health.service';
 
@@ -44,6 +45,23 @@ function parseMeta(m: unknown): LikeMeta | undefined {
  *  不用 normalizeProvider——它把未知值兜底成 'qq'（既有搜索 / 电台端点的历史
  *  行为），对歌单来说那是**静默把请求路由到错平台**，必须 fail loud。 */
 function requirePlaylistProvider(raw: string | undefined): MusicProvider {
+  const p = (raw ?? '').toLowerCase();
+  if (!MUSIC_PROVIDERS.includes(p as MusicProvider)) {
+    throw new BadRequestException({
+      error: 'unknown_provider',
+      provider: raw,
+      allowed: MUSIC_PROVIDERS,
+    });
+  }
+  return p as MusicProvider;
+}
+
+/** 专辑端点专用的 provider 解析：**严格**校验，未知值直接 400。
+ *
+ * 不用 normalizeProvider —— 它把未知值兜底成 'qq'，那会让
+ * `provider=bogus` 静默打到 QQ 平台（对专辑收藏来说是"声称支持却写错平台"）。
+ * 与 requirePlaylistProvider 同一口径。 */
+function requireAlbumProvider(raw: string | undefined): MusicProvider {
   const p = (raw ?? '').toLowerCase();
   if (!MUSIC_PROVIDERS.includes(p as MusicProvider)) {
     throw new BadRequestException({
@@ -203,6 +221,108 @@ export class MusicController {
       albumId,
     );
     return { items };
+  }
+
+  /**
+   * 专辑 fan-out：把「收藏这张专辑」写到所有有收藏专辑能力且已登录的平台。
+   *
+   * 请求体: { mergedAlbumId, sources: [{platform, albumId, title?, artist?, year?}], saved }
+   * 响应: { success, saved, fannedOutTo: MusicProvider[] }
+   *
+   * fannedOutTo 只含**真实写入成功**的平台 —— 结构性跳过（平台没收藏专辑
+   * 能力 / 未登录）与写失败都不在里面，角标因此不会虚高。
+   *
+   * ⚠️ 必须注册在 /album/save/:albumId 之前 —— Express 路由按声明顺序匹配，
+   * "album/save/merged" 会被 "album/save/:albumId" 截胡（albumId=merged），
+   * 走到单平台路径（与 like/merged vs like/:trackId 同一个坑）。
+   */
+  @Post('album/save/merged')
+  async albumSaveMerged(
+    @Body()
+    body: {
+      mergedAlbumId?: string;
+      sources?: Array<{
+        platform: string;
+        albumId: string;
+        title?: string;
+        artist?: string;
+        year?: number;
+        trackCount?: number;
+      }>;
+      saved?: boolean;
+    },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<FanOutAlbumSaveResponse> {
+    if (!body?.mergedAlbumId || typeof body.mergedAlbumId !== 'string') {
+      throw new BadRequestException('mergedAlbumId 必填');
+    }
+    if (typeof body.saved !== 'boolean') {
+      throw new BadRequestException('saved 必填（true / false）');
+    }
+    // sources 只在**收藏**方向必需：取消收藏按服务端记录的 platform + albumId
+    // 反写（幂等，不动我们没收藏过的专辑），客户端不必回传 sources。
+    if (body.saved === true && (!Array.isArray(body.sources) || body.sources.length === 0)) {
+      throw new BadRequestException('sources 至少 1 项');
+    }
+    const sources: Array<{
+      platform: MusicProvider;
+      albumId: string;
+      title?: string;
+      artist?: string;
+      year?: number;
+      trackCount?: number;
+    }> = [];
+    for (const s of body.sources ?? []) {
+      if (
+        !s ||
+        typeof s.platform !== 'string' ||
+        typeof s.albumId !== 'string' ||
+        !s.albumId.length
+      ) {
+        throw new BadRequestException('sources 每项需要 platform + albumId');
+      }
+      sources.push({
+        // 严格校验：未知平台 400，不兜底成 'qq'（兜底 = 静默打到错平台）
+        platform: requireAlbumProvider(s.platform),
+        albumId: s.albumId,
+        title: typeof s.title === 'string' ? s.title : undefined,
+        artist: typeof s.artist === 'string' ? s.artist : undefined,
+        year: typeof s.year === 'number' && Number.isFinite(s.year) ? s.year : undefined,
+        trackCount:
+          typeof s.trackCount === 'number' && Number.isFinite(s.trackCount)
+            ? s.trackCount
+            : undefined,
+      });
+    }
+    const session = this.sessionService.resolve(req, res);
+    return this.musicService.fanOutAlbumSave(session, body.mergedAlbumId, sources, body.saved);
+  }
+
+  /**
+   * 单平台专辑收藏（不带 fan-out）：只动这一个平台的收藏态。
+   *
+   * ⚠️ 路由顺序：必须声明在 /album/save/merged **之后**、本条自身。
+   */
+  @Post('album/save/:albumId')
+  async albumSave(
+    @Param('albumId') albumId: string,
+    @Query('provider') provider: string,
+    @Query('saved') saved: string | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ success: boolean; saved: boolean }> {
+    if (!albumId) throw new BadRequestException('albumId 必填');
+    if (typeof saved !== 'string' || (saved !== 'true' && saved !== 'false')) {
+      throw new BadRequestException('saved 必填（true / false）');
+    }
+    const session = this.sessionService.resolve(req, res);
+    return this.musicService.toggleAlbumSave(
+      session,
+      requireAlbumProvider(provider),
+      albumId,
+      saved === 'true',
+    );
   }
 
   /**

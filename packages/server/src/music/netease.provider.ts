@@ -57,6 +57,17 @@ const UA =
  */
 const NETEASE_REAL_IP = '116.25.146.177';
 
+/**
+ * 网易云「收藏 / 取消收藏专辑」端点（spec: specs/album-fanout）。
+ *
+ * 与 `radio/like`（红心）同族的明文 RPC 风格端点：alg=itembased + id +
+ * sub=true|false。**需登录 cookie**（未登录返回 code=301）。
+ *
+ * ⚠️ 端点真伪以登录态实测为准 —— 提为常量就是为了实测不符时**一行**可改，
+ * 失败日志会打出 code + message，验收时按实测结果修正。
+ */
+const NETEASE_ALBUM_SUB_ENDPOINT = 'https://music.163.com/api/album/sub';
+
 interface NeteaseSong {
   id: number;
   name: string;
@@ -876,6 +887,43 @@ export class NeteaseMusicProvider {
         time: '25',
       },
     );
+    return data.code === 200;
+  }
+
+  /**
+   * 收藏 / 取消收藏一张专辑（spec: specs/album-fanout）。
+   *
+   * 语义是**确保为目标态**（幂等），不是翻转：连续两次收藏同一张专辑，第二次
+   * 远端会回 405「操作频繁」——那表示目标态已达成，视为成功（与 setRadioLike
+   * 对 405 的处理一致）。
+   *
+   * 走 apiCall → 自动带上 appver / csrf_token / __csrf cookie / X-Real-IP，
+   * 这四样是写接口不被 -460 风控拦的前提（见文件头注释）。
+   */
+  async saveAlbum(session: ProviderSession, albumId: string, saved: boolean): Promise<boolean> {
+    const data = await this.apiCall<{ code: number; message?: string }>(
+      session,
+      NETEASE_ALBUM_SUB_ENDPOINT,
+      {
+        alg: 'itembased',
+        id: String(albumId),
+        sub: saved ? 'true' : 'false',
+        time: '3',
+      },
+    );
+    if (data.code === 405) {
+      this.logger.debug(
+        `netease album/sub albumId=${albumId} sub=${saved} code=405 (idempotent — target state already reached)`,
+      );
+      return true;
+    }
+    if (data.code !== 200) {
+      this.logger.warn(
+        `netease album/sub albumId=${albumId} sub=${saved} code=${data.code} message=${
+          data.message ?? '(none)'
+        }`,
+      );
+    }
     return data.code === 200;
   }
 

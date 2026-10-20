@@ -52,6 +52,24 @@ function hasTrackDivergence(sources: AlbumSource[]): boolean {
 }
 
 /**
+ * 两张专辑的曲目数是否**分歧**（>50%）。
+ *
+ * 导出给 album-fanout 的定向等价查找用：跨平台找同一张专辑时，光靠
+ * "同名 + 同艺人 + 同年份"不够 —— EP 与 LP、豪华版与原版都满足，但那**不是
+ * 同一张专辑**，收藏错了比合并错更疼（写路径直接写进用户收藏）。
+ *
+ * 曲目数有一方未知（0）时**不判分歧**（平台没给曲目数 ≠ 空专辑）。
+ * 阈值复用合并逻辑的 TRACK_COUNT_DIVERGENCE —— **不另立一份**（两套阈值
+ * 必然漂移）。
+ */
+export function albumTrackCountsDivergent(a: number, b: number): boolean {
+  const min = Math.min(a, b);
+  const max = Math.max(a, b);
+  if (min <= 0 || max <= 0) return false;
+  return max / min > TRACK_COUNT_DIVERGENCE;
+}
+
+/**
  * 一个候选专辑组：同 normalizeKey、且 trackCount 未分歧的一组源。
  *
  * variantMismatch = 这组内部因曲目数分歧被拆开过（同一张专辑的再版/豪华版
