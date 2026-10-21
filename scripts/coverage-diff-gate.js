@@ -168,6 +168,17 @@ function readLcov(lcovPath) {
   return { files, duplicates };
 }
 
+/**
+ * diff 的 pathspec —— 只看 packages/<包>/src/ 下的源文件。
+ *
+ * ⚠️ 末尾必须带 `**` —— 写成 `packages/<通配>/src/`（少一段）就匹配不到任何
+ * 东西（git 的 pathspec 里 `*` 不跨 `/`）。实测踩过：改短之后 diff 恒为空
+ * → 门禁**永远通过**（最坏的失败模式：看起来在把关，其实没有）。
+ *
+ * ⚠️ 注释里别直接写那条 pathspec —— 里面的 `*` + `/` 组合会提前闭合块注释。
+ */
+const DIFF_PATHSPEC = ['packages/*/src/**'];
+
 // ── 主流程 ──────────────────────────────────────────────────────────
 /**
  * 从 lcov 的 `SF:` 路径里认出「包名」。
@@ -204,6 +215,9 @@ function judgeAddedLines(added, lcov) {
   for (const [file, lines] of added) {
     // 只关心有可执行代码的源文件
     if (!/\.(ts|tsx)$/.test(file)) continue;
+    if (!/(^|\/)src\//.test(file)) continue;
+    // 类型声明文件不是可执行代码（c8 的 --exclude=**/*.d.ts 也排除了它们）
+    if (/\.d\.ts$/.test(file)) continue;
     // 测试文件本身不算（它们不在 lcov 里 —— 被 --exclude 排除了）
     if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
 
@@ -354,6 +368,53 @@ function selfTest() {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 
+  // ── 6b. diff pathspec 必须真的能匹配到 src/ 下的文件 ───────────────
+  //
+  // ⚠️ 踩过的坑：pathspec 写成 `packages/<通配>/src/`（少一段 `**`）→ diff
+  // 恒为空 → 门禁**永远通过** —— 最坏的失败模式（看起来在把关，其实没有）。
+  //
+  // 验证方式：`git ls-files <pathspec>`（列**已跟踪**的文件，不依赖任何
+  // commit 的 diff 内容）→ 必须能列出一堆 src/ 下的源文件。
+  {
+    const { execFileSync } = require('node:child_process');
+    let listed = '';
+    try {
+      listed = execFileSync('git', ['ls-files', ...DIFF_PATHSPEC], { encoding: 'utf8' });
+    } catch {
+      listed = '';
+    }
+    const files = listed.split('\n').filter(Boolean);
+    expect(
+      'pathspec 能匹配到 src/ 下的源文件（否则门禁永远通过 = 最坏的失败模式）',
+      files.length > 10,
+      `只匹配到 ${files.length} 个文件 —— 门禁会永远放过！`,
+    );
+    expect(
+      'pathspec 匹配到的都是 src/ 下的文件',
+      files.every((f) => f.includes('/src/')),
+      '匹配到了 src/ 之外的文件',
+    );
+  }
+
+  // ── 7. 不该被门禁管的文件类型 ───────────────────────────────────
+  //
+  // 配置文件（vite.config.ts 等）和类型声明（.d.ts）**不在 lcov 里**（c8 的
+  // --src 只指向各包的 src/，--exclude 排除了 .d.ts）→ 如果门禁把它们算进来，
+  // 改个构建配置就会被判成「新增文件从未被任何测试 import」→ **误拦**。
+  {
+    const junk = judgeAddedLines(
+      new Map([
+        ['packages/renderer/vite.config.ts', new Set([1, 2, 3])],
+        ['packages/server/src/music/kuromoji.d.ts', new Set([1, 2])],
+        ['packages/server/src/real.ts', new Set([1])],
+      ]),
+      new Map(),
+    );
+    expect('不该被管的：vite.config.ts 被跳过', !junk.has('packages/renderer/vite.config.ts'));
+    expect('不该被管的：.d.ts 被跳过', !junk.has('packages/server/src/music/kuromoji.d.ts'));
+    expect('该被管的：普通源文件仍被报', junk.has('packages/server/src/real.ts'));
+  }
+
   if (failures.length > 0) {
     console.error(`❌ coverage-diff-gate 自测失败（${failures.length} 项）:`);
     for (const f of failures) console.error(`   ✗ ${f}`);
@@ -381,7 +442,22 @@ function main() {
     process.exit(2);
   }
 
-  const diffText = git(['diff', '-U0', `${args.base}...HEAD`, '--', 'packages/']);
+  // 只看 packages/<包>/src/ 下的源文件 —— 那是覆盖率数据覆盖的范围。
+  //
+  // ⚠️ 早先只过滤 `-- packages/`（整个目录）→ 把 `packages/renderer/vite.config.ts`
+  // 这种**不在 src/ 下**的文件也算了进来。而配置文件不在 lcov 里（c8 的
+  // `--src` 只指向各包的 src/）→ 改了配置就被判成「新增文件从未被任何测试
+  // import」→ **误拦**。这类文件本来就不该由覆盖率门禁管（它们是构建配置，
+  // 不是运行时代码）。
+  //
+  // ⚠️ pathspec 末尾必须带 `**`（见 DIFF_PATHSPEC 的说明）。
+  const diffText = git([
+    'diff',
+    '-U0',
+    `${args.base}...HEAD`,
+    '--',
+    ...DIFF_PATHSPEC,
+  ]);
   if (!diffText) {
     console.log('── diff 为空（本次 PR 没改 packages/ 下的文件）→ 跳过 ──');
     process.exit(0);
@@ -452,6 +528,8 @@ function main() {
   const zeroFiles = [];
   for (const file of added.keys()) {
     if (!/\.(ts|tsx)$/.test(file)) continue;
+    if (!/(^|\/)src\//.test(file)) continue;
+    if (/\.d\.ts$/.test(file)) continue;
     if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
     const da = lcov.get(file);
     if (!da) continue; // 判据 1 已经报了
