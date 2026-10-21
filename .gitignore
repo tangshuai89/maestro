@@ -35,3 +35,5 @@ packages/renderer/.dev-port
 
 # 覆盖率采集锁（进程被强杀时可能残留，见 scripts/test.sh 的死锁接管）
 .coverage-collect.lock/
+# 覆盖率采集的新鲜度标记（必须在 coverage/ 之外 —— 采集会 rm -rf coverage/）
+.coverage-collected-at

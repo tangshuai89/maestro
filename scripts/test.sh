@@ -52,9 +52,13 @@ FAILED_COUNT=0
 FAILED_FILES=""
 
 COVERAGE_DIR="$PWD/coverage"
-COV_TMP="$COVERAGE_DIR/.tmp"
+# 采集数据分**两个** temp 目录（2026-10-21 修 —— 见下方「两条转换管线」注释）。
+COV_TMP_NODE="$COVERAGE_DIR/.tmp-node"
+COV_TMP_VITEST="$COVERAGE_DIR/.tmp-vitest"
 # 采集数据的"新鲜度"标记：--coverage 靠它决定复用还是重采。
-COV_MARKER="$COV_TMP/.collected-at"
+# ⚠️ 标记**不能**放在 $COVERAGE_DIR 里 —— 采集开头会 `rm -rf $COVERAGE_DIR`，
+# 标记会被自己删掉 → 每次都判定为「不新鲜」→ 复用永远失效。
+COV_MARKER="$PWD/.coverage-collected-at"
 
 # ── c8 公共参数：三个 flag 缺一不可，缺了覆盖率就在骗人 ──────────────
 #
@@ -74,9 +78,40 @@ COV_MARKER="$COV_TMP/.collected-at"
 #    common/src（源码）双计，数值虚高 0.98pp。
 #
 # 用 `--exclude=<pattern>` 单参形式 + 引号，避免 `**` 被 shell 提前展开。
-C8_COMMON=(
+#
+# ── 两条转换管线必须分开采集（2026-10-21 修）────────────────────────
+#
+# 仓库里有两条互不兼容的 TS 转换管线会覆盖**同一个**源文件：
+#   - `.test.mjs` → `node` + 自实现 ESM loader（node 自己的 type-stripping）
+#   - `.test.tsx` → `vitest` + vite/esbuild 转换
+#
+# 两份产物如果进**同一个** temp 目录，c8 生成报告时会按 URL 合并它们
+# （`@bcoe/v8-coverage` 的 `mergeScriptCovs`）—— 而那个合并是按**字节偏移**
+# 匹配函数的。两份的偏移基于不同的转换后源码，对不上 → 同一份文件被拆成
+# 两组互不相认的函数条目 → 只有一组能对上 c8 手里的 source map →
+# **另一组的覆盖被整份丢弃**。
+#
+# 实测（`renderer/src/lib/lyricsShare.ts`）：单独跑 .mjs = 71/171，
+# 单独跑 .tsx = 167/171，**合并后 = 67/171**（不是并集的 171/171）。
+# 而且哪边胜出不可预测（api.ts 是 vitest 赢、lyricsShare.ts 是 node 赢）
+# —— 门禁阈值（≥60%）就建立在这组数字上，等于门禁读到的可能是任意一边。
+#
+# 修法：两条管线各写各的 temp 目录，最后在 **lcov 文本层**取并集
+# （lcov 是行级格式，不依赖字节偏移，两边天然可比）。见 scripts/merge-lcov.js。
+#
+# node 管线（.test.ts / .test.mjs）：独立 temp 目录
+C8_NODE=(
   --clean=false --reporter=lcov
-  "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP"
+  "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP_NODE"
+  --extension .ts --extension .tsx --all
+  "--exclude=**/dist/**" "--exclude=**/*.d.ts"
+  "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs"
+)
+
+# vitest 管线（.test.tsx）：独立 temp 目录
+C8_VITEST=(
+  --clean=false --reporter=lcov
+  "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP_VITEST"
   --extension .ts --extension .tsx --all
   "--exclude=**/dist/**" "--exclude=**/*.d.ts"
   "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs"
@@ -126,13 +161,14 @@ run_pkg() {
       if [ "$INSTRUMENT" -eq 1 ]; then
         # .mjs tests import .ts source via the ESM loader; without
         # --extension .ts c8 only counts .js files and the coverage is 0%.
-        ( cd "$root/packages/$pkg" && npx c8 "${C8_COMMON[@]}" --src src node "$f" ) || ok=0
+        # → node 管线：独立的 temp 目录（与 vitest 管线分开，见 C8_NODE 上方注释）
+        ( cd "$root/packages/$pkg" && npx c8 "${C8_NODE[@]}" --src src node "$f" ) || ok=0
       else
         ( cd "$root/packages/$pkg" && node "$f" ) || ok=0
       fi
     else
       if [ "$INSTRUMENT" -eq 1 ]; then
-        ( cd "$root/packages/$pkg" && npx c8 "${C8_COMMON[@]}" --src src npx ts-node "$f" ) || ok=0
+        ( cd "$root/packages/$pkg" && npx c8 "${C8_NODE[@]}" --src src npx ts-node "$f" ) || ok=0
       else
         ( cd "$root/packages/$pkg" && npx ts-node "$f" ) || ok=0
       fi
@@ -153,7 +189,8 @@ run_pkg() {
   if [ "$pkg" = "renderer" ] && [ -n "$tsx_files" ]; then
     local ok=1
     if [ "$INSTRUMENT" -eq 1 ]; then
-      ( cd "$root" && npx c8 "${C8_COMMON[@]}" --src "packages/$pkg/src" \
+      # → vitest 管线：独立的 temp 目录（见 C8_NODE 上方注释）
+      ( cd "$root" && npx c8 "${C8_VITEST[@]}" --src "packages/$pkg/src" \
           npx vitest run -c "packages/$pkg/vitest.config.ts" --reporter=dot ) || ok=0
     else
       ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" --reporter=dot ) || ok=0
@@ -197,10 +234,20 @@ run_all() {
 }
 
 # ── 采集 / 报告 / 阈值 ─────────────────────────────────────────────
-# 覆盖率报告（只读已有采集数据）。
-c8_report() {
-  npx c8 report --reporter=text --reporter=lcov \
-    "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP" \
+#
+# 覆盖率报告：**两条管线各自出 lcov，再在文本层取并集**。
+#
+# 为什么不能直接 `c8 report` 一次（原来那样）：两条管线的覆盖数据混在同一个
+# temp 目录里，c8 会按字节偏移合并 → 同一文件被拆成两组互不相认的函数 →
+# 一整组被丢弃。详见 C8_NODE 上方的注释与 scripts/merge-lcov.js。
+#
+# 报告的**路径基准必须一致**（都用仓库根 + 绝对 --src），否则两侧的 SF: 前缀
+# 不同 → 合并时变成两个不同的文件 → 并集失效。
+c8_report_one() {
+  local tmp="$1"
+  local out="$2"
+  npx c8 report --reporter=lcov \
+    "--report-dir=$out" "--temp-directory=$tmp" \
     --all \
     --src "$PWD/packages/common/src" --src "$PWD/packages/server/src" \
     --src "$PWD/packages/renderer/src" --src "$PWD/packages/electron/src" \
@@ -208,6 +255,25 @@ c8_report() {
     "--exclude=**/dist/**" "--exclude=**/*.d.ts" \
     "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs" \
     2>/dev/null || true
+}
+
+# 合并两条管线的 lcov → 最终报告。
+c8_report() {
+  local node_dir="$COVERAGE_DIR/.lcov-node"
+  local vitest_dir="$COVERAGE_DIR/.lcov-vitest"
+  rm -rf "$node_dir" "$vitest_dir"
+  mkdir -p "$node_dir" "$vitest_dir"
+
+  c8_report_one "$COV_TMP_NODE" "$node_dir"
+  c8_report_one "$COV_TMP_VITEST" "$vitest_dir"
+
+  # 并集（行/分支/函数命中取 max）→ 覆盖最终 lcov.info
+  node "$PWD/scripts/merge-lcov.js" "$COVERAGE_DIR/lcov.info" \
+    "$node_dir/lcov.info" "$vitest_dir/lcov.info" || return 1
+
+  # 文本报告：从合并后的 lcov 重新算（c8 report 只能读 temp 目录，
+  # 读不出合并结果）。用 istanbul-lib-coverage 的 summary 口径。
+  node "$PWD/scripts/lcov-summary.js" "$COVERAGE_DIR/lcov.info" || return 1
 }
 
 # 有没有「新鲜」的采集数据可复用。
@@ -304,8 +370,14 @@ if [ "$INSTRUMENT" -eq 1 ]; then
   else
     COLLECT=1
     acquire_collect_lock
+    # ⚠️ 先删旧 marker：它现在住在 $PWD（不能放 $COVERAGE_DIR 里 —— 采集开头
+    # 会 `rm -rf $COVERAGE_DIR`，marker 会被自己删掉 → 复用永远失效）。
+    # 但反过来，marker 活到采集结束才写 → 采集中途被 kill 时旧 marker 还在
+    # → 下次会误判「数据新鲜」→ 拿一份半截的覆盖率当完整的用。
+    # 所以：采集**开始**就删，采集**结束**才写。
+    rm -f "$COV_MARKER"
     rm -rf "$COVERAGE_DIR"
-    mkdir -p "$COV_TMP"
+    mkdir -p "$COV_TMP_NODE" "$COV_TMP_VITEST"
   fi
 fi
 
