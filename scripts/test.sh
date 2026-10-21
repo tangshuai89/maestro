@@ -264,6 +264,10 @@ c8_report() {
   rm -rf "$node_dir" "$vitest_dir"
   mkdir -p "$node_dir" "$vitest_dir"
 
+  # 合并器自测：它只有几行逻辑，但写错会**静默**产出偏低的覆盖率 ——
+  # 而那正是它要修的缺陷本身。报告前先自测，改坏了当场红。
+  node "$PWD/scripts/merge-lcov.js" --self-test || return 1
+
   c8_report_one "$COV_TMP_NODE" "$node_dir"
   c8_report_one "$COV_TMP_VITEST" "$vitest_dir"
 
@@ -272,7 +276,7 @@ c8_report() {
     "$node_dir/lcov.info" "$vitest_dir/lcov.info" || return 1
 
   # 文本报告：从合并后的 lcov 重新算（c8 report 只能读 temp 目录，
-  # 读不出合并结果）。用 istanbul-lib-coverage 的 summary 口径。
+  # 读不出合并结果）。
   node "$PWD/scripts/lcov-summary.js" "$COVERAGE_DIR/lcov.info" || return 1
 }
 

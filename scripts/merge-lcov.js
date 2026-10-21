@@ -160,10 +160,121 @@ function writeLcov(files) {
   return out.join('\n') + '\n';
 }
 
+/**
+ * 自测：用构造的 lcov 验证合并语义。
+ *
+ * 为什么需要：「通过的检查脚本可能只是因为规则写错而永远通过」（仓库里
+ * `check-readme-i18n.mjs` 的同款教训）。合并器的逻辑只有几行，但一旦写错
+ * 就会**静默**产出偏低的覆盖率 —— 而那正是它要修的缺陷本身。
+ */
+function selfTest() {
+  const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'maestro-lcov-selftest-'));
+  const a = path.join(tmp, 'a.info');
+  const b = path.join(tmp, 'b.info');
+  const out = path.join(tmp, 'out.info');
+
+  // A：行 1-3 命中，函数 f 命中；B：行 2-5 命中，函数 f 命中
+  fs.writeFileSync(
+    a,
+    [
+      'SF:src/x.ts',
+      'FN:1,f',
+      'FNF:1',
+      'FNH:1',
+      'FNDA:3,f',
+      'BRF:1',
+      'BRH:1',
+      'BRDA:1,0,0,2',
+      'LF:3',
+      'LH:3',
+      'DA:1,1',
+      'DA:2,1',
+      'DA:3,1',
+      'end_of_record',
+      '',
+    ].join('\n'),
+  );
+  fs.writeFileSync(
+    b,
+    [
+      'SF:src/x.ts',
+      'FN:1,f',
+      'FNF:1',
+      'FNH:1',
+      'FNDA:5,f',
+      'BRF:1',
+      'BRH:0',
+      'BRDA:1,0,0,0',
+      'LF:5',
+      'LH:3',
+      'DA:1,0',
+      'DA:2,1',
+      'DA:3,1',
+      'DA:4,1',
+      'DA:5,1',
+      'end_of_record',
+      '',
+    ].join('\n'),
+  );
+
+  const merged = new Map();
+  for (const input of [a, b]) {
+    const parsed = parseLcov(fs.readFileSync(input, 'utf8'));
+    for (const [file, data] of parsed) {
+      let target = merged.get(file);
+      if (!target) {
+        target = { da: new Map(), brda: new Map(), fnda: new Map(), fn: new Map() };
+        merged.set(file, target);
+      }
+      for (const [k, v] of data.da) target.da.set(k, Math.max(target.da.get(k) ?? 0, v));
+      for (const [k, v] of data.brda) {
+        const cur = target.brda.get(k);
+        if (cur === undefined) target.brda.set(k, v);
+        else if (cur === -1) target.brda.set(k, v);
+        else if (v !== -1) target.brda.set(k, Math.max(cur, v));
+      }
+      for (const [k, v] of data.fnda) target.fnda.set(k, Math.max(target.fnda.get(k) ?? 0, v));
+      for (const [k, v] of data.fn) target.fn.set(k, Math.max(target.fn.get(k) ?? 0, v));
+    }
+  }
+  fs.writeFileSync(out, writeLcov(merged));
+
+  const text = fs.readFileSync(out, 'utf8');
+  const failures = [];
+  const expect = (label, cond) => {
+    if (!cond) failures.push(label);
+  };
+
+  // 行并集：A 命中 1-3，B 命中 2-5 → 1-5 全命中
+  expect('行并集：LH 应为 5', /LF:5\nLH:5/.test(text));
+  expect('行并集：DA:1 应为 1（取 max，不是求和）', /DA:1,1/.test(text));
+  expect('行并集：DA:5 应为 1', /DA:5,1/.test(text));
+  // 函数命中取 max
+  expect('函数并集：FNDA 应为 5', /FNDA:5,f/.test(text));
+  expect('函数并集：FNH 应为 1', /FNH:1/.test(text));
+  // 分支命中取 max
+  expect('分支并集：BRH 应为 1', /BRH:1/.test(text));
+  expect('分支并集：BRDA taken 应为 2', /BRDA:1,0,0,2/.test(text));
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+
+  if (failures.length > 0) {
+    console.error(`❌ merge-lcov 自测失败（${failures.length} 项）:`);
+    for (const f of failures) console.error(`   ✗ ${f}`);
+    process.exit(1);
+  }
+  console.log('✅ merge-lcov 自测通过（行/分支/函数并集语义）');
+}
+
 function main() {
   const args = process.argv.slice(2);
+  if (args[0] === '--self-test') {
+    selfTest();
+    return;
+  }
   if (args.length < 2) {
     console.error('usage: node scripts/merge-lcov.js <output.lcov> <input.lcov>...');
+    console.error('       node scripts/merge-lcov.js --self-test');
     process.exit(2);
   }
   const [outPath, ...inputs] = args;
