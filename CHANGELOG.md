@@ -716,6 +716,32 @@ evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可�
 
 ### Tests
 
+- **组件层测试补完（17/17）+ 覆盖率 79.61% → 82.24%**（2026-10-21）
+
+  `specs/stability/tasks.md` H4 收口。renderer 的组件层此前有 7 个文件
+  **0% 覆盖**，补上 73 条用例：
+
+  - `common/PlayerNotice`（13）—— **失败分级 UI**：五种 reason 的文案必须
+    **互不相同**（"分级"失效就等于"都显示同一句"）；4s 倒计时 +「停留」；
+    只有 paid-track / vip-locked 给外链；换歌倒计时重置
+  - `common/RecoLoading`（8）—— 阶段按**已耗时**推进（2.5s / 7s / 14s），
+    不无脑循环（用户等 20s 看到文案绕回第一句，反而像卡住了）
+  - `layout/Titlebar`（12）—— 条件渲染 + 各按钮回调 + ♤ 计数徽标
+  - `modals/NeteaseCookieModal`（12）—— 扫码轮询三态（803/800/802）+
+    手动 MUSIC_U 兜底
+  - `modals/RemotePlaylistModal`（17）—— 解析→读取→播放/追加/存本地歌单
+  - `source-select/SourceSelect`（7）—— Spotify 档位文案
+  - `__sandbox/ButtonSmoke`（4）—— Radix 编译链烟囱
+
+  **顺带修掉 2 条墙钟依赖的 flaky**：`usePlayer.hook.test.tsx` 里「会员已失效」
+  和「凭据已过期」两条还留在**真定时器**上（兜底链 800ms + 1500ms 是真
+  setTimeout），高负载下被拖过 vitest 默认 5s → 超时。同文件里「兜底链耗尽」
+  那条已被改成假定时器，这两条是**漏网的同类**。改成手动推进时钟后，整个文件
+  从「超时 5s」变成 **145ms**，与负载无关。
+
+  覆盖率：**79.61% → 82.24%**（行）/ 80.76%（分支）/ 77.13%（函数），
+  分母 148 个文件。
+
 - **覆盖率数字不再骗人 —— 口径从 85.63% 改成诚实的 72.19%**（2026-10-20）
 
   `npm run test:coverage` 之前报的 85.63% **对代码库没有代表性**。三个缺陷：
