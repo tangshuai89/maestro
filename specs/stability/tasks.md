@@ -407,6 +407,81 @@
     "React 没崩"**。真要盯接线，正确的位置是 H7 的 E2E 全链路（登录 → 搜索 →
     播放 → 收藏），那里天然跨包、也天然验证接线。
 
+- [x] **H10** 播放链路枢纽 `proxyAudio` 零覆盖 —— **每首歌必经，却一行没测**
+
+  这条是 2026-10-21 评估「下一个值得补强的是哪里」时，按**未覆盖连续段**
+  （而不是覆盖率百分比）挖出来的。
+
+  `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
+
+      renderer <audio src="/music/stream/qq/xxx">
+            → GET /music/stream/:provider/:trackId
+              → musicService.getStreamUrl() 拿上游 URL
+                → proxyAudio() 转发到上游 CDN
+
+  它此前 **899-1001 连续 102 行零覆盖**。
+
+  **为什么一直没被发现** —— 不是"忘了测"，是**测错了对象**：
+  - `music.controller.allowlist.test.ts` 只测白名单**纯函数**
+    （`isStreamHostAllowed`）—— 测的是**判据**，不是**调用方**
+  - `music.controller.stream.test.ts` 把 `proxyAudio` 的模式**复制到测试里**跑
+    （该文件头自己写着 "Simulates the post-fix `proxyAudio` pattern"）——
+    **测的是副本，不是真身**。真身改了，副本照样绿。
+  - 唯一一次真打 `/music/stream` 的 e2e（`auth-expired-validate.e2e.test.ts`
+    第 321 行）只覆盖「上游抛 401 → 透传」这一条路径。
+
+  **这块坏了会怎样**：
+
+  | 分支                           | 坏了的症状                                   |
+  | ------------------------------ | -------------------------------------------- |
+  | Range 头转发（931-932）        | seek 失效，大 FLAC/MP3 拖不动                |
+  | 206 部分响应（936/976）        | 拖动进度条直接崩                             |
+  | CORS 头（967）                 | **整个声波环失效**（analyser 读不到样本）    |
+  | 上游 502 + 诊断日志（942-952） | 上游挂了只看到 code=4，**排查要卡两小时**    |
+  | 非音频 content-type 告警       | 运营商拦截页伪装成音频，**静默播不出来**     |
+  | stream error listener（988）   | CDN reset → **Node 整个进程死**（unhandled） |
+  | `res.on('close')` destroy      | 换歌还在拉上游 quota                         |
+
+  它同时是 **SSRF 边界**（防把 controller 当开放代理）。
+
+  - ✅ **已补**（`a37bdeb`，新增 `music.controller.proxy-audio.test.ts`，32 条）：
+    - **打真身**：上游用**本地 http server**（真 socket）→ `fetch` 走真实
+      undici 响应体路径；响应侧用**真 `http.ServerResponse`** + 假 socket，
+      只覆写 `write`/`end` 捕获字节
+    - ⚠️ **响应替身不能用手搓对象**：`Readable.pipe` 要求 dest 是真 Writable
+      （会调 `dest.once('drain')`）→ 手搓对象报
+      `TypeError: dest.once is not a function`（实测踩过）
+    - ⚠️ **pipe 是异步的**：`await proxyAudio()` 返回时数据还在管道里 →
+      断言 body 前必须等 res 的 `finish` 事件
+    - **网络陷阱用白名单式**（只放行本地 origin）：本文件必须能出网（打本地上游），
+      不能用 e2e 那种"任何 fetch 就炸"的陷阱
+    - **SSRF 那条显式切 `NODE_ENV=production`**：dev 模式是**故意放行**非白名单
+      host 的（Bug #4 Level 2），不切 production 测不到真正的 403 边界
+    - 顺带补上 `coverProxy`（1093-1161）—— **同一个模式**（白名单 → fetch →
+      `fromWeb().pipe()`），e2e 只测到 400/403，流式成功路径和 502 全裸
+  - ✅ **变异测试证明不是假测试**（10 个变异点全部被抓到）：
+
+    | 变异                  | 结果                                      |
+    | --------------------- | ----------------------------------------- |
+    | 删 CORS 头            | ❌ 1. CORS 头                             |
+    | 不转发 Range          | ❌ 2. Range 转发                          |
+    | 206 改写成 200        | ❌ 2. 状态码透传 206                      |
+    | 502 改 500            | ❌ 3. 上游失败 502                        |
+    | 关掉 SSRF 检查        | ❌ 4. 三条全红（精确报「泄漏 1 个请求」） |
+    | 删 close handler      | ❌ 6. upstream 被 destroy                 |
+    | 改 error listener 名  | 💥 **进程非零退出**（UND_ERR_SOCKET）     |
+    | 删 coverProxy CORS    | ❌ 8c. CORS 头                            |
+    | 删 coverProxy 缓存头  | ❌ 8c. 缓存头                             |
+    | coverProxy 502 改 500 | ❌ 8d. 上游失败 502                       |
+
+    特别值得记的是「关掉 SSRF 检查」那条：最初的实现下，防护一坏，测试会死在
+    "打到了 169.254.169.254"这种**网络事故**上，而不是死在"期望 403 实际发了
+    请求"这个**断言**上 → 报错信息把人引向查网络而不是查防护。改成**先记录
+    再抛**，断言层能读出「本来不该发的请求列表」，失败信息才指得准。
+
+  - 实测：`music.controller.ts` 的 **899-1001 段从 0 行 → 97 行覆盖**；
+    生产代码**零改动**（只新增测试文件）。
+
 ## I. 存储与备份卫生（2026-10-20 实测发现）
 
 > 起因：另一并行 session 实测用户机器上的 `state.json`（5.55MB）与

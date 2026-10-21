@@ -416,6 +416,41 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   ⚠️ 那 4.9pp 的差**不是新测试的功劳**，主要是**原本被吞掉的覆盖被找回来了**
   —— 之前的数字是**系统性偏低**的。
 
+- **播放链路枢纽 `proxyAudio` 零覆盖 —— 每首歌必经，却一行没测**（2026-10-21）
+
+  `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
+
+      renderer <audio src="/music/stream/qq/xxx">
+        → GET /music/stream/:provider/:trackId
+          → musicService.getStreamUrl() 拿上游 URL
+            → proxyAudio() 转发到上游 CDN
+
+  它此前 **899-1001 连续 102 行零覆盖**。而且不是"忘了测"，是**测错了对象**：
+  - `music.controller.allowlist.test.ts` 只测白名单**纯函数** —— 测的是判据，
+    不是调用方
+  - `music.controller.stream.test.ts` 把 `proxyAudio` 的模式**复制到测试里**跑
+    （文件头自己写着 "Simulates the post-fix `proxyAudio` pattern"）——
+    **测的是副本，不是真身**。真身改了，副本照样绿。
+
+  这块坏了会怎样：Range 头不转发 → seek 失效；206 不透传 → 拖进度条崩；
+  CORS 头缺失 → **整个声波环失效**（analyser 读不到样本）；上游 502 无诊断日志
+  → 只看到 code=4，排查卡两小时；非音频 content-type 无告警 → 运营商拦截页
+  伪装成音频、静默播不出来；stream error listener 缺失 → CDN reset →
+  **Node 整个进程死**。它同时是 **SSRF 边界**（防把 controller 当开放代理）。
+
+  **新增** `packages/server/src/music/music.controller.proxy-audio.test.ts`（32 条），
+  **打真身**：上游用本地 http server（真 socket）→ `fetch` 走真实 undici 响应体
+  路径；响应侧用**真 `http.ServerResponse`** + 假 socket，只覆写 `write`/`end`
+  捕获字节。顺带补上 `coverProxy`（同一个模式，e2e 只测到 400/403，流式成功
+  路径和 502 全裸）。
+
+  **10 个变异点全部被抓到**（证明不是假测试）：删 CORS 头 / 不转发 Range /
+  206 改 200 / 502 改 500 / 关掉 SSRF 检查 / 删 close handler / 改 error
+  listener 名（→ 进程非零退出）/ 删 coverProxy CORS / 删缓存头 / 502 改 500。
+
+  实测：`music.controller.ts` 的 899-1001 段从 **0 行 → 97 行覆盖**；
+  生产代码**零改动**（只新增测试文件）。
+
 ### Fixed
 
 - **CI 测试门禁假绿 —— 测试挂了，CI 照样显示 success**（2026-10-20 评估实测）
