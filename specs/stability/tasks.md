@@ -405,6 +405,14 @@
        覆盖把前一轮盖掉 → 门禁拿到的数字是错的
     另外：**拿不到 base ref 时明确失败**（退出 2），**不静默放过** ——
     静默放过 = 门禁形同虚设（这正是旧门禁的毛病）。
+  - ✅ **CI 接线的两个前提**（都验证过）：
+    1. **`actions/checkout` 必须 `fetch-depth: 0`** —— 默认的 1 是浅克隆，
+       拿不到 base 的 commit → diff 算不出来。`fetch-depth: 0` 会 fetch
+       所有历史（仓库不大，可接受）。
+    2. **base 用 `base.sha` 而不是 `base.ref`** —— sha 一定在本地
+       （fetch-depth: 0 保证），且不依赖 remote ref 的命名。
+    3. **GitHub 用 merge commit 测 PR** 的场景也验证过：
+       `merge-base(base, merge-commit)` = base → 三点 diff 只含 PR 的改动 ✓
   - ✅ **端到端验证**（真实 PR 场景）：
 
     | 场景                            | 结果                     |
