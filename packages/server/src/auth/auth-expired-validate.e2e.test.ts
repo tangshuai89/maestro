@@ -102,6 +102,67 @@ async function main() {
     ok('4. deezer + validate=1 → 仍 loggedIn:true（匿名平台不受影响）');
   }
 
+  // ── 4b. extended=1 → 带凭据 / 权益三态（renderer 判"会员失效"的唯一依据）──
+  {
+    const { SessionService } = require('../common/session');
+    const sessions: any = app.get(SessionService);
+    // ⚠️ session 是靠**签名 cookie**关联的 —— 往 store 里塞一个假的 id 没用
+    // （controller 解析 cookie 拿不到我们塞的 session）。正确做法：先请求一次
+    // 让 client 拿到真 cookie，再把**那个** session 的 providers 改掉。
+    await call('GET', '/auth/status?provider=qq');
+    const cookieHeader: string = (client as any).cookie ?? '';
+    // 签名 cookie 的格式是 `s:<value>.<signature>`（cookie-parser 的 signed 约定）
+    const raw = decodeURIComponent(cookieHeader.split(';')[0].split('=')[1] ?? '');
+    const sid = raw.split('.')[0].replace(/^s:/, '');
+    assert.ok(sid, `没拿到 session cookie（${cookieHeader}）`);
+    // SessionService 的会话表在私有 blob 里（不同版本字段名可能不同）→ 多处兜一下
+    const store: any = (sessions as any).blob ?? (sessions as any).store ?? sessions;
+    const byId: any = store.byId ?? {};
+    const sess: any = sessions.get
+      ? sessions.get(sid)
+      : (byId[sid] ?? (sessions as any).byId?.[sid]);
+    assert.ok(sess, `找不到 client 持有的 session（sid=${sid}）`);
+
+    // 有绿钻 → entitlement=valid
+    sess.providers.qq = { qqCookie: 'x=1', qqUin: '1', qqVip: true };
+    const r1 = await call('GET', '/auth/status?provider=qq&validate=1&extended=1');
+    const j1 = r1.json as any;
+    assert.strictEqual(
+      j1.entitlement,
+      'valid',
+      `qqVip=true → entitlement=valid，实际 ${JSON.stringify(j1)}`,
+    );
+
+    // 绿钻没了 → entitlement=expired（**凭据还好好的** —— 正是"重登没用"那档）
+    sess.providers.qq = { qqCookie: 'x=1', qqUin: '1', qqVip: false };
+    const r2 = await call('GET', '/auth/status?provider=qq&validate=1&extended=1');
+    const j2 = r2.json as any;
+    assert.strictEqual(
+      j2.entitlement,
+      'expired',
+      `qqVip=false → entitlement=expired，实际 ${JSON.stringify(j2)}`,
+    );
+
+    // 权益从没探过 → unknown（**不能当成 expired**：误报"会员失效"会让用户去续费）
+    sess.providers.qq = { qqCookie: 'x=1', qqUin: '1' };
+    const r3 = await call('GET', '/auth/status?provider=qq&validate=1&extended=1');
+    const j3 = r3.json as any;
+    assert.strictEqual(
+      j3.entitlement,
+      'unknown',
+      `权益没探过 → unknown（不能当 expired），实际 ${JSON.stringify(j3)}`,
+    );
+
+    // 凭据三态也要在
+    for (const j of [j1, j2, j3]) {
+      assert.ok(
+        ['valid', 'expired', 'unknown'].includes(j.credential),
+        `credential 必须是三态之一，实际 ${JSON.stringify(j)}`,
+      );
+    }
+    ok('4b. extended=1 → 带凭据/权益三态（valid / expired / unknown）');
+  }
+
   // ── 5. probeSession 单测级：mock QQ provider 判定失效 → status 标 expired ──
   {
     const { QqMusicProvider } = require('../music/qq.provider');

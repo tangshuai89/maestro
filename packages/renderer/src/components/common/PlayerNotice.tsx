@@ -47,6 +47,10 @@ function reasonText(f: PlayFailure): string {
       return `《${f.title}》为付费专辑曲目，需单独购买`;
     case 'vip-locked':
       return `《${f.title}》在已登录平台均为会员专属内容`;
+    case 'entitlement-expired':
+      // 凭据有效、但会员没了 —— 和「登录过期」是**相反**的动作：
+      // 重新登录没用（会员状态在账号上，不在 cookie 里），要等会员恢复或换平台。
+      return `《${f.title}》需要会员，但你的会员已失效 —— 重新登录没用，等会员恢复或换个平台`;
     case 'stream-failed':
       return `《${f.title}》音源暂时不可用（可尝试重新登录 ${p}）`;
     case 'no-match':
