@@ -41,7 +41,9 @@ vi.mock('../../api', async () => {
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: (opts: { count: number; estimateSize: (index: number) => number }) => {
     let start = 0;
-    const virtualItems = [];
+    // 显式类型：`const x = []` 在 noImplicitAny 下会被推成 any[] 并报错
+    // （TS7034 / TS7005）。
+    const virtualItems: Array<{ key: number; index: number; start: number; size: number }> = [];
     for (let i = 0; i < opts.count; i++) {
       const size = opts.estimateSize(i);
       virtualItems.push({ key: i, index: i, start, size });
