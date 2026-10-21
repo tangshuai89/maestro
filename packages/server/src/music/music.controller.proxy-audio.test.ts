@@ -97,6 +97,9 @@ async function startUpstream(handler: UpstreamHandler): Promise<Upstream> {
     handler(req, res);
   });
   await new Promise<void>((resolve, reject) => {
+    // ⚠️ listen 失败必须**显式 reject** —— 否则 listen 的 error 回调不触发
+    // 时这个 Promise 永远挂着，测试卡到超时（实测踩过：
+    // `music.controller.stream.test.ts` 的 hardExit 8s + 零输出）。
     srv.on('error', reject);
     srv.listen(0, '127.0.0.1', () => resolve());
   });
@@ -294,12 +297,50 @@ function waitForFinish(res: any, captured: CapturedResponse, timeoutMs = 3000): 
   });
 }
 
+/**
+ * 走**完整 HTTP 路由**打一个请求（不是直接调 controller 方法）。
+ *
+ * 用现成的 `getRequestHandlerFromNestApp` 拿 Nest 的 express handler，
+ * 自己造 req/res（带流式捕获）→ 覆盖路由层 + 参数解析 + controller 逻辑。
+ *
+ * 为什么要多这一层：直接调 `controller.proxyAudio()` 只覆盖到「转发」这一步；
+ * 路由层的 provider 分支（各平台的 Referer）、`q=` 音质解析、`mm=` 透传
+ * 全在 `stream()` 方法里，不走路由就测不到。
+ */
+async function httpGet(
+  handler: (req: any, res: any) => void,
+  url: string,
+  headers: Record<string, string> = {},
+): Promise<CapturedResponse> {
+  const { res, captured } = makeCapturingRes();
+  const fakeReq: any = new (require('node:stream').Readable)({
+    read() {
+      /* drain */
+    },
+  });
+  fakeReq.method = 'GET';
+  fakeReq.url = url;
+  const normHeaders: Record<string, string> = { host: '127.0.0.1' };
+  for (const [k, v] of Object.entries(headers)) normHeaders[k.toLowerCase()] = v;
+  fakeReq.headers = normHeaders;
+  fakeReq.socket = new DummySocket();
+  fakeReq.connection = fakeReq.socket;
+  fakeReq.httpVersion = '1.1';
+  fakeReq.httpVersionMajor = 1;
+  fakeReq.httpVersionMinor = 1;
+
+  handler(fakeReq, res);
+  await waitForFinish(res, captured);
+  return captured;
+}
+
 async function main() {
   const { NestFactory } = require('@nestjs/core');
   const cookieParser = require('cookie-parser');
   const { AppModule } = require('../app.module');
   const { MusicController } = require('./music.controller');
   const { MusicService } = require('./music.service');
+  const { getRequestHandlerFromNestApp } = require('../test-helpers/in-process-http');
 
   const app = await NestFactory.create(AppModule, { logger: false });
   app.use(cookieParser('test-secret'));
@@ -307,6 +348,7 @@ async function main() {
 
   const controller: any = app.get(MusicController);
   const musicService: any = app.get(MusicService);
+  const requestHandler = getRequestHandlerFromNestApp(app);
 
   // ── 桩掉 getStreamUrl：让 controller 拿到我们指定的上游 URL ────────
   //
@@ -719,12 +761,160 @@ async function main() {
     }
   }
 
+  // ── 9. 端点层：走完整 HTTP 路由（provider 分支 / Referer / 音质解析）──
+  //
+  // 前面 8 组直接调 `controller.proxyAudio()` —— 覆盖到「转发」这一步。
+  // 但**路由层**还有一段没测：provider 分支（各平台各自的 Referer）、
+  // `q=` 音质解析（非法值降级 standard）、`mm=` mediaMid 透传。
+  // 那一段在 `stream()` 方法里（820-898），不走路由就测不到。
+  {
+    // 记录 getStreamUrl 收到了什么参数
+    const calls: Array<{
+      provider: string;
+      trackId: string;
+      opts?: { mediaMid?: string; quality?: string };
+    }> = [];
+    musicService.getStreamUrl = async (
+      _session: unknown,
+      provider: string,
+      trackId: string,
+      opts?: { mediaMid?: string; quality?: string },
+    ) => {
+      calls.push({ provider, trackId, opts });
+      return upstreamUrl;
+    };
+
+    const up = await startUpstream((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg' });
+      res.end('ROUTEBYTES');
+    });
+    allowedOrigins.add(up.origin);
+    upstreamUrl = `${up.origin}/stream/qq/route.mp3`;
+
+    // ── 9a. qq → Referer y.qq.com + quality 解析 ───────────────
+    {
+      calls.length = 0;
+      const r = await httpGet(requestHandler, '/music/stream/qq/track-1?q=high');
+      expect('9a. 端点层：qq 请求成功', r.status === 200, `实际 ${r.status}`);
+      expect(
+        '9a. 端点层：provider 归一化成 qq',
+        calls[0]?.provider === 'qq',
+        `实际 ${calls[0]?.provider}`,
+      );
+      expect(
+        '9a. 端点层：q=high 透传给 service',
+        calls[0]?.opts?.quality === 'high',
+        `实际 ${calls[0]?.opts?.quality}`,
+      );
+      expect(
+        '9a. 端点层：qq 用 y.qq.com 的 Referer',
+        up.seenHeaders.at(-1)?.referer === 'https://y.qq.com/',
+        `实际 ${up.seenHeaders.at(-1)?.referer}`,
+      );
+    }
+
+    // ── 9b. 非法 q= → 降级 standard（不是透传垃圾值）──────────
+    {
+      calls.length = 0;
+      await httpGet(requestHandler, '/music/stream/qq/track-2?q=hacked');
+      expect(
+        '9b. 端点层：非法 q= 降级成 standard',
+        calls[0]?.opts?.quality === 'standard',
+        `实际 ${calls[0]?.opts?.quality}`,
+      );
+    }
+
+    // ── 9c. mm= mediaMid 透传 ─────────────────────────────────
+    {
+      calls.length = 0;
+      await httpGet(requestHandler, '/music/stream/qq/track-3?mm=MID123');
+      expect(
+        '9c. 端点层：mm= 透传给 service',
+        calls[0]?.opts?.mediaMid === 'MID123',
+        `实际 ${calls[0]?.opts?.mediaMid}`,
+      );
+    }
+
+    // ── 9d. netease → 用 music.163.com 的 Referer ─────────────
+    {
+      calls.length = 0;
+      await httpGet(requestHandler, '/music/stream/netease/track-4');
+      expect(
+        '9d. 端点层：netease 用 music.163.com 的 Referer',
+        up.seenHeaders.at(-1)?.referer === 'https://music.163.com/',
+        `实际 ${up.seenHeaders.at(-1)?.referer}`,
+      );
+    }
+
+    // ── 9e. deezer / spotify → 各自的 Referer ─────────────────
+    {
+      await httpGet(requestHandler, '/music/stream/deezer/track-5');
+      expect(
+        '9e. 端点层：deezer 用 deezer.com 的 Referer',
+        up.seenHeaders.at(-1)?.referer === 'https://www.deezer.com/',
+        `实际 ${up.seenHeaders.at(-1)?.referer}`,
+      );
+      await httpGet(requestHandler, '/music/stream/spotify/track-6');
+      expect(
+        '9e. 端点层：spotify 用 open.spotify.com 的 Referer',
+        up.seenHeaders.at(-1)?.referer === 'https://open.spotify.com/',
+        `实际 ${up.seenHeaders.at(-1)?.referer}`,
+      );
+    }
+
+    // ── 9f. 上游抛 401 → 端点层透传 401（不压成 502）──────────
+    //
+    // 这条在 auth-expired-validate.e2e 里测过一次（真实 provider 抛），
+    // 这里用桩复现同一契约 —— 401 必须**原样透传**，否则 renderer 拿到的
+    // 是 502 → 只能看到 code=4 → 用户永远看不到"请重新登录"。
+    {
+      musicService.getStreamUrl = async () => {
+        const err: any = new Error('AUTH_EXPIRED');
+        err.getResponse = () => ({ error: 'AUTH_EXPIRED', message: '登录已过期' });
+        throw err;
+      };
+      const r = await httpGet(requestHandler, '/music/stream/qq/track-7');
+      expect('9f. 端点层：上游 401 → 透传 401', r.status === 401, `实际 ${r.status}`);
+      let body: any = null;
+      try {
+        body = r.body.toString() ? JSON.parse(r.body.toString()) : null;
+      } catch {
+        body = null;
+      }
+      expect(
+        '9f. 端点层：401 body 带 AUTH_EXPIRED',
+        body?.error === 'AUTH_EXPIRED',
+        `实际 ${JSON.stringify(body)}`,
+      );
+    }
+
+    await up.close();
+  }
+
   console.log(`\n${failed === 0 ? '🎉' : '⚠️ '} proxy-audio: ${passed} passed, ${failed} failed`);
   await app.close();
   if (failed > 0) process.exit(1);
 }
 
 main().catch((e) => {
+  // ⚠️ **sandbox / 无 NET_BIND_SERVICE 环境必须显式 skip，不能当失败**。
+  //
+  // 这些测试必须真 socket（要模拟上游 CDN reset / 客户端断连 / Range 206），
+  // 绑不上本地端口就没法跑。`music.controller.stream.test.ts` 在 CI 上就踩过
+  // 这个坑（EPERM → 当时靠 hardExit 兜底 exit 1 + 零输出，把 test.sh 整段
+  // 掐断 —— electron/renderer 测试因此永远跑不到）。
+  //
+  // 所以：**显式 skip + 干净退出 0**。不 skip 的话，CI 上这个文件一失败，
+  // server 段就红了 —— 而它红了不代表代码有问题，只代表环境没权限。
+  const code = (e as { code?: string })?.code;
+  const msg = (e as Error)?.message ?? '';
+  if (code === 'EPERM' || code === 'EACCES' || /EPERM|EACCES/.test(msg)) {
+    console.log(
+      '⚠️ skip: 当前环境无 bind 端口权限（EPERM/EACCES），' +
+        'proxy-audio / coverProxy 语义测试跳过；CI 有权限时正常执行',
+    );
+    process.exit(0);
+  }
   console.error('\n❌ 失败:', e);
   process.exit(1);
 });
