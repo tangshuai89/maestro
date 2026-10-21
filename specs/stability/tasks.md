@@ -172,7 +172,7 @@
   - 遗留（不算覆盖问题）：该函数在**生产链路里仍零调用点** ——
     renderer 侧另有一套 `PlayFailure.reason` 分级，两套语义要接线
 
-- [ ] **H4** renderer 核心 hook / 组件零测试 —— **hook 全部补完，组件补 10/19**
+- [x] **H4** renderer 核心 hook / 组件零测试 —— **hook 全补完 + 组件层全补完（17/17）**
 
   - ✅ **hook 全部补完（9 个）**：
     - 第一轮（2026-10-20，72 条用例）：`useVolume` / `useTheme` / `useDeezerEditorials` /
@@ -180,11 +180,23 @@
       —— 用 `renderHook` 驱动真实 hook，断言**契约**而非实现细节。复测覆盖率
       100% / 100% / 100% / 100% / 100% / 100% / 99.5% / 83.9%
     - 第二轮（2026-10-21，39 条用例）：`useAuth`(700 行，reducer + 定时器 + 协议处理)
-  - ✅ **组件层补 10 个（75 条用例，2026-10-21）**：`components/ui/*`（Button / Dialog /
-    Input / Tooltip / textarea）+ `components/layout/*`（SourceMenu / QualityMenu /
-    DeezerPresetSelect）+ `components/modals/*`（LikedLibraryModal / NLPlaylistModal）
-  - ⬜ **组件层仍 0% 覆盖（9 个）**：`RemotePlaylistModal` / `NeteaseCookieModal` /
-    `SourceSelect` / `Titlebar` / `PlayerNotice` / `RecoLoading` / `ButtonSmoke`(sandbox)
+  - ✅ **组件层补 17 个（148 条用例，2026-10-21）**：
+    - 第一轮（75 条）：`components/ui/*`（Button / Dialog / Input / Tooltip / textarea）+
+      `components/layout/*`（SourceMenu / QualityMenu / DeezerPresetSelect）+
+      `components/modals/*`（LikedLibraryModal / NLPlaylistModal）
+    - 第二轮（73 条）：`common/PlayerNotice`（13，**失败分级 UI** ——
+      五种 reason 的文案必须**互不相同**，这是"分级"的全部意义）+
+      `common/RecoLoading`（8，阶段按已耗时推进，不无脑循环）+
+      `layout/Titlebar`（12，条件渲染 + 各按钮回调）+
+      `modals/NeteaseCookieModal`（12，扫码轮询 803/800/802 三态 + 手动 Cookie 兜底）+
+      `modals/RemotePlaylistModal`（17，解析 → 读取 → 播放/追加/存本地歌单 + 错误翻中文）+
+      `source-select/SourceSelect`（7，Spotify 档位文案）+
+      `__sandbox/ButtonSmoke`（4，Radix 编译链烟囱）
+  - ⚠️ **同批修掉 2 条墙钟依赖的 flaky**（`usePlayer.hook.test.tsx`）：
+    「会员已失效」和「凭据已过期」两条还留在**真定时器**上（兜底链 800ms +
+    1500ms），高负载下被拖过 vitest 默认 5s → 超时。改成假定时器手动推进时钟
+    → 整个文件从「超时 5s」变成 **145ms**，且与负载无关（同批已修的那条
+    「兜底链耗尽」是同样的改法）
   - ⚠️ **覆盖 ≠ 已接线**：`useVolume` 补了 8 条契约用例之后仍然是**死代码** ——
     hook 写好、测试也有了，但**从来没被调用过**（界面上没有音量控件，音量偏好
     也不推给任何 `<audio>`）。2026-10-21 才真正接上（`useVolume(slots, track)` →

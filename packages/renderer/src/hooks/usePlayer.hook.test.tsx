@@ -301,47 +301,68 @@ describe('usePlayer hook 体', () => {
   it('服务端说「会员已失效」→ failure.reason = entitlement-expired（不是笼统的 generic）', async () => {
     // 凭据有效但权益没了 —— 这是"重新登录没用"的那一档，只能靠服务端判
     // （/auth/status?extended=1 现在会带 entitlement 三态）。
-    apiMocks.getAuthStatusValidated.mockResolvedValue({
-      expired: false,
-      entitlement: 'expired',
-    } as never);
-    const { result, a } = setup();
-    act(() => {
-      result.current.playSearch([item('1')], 0);
-    });
-    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
-    await act(async () => {
-      a.dispatchEvent(new Event('error'));
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(result.current.failure).not.toBeNull(), { timeout: 10_000 });
-    expect(result.current.failure?.reason).toBe('entitlement-expired');
+    //
+    // 假定时器（与上面那条同理由）：兜底链的同源重试 800ms + 卡死探测 1500ms
+    // 是**真 setTimeout**，墙钟依赖在高负载下会被拖到 5s 以上 → 测试超时。
+    // 改成手动推进时钟 → 任何负载下都快且结果一致。
+    vi.useFakeTimers();
+    try {
+      apiMocks.getAuthStatusValidated.mockResolvedValue({
+        expired: false,
+        entitlement: 'expired',
+      } as never);
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+      // 假定时器下 waitFor 不会自动推进时钟 → 同步断言
+      expect(result.current.track?.title).toBe('歌-1');
+      await act(async () => {
+        a.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(result.current.failure).not.toBeNull();
+      expect(result.current.failure?.reason).toBe('entitlement-expired');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('服务端说「凭据已过期」→ 走 onAuthExpired 回调（不设 failure）', async () => {
-    apiMocks.getAuthStatusValidated.mockResolvedValue({
-      expired: true,
-      entitlement: 'unknown',
-    } as never);
-    const onAuthExpired = vi.fn();
-    const slots = createAudioSlots();
-    const elA = document.createElement('audio');
-    const elB = document.createElement('audio');
-    slots.ref('a')(elA);
-    slots.ref('b')(elB);
-    const authRef = { current: onAuthExpired };
-    const { result } = renderHook(() => usePlayer(slots, undefined, undefined, authRef));
-    act(() => {
-      result.current.playSearch([item('1')], 0);
-    });
-    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
-    await act(async () => {
-      elA.dispatchEvent(new Event('error'));
-      await Promise.resolve();
-    });
-    // 兜底链要先跑完（同源重试 800ms + 卡死探测 1500ms）才会走到
-    // reportPlayFailure → onAuthExpired，所以这里要给足时间（真定时器）。
-    await waitFor(() => expect(onAuthExpired).toHaveBeenCalledWith('qq'), { timeout: 15_000 });
-    expect(result.current.failure).toBeNull();
+    vi.useFakeTimers();
+    try {
+      apiMocks.getAuthStatusValidated.mockResolvedValue({
+        expired: true,
+        entitlement: 'unknown',
+      } as never);
+      const onAuthExpired = vi.fn();
+      const slots = createAudioSlots();
+      const elA = document.createElement('audio');
+      const elB = document.createElement('audio');
+      slots.ref('a')(elA);
+      slots.ref('b')(elB);
+      const authRef = { current: onAuthExpired };
+      const { result } = renderHook(() => usePlayer(slots, undefined, undefined, authRef));
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+      expect(result.current.track?.title).toBe('歌-1');
+      await act(async () => {
+        elA.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+      });
+      // 兜底链要先跑完（同源重试 800ms + 卡死探测 1500ms）才会走到
+      // reportPlayFailure → onAuthExpired —— 手动推进时钟走完这两段。
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(onAuthExpired).toHaveBeenCalledWith('qq');
+      expect(result.current.failure).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
