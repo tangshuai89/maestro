@@ -444,12 +444,24 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   捕获字节。顺带补上 `coverProxy`（同一个模式，e2e 只测到 400/403，流式成功
   路径和 502 全裸）。
 
-  **10 个变异点全部被抓到**（证明不是假测试）：删 CORS 头 / 不转发 Range /
+  **17 个变异点全部被抓到**（证明不是假测试）：删 CORS 头 / 不转发 Range /
   206 改 200 / 502 改 500 / 关掉 SSRF 检查 / 删 close handler / 改 error
-  listener 名（→ 进程非零退出）/ 删 coverProxy CORS / 删缓存头 / 502 改 500。
+  listener 名（→ 进程非零退出）/ 删 coverProxy CORS / 删缓存头 / 502 改 500 /
+  四个平台的 Referer 各改错一次 / 非法 `q=` 不降级 / `mm=` 被丢掉 / 401 被压成 502。
 
-  实测：`music.controller.ts` 的 899-1001 段从 **0 行 → 97 行覆盖**；
-  生产代码**零改动**（只新增测试文件）。
+  另补**端点层**（32 → 43 条）：走完整 HTTP 路由（`getRequestHandlerFromNestApp`
+  拿 Nest 的 express handler），覆盖 provider 分支的 Referer、`q=` 音质解析、
+  `mm=` 透传、401 端点层透传。
+
+  ⚠️ 加了 **CI 的 EPERM skip 保护**：这些测试必须真 socket（要模拟上游 CDN
+  reset / 客户端断连 / Range 206），绑不上本地端口就没法跑。仓库里
+  `music.controller.stream.test.ts` 在 CI 上就踩过这个坑（EPERM → 靠 hardExit
+  兜底 exit 1 + 零输出，把 test.sh 整段掐断）。现在 listen 失败 → 显式 skip
+  - 干净退出 0 —— 不 skip 的话 CI 上这个文件一失败，server 段就红了，而它红了
+    不代表代码有问题，只代表环境没权限。
+
+  实测：`music.controller.ts` 从 **77.33%（979/1266）→ 87.84%（1112/1266）**，
+  899-1001 段从 **0 行 → 97 行覆盖**；生产代码**零改动**（只新增测试文件）。
 
 ### Fixed
 

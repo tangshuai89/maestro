@@ -415,9 +415,9 @@
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-            → GET /music/stream/:provider/:trackId
-              → musicService.getStreamUrl() 拿上游 URL
-                → proxyAudio() 转发到上游 CDN
+                → GET /music/stream/:provider/:trackId
+                  → musicService.getStreamUrl() 拿上游 URL
+                    → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
@@ -459,7 +459,7 @@
       host 的（Bug #4 Level 2），不切 production 测不到真正的 403 边界
     - 顺带补上 `coverProxy`（1093-1161）—— **同一个模式**（白名单 → fetch →
       `fromWeb().pipe()`），e2e 只测到 400/403，流式成功路径和 502 全裸
-  - ✅ **变异测试证明不是假测试**（10 个变异点全部被抓到）：
+  - ✅ **变异测试证明不是假测试**（**17 个变异点全部被抓到**）：
 
     | 变异                  | 结果                                      |
     | --------------------- | ----------------------------------------- |
@@ -473,14 +473,36 @@
     | 删 coverProxy CORS    | ❌ 8c. CORS 头                            |
     | 删 coverProxy 缓存头  | ❌ 8c. 缓存头                             |
     | coverProxy 502 改 500 | ❌ 8d. 上游失败 502                       |
+    | qq Referer 改错       | ❌ 9a. qq 用 y.qq.com 的 Referer          |
+    | netease Referer 改错  | ❌ 9d. netease 用 music.163.com 的        |
+    | deezer Referer 改错   | ❌ 9e. deezer 用 deezer.com 的            |
+    | spotify Referer 改错  | ❌ 9e. spotify 用 open.spotify.com 的     |
+    | 非法 q= 不降级        | ❌ 9b. 非法 q= 降级成 standard            |
+    | mm= 被丢掉            | ❌ 9c. mm= 透传给 service                 |
+    | 401 被压成 502        | ❌ 9f. 上游 401 → 透传 401                |
 
     特别值得记的是「关掉 SSRF 检查」那条：最初的实现下，防护一坏，测试会死在
     "打到了 169.254.169.254"这种**网络事故**上，而不是死在"期望 403 实际发了
     请求"这个**断言**上 → 报错信息把人引向查网络而不是查防护。改成**先记录
     再抛**，断言层能读出「本来不该发的请求列表」，失败信息才指得准。
 
-  - 实测：`music.controller.ts` 的 **899-1001 段从 0 行 → 97 行覆盖**；
-    生产代码**零改动**（只新增测试文件）。
+  - ✅ **端点层也补上**（`18b8258`，32 → 43 条）：前 8 组直接调
+    `controller.proxyAudio()` —— 覆盖到「转发」这一步。但**路由层**还有一段
+    没测（`stream()` 方法 820-898）：provider 分支（各平台各自的 Referer）、
+    `q=` 音质解析（非法值降级 standard）、`mm=` mediaMid 透传、上游 401
+    → 端点层透传。现在走**完整 HTTP 路由**（用现成的
+    `getRequestHandlerFromNestApp` 拿 Nest 的 express handler + 自己造
+    带流式捕获的 req/res）。
+  - ⚠️ **CI 的 EPERM skip 保护**（`18b8258`，必须）：这些测试必须真 socket
+    （要模拟上游 CDN reset / 客户端断连 / Range 206），绑不上本地端口就没法跑。
+    `music.controller.stream.test.ts` 在 CI 上就踩过这个坑（EPERM → 当时靠
+    hardExit 兜底 exit 1 + 零输出，把 test.sh 整段掐断 —— electron/renderer
+    测试因此永远跑不到）。现在：listen 失败 → **显式 skip + 干净退出 0**。
+    实测（把 listen 换成抛 EACCES）：打印 skip、退出码 0 —— 不红 CI。
+    不 skip 的话，CI 上这个文件一失败，server 段就红了 —— 而它红了不代表
+    代码有问题，只代表环境没权限。
+  - 实测：`music.controller.ts` 从 **77.33%（979/1266）→ 87.84%（1112/1266）**；
+    899-1001 段从 **0 行 → 97 行覆盖**；生产代码**零改动**（只新增测试文件）。
 
 ## I. 存储与备份卫生（2026-10-20 实测发现）
 
