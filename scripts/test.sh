@@ -256,14 +256,40 @@ coverage_threshold_gate() {
 # 采集会 `rm -rf coverage/` 再重建 —— 两个采集同时跑会**互相删对方的
 # .tmp 数据**，出来的报告是半截的（实测踩过：报告数字莫名其妙偏低）。
 # mkdir 是原子的 → 用它当锁。
-LOCK_DIR="$COVERAGE_DIR/.lock"
+#
+# ⚠️ 锁目录必须放在**被采集清空的目录之外**：早前把它放在 `$COVERAGE_DIR/.lock`，
+# 而采集流程是「先拿锁 → 再 `rm -rf $COVERAGE_DIR`」→ **锁被自己删了**，
+# 锁形同虚设（两个采集照样能同时开跑）。
+#
+# ⚠️ 进程被**强杀**（5 小时限额 / Ctrl-C / OOM）时 trap 来不及跑 → 锁目录残留
+# → 下次采集直接卡死。而且早前的实现还有个更隐蔽的错：`mkdir` 不带 `-p`，
+# 在 `coverage/` 还不存在时（正是被强杀后的状态）会 ENOENT 失败，脚本却把它
+# 报成「另一次采集正在进行」—— **错误信息把人引向错误的方向**。
+#
+# 现在：锁放在同级独立目录 + 写 PID + 拿锁时判活 → **死锁自动接管**。
+LOCK_DIR="$PWD/.coverage-collect.lock"
 acquire_collect_lock() {
+  # 父目录先备好 —— 不然第一次采集（coverage/ 还不存在）就 mkdir 失败
+  mkdir -p "$COVERAGE_DIR"
   if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-    echo "── 另一次覆盖率采集正在进行（锁：${LOCK_DIR}）──"
-    echo "   等它跑完；确认没有别的采集在跑的话，删掉这个目录再来。"
-    exit 1
+    local owner=""
+    [ -f "$LOCK_DIR/pid" ] && owner="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo '')"
+    if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
+      # 持有者已经不在了（被强杀 / 崩溃）→ 死锁，自动接管
+      echo "── 发现上次残留的死锁（持有者 PID ${owner} 已不存在）→ 自动接管 ──"
+      rm -rf "$LOCK_DIR" 2>/dev/null || true
+      if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo "── 锁接管失败（${LOCK_DIR}）──"
+        exit 1
+      fi
+    else
+      echo "── 另一次覆盖率采集正在进行（锁：${LOCK_DIR}${owner:+，持有者 PID ${owner}}）──"
+      echo "   等它跑完；确认没有别的采集在跑的话，删掉这个目录再来。"
+      exit 1
+    fi
   fi
-  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+  echo $$ > "$LOCK_DIR/pid"
+  trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
 }
 
 # ── 主流程 ─────────────────────────────────────────────────────────

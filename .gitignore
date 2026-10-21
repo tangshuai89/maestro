@@ -32,3 +32,6 @@ figma-code-connect.json.bak2
 
 # dev 端口发布文件（vite 写、electron 读；每次 dev 重新生成）
 packages/renderer/.dev-port
+
+# 覆盖率采集锁（进程被强杀时可能残留，见 scripts/test.sh 的死锁接管）
+.coverage-collect.lock/
