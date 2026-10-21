@@ -1,0 +1,48 @@
+name: Coverage Report (仓库健康度)
+
+# 覆盖率是**仓库健康度**指标，不是 PR 质量门禁：
+#
+#   - 它是**全局**数字。一个 PR 把某个文件从 80% 拉到 0%，全局照样过；
+#     阈值 ≥60% 只有在「仓库整体」这个粒度上才有意义。
+#   - 它跑的是**另一遍**套件，和 test:ci 的判定不是同一次执行 → 会产出
+#     自相矛盾的数字（实测：某个测试文件跑不起来时，reco.service.ts 的覆盖率
+#     从 80.27% 塌成 32.88%，看着像天大的覆盖洞，其实只是那次测试没跑成）。
+#
+# 所以：PR 的门禁在 test.yml（快，8 分钟），覆盖率在这里**每日定时**跑一次，
+# 顺便守住 ≥60% 这条底线 —— 和 token-drift.yml 同一个模式（schedule + 手动）。
+on:
+  schedule:
+    - cron: '30 1 * * *' # 每天 01:30 UTC = 09:30 Asia/Shanghai
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⚠️ Node 版本**不能降回 20**：renderer 的 20 个 `*.test.mjs` 用自实现的
+      # ESM loader 直接 import `*.ts` 源码（不走打包器），依赖 Node ≥ 22.18 的
+      # **type stripping**。Node 20 上 `defaultLoad` 直接抛
+      # `ERR_UNKNOWN_FILE_EXTENSION: Unknown file extension ".ts"` → 整段 .test.mjs
+      # 在 CI 上**从来没跑起来过**。这个失败被旧门禁的 `|| true` + 恒 0 退出码
+      # 盖住了 —— 门禁改成真门禁后（见 scripts/test.sh）它第一次显形。
+      # 本地开发用的也是 22.x，CI 跟本地对齐。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # @maestro/common 的 main/types 指向 dist（编译产物，不入库）——server
+      # 的 tsc 和 ts-node 都按 node_modules 解析它，CI 干净环境必须先构建，
+      # 否则 typecheck / npm test 报 "Cannot find module '@maestro/common'"。
+      - name: Build @maestro/common
+        run: npm run build:common
+
+      # 覆盖率步自己会跑完整套件（test.sh 的 --coverage 分支），所以这里
+      # 只跑它、不再单独跑 test:ci —— 省掉一整遍套件。
+      - name: Coverage report (+ ≥60% 阈值门禁)
+        run: npm run test:coverage
