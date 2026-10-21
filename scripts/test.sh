@@ -296,9 +296,11 @@ acquire_collect_lock() {
 
 # 1) 决定是否采集
 COLLECT=0
+REUSE=0
 if [ "$INSTRUMENT" -eq 1 ]; then
-  if [ "$COVERAGE" -eq 1 ] && cov_data_is_fresh; then
+  if [ "$COVERAGE" -eq 1 ] && [ "${FORCE_COLLECT:-0}" != "1" ] && cov_data_is_fresh; then
     echo "── 复用已有采集数据（源文件未变动）──"
+    REUSE=1
   else
     COLLECT=1
     acquire_collect_lock
@@ -308,12 +310,20 @@ if [ "$INSTRUMENT" -eq 1 ]; then
 fi
 
 # 2) 跑测试（采集模式下套 c8 —— 一次执行同时给出「过没过」和「覆盖多少」）
-if [ "$COLLECT" -eq 1 ]; then
-  INSTRUMENT=1
-fi
-run_all || true
-if [ "$COLLECT" -eq 1 ]; then
-  date +%s > "$COV_MARKER"
+if [ "$REUSE" -eq 1 ]; then
+  # 数据新鲜 ⟹ **源文件和测试文件都没变**（新鲜度判据是
+  # `find packages -type f -name '*.ts'/'*.tsx'/'*.mjs'`，**包括 `*.test.*`**）。
+  # 上一次执行已经判过"过没过"，这里再跑一遍是纯浪费 —— master 上多花 ~7 分钟。
+  # 想强制重跑：`FORCE_COLLECT=1 npm run test:coverage`
+  echo "── 复用：不重跑测试（源文件与测试文件均未变动）──"
+else
+  if [ "$COLLECT" -eq 1 ]; then
+    INSTRUMENT=1
+  fi
+  run_all || true
+  if [ "$COLLECT" -eq 1 ]; then
+    date +%s > "$COV_MARKER"
+  fi
 fi
 
 # 3) 判定
