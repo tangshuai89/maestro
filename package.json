@@ -26,6 +26,7 @@
     "test": "bash scripts/test.sh",
     "test:ci": "bash scripts/test.sh --ci && node scripts/figma-code-connect-validate.mjs && node scripts/check-token-drift.mjs && node scripts/scan-hardcoded-colors.mjs --gate && node scripts/check-readme-i18n.mjs --self-test --gate",
     "test:coverage": "bash scripts/test.sh --coverage",
+    "coverage:diff-gate": "node scripts/coverage-diff-gate.js",
     "test:i18n": "node scripts/check-readme-i18n.mjs --self-test --gate",
     "test:code-connect": "node scripts/figma-code-connect-validate.mjs",
     "test:code-connect:strict": "node scripts/figma-code-connect-validate.mjs --strict",

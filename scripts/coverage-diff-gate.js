@@ -1,0 +1,463 @@
+#!/usr/bin/env node
+/**
+ * 覆盖率**diff 门禁**：PR 新增/修改的代码行必须被执行过。
+ *
+ * ## 为什么不用「全局覆盖率阈值」
+ *
+ * 全局阈值在 90% 的水位上等于不存在：实测要新增 **21324 行**零覆盖代码才
+ * 跌破 60% 阈值（`coverage-gate` 那次评估算过）。也就是说现有门禁拦不住
+ * 任何"具体的坏 PR" —— 仓库自己的 workflow 注释早就写了这件事
+ * （`.github/workflows/test.yml`：「一个 PR 把某个文件从 80% 拉到 0%，
+ * 全局仍然过」），但当时的结论是"挪到每日定时跑"—— 那只是**不看**了，
+ * 不是**修好**了。
+ *
+ * ## 本门禁的判据
+ *
+ * 1. **新增/修改的代码行未被执行 → 拦**
+ *    拿 `git diff -U0 <base>...HEAD` 的新增行号，和 lcov 的 `DA:<line>,<hits>`
+ *    求交集。落在交集里、且 `hits=0` 的行 = 「这次改的代码，测试从没跑到」。
+ *    - 注释 / 类型声明 / 空行**不在** lcov 的 DA 记录里 → 天然跳过
+ *      （c8 的 `--all` 把所有源文件都放进报告，纯类型文件也在，只是没有
+ *      可执行语句 → 没有 DA 记录）
+ *    - 新增文件从没被任何测试 import → 它不在 lcov 里 → 全部可执行行都算
+ *      未覆盖 → 拦（这正是"新增文件必须有测试"）
+ * 2. **PR 触碰的文件整体覆盖率 0% → 拦**
+ *    兜底：PR 删掉了某个文件的测试（不产生新增行，判据 1 抓不到），
+ *    但那个文件的覆盖率会掉到 0% → 拦。
+ *
+ * ## 为什么不比对「base 分支的覆盖率」
+ *
+ * 那需要一份 base 的覆盖率数据 —— 要么每次跑两遍套件（+18 分钟），要么在
+ * 仓库里存一份基线快照（每次 master 更新都要改它 → 持续的 diff 噪音，
+ * 而且基线本身可能已经偏低）。而判据 1 **完全不需要基线**：它问的是
+ * "你这次写的代码有没有被跑到"，而不是"你这次写的代码比上次差多少"。
+ *
+ * 局限（诚实说明）：行覆盖只说明**这行被执行过**，不说明**这行的逻辑被
+ * 断言过**。`if (x) { y(); }` 里新增一行 `y()` 而没断言 `y` 的效果，
+ * 行覆盖也是 1。要更强的保证得靠 mutation testing —— 那个太慢，放不进
+ * PR 门禁。
+ *
+ * ## 用法
+ *
+ *   node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>] [--strict]
+ *
+ *   --base    base 分支/ref（默认 `origin/master`；CI 上传 base sha）
+ *   --lcov    lcov.info 路径（默认 `coverage/lcov.info`）
+ *   --strict  任意一条未覆盖新增行就失败（默认行为）；不带这个开关时
+ *             同样失败，但会额外报告被**删除**的测试行数（诊断用）
+ *
+ * 退出码：0 = 通过；1 = 有未覆盖的新增行 / 触碰的文件掉到 0%；2 = 用法/环境错
+ */
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+// ── 参数 ────────────────────────────────────────────────────────────
+function parseArgs(argv) {
+  const out = { base: 'origin/master', lcov: 'coverage/lcov.info', strict: false, selfTest: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--base') out.base = argv[++i];
+    else if (a === '--lcov') out.lcov = argv[++i];
+    else if (a === '--strict') out.strict = true;
+    else if (a === '--self-test') out.selfTest = true;
+    else if (a === '--help' || a === '-h') {
+      console.log(
+        'usage: node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>] [--strict]',
+        '       node scripts/coverage-diff-gate.js --self-test',
+      );
+      process.exit(0);
+    }
+  }
+  return out;
+}
+
+// ── git ─────────────────────────────────────────────────────────────
+function git(args, allowFail = false) {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  } catch (err) {
+    if (allowFail) return null;
+    throw err;
+  }
+}
+
+/**
+ * 解析 `git diff -U0` 的输出 → 每个文件的新增行号集合。
+ *
+ * 格式：
+ *   @@ -oldStart,oldCount +newStart,newCount @@
+ *   - 删除行（只占 old）
+ *   + 新增行（占 new）
+ *   (空格) 上下文行（同时占 old 和 new）
+ *
+ * `-U0` 让 hunk 里没有上下文行 → 每个 hunk 的内容全是变更行。
+ */
+function parseAddedLines(diffText) {
+  /** @type {Map<string, Set<number>>} */
+  const added = new Map();
+  let currentFile = null;
+  let newLine = 0;
+
+  for (const line of diffText.split('\n')) {
+    if (line.startsWith('+++ ')) {
+      // `+++ b/path` —— 新文件路径（`/dev/null` = 新增文件）
+      const p = line.slice(4).trim();
+      currentFile = p === '/dev/null' ? null : p.replace(/^b\//, '');
+      if (currentFile && !added.has(currentFile)) added.set(currentFile, new Set());
+      continue;
+    }
+    if (line.startsWith('--- ')) continue;
+    if (line.startsWith('diff --git ')) {
+      currentFile = null;
+      continue;
+    }
+    const hunk = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    if (hunk) {
+      newLine = Number(hunk[3]);
+      continue;
+    }
+    if (!currentFile || newLine === 0) continue;
+    if (line.startsWith('+')) {
+      added.get(currentFile).add(newLine);
+      newLine++;
+    } else if (line.startsWith('-')) {
+      /* 删除行不占 new 行号 */
+    } else if (line.startsWith('\\')) {
+      /* "\ No newline at end of file" */
+    } else if (line === '') {
+      /* 空行 = 上下文空行（-U0 下不会出现，保险处理）*/
+      newLine++;
+    }
+  }
+  return added;
+}
+
+// ── lcov ────────────────────────────────────────────────────────────
+/** 读 lcov.info → Map<文件, Map<行号, hits>> */
+function readLcov(lcovPath) {
+  /** @type {Map<string, Map<number, number>>} */
+  const files = new Map();
+  if (!fs.existsSync(lcovPath)) return files;
+  const text = fs.readFileSync(lcovPath, 'utf8');
+  let current = null;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('SF:')) {
+      current = line.slice(3).trim();
+      if (!files.has(current)) files.set(current, new Map());
+    } else if (line.startsWith('DA:') && current) {
+      const [ln, hits] = line.slice(3).split(',');
+      const n = Number(ln);
+      const h = Number(hits);
+      if (Number.isFinite(n)) files.get(current).set(n, Number.isFinite(h) ? h : 0);
+    } else if (line.startsWith('end_of_record')) {
+      current = null;
+    }
+  }
+  return files;
+}
+
+// ── 主流程 ──────────────────────────────────────────────────────────
+/**
+ * 从 lcov 的 `SF:` 路径里认出「包名」。
+ *
+ * ⚠️ 路径基准有两种（实测踩过）：
+ *   - `packages/server/src/music/x.ts`（从仓库根跑 report —— 本脚本的用法）
+ *   - `src/music/x.ts`（从 `packages/server` 目录内跑 report —— 手搓采集会这样）
+ *
+ * 第二种**推不出包名**（路径里已经没有包这一层了）→ 返回 '' 表示"认不出"。
+ * 护栏据此判断"这份 lcov 的基准和仓库根不一致" → 明确要求重采，
+ * 而不是拿它硬判（那会产生一堆误报，把人引向错误的方向）。
+ */
+function pkgOf(f) {
+  const parts = f.split('/');
+  if (parts[0] === 'packages' && parts[1]) return parts[1];
+  return ''; // 基准不一致 → 认不出
+}
+
+/**
+ * 判定：哪些新增/修改行没被执行过。
+ *
+ * ⚠️ **主流程和自测必须调同一个函数** —— 自测里再写一份实现的话，
+ * 自测就测的是**副本**不是真身：把主流程的判据改坏，自测照样绿
+ * （实测踩过：把 `hits === 0` 改成 `false`，自测毫无反应）。
+ *
+ * @param added  Map<文件, 新增行号集合>
+ * @param lcov   Map<文件, Map<行号, hits>>
+ * @returns Map<文件, {lines: number[], missing: boolean}>
+ *          missing=true → 整个文件不在 lcov 里（新增文件从未被 import）
+ */
+function judgeAddedLines(added, lcov) {
+  /** @type {Map<string, {lines: number[], missing: boolean}>} */
+  const out = new Map();
+  for (const [file, lines] of added) {
+    // 只关心有可执行代码的源文件
+    if (!/\.(ts|tsx)$/.test(file)) continue;
+    // 测试文件本身不算（它们不在 lcov 里 —— 被 --exclude 排除了）
+    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+
+    const da = lcov.get(file);
+    if (!da) {
+      // 文件完全不在 lcov 里 → 这次新增的文件从没被任何测试 import
+      out.set(file, { lines: [...lines].sort((a, b) => a - b), missing: true });
+      continue;
+    }
+    const bad = [...lines].filter((ln) => {
+      const hits = da.get(ln);
+      // 不在 DA 记录里 = 不可执行行（注释/类型声明/空行）→ 跳过
+      if (hits === undefined) return false;
+      return hits === 0;
+    });
+    if (bad.length === 0) continue;
+    out.set(file, { lines: bad.sort((a, b) => a - b), missing: false });
+  }
+  return out;
+}
+
+/**
+ * 自测：用构造的 diff + lcov 验证门禁判据。
+ *
+ * 为什么需要：「一个永远通过的检查脚本可能只是因为规则写错而永远通过」。
+ * 这个门禁的价值全在「能拦住」，所以必须**证明它能拦**。
+ */
+function selfTest() {
+  const failures = [];
+  const expect = (label, cond) => {
+    if (!cond) failures.push(label);
+  };
+
+  // ── 1. diff 解析 ────────────────────────────────────────────────
+  const diff = [
+    'diff --git a/packages/server/src/a.ts b/packages/server/src/a.ts',
+    '--- a/packages/server/src/a.ts',
+    '+++ b/packages/server/src/a.ts',
+    '@@ -10,0 +11,3 @@',
+    '+const a = 1;',
+    '+const b = 2;',
+    '+',
+    '@@ -30,2 +33,1 @@',
+    ' keep',
+    '-removed',
+    '+added2',
+    'diff --git a/packages/server/src/b.ts b/packages/server/src/b.ts',
+    '--- a/packages/server/src/b.ts',
+    '+++ b/packages/server/src/b.ts',
+    '@@ -1,0 +2,1 @@',
+    '+const c = 3;',
+  ].join('\n');
+  const added = parseAddedLines(diff);
+  expect(
+    'diff 解析：a.ts 新增行 = 11,12,13（第一个 hunk）+ 33（第二个 hunk）',
+    JSON.stringify([...added.get('packages/server/src/a.ts')]) === '[11,12,13,33]',
+  );
+  expect('diff 解析：a.ts 第二个 hunk = 33', added.get('packages/server/src/a.ts').has(33));
+  expect('diff 解析：b.ts 新增行 = 2', added.get('packages/server/src/b.ts').has(2));
+
+  // ── 2. 判定逻辑（调**真身**，不是副本）────────────────────────────
+  // a.ts：11/12 未覆盖，13 是注释（不在 DA 里）
+  // b.ts：整个文件不在 lcov 里（新增文件从未被 import）
+  const lcov = new Map([
+    [
+      'packages/server/src/a.ts',
+      new Map([
+        [10, 5],
+        [11, 0],
+        [12, 0],
+        [14, 3],
+      ]),
+    ],
+  ]);
+
+  const r1 = judgeAddedLines(added, lcov);
+  expect(
+    '判定：a.ts 报出未覆盖的 11,12（13 是注释 → 跳过）',
+    JSON.stringify(r1.get('packages/server/src/a.ts')?.lines) === '[11,12]',
+  );
+  expect(
+    '判定：b.ts 标为 missing（新增文件从未被 import）',
+    r1.get('packages/server/src/b.ts')?.missing === true,
+  );
+
+  // ── 3. 全部覆盖时不该报 ─────────────────────────────────────────
+  const lcovAll = new Map([
+    [
+      'packages/server/src/a.ts',
+      new Map([
+        [11, 1],
+        [12, 1],
+        [13, 1],
+        [33, 1],
+      ]),
+    ],
+    [
+      'packages/server/src/b.ts',
+      new Map([[2, 1]]),
+    ],
+  ]);
+  const r2 = judgeAddedLines(added, lcovAll);
+  expect('判定：全覆盖时不报', r2.size === 0);
+
+  // ── 4. 判据的「反面」必须成立（变异测试的等价物）─────────────────
+  // 如果把 `hits === 0` 改成 `false`（永远不报未覆盖），这里必须失败。
+  const lcovMutant = new Map([
+    [
+      'packages/server/src/a.ts',
+      new Map([
+        [11, 0],
+        [12, 0],
+      ]),
+    ],
+  ]);
+  const rMutant = judgeAddedLines(added, lcovMutant);
+  expect(
+    '判定反面：全是 hits=0 的新增行必须被报出来（判据写坏时这里要红）',
+    (rMutant.get('packages/server/src/a.ts')?.lines.length ?? 0) > 0,
+  );
+
+  // ── 5. pkgOf 的路径基准 ─────────────────────────────────────────
+  expect('pkgOf：packages 前缀', pkgOf('packages/server/src/a.ts') === 'server');
+  expect('pkgOf：非 packages 前缀 → 认不出', pkgOf('src/a.ts') === '');
+
+  if (failures.length > 0) {
+    console.error(`❌ coverage-diff-gate 自测失败（${failures.length} 项）:`);
+    for (const f of failures) console.error(`   ✗ ${f}`);
+    process.exit(1);
+  }
+  console.log('✅ coverage-diff-gate 自测通过（diff 解析 + 判定语义 + 路径基准）');
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.selfTest) {
+    selfTest();
+    return;
+  }
+
+  // base 必须存在 —— 拿不到 diff 就**明确失败**，不能默默放过。
+  // 静默放过 = 门禁形同虚设（这正是旧门禁的毛病）。
+  const baseCheck = git(['rev-parse', '--verify', `${args.base}^{commit}`], true);
+  if (baseCheck === null) {
+    console.error(
+      `❌ 拿不到 base ref「${args.base}」—— 无法算 diff。\n` +
+        `   CI 上要 fetch-depth: 0（或至少 fetch base）。\n` +
+        `   拿不到 base 就**不判**（静默放过 = 门禁形同虚设）。`,
+    );
+    process.exit(2);
+  }
+
+  const diffText = git(['diff', '-U0', `${args.base}...HEAD`, '--', 'packages/']);
+  if (!diffText) {
+    console.log('── diff 为空（本次 PR 没改 packages/ 下的文件）→ 跳过 ──');
+    process.exit(0);
+  }
+
+  const added = parseAddedLines(diffText);
+  const lcov = readLcov(args.lcov);
+  if (lcov.size === 0) {
+    console.error(
+      `❌ 读不到覆盖率数据（${args.lcov}）。\n` +
+        `   门禁需要**同一次执行**产出的 lcov —— 跑「跑两遍套件」的架构会产出\n` +
+        `   自相矛盾的数字（某个测试文件挂了 → 覆盖率塌成假洞）。`,
+    );
+    process.exit(2);
+  }
+
+  // ── 数据完整性护栏 ─────────────────────────────────────────────
+  //
+  // 门禁的判据是「新增行在**全量**覆盖率数据里有没有被命中」。如果 lcov
+  // 只覆盖了部分包（比如只跑了 server 的测试），那 renderer / electron 的
+  // 文件会**整个不在 lcov 里** → 全部可执行行都被判成"未覆盖" → 一堆
+  // 误报，而且报错信息会把人引向"我的代码怎么没被测"而不是"覆盖率数据不全"。
+  //
+  // 所以：本次改动涉及的每个包，都必须在 lcov 里有**至少一个**文件。
+  // 缺了就明确说"数据不全"，而不是硬判。
+  const changedPkgs = new Set();
+  for (const f of added.keys()) {
+    if (!/\.(ts|tsx)$/.test(f)) continue;
+    if (/\.test\.(ts|tsx|mjs)$/.test(f)) continue;
+    changedPkgs.add(pkgOf(f));
+  }
+  const lcovPkgs = new Set([...lcov.keys()].map(pkgOf).filter(Boolean));
+  const missingPkgs = [...changedPkgs].filter((p) => !lcovPkgs.has(p));
+  if (missingPkgs.length > 0) {
+    // 分两种情况报 —— 错误信息要指向**正确的方向**：
+    const baseMismatch = lcovPkgs.size === 0;
+    console.error(
+      baseMismatch
+        ? `❌ 覆盖率数据的**路径基准不对**：lcov 里的文件路径不是「packages/<包>/src/...」\n` +
+            `   形式（第一项：${[...lcov.keys()][0]}）。\n` +
+            `   → 这份 lcov 是从某个包目录内部采集的，不能拿来和 git diff 对照。\n` +
+            `   → 请从**仓库根**跑采集（scripts/test.sh --ci 会自动处理）。`
+        : `❌ 覆盖率数据不完整：本次改动涉及包 [${[...changedPkgs].join(', ')}]，\n` +
+            `   但 lcov 里没有包 [${missingPkgs.join(', ')}] 的任何文件。\n` +
+            `   → 这份 lcov 不是**全量**采集的，用它判门禁会产生大量误报。\n` +
+            `   → 门禁需要「同一次执行跑完全部测试套件」产出的 lcov。`,
+    );
+    process.exit(2);
+  }
+
+  // ── 判定 1：新增行未被执行 ──────────────────────────────────────
+  // 调**共享**的 judgeAddedLines（自测也调它）—— 判据只有一份实现，
+  // 不会出现「自测测副本、主流程测真身」导致自测测不出真身的问题。
+  const uncoveredByFile = judgeAddedLines(added, lcov);
+  let totalUncovered = 0;
+  for (const info of uncoveredByFile.values()) totalUncovered += info.lines.length;
+
+  // ── 判定 2：触碰的文件整体覆盖率 0% ─────────────────────────────
+  const zeroFiles = [];
+  for (const file of added.keys()) {
+    if (!/\.(ts|tsx)$/.test(file)) continue;
+    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+    const da = lcov.get(file);
+    if (!da) continue; // 判据 1 已经报了
+    const total = da.size;
+    const covered = [...da.values()].filter((h) => h > 0).length;
+    if (total > 0 && covered === 0) {
+      zeroFiles.push(file);
+    }
+  }
+
+  // ── 报告 ────────────────────────────────────────────────────────
+  console.log('── 覆盖率 diff 门禁 ──────────────────────────────────────');
+  console.log(`   base    : ${args.base}`);
+  console.log(`   lcov    : ${args.lcov}（${lcov.size} 个文件）`);
+  console.log(`   改动文件: ${added.size} 个（packages/ 下）`);
+
+  if (uncoveredByFile.size === 0 && zeroFiles.length === 0) {
+    console.log('   ✅ 本次改动的代码全部被执行过');
+    process.exit(0);
+  }
+
+  if (uncoveredByFile.size > 0) {
+    console.log('');
+    console.log(`   ⚠️  ${uncoveredByFile.size} 个文件里有未覆盖的新增/修改行：`);
+    for (const [file, info] of uncoveredByFile) {
+      const head = info.missing
+        ? `（新增文件，从未被任何测试 import → 全部 ${info.lines.length} 行可执行代码未覆盖）`
+        : `（${info.lines.length} 行）`;
+      console.log(`     · ${file} ${head}`);
+      const show = info.lines.slice(0, 20);
+      console.log(`         行号: ${show.join(', ')}${info.lines.length > show.length ? ' …' : ''}`);
+    }
+    console.log('');
+    console.log(
+      '   说明：行覆盖只说明**这行被执行过**，不说明**这行的逻辑被断言过**。',
+    );
+    console.log('         要更强的保证得靠 mutation testing（太慢，放不进 PR 门禁）。');
+  }
+
+  if (zeroFiles.length > 0) {
+    console.log('');
+    console.log(`   ⚠️  ${zeroFiles.length} 个被改动的文件覆盖率掉到 0%：`);
+    for (const f of zeroFiles) console.log(`     · ${f}`);
+    console.log('   （通常是 PR 删掉了该文件的测试 —— 上面判据 1 抓不到这种）');
+  }
+
+  console.log('');
+  console.log('── ❌ 覆盖率 diff 门禁未通过 ──');
+  process.exit(1);
+}
+
+main();
