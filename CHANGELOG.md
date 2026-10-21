@@ -330,6 +330,92 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   （`playlistTracksToUnifiedItems`）供队列播放器直接消费 —— 刻意不用
   `buildUnifiedItems`，它按歌名折叠同名条目会让 227 首变 225 首，测试钉死这一点。
 
+- **renderer 三个「必经之路」低覆盖洞补齐**（2026-10-21，`f4125f6`）
+
+  不是"覆盖率偏低"的问题，是**门禁在骗自己** —— 详见 `specs/stability/tasks.md` H8。
+
+  - **`api.ts` 49.6% → 真身从未被执行**：renderer 每一份测试都用
+    `vi.mock('../api')` 把 api.ts 整个换掉，于是 `fetchWithToken`（token 注入 /
+    `credentials: include`）、`json()`（错误体 → `AuthError` + code 映射）、
+    以及 70 个 API 函数各自的 URL/method/body 拼装**一行都没跑过**。
+    后果很具体：URL 少个 `/music` 前缀 → 服务端回 SPA 的 index.html →
+    renderer 报 `Unexpected token '<'`；401 没映射成 `AUTH_EXPIRED` → 登录过期
+    弹成"未知错误"。**这三类 bug 现有测试一个都抓不到。**
+    补两份互补的：`api.real.test.tsx`（不 mock 真身，只 stub `globalThis.fetch`，
+    测错误路径）+ `api.contract.test.tsx`（**表驱动**测请求契约 —— 每个 API
+    函数一行，新增函数时补一行表格 = 补一条契约，覆盖不漏）。
+  - **`usePlayer.ts` 39.2% → 补分支决策**：新增 `usePlayer.behavior.test.tsx`
+    （27 例）覆盖跨平台降级链、失败分级（`paid-track`/`vip-locked`/`no-match`/
+    `entitlement-expired` 各自的判定来源）、30s 试听升级、队列增删、音质/平台切换、
+    WPS 接管、封面占位。⚠️ 兜底链有**故意的**墙钟成本（同源重试 800ms +
+    卡死探测 1500ms）→ 用假定时器手动推进，**23.4s → 392ms** 且与负载无关。
+  - **`lyricsShare.ts` 41.5% → 补 canvas 渲染路径**：唯一未覆盖段是
+    `downloadLyricsImage`（72-171）。happy-dom 的 `getContext('2d')` 返回 **null**、
+    `createImageBitmap` 不存在 → 全部打桩，断言**渲染意图**（画了哪几行、用什么
+    字体、封面走不走 `/music/cover-proxy`、下载文件名对不对）而非像素。
+  - ⚠️ **顺带修正 1 条我自己写错的断言**：`playSearch` 指向不可播条目时，
+    生产代码是**明确报错**「没有可播放的音源」而不是静默回退到别的歌 ——
+    静默换歌比报错更糟（用户点了 A 结果在放 B）。**生产行为是对的，断言改对。**
+  - ⚠️ **`App.tsx` 仍 0%（741 行 composition layer）—— 故意不补**：它不产出业务
+    逻辑，只把十几个 hook 的返回值接到组件 props 上；要测就得把整个 hook 层
+    mock 掉（等于把要测的东西也 mock 掉），测出来的只是"React 没崩"。
+    盯接线的正确位置是 H7 的 E2E 全链路（登录 → 搜索 → 播放 → 收藏）。
+  - ⚠️ **顺带挖出并修掉一个更严重的缺陷（见下条）**。
+
+- **覆盖率门禁读到的数字可能只是「其中一边」—— 两条转换管线的覆盖数据互相吞掉**
+  （2026-10-21）
+
+  补上面那批测试时撞出来的：新写的 `lyricsShare.canvas.test.tsx` 明明 9/9
+  全过，覆盖率却纹丝不动。挖下去发现是一整类缺陷。
+
+  **机制**：仓库里有两条互不兼容的 TS 转换管线会覆盖**同一个**源文件 ——
+  `.test.mjs` 走 `node` + 自实现 ESM loader（node 自己的 type-stripping），
+  `.test.tsx` 走 `vitest` + vite/esbuild。两份产物原本进**同一个** c8 temp
+  目录，c8 出报告时按 URL 合并它们（`@bcoe/v8-coverage` 的 `mergeScriptCovs`）
+  —— 而那个合并是按**字节偏移**匹配函数的。两份的偏移基于**不同的转换后源码**，
+  对不上 → 同一份文件被拆成两组互不相认的函数条目 → 只有一组能对上 c8 手里的
+  source map → **另一组的覆盖被整份丢弃**。
+
+  | `renderer/src/lib/lyricsShare.ts`（171 行） | 行覆盖      |
+  | ------------------------------------------- | ----------- |
+  | 只跑 `.test.mjs`                            | 71/171      |
+  | 只跑 `.test.tsx`                            | 167/171     |
+  | **合并后（修复前）**                        | **67/171**  |
+  | **正确值（并集）**                          | **171/171** |
+
+  ⚠️ **哪一边胜出不可预测**（`api.ts` 是 vitest 赢、`lyricsShare.ts` 是 node 赢），
+  而门禁阈值（≥60% 行覆盖）就建立在这组数字上 —— 门禁读到的可能是**任意一边**。
+  这比"数字不准"严重：它让阈值判定不可信。影响面 = renderer **10 个源文件**
+  同时被两条管线覆盖。
+
+  **修法**：两条管线各写各的 temp 目录 → 各自出 lcov → 在 **lcov 文本层**取
+  **并集**（lcov 是行级格式，不依赖字节偏移，两边天然可比；「这行有没有被执行」
+  是布尔语义 → 并集 = `max(hits_a, hits_b)`）。新增 `scripts/merge-lcov.js`
+  （合并器）与 `scripts/lcov-summary.js`（从合并后的 lcov 重算文本报告 ——
+  `c8 report` 只能读 temp 目录，读不出合并结果）。
+
+  顺带修掉两个由拆分引出的坑：
+  - **新鲜度标记搬出 `coverage/`**（`$PWD/.coverage-collected-at`）—— 采集开头
+    会 `rm -rf coverage/`，标记放里面会被自己删掉 → 复用永远失效；反过来
+    标记活到采集结束才写 → 采集中途被 kill 时旧标记还在 → 误判"数据新鲜"
+    → 拿半截数据当完整的用。所以**采集开始就删、结束才写**。
+  - **两侧 report 的路径基准必须一致**（都用仓库根 + 绝对 `--src`），否则
+    `SF:` 前缀不同 → 合并时变成两个不同的文件 → 并集失效。
+
+  **实测效果**（同一份代码，全量采集）：
+
+  | 指标                              | 修复前 | 修复后     |
+  | --------------------------------- | ------ | ---------- |
+  | **总行覆盖**                      | 84.96% | **89.86%** |
+  | `renderer/src/lib/lyricsShare.ts` | 39.2%  | **100%**   |
+  | `renderer/src/api.ts`             | 80.8%  | **98.1%**  |
+  | `renderer/src/hooks/usePlayer.ts` | 47.4%  | **87.8%**  |
+  | `renderer/src/lib/storage.ts`     | —      | **95.3%**  |
+
+  条目数 141 保持不变（`--all` 语义未丢）、门禁绿、无失败文件。
+  ⚠️ 那 4.9pp 的差**不是新测试的功劳**，主要是**原本被吞掉的覆盖被找回来了**
+  —— 之前的数字是**系统性偏低**的。
+
 ### Fixed
 
 - **CI 测试门禁假绿 —— 测试挂了，CI 照样显示 success**（2026-10-20 评估实测）

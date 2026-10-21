@@ -153,6 +153,29 @@
     音质切换、队列编辑、crossfade 接线…）没被覆盖
   - 剩余：继续补 hook 分支；验收：`usePlayer.ts` 行覆盖 ≥60%，且断言的是
     **编排行为**（队列推进 / 切歌 / 兜底链 / 试听升级），不是断言纯函数
+  - ✅ **第三轮（2026-10-21，`f4125f6`）补分支决策**：新增
+    `renderer/src/hooks/usePlayer.behavior.test.tsx`（27 条用例）——
+    与 `usePlayer.hook.test.tsx` 的分工是「那份测主路径、这份测分支决策」：
+    - 跨平台降级链：item 内其它平台源 → 切过去（且**保留 ❤ 态**、展示元数据不变）、
+      服务端实时匹配（第二级）→ 切过去、全部试过 → 不降级直接报结构化失败
+    - 失败分级：`paid-track` / `vip-locked` / `no-match` / `entitlement-expired`
+      各自的判定来源（vipCategory 优先于服务端结论）、`autoSkip`（单曲队列不自跳）、
+      `credential` 三态透传、`dismissFailure`
+    - 30s 试听升级：残缺音频 → 同平台降标准音质重试（URL 变 `q=standard`）、
+      跨平台有全曲源 → 升级换平台、别的平台全 VIP 锁 → 不换源
+    - 队列：`playSearch` 剔不可播条目（unified/tracks 索引对齐）、`appendToQueue`
+      追加不切歌、队列空时退化成从头播、`handlePrev` 循环回上一首
+    - 音质/平台：`changeQuality`（URL 换 `q=` 且保留播放位置）、`selectSource` 落盘、
+      `switchToProvider` 清队列、`resetForSwitch` 清播放态
+    - WPS：Spotify + WPS 就绪 → **清空 audioUrl**（WPS 接管，不双声道）、
+      WPS 未就绪 → 保留 30s 预览路径、`applyWpsProgress` 喂回时间轴
+    - 封面：有封面 → `presentCover`、没封面 → `presentPlaceholder`
+    - ⚠️ **同批修掉 1 条我自己写错的断言**：`playSearch` 指向不可播条目时，
+      生产代码是**明确报错**「没有可播放的音源」而不是静默回退到别的歌 ——
+      静默换歌比报错更糟（用户点了 A 结果在放 B）。生产行为是对的，断言改对。
+    - ⚠️ **墙钟依赖**：兜底链有**故意的**墙钟成本（同源 transient 重试 800ms +
+      卡死探测 1500ms ≈ 2.3s）→ 用假定时器手动推进，**23.4s → 392ms**，
+      且与负载无关（理由同 H4 的两条 flaky）
 
 - [x] **H2** `server/src/reco/reco.service.ts` 行覆盖 **11.1%**、函数覆盖 **4.7%**（5/107）
   - 根因：`reco.test.ts`（1401 行）只调了 `svc.setApiKey()` 和 `svc.status()`，
@@ -269,12 +292,120 @@
   **验收**：报告里的 `All files` 与「真实执行到的源码 ÷ 全部源文件」一致 ✅
   （141 条目；`usePlayer.ts` 从测不出来的 5.3% 变成可测的 38.8%）
 
+- [x] **H9** 两条 TS 转换管线的覆盖数据在 c8 合并时**互相吞掉** —— 门禁读到的
+      覆盖率**可能只是其中一边**
+
+  这条是 2026-10-21 补 H8 的测试时**撞出来的**（新写的 `lyricsShare.canvas.test.tsx`
+  明明 9/9 全过，覆盖率却纹丝不动）。挖下去发现是一整类缺陷。
+
+  **机制**：仓库里有两条互不兼容的 TS 转换管线会覆盖**同一个**源文件：
+  - `.test.mjs` → `node` + 自实现 ESM loader（node 自己的 type-stripping）
+  - `.test.tsx` → `vitest` + vite/esbuild 转换
+
+  两份产物原本进**同一个** c8 temp 目录。c8 生成报告时按 URL 合并它们
+  （`@bcoe/v8-coverage` 的 `mergeScriptCovs`）—— 而那个合并是按**字节偏移**
+  匹配函数的。两份的偏移基于**不同的转换后源码**，对不上 → 同一份文件被拆成
+  两组互不相认的函数条目 → 只有一组能对上 c8 手里的 source map →
+  **另一组的覆盖被整份丢弃**。
+
+  **实测**（`renderer/src/lib/lyricsShare.ts`，171 行）：
+
+  | 来源                 | 行覆盖      |
+  | -------------------- | ----------- |
+  | 只跑 `.test.mjs`     | 71/171      |
+  | 只跑 `.test.tsx`     | 167/171     |
+  | **合并后（修复前）** | **67/171**  |
+  | **正确值（并集）**   | **171/171** |
+
+  ⚠️ **哪一边胜出不可预测**：`api.ts` 是 vitest 赢、`lyricsShare.ts` 是 node 赢。
+  而门禁阈值（≥60% 行覆盖）就建立在这组数字上 —— 也就是说**门禁读到的可能是
+  任意一边的值**，不是真实覆盖。这比「数字不准」严重：它让阈值判定不可信。
+
+  **影响面**：renderer 有 **10 个源文件**同时被两条管线覆盖
+  （`api.ts` / `hooks/usePlayer.ts` / `lib/lyricsShare.ts` / `lib/storage.ts` /
+  `lib/audioFx.ts` / `lib/audioSlots.ts` / `lib/backup-crypto.ts` /
+  `lib/spotify-wps.ts` / `auth/types.ts` / `auth/relogin-grace.ts`）。
+
+  **修法**（已落地）：
+  - 两条管线**各写各的 temp 目录**（`coverage/.tmp-node` / `coverage/.tmp-vitest`）
+  - 各自出 lcov，再在 **lcov 文本层**取**并集**（`scripts/merge-lcov.js`）：
+    lcov 是**行级**格式（`DA:<line>,<hits>`），**不依赖字节偏移** → 两边天然可比；
+    「这行有没有被执行」是布尔语义 → 并集 = `max(hits_a, hits_b)`
+  - 文本报告从合并后的 lcov 重算（`scripts/lcov-summary.js`）——
+    `c8 report` 只能读 temp 目录，读不出合并结果
+  - ⚠️ **两侧 report 的路径基准必须一致**（都用仓库根 + 绝对 `--src`），
+    否则 `SF:` 前缀不同 → 合并时变成两个不同的文件 → 并集失效
+  - ⚠️ **新鲜度标记搬出 `coverage/`**（`$PWD/.coverage-collected-at`）：
+    采集开头会 `rm -rf coverage/`，标记放里面会被自己删掉 → 复用永远失效；
+    但反过来标记活到采集结束才写 → 采集中途被 kill 时旧标记还在 →
+    误判「数据新鲜」→ 拿半截数据当完整的用。所以**采集开始就删、结束才写**。
+  - ⚠️ **函数覆盖的合并是「按名字去重」**：两条管线的函数**划分粒度不同**
+    （同一文件 node 侧 75 条 FN 记录、vitest 侧 149 条，函数名交集 75/75），
+    按 `(行号,名字)` 合并会把同一个函数数两遍；按名字去重后分母才接近真实
+    函数数。**行覆盖不受此影响**（两边的 DA 行号一致，都是 TS 源码行号）。
+
+  **实测效果**（同一份代码，全量采集，`5878ebc`）：
+
+  | 指标                              | 修复前          | 修复后                 |
+  | --------------------------------- | --------------- | ---------------------- |
+  | **总行覆盖**                      | 84.96%          | **89.86%**             |
+  | `renderer/src/lib/lyricsShare.ts` | 39.2%（67/171） | **100%**（171/171）    |
+  | `renderer/src/api.ts`             | 80.8%           | **98.1%**（1766/1800） |
+  | `renderer/src/hooks/usePlayer.ts` | 47.4%           | **87.8%**（1918/2184） |
+  | `renderer/src/lib/storage.ts`     | —               | **95.3%**（222/233）   |
+
+  条目数 **141 保持不变**（`--all` 语义未丢）、门禁绿、无失败文件。
+  ⚠️ 修复前那 4.9pp 的差**不是新测试的功劳**（新测试只贡献了 H8 那部分），
+  主要是**原本被吞掉的覆盖被找回来了** —— 这正是这个缺陷的严重性所在：
+  之前的数字是**系统性偏低**的。
+
 - [ ] **H7** 第 7/8 层空白：**E2E 全链路**与**稳定性压测**都不存在
   - Playwright 只覆盖 3 个视图（无凭据首屏 / 剧场三档密度 / ButtonSmoke），
     没有一条「登录 → 搜索 → 播放 → 收藏」的跨包链路
   - `visual.yml` 靠 `paths` 过滤触发，**改后端不跑**
   - 无任何并发/长稳脚本：`music.service.ts` 的 `mergeLibrary`、provider 并发 fan-out、
     like-sync 队列都没验证过
+
+- [x] **H8** renderer 的「必经之路」被整体 mock 掉 —— **api.ts 真身从未被执行**
+
+  这条不是"覆盖率偏低"，是**门禁在骗自己**：renderer 现有的每一份测试都用
+  `vi.mock('../api')` 把 api.ts 整个换掉。于是
+
+  - `fetchWithToken`（token 注入 / `credentials: include`）—— **零执行**
+  - `json()`（错误体 → `AuthError` + code 映射）—— **零执行**
+  - 70 个 API 函数各自的 URL / method / body 拼装 —— **零执行**
+
+  后果很具体：URL 拼错（少个 `/music` 前缀）→ 服务端回 SPA 的 index.html →
+  renderer 报 `Unexpected token '<'`；401 没映射成 `AUTH_EXPIRED` → 登录过期
+  弹成"未知错误"；token 没注入 → CSRF 门禁 403。**这三类 bug 现有测试一个都抓不到**，
+  因为它们全在被 mock 掉的那段里。
+
+  - ✅ **已补（2026-10-21，`f4125f6`）**，两份互补：
+    - `renderer/src/api.real.test.tsx`（17 条）—— **不 mock api.ts**，只 stub
+      `globalThis.fetch`，让真身跑起来。测**错误路径**：token 注入 / credentials /
+      保留调用方自己的头、AuthError 映射（`AUTH_EXPIRED` / 未知 error 降级成
+      `AUTH_UNKNOWN` / body 非 JSON / 空 body 退回 `status statusText`）、
+      `getLibrary` 的 404→null。
+      ⚠️ 必须是 `.test.tsx` 且用**动态 import**：`API_ORIGIN` 是模块加载时的
+      快照，`window.electronAPI` 必须先摆好；且 renderer 的 vitest 只 include
+      `.test.tsx` 模式，`api.ts` 用了 `import.meta.env` → ts-node 加载不了。
+    - `renderer/src/api.contract.test.tsx`（28 条）—— **表驱动**测**请求契约**：
+      每个 API 函数一行，断言 method / URL / body。表驱动而不是一条一个 it，
+      是因为 70 个函数形状相同、真正会出 bug 的是「请求了哪个 URL」；
+      **新增一个 API 函数时补一行表格 = 补一条契约**，覆盖不漏。
+      顺带钉住两个真实踩过的坑：远端歌单的第二个 query 参数分隔符必须是 `&`
+      （写成 `?` → limit 被静默丢掉）、`parseRemotePlaylistInput` 的各平台链接形态。
+  - ⚠️ **本轮同时补上 `lyricsShare.ts` 的 canvas 路径**（41.5% → 目标 ~100%）：
+    唯一未覆盖段是 `downloadLyricsImage`（72-171）。happy-dom 的
+    `getContext('2d')` 返回 **null**、`createImageBitmap` 不存在 → 全部打桩，
+    断言**渲染意图**（画了哪几行、用什么字体、封面走不走 `/music/cover-proxy`、
+    下载文件名对不对）而非像素。单独成 `.test.tsx`（renderer vitest 只 include
+    该模式），与 `lyricsShare.test.mjs`（node 直跑的纯函数档）互补。
+  - ⚠️ **`App.tsx` 仍 0%（741 行 composition layer）—— 故意不补**：
+    它不产出业务逻辑，只把十几个 hook 的返回值接到组件 props 上。要测就得
+    mock 掉整个 hook 层（等于把要测的东西也 mock 掉了），**测出来的只是
+    "React 没崩"**。真要盯接线，正确的位置是 H7 的 E2E 全链路（登录 → 搜索 →
+    播放 → 收藏），那里天然跨包、也天然验证接线。
 
 ## I. 存储与备份卫生（2026-10-20 实测发现）
 
