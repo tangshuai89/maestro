@@ -35,6 +35,21 @@ export interface PlayFailure {
   detail: string;
   /** false = 连续多首连挂（≥3）或无下一首 → PlayerNotice 不做倒计时自动跳。 */
   autoSkip: boolean;
+  /**
+   * 凭据三态（**服务端权威**，`GET /auth/status?validate=1&extended=1` 带回）：
+   * 还能不能调账号接口。
+   *
+   * - `'valid'`   → 探针确认凭据**还活着**
+   * - `'expired'` → 探针确认凭据死了（此时已走重登分支，不会走到 failure）
+   * - `'unknown'` → 没探 / 探针没结论（网络错误等）—— **不猜**
+   * - `undefined` → 状态请求整个失败 → 同 `'unknown'`
+   *
+   * 为什么要带进 failure：`stream-failed` 档的文案里原本无条件写「可尝试重新
+   * 登录」—— 但凭据确认还活着时，**重登是没用的建议**（凭据没坏，重登出来
+   * 还是那个好凭据）。这就是 ADR-110「凭据有效 ≠ 会员有效」在**文案层**的
+   * 落地：会员没了 → 重登没用；凭据还活着 → 提重登也是白提。
+   */
+  credential?: 'valid' | 'expired' | 'unknown';
 }
 import {
   readStoredProvider,
@@ -803,6 +818,9 @@ export function usePlayer(
           reason,
           detail: `音频加载失败（${code}）`,
           autoSkip: consecutiveFailuresRef.current < 3 && hasNextTrack(),
+          // 凭据三态带进来 → PlayerNotice 据此决定要不要提「重新登录」
+          // （凭据确认活着时，提了也是无效建议）。
+          credential: st?.credential,
         });
         setError(`音频加载失败（${code}），请尝试切歌`);
       })();

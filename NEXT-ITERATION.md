@@ -490,29 +490,30 @@ python3 -m venv ~/.castlabs-evs-venv
   - [ ] 偏好跨重启保留（storage 键已存在，只差没推给元素）
 - **估时**：0.5–1 天（比看上去多，因为要处理双槽 + 新元素初始化时机）
 
-### 7.5 播放失败分级：服务端与 renderer 各有一套，尚未收敛
+### 7.5 播放失败分级：已收敛为一套（2026-10-21 完成）
 
-- **现状**：两套并行的"播放失败该怎么解释"：
-  - 服务端 `packages/server/src/music/entitlement.ts` 的
-    `classifyPlaybackFailure()` → `relogin | entitlement | no-license | unknown`
-    - `playbackFailureMessage()`（ADR-110「凭据有效 ≠ 权益有效」的可执行表述）
-      —— **生产链路里零调用点**（纯死代码）
-  - renderer `usePlayer.ts` 的 `PlayFailReason` →
-    `paid-track | vip-locked | stream-failed | no-match` + `PlayerNotice` 文案
-    —— **已接线**，10-19「播放彻底失败给可见提示」用的就是它
-- **为什么要收敛**：两套词汇、两套判定，迟早漂移；而且"会员失效"这个
-  最重要的第三种情况，服务端能判定（session 里有 neteaseVip / qqVip），
-  renderer 判不了（它只知道"没搜到等价源"）
-- **两条路，二选一**：
-  - (a) **接线服务端那套**：`GET /auth/status?validate=1` 多返一个
-    `failureKind`（服务端用 classifyPlaybackFailure 算）+ renderer 用它给
-    PlayerNotice 换文案 → "会员已失效，重登没用"能被准确说出来
-  - (b) **删掉服务端那套**：保留 renderer 的（它已经接了），把 ADR-110 的
-    表述改成"分类在 renderer 侧做"
-- **成本**：(a) 约半天（auth.controller + api.ts 类型 + usePlayer + PlayerNotice
-  文案）；(b) 约 1 小时（删代码 + 回写 ADR）
-- ⚠️ **别让两套并存**。已补 8 条白盒（`entitlement.classify.test.ts`）钉住
-  语义，接线或删除时都有安全网
+- **决策**：选 (b) —— **删掉服务端那套分类器**，分类只在 renderer 侧做。
+- **落地**（PR #113 + 本轮）：
+  - 服务端 `packages/server/src/music/entitlement.ts` 的 `classifyPlaybackFailure()` /
+    `playbackFailureMessage()`（原 ADR-110「凭据有效 ≠ 权益有效」的可执行表述，
+    **生产链路里零调用点**的纯死代码）**已删**
+  - 服务端改为只提供**权威事实**：`GET /auth/status?validate=1&extended=1` 带
+    `credential` / `entitlement` 两个**三态**（valid / expired / unknown）——
+    「没探就别猜」，`unknown` 是合法答案
+  - renderer `usePlayer.ts` 的 `PlayFailReason` 成为**唯一**分类器：
+    `paid-track | vip-locked | entitlement-expired | stream-failed | no-match | generic`
+  - `entitlement-expired` 档已接线：`st.entitlement === 'expired'` → 文案
+    「需要会员，但你的会员已失效 —— 重新登录没用」
+  - `credential` 三态也接上了：`PlayFailure.credential` 带进 `PlayerNotice`，
+    `stream-failed` 档在**凭据确认还活着**时**不再提「重新登录」** ——
+    凭据没坏，重登出来还是那个好凭据（ADR-110 的核心洞察在**文案层**的落地）
+- **形状统一**：Deezer 那条 early return 之前**不带三态**（`extended=1` 缺字段，
+  客户端读成 unknown —— 恰好对，但契约靠巧合成立），已补齐为两个 `unknown`
+- **为什么 (a) 没选**：`failureKind` 要服务端**再实现一遍**分类器，等于把
+  「两套分类」从代码搬进协议 —— 分类规则会漂移到服务端那一份，renderer 那份
+  变成摆设。改成「服务端给事实、客户端做分类」之后，**分类规则只有一处**，
+  而服务端仍然保有它独有的知识（会员状态在 session 里，只有它知道）
+- **ADR-110 已回写**：失败分类的归属（见 knowledge `ADR-110` §4）
 
 ---
 

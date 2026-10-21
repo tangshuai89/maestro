@@ -310,6 +310,7 @@ describe('usePlayer hook 体', () => {
       apiMocks.getAuthStatusValidated.mockResolvedValue({
         expired: false,
         entitlement: 'expired',
+        credential: 'valid',
       } as never);
       const { result, a } = setup();
       act(() => {
@@ -326,6 +327,9 @@ describe('usePlayer hook 体', () => {
       });
       expect(result.current.failure).not.toBeNull();
       expect(result.current.failure?.reason).toBe('entitlement-expired');
+      // 凭据三态也要带进 failure —— PlayerNotice 据此决定文案里提不提「重新登录」
+      // （凭据确认活着时提了也是无效建议）
+      expect(result.current.failure?.credential).toBe('valid');
     } finally {
       vi.useRealTimers();
     }

@@ -102,6 +102,24 @@ async function main() {
     ok('4. deezer + validate=1 → 仍 loggedIn:true（匿名平台不受影响）');
   }
 
+  // ── 4a. deezer + extended=1 → 也要带三态（形状统一，不靠 early return 漏字段）──
+  {
+    const r = await call('GET', '/auth/status?provider=deezer&extended=1');
+    const j = r.json as any;
+    // Deezer 匿名 → 既无凭据也无会员概念 → 两态都是 unknown
+    assert.strictEqual(
+      j.credential,
+      'unknown',
+      `deezer 匿名 → credential=unknown，实际 ${JSON.stringify(j)}`,
+    );
+    assert.strictEqual(
+      j.entitlement,
+      'unknown',
+      `deezer 匿名 → entitlement=unknown，实际 ${JSON.stringify(j)}`,
+    );
+    ok('4a. deezer + extended=1 → 也带三态（都是 unknown）');
+  }
+
   // ── 4b. extended=1 → 带凭据 / 权益三态（renderer 判"会员失效"的唯一依据）──
   {
     const { SessionService } = require('../common/session');
@@ -186,7 +204,9 @@ async function main() {
     const got: any = sessions.get ? sessions.get('sid-expired') : seed;
     got.providers.qq = { qqCookie: 'qqmusic_uin=123; qm_keyst=expired', qqUin: '123' };
 
-    const r = await call('GET', '/auth/status?provider=qq&validate=1&sid=sid-expired');
+    // ⚠️ 必须带 extended=1 —— 三态（credential/entitlement）只在 extended 时返回。
+    // 不带的话 j.credential 是 undefined，下面那条恒等断言就没有对象可断言。
+    const r = await call('GET', '/auth/status?provider=qq&validate=1&extended=1&sid=sid-expired');
     const j = r.json as any;
     qq.probeSession = orig;
     // 不管 session 注入是否成功，只要 probe 被判失效就应看到 expired
@@ -194,7 +214,18 @@ async function main() {
       assert.strictEqual(j.loggedIn, false);
       assert.strictEqual(j.error, 'AUTH_EXPIRED');
       assert.ok(String(j.message).includes('过期'));
-      ok('5. 探针判定失效 → loggedIn:false + expired:true + AUTH_EXPIRED');
+      // `expired`(boolean) 与 `credential`(三态) 是**同一件事的两种表示**，
+      // 服务端保证恒等（credentialState 首行就是 `if (expired) return 'expired'`）。
+      // 客户端两个字段都在用（boolean 判"死没死"、三态判"是不是确认活着"），
+      // 所以这条恒等关系必须**被测试钉住** —— 不能靠"实现上碰巧一致"。
+      assert.strictEqual(
+        j.credential,
+        'expired',
+        `expired=true → credential 必须是 'expired'（两者恒等），实际 ${JSON.stringify(j)}`,
+      );
+      ok(
+        '5. 探针判定失效 → loggedIn:false + expired:true + AUTH_EXPIRED（credential 同步 expired）',
+      );
     } else {
       // session 注入没生效（controller 解析 cookie 拿不到我们塞的 session）→
       // 仍验证「未登录不标 expired」这条不会误伤

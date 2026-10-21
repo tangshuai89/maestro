@@ -52,7 +52,12 @@ function reasonText(f: PlayFailure): string {
       // 重新登录没用（会员状态在账号上，不在 cookie 里），要等会员恢复或换平台。
       return `《${f.title}》需要会员，但你的会员已失效 —— 重新登录没用，等会员恢复或换个平台`;
     case 'stream-failed':
-      return `《${f.title}》音源暂时不可用（可尝试重新登录 ${p}）`;
+      // 「可尝试重新登录」只在**凭据可能有问题**时才提：
+      // 探针确认凭据还活着（credential='valid'）时，重登是**无效建议**
+      // —— 凭据没坏，重登出来还是那个好凭据（ADR-110 的核心洞察在文案层的落地）。
+      return `《${f.title}》音源暂时不可用${
+        f.credential === 'valid' ? '' : `（可尝试重新登录 ${p}）`
+      }`;
     case 'no-match':
       return `《${f.title}》在各平台暂无可播版本`;
     default:
