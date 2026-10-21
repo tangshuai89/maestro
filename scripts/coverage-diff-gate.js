@@ -39,12 +39,15 @@
  *
  * ## 用法
  *
- *   node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>] [--strict]
+ *   node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>]
+ *   node scripts/coverage-diff-gate.js --self-test
  *
- *   --base    base 分支/ref（默认 `origin/master`；CI 上传 base sha）
- *   --lcov    lcov.info 路径（默认 `coverage/lcov.info`）
- *   --strict  任意一条未覆盖新增行就失败（默认行为）；不带这个开关时
- *             同样失败，但会额外报告被**删除**的测试行数（诊断用）
+ *   --base      base 分支/ref（默认 `origin/master`；CI 上传 base sha）
+ *   --lcov      lcov.info 路径（默认 `coverage/lcov.info`）
+ *   --self-test 跑自测（diff 解析 + 判定语义 + 路径基准）
+ *
+ *   本地跑：先 `npm run test:ci`（它会插桩并产出 coverage/lcov.info），
+ *   再 `npm run coverage:diff-gate -- --base origin/master`。
  *
  * 退出码：0 = 通过；1 = 有未覆盖的新增行 / 触碰的文件掉到 0%；2 = 用法/环境错
  */
@@ -56,16 +59,15 @@ const { execFileSync } = require('node:child_process');
 
 // ── 参数 ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const out = { base: 'origin/master', lcov: 'coverage/lcov.info', strict: false, selfTest: false };
+  const out = { base: 'origin/master', lcov: 'coverage/lcov.info', selfTest: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--base') out.base = argv[++i];
     else if (a === '--lcov') out.lcov = argv[++i];
-    else if (a === '--strict') out.strict = true;
     else if (a === '--self-test') out.selfTest = true;
     else if (a === '--help' || a === '-h') {
       console.log(
-        'usage: node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>] [--strict]',
+        'usage: node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>]',
         '       node scripts/coverage-diff-gate.js --self-test',
       );
       process.exit(0);
