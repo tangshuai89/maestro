@@ -144,6 +144,10 @@ const baseProps = (over: Partial<React.ComponentProps<typeof SettingsModal>> = {
   onChangePlayerMode: () => {},
   audioFx: flatEq,
   onEqEnabled: () => {},
+  volume: 0.8,
+  muted: false,
+  onVolumeChange: () => {},
+  onToggleMute: () => {},
   onCrossfadeSec: () => {},
   onEqBandGain: () => {},
   onApplyEqPreset: () => {},
@@ -336,8 +340,12 @@ describe('SettingsModal', () => {
       render(<SettingsModal {...baseProps()} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
-      // 10 个 slider —— 数量来自 EQ_BANDS，不在组件里写死
-      const sliders = screen.getAllByRole('slider');
+      // 10 个 **EQ 频段** slider —— 数量来自 EQ_BANDS，不在组件里写死。
+      // ⚠️ 这一节里现在还有**音量滑块**（2026-10-20 接线），所以不能按
+      // "所有 slider" 数 —— 得按 EQ 频段的 aria-label（"<label> Hz"）挑。
+      const sliders = screen
+        .getAllByRole('slider')
+        .filter((el) => / Hz$/.test(el.getAttribute('aria-label') ?? ''));
       expect(sliders).toHaveLength(EQ_BANDS.length);
       expect(EQ_BANDS).toHaveLength(10);
 
@@ -360,7 +368,11 @@ describe('SettingsModal', () => {
       render(<SettingsModal {...baseProps()} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
-      const sliders = screen.getAllByRole('slider') as HTMLInputElement[];
+      // 只看 EQ 频段滑块（这一节里还有音量滑块，它的 min/max/step 是 0..100/1）
+      const sliders = screen
+        .getAllByRole('slider')
+        .filter((el) => / Hz$/.test(el.getAttribute('aria-label') ?? '')) as HTMLInputElement[];
+      expect(sliders.length).toBeGreaterThan(0);
       for (const s of sliders) {
         expect(s).toHaveAttribute('min', String(sliderMin));
         expect(s).toHaveAttribute('max', String(sliderMax));
@@ -375,7 +387,9 @@ describe('SettingsModal', () => {
       render(<SettingsModal {...baseProps({ onEqBandGain })} />);
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
-      const sliders = screen.getAllByRole('slider') as HTMLInputElement[];
+      const sliders = screen
+        .getAllByRole('slider')
+        .filter((el) => / Hz$/.test(el.getAttribute('aria-label') ?? '')) as HTMLInputElement[];
       // 用 fireEvent.change 而不是 userEvent.type('{arrowright}')：
       // happy-dom 下 userEvent 的键盘路径不会驱动 <input type=range> 的 value，
       // 断言会变成"测的是测试环境的键盘实现"而不是组件行为。change 事件正是
@@ -501,7 +515,10 @@ describe('SettingsModal', () => {
       );
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
-      const sliders = screen.getAllByRole('slider') as HTMLInputElement[];
+      // 只看 EQ 频段滑块（这一节里还有音量滑块，它的 min/max/step 是 0..100/1）
+      const sliders = screen
+        .getAllByRole('slider')
+        .filter((el) => / Hz$/.test(el.getAttribute('aria-label') ?? '')) as HTMLInputElement[];
       for (const s of sliders) expect(s).not.toBeDisabled();
 
       fireEvent.change(sliders[0], { target: { value: '3' } });
@@ -527,8 +544,14 @@ describe('SettingsModal', () => {
       await waitFor(() => expect(screen.getByText('/x')).toBeInTheDocument());
 
       // 标签列和读数列共用同一个数字（"0"既是标签也是读数），所以按
-      // .audio-fx-band-db 精确定位而不是 getByText
-      const readouts = document.querySelectorAll('.audio-fx-band-db');
+      // .audio-fx-band-db 精确定位而不是 getByText。
+      // ⚠️ 必须**限定在 EQ 频段容器内**：音量读数复用了同一个样式 class
+      // （它也要那个数字读数的排版），混在一起查会多出一个音量百分比。
+      // 顺带一句：音量那个读数是百分比、不是 dB，组件里已给它单独的
+      // 语义 class（audio-fx-volume-value），两边都不再靠位置猜。
+      const bands = document.querySelector('.audio-fx-bands') as HTMLElement;
+      expect(bands).toBeTruthy();
+      const readouts = bands.querySelectorAll('.audio-fx-band-db');
       expect(readouts[0]).toHaveTextContent('+3.5');
       expect(readouts[1]).toHaveTextContent('-2.0');
       // 0 是最容易写错的一个：写成 "+0.0" 会让人以为"确实推了 0"
@@ -571,5 +594,30 @@ describe('SettingsModal · 交叉淡入淡出', () => {
   it('WPS 适用范围提示同时覆盖 EQ 与 crossfade（诚实标注边界）', () => {
     render(<SettingsModal {...baseProps()} />);
     expect(screen.getByText(/EQ 与交叉淡入淡出都不生效/)).toBeInTheDocument();
+  });
+
+  it('音量滑块显示当前音量（80%），改值调 onVolumeChange', () => {
+    const onVolumeChange = vi.fn();
+    render(<SettingsModal {...baseProps({ volume: 0.8, onVolumeChange })} />);
+    const slider = screen.getByLabelText('音量') as HTMLInputElement;
+    expect(slider.value).toBe('80');
+    fireEvent.change(slider, { target: { value: '35' } });
+    expect(onVolumeChange).toHaveBeenCalledWith(0.35);
+  });
+
+  it('静音按钮反映 muted 状态，点击调 onToggleMute', () => {
+    const onToggleMute = vi.fn();
+    const { unmount } = render(<SettingsModal {...baseProps({ muted: false, onToggleMute })} />);
+    const btn = screen.getByRole('button', { name: /音量/ });
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(btn);
+    expect(onToggleMute).toHaveBeenCalled();
+    unmount();
+
+    // muted=true → 按钮显示"已静音"且 aria-pressed=true，滑块显示 0
+    render(<SettingsModal {...baseProps({ muted: true })} />);
+    const mutedBtn = screen.getByRole('button', { name: /已静音/ });
+    expect(mutedBtn.getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByLabelText('音量') as HTMLInputElement).value).toBe('0');
   });
 });
