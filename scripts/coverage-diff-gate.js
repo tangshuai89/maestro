@@ -140,23 +140,32 @@ function parseAddedLines(diffText) {
 function readLcov(lcovPath) {
   /** @type {Map<string, Map<number, number>>} */
   const files = new Map();
-  if (!fs.existsSync(lcovPath)) return files;
+  /** @type {string[]} */
+  const duplicates = [];
+  if (!fs.existsSync(lcovPath)) return { files, duplicates };
   const text = fs.readFileSync(lcovPath, 'utf8');
   let current = null;
   for (const line of text.split('\n')) {
     if (line.startsWith('SF:')) {
       current = line.slice(3).trim();
-      if (!files.has(current)) files.set(current, new Map());
+      if (files.has(current)) {
+        // ⚠️ 同一文件出现多次 = lcov 里有**多轮采集的数据**（比如手工合并了
+        // 两次采集结果）。静默合并会让后一轮的 0 覆盖把前一轮盖掉 → 门禁
+        // 拿到的数字是错的。明确报出来，不硬判。
+        duplicates.push(current);
+        continue;
+      }
+      files.set(current, new Map());
     } else if (line.startsWith('DA:') && current) {
       const [ln, hits] = line.slice(3).split(',');
       const n = Number(ln);
       const h = Number(hits);
-      if (Number.isFinite(n)) files.get(current).set(n, Number.isFinite(h) ? h : 0);
+      if (Number.isFinite(n)) files.get(current)?.set(n, Number.isFinite(h) ? h : 0);
     } else if (line.startsWith('end_of_record')) {
       current = null;
     }
   }
-  return files;
+  return { files, duplicates };
 }
 
 // ── 主流程 ──────────────────────────────────────────────────────────
@@ -320,6 +329,31 @@ function selfTest() {
   expect('pkgOf：packages 前缀', pkgOf('packages/server/src/a.ts') === 'server');
   expect('pkgOf：非 packages 前缀 → 认不出', pkgOf('src/a.ts') === '');
 
+  // ── 6. 重复文件检测（多轮采集混在一起）─────────────────────────
+  {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const p = require('node:path');
+    const tmp = fs.mkdtempSync(p.join(os.tmpdir(), 'maestro-gate-selftest-'));
+    const dup = p.join(tmp, 'dup.info');
+    fs.writeFileSync(
+      dup,
+      [
+        'SF:packages/server/src/a.ts',
+        'DA:1,1',
+        'end_of_record',
+        'SF:packages/server/src/a.ts',
+        'DA:1,0',
+        'end_of_record',
+        '',
+      ].join('\n'),
+    );
+    const r = readLcov(dup);
+    expect('重复文件检测：应报出 1 个重复', r.duplicates.length === 1);
+    expect('重复文件检测：重复项是那个文件', r.duplicates[0] === 'packages/server/src/a.ts');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+
   if (failures.length > 0) {
     console.error(`❌ coverage-diff-gate 自测失败（${failures.length} 项）:`);
     for (const f of failures) console.error(`   ✗ ${f}`);
@@ -354,12 +388,21 @@ function main() {
   }
 
   const added = parseAddedLines(diffText);
-  const lcov = readLcov(args.lcov);
+  const { files: lcov, duplicates } = readLcov(args.lcov);
   if (lcov.size === 0) {
     console.error(
       `❌ 读不到覆盖率数据（${args.lcov}）。\n` +
         `   门禁需要**同一次执行**产出的 lcov —— 跑「跑两遍套件」的架构会产出\n` +
         `   自相矛盾的数字（某个测试文件挂了 → 覆盖率塌成假洞）。`,
+    );
+    process.exit(2);
+  }
+  if (duplicates.length > 0) {
+    console.error(
+      `❌ lcov 里有 ${duplicates.length} 个文件出现**多次**（例：${duplicates[0]}）。\n` +
+        `   → 这份 lcov 混了**多轮采集**的数据。后一轮的 0 覆盖会把前一轮盖掉\n` +
+        `   → 门禁拿到的数字是错的。\n` +
+        `   → 用**一次**采集产出的 lcov（scripts/test.sh --ci 会自动处理）。`,
     );
     process.exit(2);
   }
