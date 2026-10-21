@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
+import { useVolume } from './hooks/useVolume';
 import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
 import { useLyrics } from './hooks/useLyrics';
 import { useDesktopLyrics } from './hooks/useDesktopLyrics';
@@ -97,6 +98,9 @@ export default function App() {
     [player.track, lyrics.lyrics, lyricsExport],
   );
   const auth = useAuth(player.provider, player.loadNextTrack, player.setError);
+  // 音量（2026-10-20 接上）：此前 useVolume 从没被调用过 → 音量偏好从不推给
+  // 任何 <audio>，界面上也没有控件。slots 而非单个元素：crossfade 有两个槽位。
+  const volume = useVolume(player.slots, player.track);
   spotifyTierRef.current = auth.auth.tier ?? undefined;
   // auth 就绪后把回调写进 ref，usePlayer 的 onError 兜底会用它。
   onAuthExpiredRef.current = (p: MusicProvider) => auth.markExpired(p);
@@ -684,6 +688,10 @@ export default function App() {
           onChangePlayerMode={changePlayerMode}
           audioFx={player.audioFx}
           onEqEnabled={player.setEqEnabled}
+          volume={volume.volume}
+          muted={volume.muted}
+          onVolumeChange={volume.changeVolume}
+          onToggleMute={volume.toggleMute}
           onCrossfadeSec={player.setCrossfadeSec}
           onEqBandGain={player.setEqBandGain}
           onApplyEqPreset={player.applyEqPreset}

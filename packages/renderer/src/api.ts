@@ -603,6 +603,21 @@ export async function getAuthStatus(provider: MusicProvider): Promise<AuthStatus
  *  a logged-in session hasn't been validated for >24h. */
 export interface AuthStatusExtended extends AuthStatus {
   lastValidatedAt: number | null;
+  /**
+   * 凭据三态（服务端权威）：还能不能调账号接口。
+   * - 'valid'   → validate=1 的探针确认还活着
+   * - 'expired' → 探针确认死了（该重新登录）
+   * - 'unknown' → 没探 / 探针没结论 —— **不猜**
+   */
+  credential?: 'valid' | 'expired' | 'unknown';
+  /**
+   * 权益三态（服务端权威）：付费权益还有没有（能不能放全曲）。
+   *
+   * 这是**凭据有效但会员过期**那种情况的唯一判据 —— 客户端看不出来，
+   * 而它和「凭据过期」要的用户动作完全相反：前者重登没用（要等会员恢复
+   * 或换平台），后者重登就好。
+   */
+  entitlement?: 'valid' | 'expired' | 'unknown';
 }
 
 export async function getAuthStatusExtended(provider: MusicProvider): Promise<AuthStatusExtended> {

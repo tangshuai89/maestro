@@ -61,6 +61,12 @@ interface Props {
    */
   audioFx: AudioFxPrefs;
   onEqEnabled: (enabled: boolean) => void;
+  /** 音量（0..1）+ 静音位 —— 2026-10-20 接上（此前 useVolume 是死代码，
+   *  音量偏好从不推给任何 <audio>，界面上也没有控件）。 */
+  volume: number;
+  muted: boolean;
+  onVolumeChange: (volume: number) => void;
+  onToggleMute: () => void;
   /** crossfade 时长（秒）。0 = 关闭（默认）。 */
   onCrossfadeSec: (sec: number) => void;
   onEqBandGain: (index: number, dB: number) => void;
@@ -104,6 +110,10 @@ export default function SettingsModal({
   onChangePlayerMode,
   audioFx,
   onEqEnabled,
+  volume,
+  muted,
+  onVolumeChange,
+  onToggleMute,
   onCrossfadeSec,
   onEqBandGain,
   onApplyEqPreset,
@@ -298,12 +308,38 @@ export default function SettingsModal({
             </div>
           </section>
 
-          {/* ② 音频（EQ）—— specs/audio-fx */}
+          {/* ② 音频（音量 + EQ）—— specs/audio-fx */}
           <section className="set-section set-section--compact audio-fx">
             <h3 className="set-section-title">音频</h3>
             <p className="set-section-hint">
               10 段均衡器 · 改动即时生效并记住，关掉 EQ 时曲线仍保留在下面
             </p>
+
+            {/* 音量（2026-10-20 接上）—— 此前音量偏好从不推给任何 <audio> */}
+            <div className="audio-fx-volume">
+              <button
+                type="button"
+                className={`set-btn${muted ? ' set-btn--accent' : ''}`}
+                aria-pressed={muted}
+                onClick={onToggleMute}
+                title={muted ? '取消静音' : '静音'}
+              >
+                {muted ? '🔇 已静音' : '🔊 音量'}
+              </button>
+              <input
+                className="audio-fx-slider"
+                type="range"
+                aria-label="音量"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round((muted ? 0 : volume) * 100)}
+                onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
+              />
+              <span className="audio-fx-band-db audio-fx-volume-value">
+                {Math.round((muted ? 0 : volume) * 100)}%
+              </span>
+            </div>
 
             <div className="audio-fx-actions">
               <button

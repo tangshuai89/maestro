@@ -21,6 +21,7 @@ import type { EquivalentFailReason } from '../api';
 export type PlayFailReason =
   | 'paid-track' // 种子源本身是付费专辑/付费单曲（需单购，VIP 不解）
   | 'vip-locked' // 其它平台搜到了等价曲但全是 VIP 锁
+  | 'entitlement-expired' // 凭据有效、但**付费权益没了**（重登没用，等会员恢复/换平台）
   | 'stream-failed' // 同平台换到版本但实探不出流（凭据/版权级拒绝）
   | 'no-match' // 其它平台连候选都搜不到（≈无版权）
   | 'generic'; // 未知 / 兜底链根本没走到等价源步
@@ -761,17 +762,25 @@ export function usePlayer(
   const reportPlayFailure = useCallback(
     (failedProvider: MusicProvider, code: string) => {
       void (async () => {
+        // 探不通就按普通播放失败处理 —— 宁可少提示，不要卡住用户。
+        // 探通了才有权益状态可读。
+        let st: Awaited<ReturnType<typeof getAuthStatusValidated>> | null = null;
         try {
-          const st = await getAuthStatusValidated(failedProvider);
+          st = await getAuthStatusValidated(failedProvider);
           if (st.expired === true) {
             onAuthExpiredRef?.current?.(failedProvider);
             return;
           }
         } catch {
-          /* 探不通就按普通播放失败处理 —— 宁可少提示，不要卡住用户 */
+          /* 探不通 → st 保持 null，下面按普通失败处理 */
         }
-        // 结构化失败：分级文案（种子源 vipCategory 优先，其次服务端等价源
-        // 搜索结论）+ 自动跳下一首（连挂 ≥3 首停用，防整库死歌无限跳）。
+        // 结构化失败：分级文案（种子源 vipCategory 优先，其次**服务端权益状态**，
+        // 最后是服务端等价源搜索结论）+ 自动跳下一首（连挂 ≥3 首停用，防整库死歌
+        // 无限跳）。
+        //
+        // 「凭据有效但会员没了」这一档只能靠服务端判：客户端只知道自己没声，
+        // 分不清是"没版权"还是"会员过期"—— 而这两者的用户动作完全相反
+        // （后者重登没用）。所以 /auth/status?extended=1 会带 entitlement 三态。
         consecutiveFailuresRef.current += 1;
         const cur = trackRef.current;
         const seedSrc = currentUnifiedRef.current?.sources.find(
@@ -783,7 +792,9 @@ export function usePlayer(
             ? 'paid-track'
             : cat === 'vip-only' || cat === 'vip-month'
               ? 'vip-locked'
-              : (lastEquivReasonRef.current ?? 'generic');
+              : st?.entitlement === 'expired'
+                ? 'entitlement-expired'
+                : (lastEquivReasonRef.current ?? 'generic');
         setFailure({
           title: cur?.title ?? '',
           artist: cur?.artist ?? '',

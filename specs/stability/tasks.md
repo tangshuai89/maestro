@@ -172,31 +172,49 @@
   - 遗留（不算覆盖问题）：该函数在**生产链路里仍零调用点** ——
     renderer 侧另有一套 `PlayFailure.reason` 分级，两套语义要接线
 
-- [ ] **H4** renderer 9 个核心 hook 无任何测试 —— **8/9 已补，剩 useAuth**
+- [x] **H4** renderer 核心 hook / 组件零测试 —— **hook 全补完 + 组件层全补完（17/17）**
 
-  - ✅ **已补（8 个，2026-10-20）**：`useVolume` / `useTheme` / `useDeezerEditorials` /
-    `useLyrics` / `useDesktopLyrics` / `usePlaylist` / `useReco` / `useSpotifyWpsPlayer`
-    —— 共 **72 条新用例**，用 `renderHook` 驱动真实 hook，断言**契约**而非实现细节。
-    复测覆盖率：`useVolume` / `useTheme` / `useDeezerEditorials` / `useLyrics` /
-    `useDesktopLyrics` / `usePlaylist` = **100%**，`useReco` 99.5%，
-    `useSpotifyWpsPlayer` 83.9%
-  - 顺带修掉一条**高负载 flaky**：`usePlayer.hook.test.tsx` 的「兜底链耗尽」用例
-    单独跑 2.3s（全量跑机器负载高时被拖过 vitest 默认 5s → 报 timeout）——
-    显式给 20s 超时。**这条在旧门禁下是完全隐形的**（`|| true` 吞掉 + 退出码恒 0），
-    是门禁改成真失败后才第一次浮出来
-  - ⬜ **剩余**：`useAuth`(700 行) —— reducer + 定时器 + 协议处理，单独一轮
-  - ⬜ **剩余组件（0% 覆盖）**：`LikedLibraryModal`(549) / `NLPlaylistModal` /
-    `RemotePlaylistModal` / `NeteaseCookieModal` / `SourceSelect` /
-    `components/layout/*`（Titlebar / SourceMenu / QualityMenu / DeezerPresetSelect）/
-    `components/ui/*`（5 个）/`PlayerNotice` / `RecoLoading`
-    —— 组件层共 **19 个文件 0% 覆盖**，是 renderer 侧最大的一块空白
+  - ✅ **hook 全部补完（9 个）**：
+    - 第一轮（2026-10-20，72 条用例）：`useVolume` / `useTheme` / `useDeezerEditorials` /
+      `useLyrics` / `useDesktopLyrics` / `usePlaylist` / `useReco` / `useSpotifyWpsPlayer`
+      —— 用 `renderHook` 驱动真实 hook，断言**契约**而非实现细节。复测覆盖率
+      100% / 100% / 100% / 100% / 100% / 100% / 99.5% / 83.9%
+    - 第二轮（2026-10-21，39 条用例）：`useAuth`(700 行，reducer + 定时器 + 协议处理)
+  - ✅ **组件层补 17 个（148 条用例，2026-10-21）**：
+    - 第一轮（75 条）：`components/ui/*`（Button / Dialog / Input / Tooltip / textarea）+
+      `components/layout/*`（SourceMenu / QualityMenu / DeezerPresetSelect）+
+      `components/modals/*`（LikedLibraryModal / NLPlaylistModal）
+    - 第二轮（73 条）：`common/PlayerNotice`（13，**失败分级 UI** ——
+      五种 reason 的文案必须**互不相同**，这是"分级"的全部意义）+
+      `common/RecoLoading`（8，阶段按已耗时推进，不无脑循环）+
+      `layout/Titlebar`（12，条件渲染 + 各按钮回调）+
+      `modals/NeteaseCookieModal`（12，扫码轮询 803/800/802 三态 + 手动 Cookie 兜底）+
+      `modals/RemotePlaylistModal`（17，解析 → 读取 → 播放/追加/存本地歌单 + 错误翻中文）+
+      `source-select/SourceSelect`（7，Spotify 档位文案）+
+      `__sandbox/ButtonSmoke`（4，Radix 编译链烟囱）
+  - ⚠️ **同批修掉 2 条墙钟依赖的 flaky**（`usePlayer.hook.test.tsx`）：
+    「会员已失效」和「凭据已过期」两条还留在**真定时器**上（兜底链 800ms +
+    1500ms），高负载下被拖过 vitest 默认 5s → 超时。改成假定时器手动推进时钟
+    → 整个文件从「超时 5s」变成 **145ms**，且与负载无关（同批已修的那条
+    「兜底链耗尽」是同样的改法）
+  - ⚠️ **覆盖 ≠ 已接线**：`useVolume` 补了 8 条契约用例之后仍然是**死代码** ——
+    hook 写好、测试也有了，但**从来没被调用过**（界面上没有音量控件，音量偏好
+    也不推给任何 `<audio>`）。2026-10-21 才真正接上（`useVolume(slots, track)` →
+    `App.tsx` → `SettingsModal`），并顺带修掉 3 个**测试脆弱性**（EQ 测试按位置
+    取滑块 → 插入音量滑块后索引整体错位）。
+  - ⚠️ 两条 flaky 都是**真门禁**才浮出来的（旧门禁下被 `|| true` + 恒 0 退出码吞掉）：
+    ① `usePlayer.hook.test.tsx` 兜底链用例的墙钟依赖 → 改假定时器
+    ② `music.controller.e2e` 的**真实网络依赖**（文件头写着"不依赖真实音乐平台
+    网络"—— 那是许愿不是事实）→ 全打桩 + 加一道网络陷阱（fetch 一调用就抛 +
+    计数，结束断言零真实网络请求）
 
-- [ ] **H5** `electron/src/main.ts` + `preload.ts` 零覆盖
-  - `preload.ts` 暴露约 30 个 IPC channel，只有 `desktop-lyrics:*` 有
-    `ipc-contract.test.ts` 守着；其余 channel 无契约保护
-  - 补：`3f7373a` 已加 `electron/src/ipc-surface.test.ts`（5 条全量通道面契约，
-    含 renderer→main / main→renderer / 白名单方向 / 白名单生效），但
-    `main.ts` / `preload.ts` 的**行覆盖**仍是 0（契约测试只断言通道名，不执行实现）
+- [x] **H5** `electron/src/main.ts` + `preload.ts` 零覆盖 —— **已补执行级测试**
+  - `3f7373a` 先加了 `electron/src/ipc-surface.test.ts`（5 条**全量通道面**契约：
+    renderer→main / main→renderer / 白名单方向 / 白名单生效），但只断言通道名，
+    **不执行实现** → 行覆盖仍 0
+  - 2026-10-21 补**执行级**测试（19 条）：`preload.test.ts`（真调 API，断言通道/
+    参数/退订 —— 白名单外的通道**被拒绝**，不注册监听）+ `main.ipc-exec.test.ts`
+    （真跑 main，断言 IPC 注册与内部 token —— 两次启动 token 不一样，不是写死的常量）
 
 - [x] **H6** 覆盖率数字口径失真（**门禁本身在骗人**）—— 实测影响 **~24pp**，不是 1pp
 

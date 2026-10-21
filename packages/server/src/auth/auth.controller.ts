@@ -11,11 +11,11 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { normalizeProvider, PROVIDER_LABELS } from '../common/provider';
+import { normalizeProvider, PROVIDER_LABELS, type MusicProvider } from '../common/provider';
 import { Request, Response } from 'express';
 import { QqAuthStrategy } from './qq.strategy';
 import { NeteaseAuthStrategy } from './netease-auth.strategy';
-import { SessionService } from '../common/session';
+import { SessionService, type ProviderSession } from '../common/session';
 import { SpotifyMusicProvider } from '../music/spotify.provider';
 import { StorageService } from '../common/storage';
 import { withTimeout } from '../common/timeout';
@@ -224,13 +224,13 @@ export class AuthController {
           }
         : null,
     };
-    if (extended === '1') {
-      out['lastValidatedAt'] = this.sessionService.getLastValidatedAt(session, p);
-    }
+    // `validated` = 探针结论（true=确认活着 / false=确认死了 / undefined=没探）
+    let validated: boolean | undefined;
     // validate=1 → **真的**跑一次登录态探针（spec: specs/auth-resilience Phase 10）。
     // 不传则保持纯结构判断、不发任何额外请求 —— 这是回归护栏，别去掉。
     if (validate === '1') {
       const probe = await this.musicService.probeSession(session, p);
+      validated = probe.alive;
       if (probe.alive) {
         // 只在「结论性存活」时刷新 lastValidatedAt（Phase 11 P11-4）：
         // network_error 是"探针没结论"不算校验过；不写则保持 stale，
@@ -239,19 +239,37 @@ export class AuthController {
           this.sessionService.setLastValidatedAt(session, p, Date.now());
           out['lastValidatedAt'] = Date.now();
         }
-      } else {
+      } else if (probe.reason === 'no_cookie') {
         // 没凭据 = 从没登录过，不是"过期"。此时不标 expired，让上层按未登录处理
         //（否则从没登录的用户一进 app 就被弹"重新登录"）。
-        if (probe.reason === 'no_cookie') {
-          out['loggedIn'] = false;
-          return out;
-        }
+        // ⚠️ 这里**不能** early return：extended 的字段（lastValidatedAt /
+        //   credential / entitlement）在后面统一补上，提前返回会漏掉它们。
+        out['loggedIn'] = false;
+      } else {
         this.logger.warn(`auth status validate: ${p} 登录态已失效（reason=${probe.reason}）`);
         out['loggedIn'] = false;
         out['expired'] = true;
         out['error'] = 'AUTH_EXPIRED';
         out['message'] = `${PROVIDER_LABELS[p] ?? p} 登录已过期，请重新登录`;
       }
+    }
+
+    if (extended === '1') {
+      out['lastValidatedAt'] = this.sessionService.getLastValidatedAt(session, p);
+      // ── 凭据 / 权益的**三态** ──────────────────────────────────────
+      //
+      // 为什么加这个：播放彻底失败时，renderer 需要区分三种完全不同的用户
+      // 动作 ——「重新登录」「会员没了（重登没用）」「换歌」。光看 loggedIn
+      // 区分不出来（它只说"有没有 cookie"）。这两个字段是**服务端唯一的权威
+      // 来源**（会员状态只有服务端知道：网易云黑胶、QQ 绿钻、Spotify tier
+      // 都存在 session 里）。
+      //
+      // 语义与 `entitlement.ts` 的 TriState 一致：
+      //   credential  = 凭据还能不能用（能不能调账号接口）
+      //   entitlement = 付费权益还有没有（能不能放全曲）
+      // 'unknown' 是合法且重要的答案 —— 没查 / 查不到就别猜。
+      out['credential'] = credentialState(out['expired'] === true, loggedIn, validated);
+      out['entitlement'] = entitlementState(p, ps);
     }
     return out;
   }
@@ -513,4 +531,60 @@ export class AuthController {
     );
     return { ok: true };
   }
+}
+
+/**
+ * 凭据三态（见 auth.controller 的 status）。
+ *
+ * - 'valid'   → validate=1 的探针确认还活着
+ * - 'expired' → 探针确认死了（且不是"从没登录"）
+ * - 'unknown' → 没跑探针 / 探针没结论（网络错误等）—— **不猜**
+ */
+function credentialState(
+  expired: boolean,
+  loggedIn: boolean,
+  validated: boolean | undefined,
+): 'valid' | 'expired' | 'unknown' {
+  if (expired) return 'expired';
+  if (validated === true) return 'valid';
+  // 从没登录（loggedIn=false）或压根没探 → 都归 'unknown'：
+  // 「没登录过」和「登录过期」是两件事，别混（混了会让从没登录的用户
+  // 一进 app 就被弹"重新登录"）。
+  void loggedIn;
+  return 'unknown';
+}
+
+/**
+ * 权益三态：能不能放全曲（与凭据无关 —— 凭据有效但会员过期是最容易搞混的一种）。
+ *
+ * - netease → session.neteaseVip（黑胶，ADR-110 用 /api/nuser/account/get 校准）
+ * - qq      → session.qqVip（绿钻）
+ * - spotify → session.spotify.tier（premium / free / open）
+ * - deezer  → 匿名平台，没有权益概念 → 'unknown'
+ *
+ * undefined（没探测过）→ 'unknown'，**不当成 expired** —— 误报"会员失效"会让
+ * 用户去续费，而真实原因可能只是这首歌没版权。
+ */
+function entitlementState(
+  provider: MusicProvider,
+  ps: ProviderSession | undefined,
+): 'valid' | 'expired' | 'unknown' {
+  if (!ps) return 'unknown';
+  if (provider === 'netease') {
+    if (ps.neteaseVip === true) return 'valid';
+    if (ps.neteaseVip === false) return 'expired';
+    return 'unknown';
+  }
+  if (provider === 'qq') {
+    if (ps.qqVip === true) return 'valid';
+    if (ps.qqVip === false) return 'expired';
+    return 'unknown';
+  }
+  if (provider === 'spotify') {
+    const tier = ps.spotify?.tier;
+    if (tier === 'premium') return 'valid';
+    if (tier === 'free' || tier === 'open') return 'expired';
+    return 'unknown';
+  }
+  return 'unknown';
 }
