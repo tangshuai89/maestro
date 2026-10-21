@@ -1,6 +1,27 @@
 name: Test & TypeCheck & Lint
 
-on: [push, pull_request]
+# 触发策略（2026-10-21 拆分）：
+#
+#   pull_request           → 快门禁（typecheck + lint + test:ci），约 8 分钟
+#   push 到 master         → 同一个快门禁，主干也守住
+#   feature 分支的 push    → **不再触发**。以前这里是 push + pull_request 两个
+#     触发源，同一个 PR 会跑**两遍**全量（push 事件一次、PR 事件一次）
+#     → 每个 PR 白烧 30 分钟 runner。
+#
+# 覆盖率**不在这个 workflow 里跑** —— 它是仓库健康度指标（全局数字，拦不住
+# 任何具体的坏 PR），挪到 coverage.yml 的**每日定时**里跑了。
+#
+# 为什么覆盖率要挪走、而不是留在 PR 上：
+#   1. 它衡量的是「整个仓库」而不是「这个 PR」—— 一个 PR 把某个文件从 80% 拉到
+#      0%，全局仍然过；阈值 ≥60% 只有在仓库整体这个粒度上才有意义。
+#   2. 更要紧的是它**跑的是另一遍套件**，和 test:ci 的判定**不是同一次执行**
+#      → 会产出自相矛盾的数字。实测踩过：某个测试文件跑不起来时，
+#      reco.service.ts 的覆盖率从 80.27% 塌成 32.88%，看着像天大的覆盖洞，
+#      其实只是那次测试没跑成。任何「跑两遍」的架构都会这么拧巴。
+on:
+  pull_request:
+  push:
+    branches: [master]
 
 jobs:
   check:
@@ -37,6 +58,3 @@ jobs:
 
       - name: Run tests
         run: npm run test:ci
-
-      - name: Coverage report
-        run: npm run test:coverage
