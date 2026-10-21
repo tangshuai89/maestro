@@ -56,5 +56,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # 采集 + 判定 + 打印覆盖率报告（**不判阈值**：全局覆盖率在 PR 上判是
+      # 粒度错配 —— 它拦不住任何具体的坏 PR，阈值留给 master，见下一步）。
       - name: Run tests
         run: npm run test:ci
+
+      # 阈值门禁只在 **master 的 push** 上判。这一步**复用上一步刚采集的数据**
+      # （scripts/test.sh 的 --coverage 看到 30 分钟内的新鲜数据就不重跑），
+      # 所以它几乎不花时间 —— 覆盖率数字和「过没过」来自**同一次执行**，
+      # 不会再出现「某个测试文件挂了 → 覆盖率塌成假洞」那种自相矛盾。
+      - name: Coverage threshold gate (≥60%)
+        if: github.event_name == 'push'
+        run: npm run test:coverage
