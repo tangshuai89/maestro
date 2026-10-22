@@ -2,7 +2,10 @@ name: Test & TypeCheck & Lint
 
 # 触发策略（2026-10-21 拆分）：
 #
-#   pull_request           → 快门禁（typecheck + lint + test:ci），约 8 分钟
+#   pull_request           → 快门禁（typecheck + lint + test:ci）
+#     实测用时 ≈ 22 分钟（2026-10-22，PR #114 修完 hang 后的真实值）。
+#     之前这里写「约 8 分钟」是 PR #112 拆分时的估计 —— 那时还没把覆盖率采集
+#     搬进同一个 job。数字要按实测改，别让下一个人照着它做计划。
 #   push 到 master         → 同一个快门禁，主干也守住
 #   feature 分支的 push    → **不再触发**。以前这里是 push + pull_request 两个
 #     触发源，同一个 PR 会跑**两遍**全量（push 事件一次、PR 事件一次）
