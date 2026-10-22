@@ -426,6 +426,16 @@
     | `ensureGraph` / `onActiveChanged` | crossfade 的图构建 / 槽位切换回调 |
     → 新增 `renderer/src/hooks/usePlayer.events.test.tsx`（9 条）全部补上。
     复测：**函数级未执行数 8 → 0**（`usePlayer.ts` 函数覆盖 100%）。
+  - ⚠️ **「加了判据但主流程没调用」是真实事故（踩了两次）**：
+    「judgeNewFunctions + 它的自测」都加进去了，但**主流程没调用它** →
+    **自测全绿、门禁却还是老的行为**。单元自测和变异测试都抓不到（它们测的是
+    **函数本身**，不是「主流程有没有调用它」）。
+    → 只有**端到端**能抓：造一个真实的最小 git 仓库 + 一份 lcov → 走**完整
+    链路** → 断言输出里出现了那个函数名、且退出码非零。已加进
+    `coverage-diff-gate.js --self-test`，并验证过「断开主流程 → 自测变红」。
+    ⚠️ 顺带两个环境坑：临时 git 仓库会继承全局 `core.hooksPath`（指向
+    lefthook）→ 自测里必须带 `-c core.hooksPath=/dev/null`；base 与当前版本
+    内容必须不同，否则第二次 commit 是空的 → 失败。
   - ⚠️ **函数级判据的盲区（诚实说明）**：lcov 的 `FNDA` **按函数名索引** →
     同名函数的执行次数会**互相掩盖**（`usePlayer.ts` 里 18 个 `get`）。
     对「**新增**的函数」这个判据无影响（新增函数的名字在 base 里不存在 →
