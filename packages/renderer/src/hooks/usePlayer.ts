@@ -146,6 +146,21 @@ export function usePlayer(
    * transport commands (play / pause / resume) route through WPS instead of
    * the HTML <audio> element. For non-spotify tracks or when WPS isn't ready,
    * the existing <audio> path is used unchanged.
+   *
+   * ⚠️ **传给本 hook 的所有 ref 参数，引用必须终身稳定**（实测踩出来的）：
+   *
+   * `presentTrack` 的 useCallback 依赖里含 `wpsRef`（它要读 WPS 就绪状态）
+   * → 每次 render 换一个新的 ref 对象 → `presentTrack` 每次重建
+   * → `loadNextTrack`（依赖 presentTrack）跟着重建
+   * → 「provider 变化时自动加载」那个 effect（依赖 loadNextTrack）跟着重跑
+   * → 它 setState（setLoading / setFanOutCount）→ re-render
+   * → **回到第一步 → 无限循环**。
+   *
+   * 实测：调用方传 `{ current: wps }` 这种**字面量**（每次 render 新建）
+   * → vitest worker 直接被撑到 OOM（JS heap out of memory），测试挂 90 秒。
+   *
+   * 正确用法：`const wpsRef = useRef<...>(null)` 然后 `wpsRef.current = wps`
+   *（App.tsx 就是这么写的）→ 引用稳定 → 不会循环。
    */
   wpsRef?: RefObject<UseSpotifyWpsPlayer | null>,
   /**
