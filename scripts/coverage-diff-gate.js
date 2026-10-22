@@ -591,6 +591,92 @@ function selfTest() {
     expect('判据 2：有覆盖的不报', !z.includes('packages/server/src/ok.ts'));
   }
 
+  // ── 6c2. **端到端**：主流程真的用了这三层判据吗？──────────────────
+  //
+  // ⚠️ 这条是补一次真实事故留下的：曾经「judgeNewFunctions + 它的自测」都
+  // 加进去了，但**主流程没调用它** → 自测全绿、门禁却还是老的两层判据。
+  //
+  // 单元自测 + 变异测试都抓不到（它们测的是**函数本身**，不是「主流程有没有
+  // 调用它」）。只有**端到端**能抓：造一个真实的 diff + lcov → 走完整条
+  // 链路 → 断言输出里出现了那个函数名。
+  //
+  // 这里用子进程跑主流程（需要真的走 git diff + 文件 IO），比在进程内直接
+  // 调函数更接近真实 —— 也更能暴露「主流程没接线」这类问题。
+  {
+    const { execFileSync } = require('node:child_process');
+    const fs2 = require('node:fs');
+    const os2 = require('node:os');
+    const p2 = require('node:path');
+    const tmp = fs2.mkdtempSync(p2.join(os2.tmpdir(), 'maestro-gate-e2e-'));
+    // 造一个最小仓库：一个有「新增未测函数」的源文件 + 它的 lcov
+    fs2.mkdirSync(p2.join(tmp, 'packages/server/src'), { recursive: true });
+    // base 版本：只有 keep
+    fs2.writeFileSync(
+      p2.join(tmp, 'packages/server/src/svc.ts'),
+      'export function keep() { return 1; }\n',
+    );
+    // lcov：keep 有 FNDA=1，neverCalled 完全没有 FNDA（= 从未被调用）
+    fs2.writeFileSync(
+      p2.join(tmp, 'cov.info'),
+      [
+        'SF:packages/server/src/svc.ts',
+        'FN:1,keep',
+        'FNF:1',
+        'FNH:1',
+        'FNDA:1,keep',
+        'end_of_record',
+        '',
+      ].join('\n'),
+    );
+    // 造一个 diff：base 版本只有 keep，当前版本多了 neverCalled
+    // ⚠️ 必须关掉 hooks —— 全局 core.hooksPath 指向 lefthook，在临时仓库里
+    // 会去找配置然后失败（"No config files with names [lefthook] ..."）。
+    const git = (args) =>
+      execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
+        cwd: tmp,
+        stdio: 'ignore',
+      });
+    git(['init', '-q']);
+    git(['config', 'user.email', 't@t']);
+    git(['config', 'user.name', 't']);
+    git(['add', '-A']);
+    git(['commit', '-qm', 'base']);
+    fs2.writeFileSync(
+      p2.join(tmp, 'packages/server/src/svc.ts'),
+      'export function keep() { return 1; }\n' +
+        'export function neverCalled() { return 2; }\n',
+    );
+    git(['commit', '-qam', 'add untested fn']);
+
+    let out = '';
+    let rc = 0;
+    try {
+      out = execFileSync(
+        'node',
+        [
+          p2.join(__dirname, 'coverage-diff-gate.js'),
+          '--base',
+          'HEAD~1',
+          '--lcov',
+          p2.join(tmp, 'cov.info'),
+          '--trust',
+          p2.join(tmp, 'nonexistent-trust.txt'),
+        ],
+        { cwd: tmp, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+    } catch (err) {
+      rc = err.status ?? 1;
+      out = (err.stdout ?? '') + (err.stderr ?? '');
+    }
+    fs2.rmSync(tmp, { recursive: true, force: true });
+    expect(
+      '端到端：新增的未测函数必须被主流程报出来',
+      out.includes('neverCalled'),
+      `主流程输出里没有 neverCalled（退出码 ${rc}）：\n${out.slice(0, 400)}`,
+    );
+    expect('端到端：门禁必须非零退出', rc !== 0, `退出码是 ${rc}`);
+  }
+
   // ── 6d. 函数级判据（主判据）─────────────────────────────────────
   //
   // 函数名是源码标识符 → 跨转换管线稳定 → 行级数据错位时唯一可靠的信号。
