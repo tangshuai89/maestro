@@ -465,6 +465,49 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **renderer 的行级覆盖数据是错位的 —— 看起来「对齐」，其实随机**（2026-10-21）
+
+  写门禁测试时用探针函数撞出来的：一个**从未被调用**的函数，它的函数体各行
+  覆盖率 hits 却是 170；而同一函数里**必然执行**的 `setCurrentTime(0)` hits
+  却是 0。
+
+  **机制**：c8 要把 V8 的**字节偏移**映射回源码行，需要 **source map**（从 node
+  的 `source-map-cache` 拿）。ts-node 跑的那部分有 → server/common/electron 的
+  行号正确；**node 直跑 `.test.mjs` 和 vitest 跑 `.test.tsx` 的那部分没有** →
+  renderer 的行号全是错的。而 esbuild 把 `usePlayer.ts` 从 2192 行压成 1336 行
+  → c8 拿转换后 JS 的字节偏移去切源 .ts 文件 → 行号随机；但因为切的是完整源
+  文件，**DA 条目数 = 源文件行数** → **看起来「对齐」，极具欺骗性**。
+
+  ⇒ 之前报的 renderer 行覆盖数字（含 `api.ts` 98.1% / `usePlayer.ts` 87.8% /
+  `lyricsShare.ts` 100%）**都不可信**。
+
+  **函数级覆盖是可信的** ✓ —— 函数名是源码标识符，不随转换器的字节布局变化。
+  实测：从未被调用的探针函数，**FNDA 精确地是 0**。
+
+  - 新增 `scripts/collect-line-coverage-trust.js`：扫两个 temp 目录的
+    `source-map-cache` → 产出「行覆盖可信的源文件」清单
+  - 覆盖率报告（`scripts/lcov-summary.js`）**标注**哪些文件的行覆盖不可信 ——
+    不可信的那部分「% Lines」和「未覆盖行号」标 `~` / `(行号不可信)`，
+    **数字必须诚实**
+  - 覆盖率 diff 门禁改成**三层判据**：① **函数级（主）**新增代码所在函数
+    FNDA=0 → 拦（全包可靠）② **行级**只对行覆盖**可信**的文件启用
+    （renderer 跳过 → 宁可漏报不误报）③ **文件级**新增文件完全不在 lcov 里 → 拦
+
+  **顺带用函数级信号挖出了 `usePlayer.ts` 的真洞** —— 8 个函数从未被执行过，
+  其中 5 个是**用户可见功能**：`onTimeUpdate`（进度条不动）、`onEnded`
+  （播完不自动下一首）、`seek`（拖进度条/点歌词跳转不生效）、`handleDislike`
+  （踩不了）、`changeDeezerPreset`（切不了 Deezer 精选）。新增
+  `renderer/src/hooks/usePlayer.events.test.tsx`（9 条）全部补上，复测
+  **函数级未执行数 8 → 0**。
+
+  ⚠️ **代价（诚实说明）**：函数被调用过 ≠ 函数体每一行都被走到 → renderer 上的
+  门禁**抓不到**「在已有函数里加了一个没走到的分支」。要彻底解决得让 renderer
+  也产出 source map（装 `@vitest/coverage-v8` 等）—— 改覆盖率工具链的大工程，
+  本轮没做。
+  ⚠️ **另一个盲区**：lcov 的 `FNDA` **按函数名索引** → 同名函数的次数互相掩盖
+  （`usePlayer.ts` 里 18 个 `get`）。对「**新增**的函数」这个判据无影响（新增
+  函数的名字在 base 里不存在 → 0 就是真的没被调用），但判「已有同名函数」时不可靠。
+
 - **覆盖率阈值门禁在 90% 的水位上等于不存在 —— 换成 diff 粒度**（2026-10-21）
 
   全局 ≥60% 的阈值在当前水位上**拦不住任何东西**：实测新增 100 / 500 / 1000

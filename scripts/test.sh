@@ -271,13 +271,30 @@ c8_report() {
   c8_report_one "$COV_TMP_NODE" "$node_dir"
   c8_report_one "$COV_TMP_VITEST" "$vitest_dir"
 
+  # 收集「哪些源文件的**行级**覆盖可信」。
+  #
+  # c8 要把 V8 的字节偏移映射回源码行，需要 source map（从 node 的
+  # source-map-cache 拿）。ts-node 跑的那部分有；node 直跑 .mjs 和 vitest 跑的
+  # 那部分**没有** → 它们的行号是**错位**的（esbuild 把 usePlayer.ts 从 2192 行
+  # 压成 1336 行，c8 拿转换后的字节偏移去切源文件 → 行号随机；但因为切的是完整
+  # 源文件，DA 条目数 = 源文件行数，**看起来「对齐」**）。
+  #
+  # 实测反例：一个**从未被调用**的函数，它的函数体各行 DA hits 却是 170；而同一
+  # 函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
+  #
+  # → 门禁据此只对可信文件用**行级**判据；不可信的一律用**函数级**（函数名是源码
+  # 标识符，跨转换管线稳定 → 可信）。
+  node "$PWD/scripts/collect-line-coverage-trust.js" \
+    "$COVERAGE_DIR/.line-coverage-trusted.txt" "$COV_TMP_NODE" "$COV_TMP_VITEST" || return 1
+
   # 并集（行/分支/函数命中取 max）→ 覆盖最终 lcov.info
   node "$PWD/scripts/merge-lcov.js" "$COVERAGE_DIR/lcov.info" \
     "$node_dir/lcov.info" "$vitest_dir/lcov.info" || return 1
 
   # 文本报告：从合并后的 lcov 重新算（c8 report 只能读 temp 目录，
   # 读不出合并结果）。
-  node "$PWD/scripts/lcov-summary.js" "$COVERAGE_DIR/lcov.info" || return 1
+  node "$PWD/scripts/lcov-summary.js" "$COVERAGE_DIR/lcov.info" \
+    --trust "$COVERAGE_DIR/.line-coverage-trusted.txt" || return 1
 }
 
 # 有没有「新鲜」的采集数据可复用。

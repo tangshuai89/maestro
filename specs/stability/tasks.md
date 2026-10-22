@@ -366,6 +366,79 @@
   - 无任何并发/长稳脚本：`music.service.ts` 的 `mergeLibrary`、provider 并发 fan-out、
     like-sync 队列都没验证过
 
+- [x] **H12** renderer 的**行级覆盖数据是错位的** —— 看起来「对齐」，其实随机
+
+  这条是 2026-10-21 补 H11 的门禁时**撞出来的**（用新写的探针函数验证门禁
+  判据时，探针明明从没被调用，DA hits 却是 170）。
+
+  **机制**：
+  1. c8 要把 V8 的**字节偏移**范围映射回源码行，需要 **source map**（从 node 的
+     `source-map-cache` 拿）。
+  2. **ts-node 跑的那部分有**（ts-node 注册了 source-map-support）→
+     server / common / electron 的行号**正确** ✓
+  3. **node 直跑 `.test.mjs` 和 vitest 跑 `.test.tsx` 的那部分没有**：
+     - `.mjs`：node 的 type-stripping 不产出 source map
+     - `.tsx`：vite/esbuild 转换后的 JS 在**内存**里，source map 是 inline
+       data URL，node 的 `source-map-cache` 里没有
+     → **renderer 的行号全是错的** ✗
+  4. 错位的样子：esbuild 把 `usePlayer.ts` 从 **2192 行压成 1336 行**（删掉 856
+     行类型/空行）→ c8 拿**转换后 JS 的字节偏移**去切**源 .ts 文件** → 切出来的
+     行号是**随机的**。但因为切的是完整源文件，**DA 条目数 = 源文件行数**
+     （2184 = 2184）→ **看起来「对齐」，极具欺骗性**。
+
+  **实测反例**（`usePlayer.ts`）：
+  - 一个**从未被调用**的探针函数，它的函数体各行 DA hits = **170**
+    （模块顶层语句的次数）
+  - 同一函数里**必然执行**的 `setCurrentTime(0)`，DA hits = **0**
+
+  ⇒ 拿这种数据判「新增代码有没有被测到」→ **漏报**（未覆盖的新代码看起来已覆盖）。
+
+  **函数级覆盖是可信的** ✓ —— 函数名是**源码标识符**，不随转换器的字节布局
+  变化 → 跨管线、跨 entry 都稳定。实测：从未被调用的探针函数，**FNDA 精确地是 0**。
+
+  - ✅ **修法**：
+    - 新增 `scripts/collect-line-coverage-trust.js`：扫两个 temp 目录的
+      `source-map-cache` → 产出「行覆盖可信的源文件」清单
+    - 门禁改成**三层判据**：
+      1. **函数级（主）**：新增代码所在函数的 FNDA=0 → 拦。**全包可靠**
+      2. **行级**：只对**行覆盖可信**的文件启用（server/common/electron）。
+         renderer 的行级数据不可信 → 跳过（宁可漏报不误报）
+      3. **文件级**：新增文件完全不在 lcov 里 → 拦（不依赖行号，可靠）
+    - `scripts/lcov-summary.js` 在报告里**标注**哪些文件的行覆盖可信 ——
+      **数字必须诚实**：不可信的数据不该和可信的数据混在一起报
+
+  - ✅ **顺带用函数级信号挖出了 `usePlayer.ts` 的真洞**（8 个函数从未被执行）：
+    | 函数                  | 坏了的用户可见症状                   |
+    | --------------------- | ------------------------------------ |
+    | `onTimeUpdate`        | **进度条不动**（时间不更新）          |
+    | `onEnded`             | **播完不自动下一首**（歌单停住）      |
+    | `seek`                | **拖进度条 / 点歌词跳转不生效**        |
+    | `handleDislike`       | **踩不了**（不喜欢按钮）              |
+    | `changeDeezerPreset`  | 切不了 Deezer 精选                   |
+    | `ensureGraph` / `onActiveChanged` | crossfade 的图构建 / 槽位切换回调 |
+    → 新增 `renderer/src/hooks/usePlayer.events.test.tsx`（9 条）全部补上。
+    复测：**函数级未执行数 8 → 0**（`usePlayer.ts` 函数覆盖 100%）。
+  - ⚠️ **函数级判据的盲区（诚实说明）**：lcov 的 `FNDA` **按函数名索引** →
+    同名函数的执行次数会**互相掩盖**（`usePlayer.ts` 里 18 个 `get`）。
+    对「**新增**的函数」这个判据无影响（新增函数的名字在 base 里不存在 →
+    base 时没有它的 FNDA → 现在 0 = 真的没被调用 ✓），但如果哪天想判
+    「某个**已有**同名函数有没有被调用」，这个信号不可靠。
+  - ⚠️ **代价（诚实说明）**：函数被调用过 ≠ 函数体每一行都被走到。所以
+    renderer 上的门禁**抓不到**「在已有函数里加了一个没走到的分支」。
+    要彻底解决得让 renderer 也产出 source map（装 `@vitest/coverage-v8`，
+    或让 vite-node 把 source map 注册进 node 的 cache）—— 那是**改覆盖率工具链**
+    的大工程，本轮没做。
+  - ⚠️ **两个连带发现**（写测试时撞出来的）：
+    1. **`wpsRef` 引用不稳定 → 无限循环**。`usePlayer` 的 `presentTrack` 依赖
+       `wpsRef` → 每次 render 换新对象 → `presentTrack` 重建 → `loadNextTrack`
+       重建 → auto-load effect 重跑 → setState → re-render → **死循环**
+       （实测把 vitest worker 撑到 OOM）。生产里 `wpsRef` 是 `useRef` 建的
+       （稳定）→ 没问题。但这是 `usePlayer` 的**隐含契约**，值得写进文档。
+    2. **crossfade 的 'rapid-skip' 保护**：首播走硬切会把 idle 槽加进
+       `stillAudible`（120ms 收声窗口）→ 期间切歌 → `decideSwitch` 返回
+       'rapid-skip' → **也走硬切**（连按 ⏭ 不淡变，否则双声叠加）。测 crossfade
+       必须先等过这个窗口。
+
 - [x] **H11** 覆盖率阈值门禁在 90% 的水位上**等于不存在** —— 换成 diff 粒度
 
   这条是 2026-10-21 评估「下一个值得补强的是哪里」时算出来的：

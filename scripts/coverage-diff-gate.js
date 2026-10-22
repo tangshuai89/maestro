@@ -200,6 +200,53 @@ function pkgOf(f) {
 }
 
 /**
+ * 判定（函数级，主判据）：新增代码所在的**函数**有没有被执行过。
+ *
+ * ## 为什么以函数级为主
+ *
+ * 行级覆盖只在**有 source map** 的采集里可信（见 collect-line-coverage-trust.js
+ * 的说明）：ts-node 跑的那部分（server/common/electron）有；node 直跑 .mjs 和
+ * vitest 跑的那部分（**renderer**）没有 → 它们的 DA 行号是**错位**的。
+ *
+ * 实测反例（2026-10-21）：一个**从未被调用**的函数，它的函数体各行 DA hits
+ * 却是 170（模块顶层语句的次数）；而同一函数里**必然执行**的 `setCurrentTime(0)`
+ * hits 却是 0。拿这种数据判「新增代码有没有被测到」会**漏报**（未覆盖的新代码
+ * 看起来已覆盖）甚至**误报**。
+ *
+ * 函数名是**源码标识符**，不随转换器的字节布局变化 → 跨管线、跨 entry 都稳定。
+ * 实测：从未被调用的探针函数，FNDA 精确地是 0 ✓
+ *
+ * 代价（诚实说明）：函数被调用过 ≠ 函数体每一行都被走到。所以这个判据
+ * **抓不到**「在已有函数里加了一个没走到的分支」。那种情况靠**行级**判据补，
+ * 而行级只在可信的文件上用。
+ *
+ * @param added       Map<文件, 新增行号集合>
+ * @param fnByLine    Map<文件, Map<行号, 函数名>>（新增行 → 所属函数）
+ * @param fnCounts    Map<函数名, 执行次数>
+ * @returns Map<文件, string[]>  文件 → 未被执行的新函数名列表
+ */
+function judgeNewFunctions(added, fnByLine, fnCounts) {
+  /** @type {Map<string, string[]>} */
+  const out = new Map();
+  for (const [file, lines] of added) {
+    if (!/\.(ts|tsx)$/.test(file)) continue;
+    if (!/(^|\/)src\//.test(file)) continue;
+    if (/\.d\.ts$/.test(file)) continue;
+    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+    const map = fnByLine.get(file);
+    if (!map) continue;
+    const badFns = new Set();
+    for (const ln of lines) {
+      const fn = map.get(ln);
+      if (!fn) continue; // 顶层语句 → 模块加载时必然执行 → 不算
+      if ((fnCounts.get(fn) ?? 0) === 0) badFns.add(fn);
+    }
+    if (badFns.size > 0) out.set(file, [...badFns].sort());
+  }
+  return out;
+}
+
+/**
  * 判定：哪些新增/修改行没被执行过。
  *
  * ⚠️ **主流程和自测必须调同一个函数** —— 自测里再写一份实现的话，
@@ -211,7 +258,7 @@ function pkgOf(f) {
  * @returns Map<文件, {lines: number[], missing: boolean}>
  *          missing=true → 整个文件不在 lcov 里（新增文件从未被 import）
  */
-function judgeAddedLines(added, lcov) {
+function judgeAddedLines(added, lcov, trusted) {
   /** @type {Map<string, {lines: number[], missing: boolean}>} */
   const out = new Map();
   for (const [file, lines] of added) {
@@ -229,6 +276,12 @@ function judgeAddedLines(added, lcov) {
       out.set(file, { lines: [...lines].sort((a, b) => a - b), missing: true });
       continue;
     }
+    // ⚠️ 该文件的**行覆盖不可信** → 不用行级判据（函数级判据覆盖了它）。
+    //
+    // 行级数据在缺 source map 的采集里是**错位**的：c8 拿转换后 JS 的字节偏移
+    // 去切源文件 → 行号随机（但 DA 条目数 = 源文件行数，看起来「对齐」）。
+    // 实测反例：一个**从未被调用**的函数，其函数体各行 DA hits 却是 170。
+    if (trusted && !trusted.has(file)) continue;
     const bad = [...lines].filter((ln) => {
       const hits = da.get(ln);
       // 不在 DA 记录里 = 不可执行行（注释/类型声明/空行）→ 跳过
@@ -442,6 +495,59 @@ function selfTest() {
     expect('判据 2：全覆盖为 0 的文件被报出', z.includes('packages/server/src/zeroed.ts'));
     expect('判据 2：部分覆盖的不报', !z.includes('packages/server/src/partial.ts'));
     expect('判据 2：有覆盖的不报', !z.includes('packages/server/src/ok.ts'));
+  }
+
+  // ── 6d. 函数级判据（主判据）─────────────────────────────────────
+  //
+  // 函数名是源码标识符 → 跨转换管线稳定 → 行级数据错位时唯一可靠的信号。
+  {
+    const added2 = new Map([
+      ['packages/server/src/a.ts', new Set([10, 11, 20])],
+    ]);
+    // 10/11 在 `neverCalled` 里（FNDA=0）→ 报；20 在 `called` 里（FNDA=3）→ 不报
+    const fnByLine2 = new Map([
+      [
+        'packages/server/src/a.ts',
+        new Map([
+          [10, 'neverCalled'],
+          [11, 'neverCalled'],
+          [20, 'called'],
+        ]),
+      ],
+    ]);
+    const fnda2 = new Map([
+      ['neverCalled', 0],
+      ['called', 3],
+    ]);
+    const r = judgeNewFunctions(added2, fnByLine2, fnda2);
+    expect(
+      '函数级判据：未被调用的新函数被报出',
+      JSON.stringify(r.get('packages/server/src/a.ts')) === '["neverCalled"]',
+    );
+    expect(
+      '函数级判据：被调用过的新函数不报',
+      !JSON.stringify(r.get('packages/server/src/a.ts')).includes('called"'),
+    );
+  }
+
+  // ── 6e. 行级判据只对「可信文件」生效 ─────────────────────────────
+  //
+  // 行覆盖在 renderer 上是**错位**的（见 collect-line-coverage-trust.js）。
+  // 不可信的文件必须**跳过行级判据** —— 否则未覆盖的新代码看起来已覆盖
+  // （漏报），或者反过来误报。
+  {
+    const added2 = new Map([['packages/server/src/a.ts', new Set([5])]]);
+    const lcov2 = new Map([['packages/server/src/a.ts', new Map([[5, 0]])]]);
+    const trusted2 = new Set(['packages/server/src/a.ts']);
+
+    const withTrust = judgeAddedLines(added2, lcov2, trusted2);
+    expect('行级判据：可信文件 → 报出未覆盖行', withTrust.has('packages/server/src/a.ts'));
+
+    const withoutTrust = judgeAddedLines(added2, lcov2, new Set());
+    expect(
+      '行级判据：不可信文件 → 跳过（不误报）',
+      !withoutTrust.has('packages/server/src/a.ts'),
+    );
   }
 
   // ── 7. 不该被门禁管的文件类型 ───────────────────────────────────
