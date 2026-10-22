@@ -1286,6 +1286,13 @@ export function usePlayer(
       // Reco queue reached the end → pull the next AI batch and continue,
       // rather than looping back to #1 (the classic search-queue behaviour).
       const atEnd = q.idx >= q.tracks.length - 1;
+      // 拉下一批失败时要先把错误**记下来**（不是直接 setError）：下面的
+      // presentTrack 会 setError(null) —— 「切到下一首就清掉上一次的报错」是
+      // 有意设计（不该残留旧的「音频加载失败」弹窗），但它会把这条错误一起
+      // 清掉 → 用户只看到歌单循环回第 1 首，**完全不知道推荐服务挂了**
+      // （React 18 批处理下 setError(msg) 紧跟着 setError(null) → 净效果 null，
+      //  错误提示从来没出现过）。
+      let loadMoreError: string | null = null;
       if (atEnd && q.loadMore) {
         setLoading(true);
         try {
@@ -1307,8 +1314,13 @@ export function usePlayer(
           // Next batch had nothing playable → fall through to loop so playback
           // isn't a dead end.
         } catch (e) {
-          setError(`获取下一批推荐失败：${(e as Error).message}`);
-          if (queueRef.current !== q) return;
+          const msg = `获取下一批推荐失败：${(e as Error).message}`;
+          if (queueRef.current !== q) {
+            // 队列已经被换掉（用户切了源 / 重新搜索）→ 只报错，不动别人的队列。
+            setError(msg);
+            return;
+          }
+          loadMoreError = msg;
           // fall through to loop
         } finally {
           setLoading(false);
@@ -1316,6 +1328,9 @@ export function usePlayer(
       }
       q.idx = (q.idx + 1) % q.tracks.length;
       presentTrack(q.tracks[q.idx], q.unifiedItems?.[q.idx]);
+      // presentTrack 刚把 error 清了 → 把「下一批拉取失败」重新挂回去，
+      // 否则这条错误永远显示不出来（播放没断，但用户该知道推荐服务挂了）。
+      if (loadMoreError) setError(loadMoreError);
       void detectAndApplyLiked(q.unifiedItems?.[q.idx]);
       return;
     }
