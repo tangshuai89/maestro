@@ -485,7 +485,12 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   实测：从未被调用的探针函数，**FNDA 精确地是 0**。
 
   - 新增 `scripts/collect-line-coverage-trust.js`：扫两个 temp 目录的
-    `source-map-cache` → 产出「行覆盖可信的源文件」清单
+    `source-map-cache` → 产出「行覆盖可信的源文件」清单。
+    ⚠️ 这个脚本算错的后果是**静默降级**（清单恒空 → 门禁对所有文件都关掉
+    行级判据，只剩函数级）—— 比报错更糟，所以给它加了 `--self-test` 并挂进
+    `test:ci`。实测踩了两次：source-map-cache 的 key 有两种形态（`file:///abs`
+    和**相对仓库根**的 `packages/...`）；相对路径**开头**就是 `packages/`，
+    用 `includes('/packages/')` 检查会一个都匹配不到。
   - 覆盖率报告（`scripts/lcov-summary.js`）**标注**哪些文件的行覆盖不可信 ——
     不可信的那部分「% Lines」和「未覆盖行号」标 `~` / `(行号不可信)`，
     **数字必须诚实**
