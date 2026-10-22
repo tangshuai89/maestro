@@ -37,6 +37,12 @@ WATCH=0
 CI_MODE=0
 COVERAGE=0
 INSTRUMENT=0
+# 浏览器端覆盖率（接线层 App.tsx / main.tsx）：默认开。
+# 关掉它 → 接线层的行覆盖恒为 0% → diff 门禁对「改 App.tsx」会误拦。
+COLLECT_BROWSER=1
+if [ "${MAESTRO_SKIP_BROWSER_COVERAGE:-0}" = "1" ]; then
+  COLLECT_BROWSER=0
+fi
 for arg in "$@"; do
   case "$arg" in
     --watch|-w) WATCH=1 ;;
@@ -52,9 +58,12 @@ FAILED_COUNT=0
 FAILED_FILES=""
 
 COVERAGE_DIR="$PWD/coverage"
-COV_TMP="$COVERAGE_DIR/.tmp"
+# 采集数据分**两个** temp 目录（2026-10-21 修 —— 见下方「两条转换管线」注释）。
+COV_TMP_NODE="$COVERAGE_DIR/.tmp-node"
 # 采集数据的"新鲜度"标记：--coverage 靠它决定复用还是重采。
-COV_MARKER="$COV_TMP/.collected-at"
+# ⚠️ 标记**不能**放在 $COVERAGE_DIR 里 —— 采集开头会 `rm -rf $COVERAGE_DIR`，
+# 标记会被自己删掉 → 每次都判定为「不新鲜」→ 复用永远失效。
+COV_MARKER="$PWD/.coverage-collected-at"
 
 # ── c8 公共参数：三个 flag 缺一不可，缺了覆盖率就在骗人 ──────────────
 #
@@ -74,12 +83,39 @@ COV_MARKER="$COV_TMP/.collected-at"
 #    common/src（源码）双计，数值虚高 0.98pp。
 #
 # 用 `--exclude=<pattern>` 单参形式 + 引号，避免 `**` 被 shell 提前展开。
-C8_COMMON=(
+#
+# ── 两条转换管线必须分开采集（2026-10-21 修）────────────────────────
+#
+# 仓库里有两条互不兼容的 TS 转换管线会覆盖**同一个**源文件：
+#   - `.test.mjs` → `node` + 自实现 ESM loader（node 自己的 type-stripping）
+#   - `.test.tsx` → `vitest` + vite/esbuild 转换
+#
+# 两份产物如果进**同一个** temp 目录，c8 生成报告时会按 URL 合并它们
+# （`@bcoe/v8-coverage` 的 `mergeScriptCovs`）—— 而那个合并是按**字节偏移**
+# 匹配函数的。两份的偏移基于不同的转换后源码，对不上 → 同一份文件被拆成
+# 两组互不相认的函数条目 → 只有一组能对上 c8 手里的 source map →
+# **另一组的覆盖被整份丢弃**。
+#
+# 实测（`renderer/src/lib/lyricsShare.ts`）：单独跑 .mjs = 71/171，
+# 单独跑 .tsx = 167/171，**合并后 = 67/171**（不是并集的 171/171）。
+# 而且哪边胜出不可预测（api.ts 是 vitest 赢、lyricsShare.ts 是 node 赢）
+# —— 门禁阈值（≥60%）就建立在这组数字上，等于门禁读到的可能是任意一边。
+#
+# 修法：两条管线各写各的 temp 目录，最后在 **lcov 文本层**取并集
+# （lcov 是行级格式，不依赖字节偏移，两边天然可比）。见 scripts/merge-lcov.js。
+#
+# node 管线（.test.ts / .test.mjs）：独立 temp 目录
+C8_NODE=(
   --clean=false --reporter=lcov
-  "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP"
+  "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP_NODE"
   --extension .ts --extension .tsx --all
   "--exclude=**/dist/**" "--exclude=**/*.d.ts"
   "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs"
+  # 测试基建不进覆盖率分母：`src/test/`（vitest setup）和 `src/e2e/`
+  # （跨包 E2E 的 server / 假 provider）。它们是**夹具**不是出厂代码 ——
+  # 单测套件永远不 import 它们 → 必然 0% → 白拉低全局数字。
+  # 与「硬编码颜色门禁不扫测试文件」是同一个原则。
+  "--exclude=**/test/**" "--exclude=**/e2e/**"
 )
 
 # ── 失败清单 ───────────────────────────────────────────────────────
@@ -126,13 +162,14 @@ run_pkg() {
       if [ "$INSTRUMENT" -eq 1 ]; then
         # .mjs tests import .ts source via the ESM loader; without
         # --extension .ts c8 only counts .js files and the coverage is 0%.
-        ( cd "$root/packages/$pkg" && npx c8 "${C8_COMMON[@]}" --src src node "$f" ) || ok=0
+        # → node 管线：独立的 temp 目录（与 vitest 管线分开，见 C8_NODE 上方注释）
+        ( cd "$root/packages/$pkg" && npx c8 "${C8_NODE[@]}" --src src node "$f" ) || ok=0
       else
         ( cd "$root/packages/$pkg" && node "$f" ) || ok=0
       fi
     else
       if [ "$INSTRUMENT" -eq 1 ]; then
-        ( cd "$root/packages/$pkg" && npx c8 "${C8_COMMON[@]}" --src src npx ts-node "$f" ) || ok=0
+        ( cd "$root/packages/$pkg" && npx c8 "${C8_NODE[@]}" --src src npx ts-node "$f" ) || ok=0
       else
         ( cd "$root/packages/$pkg" && npx ts-node "$f" ) || ok=0
       fi
@@ -153,13 +190,29 @@ run_pkg() {
   if [ "$pkg" = "renderer" ] && [ -n "$tsx_files" ]; then
     local ok=1
     if [ "$INSTRUMENT" -eq 1 ]; then
-      ( cd "$root" && npx c8 "${C8_COMMON[@]}" --src "packages/$pkg/src" \
-          npx vitest run -c "packages/$pkg/vitest.config.ts" --reporter=dot ) || ok=0
+      # → vitest 管线：**用 vitest 自己的 coverage provider**（@vitest/coverage-v8），
+      #   **不再用 c8 包 vitest**。
+      #
+      #   为什么（2026-10-21 实测，见 specs/stability/tasks.md H12）：c8 要把 V8 的
+      #   **字节偏移**映射回源码行，需要 **source map**（从 node 的 source-map-cache
+      #   拿）。vitest 的模块是 vite/esbuild 转换后在**内存**里执行的，source map 是
+      #   inline data URL → node 的 cache 里没有它 → c8 拿转换后 JS 的字节偏移去切
+      #   源 .ts 文件 → **行号随机**。但因为切的是完整源文件，**DA 条目数 = 源文件
+      #   行数** → 看起来「对齐」，极具欺骗性。
+      #
+      #   实测反例：一个**从未被调用**的函数，其函数体各行 hits 却是 170；而同一
+      #   函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
+      #
+      #   coverage-v8 走 vite 自己的 transform 链 → 拿得到 source map → 行号正确
+      #   （实测：同一个探针函数，行 hits = 0 ✓，函数 hits = 0 ✓）。
+      ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" \
+          --coverage --reporter=dot ) || ok=0
     else
       ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" --reporter=dot ) || ok=0
     fi
     if [ "$ok" -eq 0 ]; then
       echo "  ⚠️ 组件测试批量失败 → 逐个归因"
+      local failed=0
       for f in $tsx_files; do
         local short="${f#$root/}"
         if [ "$CI_MODE" -eq 1 ]; then echo "  ▸ ${short}"; fi
@@ -168,6 +221,7 @@ run_pkg() {
         # 在有软链的路径下匹配不上 → 整段静默不跑
         ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" "${f#$PWD/}" --reporter=dot ) || rc=$?
         if [ "$rc" -ne 0 ]; then
+          failed=$((failed + 1))
           FAILED_COUNT=$((FAILED_COUNT + 1))
           FAILED_FILES="${FAILED_FILES} ${short}"
           [ "$CI_MODE" -eq 1 ] && echo "  ✗ ${short}"
@@ -175,6 +229,23 @@ run_pkg() {
           echo "  ✓ ${short}"
         fi
       done
+      # ⚠️ **逐个归因不带插桩** → 这一轮跑完，renderer 的覆盖率数据是**空的**
+      #   （coverage/.vitest 没被写）→ 报告里 renderer 的组件全是 0%，
+      #   全局覆盖率从 88% 塌到 65%，**而且没有任何报错**（阈值 60% 照样过）→
+      #   数字在骗人。所以：**插桩模式下必须补跑一次带覆盖率的批量**。
+      if [ "$INSTRUMENT" -eq 1 ]; then
+        echo "  ↻ 补跑带插桩的批量（恢复覆盖率数据）"
+        ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" \
+            --coverage --reporter=dot ) || true
+      fi
+      # ⚠️ 批量挂了但逐个都过 = **flaky**（批量里挂、单跑绿）。这种失败**不能
+      #   悄悄消失** —— 它正是上面「覆盖率数据变空」的元凶。所以明确记进失败
+      #   清单，让这次 run 变红（flaky 就是不可靠，应该被发现）。
+      if [ "$failed" -eq 0 ]; then
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_FILES="${FAILED_FILES} <renderer 组件测试 flaky：批量失败但逐个都通过>"
+        echo "  ✗ 批量失败但逐个都通过 → 判定为 flaky，记入失败清单"
+      fi
     elif [ "$CI_MODE" -eq 1 ]; then
       local tsx_count
       tsx_count=$(printf '%s\n' "$tsx_files" | grep -c . || true)
@@ -197,17 +268,142 @@ run_all() {
 }
 
 # ── 采集 / 报告 / 阈值 ─────────────────────────────────────────────
-# 覆盖率报告（只读已有采集数据）。
-c8_report() {
-  npx c8 report --reporter=text --reporter=lcov \
-    "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP" \
+#
+# 覆盖率报告：**两条管线各自出 lcov，再在文本层取并集**。
+#
+# 为什么不能直接 `c8 report` 一次（原来那样）：两条管线的覆盖数据混在同一个
+# temp 目录里，c8 会按字节偏移合并 → 同一文件被拆成两组互不相认的函数 →
+# 一整组被丢弃。详见 C8_NODE 上方的注释与 scripts/merge-lcov.js。
+#
+# 报告的**路径基准必须一致**（都用仓库根 + 绝对 --src），否则两侧的 SF: 前缀
+# 不同 → 合并时变成两个不同的文件 → 并集失效。
+c8_report_one() {
+  local tmp="$1"
+  local out="$2"
+  npx c8 report --reporter=lcov \
+    "--report-dir=$out" "--temp-directory=$tmp" \
     --all \
     --src "$PWD/packages/common/src" --src "$PWD/packages/server/src" \
     --src "$PWD/packages/renderer/src" --src "$PWD/packages/electron/src" \
     --extension .ts --extension .tsx \
     "--exclude=**/dist/**" "--exclude=**/*.d.ts" \
     "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs" \
+    "--exclude=**/test/**" "--exclude=**/e2e/**" \
     2>/dev/null || true
+}
+
+# 合并各管线的 lcov → 最终报告。
+#
+# 现在是**两份**：
+#   1. node 侧（common/server/electron 的 .test.ts + renderer 的 .test.mjs，
+#      ts-node / node 直跑）→ c8 —— ⚠️ 其中 .mjs 那部分**行号错位**（见下）
+#   2. renderer 的 .test.tsx（vitest 跑）→ **@vitest/coverage-v8** —— 行号正确
+c8_report() {
+  local node_dir="$COVERAGE_DIR/.lcov-node"
+  rm -rf "$node_dir"
+  mkdir -p "$node_dir"
+
+  # 合并器自测：它只有几行逻辑，但写错会**静默**产出偏低的覆盖率 ——
+  # 而那正是它要修的缺陷本身。报告前先自测，改坏了当场红。
+  node "$PWD/scripts/merge-lcov.js" --self-test || return 1
+
+  c8_report_one "$COV_TMP_NODE" "$node_dir"
+
+  # ── 浏览器端覆盖率（接线层：App.tsx / main.tsx）────────────────
+  #
+  # 单元测试**碰不到** App.tsx（纯接线层，不导出逻辑）→ 它的行覆盖恒为 0%
+  # → diff 门禁会把「App.tsx 的任何新增行」判成「未覆盖」→ **误拦**。
+  # 浏览器里跑一次真实链路（E2E）就能把接线层的覆盖**真实地**记下来。
+  #
+  # ⚠️ 环境不具备时（没装 Chromium）**明确警告但不中断** —— 采集是增强，
+  #    不是单测的替代品；没有它只是「接线层无法判定」，不是「数字造假」。
+  local browser_lcov="$COVERAGE_DIR/.lcov-browser/lcov.info"
+  if [ "$COLLECT_BROWSER" -eq 1 ]; then
+    echo "── 采集浏览器端覆盖率（接线层）──"
+    if node "$PWD/scripts/collect-browser-coverage.mjs" --out "$browser_lcov"; then
+      echo "── 浏览器覆盖就绪 ──"
+    else
+      local rc=$?
+      if [ "$rc" -eq 2 ]; then
+        echo "── ⚠️  跳过浏览器覆盖采集（环境不具备：没装 @playwright/test / Chromium）" >&2
+        echo "   → **接线层（App.tsx / main.tsx）无法被判定**：它们的行覆盖恒为 0%," >&2
+        echo "     diff 门禁会把「改 App.tsx」误判成「新增行没被执行过」→ 误拦。" >&2
+        echo "   → 装浏览器：npx playwright install chromium" >&2
+      else
+        echo "── ⚠️  浏览器覆盖采集失败（退出码 $rc）—— 接线层将无法被判定" >&2
+      fi
+    fi
+  fi
+
+  # 收集「哪些源文件的**行级**覆盖可信」。
+  #
+  # c8 要把 V8 的字节偏移映射回源码行，需要 source map（从 node 的
+  # source-map-cache 拿）。ts-node 跑的那部分有；**node 直跑 .mjs 的那部分没有**
+  # → 它的行号是**错位**的（esbuild 把 usePlayer.ts 从 2192 行压成 1336 行，c8 拿
+  # 转换后的字节偏移去切源文件 → 行号随机；但因为切的是完整源文件，DA 条目数 =
+  # 源文件行数，**看起来「对齐」**）。
+  #
+  # 实测反例：一个**从未被调用**的函数，其函数体各行 DA hits 却是 170；而同一
+  # 函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
+  #
+  # → 门禁据此只对可信文件用**行级**判据；不可信的一律用**函数级**（函数名是源码
+  # 标识符，跨转换管线稳定 → 可信）。
+  #
+  # ⚠️ renderer 的 .test.tsx 现在走 @vitest/coverage-v8（行号正确）→ 它的文件
+  #    **全部可信**，由 collect-line-coverage-trust.js 从 coverage-v8 的产物里读。
+  #    ⚠️ 浏览器侧（.lcov-browser）也是**可信**的：它经 source map 回映射到
+  #    源文件行号（v8-to-istanbul 干的活），行号是准的。
+  node "$PWD/scripts/collect-line-coverage-trust.js" \
+    "$COVERAGE_DIR/.line-coverage-trusted.txt" "$COV_TMP_NODE" \
+    "$COVERAGE_DIR/.vitest" "$COVERAGE_DIR/.lcov-browser" || return 1
+
+  # renderer 的 .tsx 覆盖率：coverage-v8 的 istanbul JSON → lcov
+  # （它自己的 lcov.info 用「相对 vitest root」的路径，和 git diff 对不上）
+  local vitest8_lcov="$COVERAGE_DIR/.lcov-vitest8"
+  # ⚠️ 缺了这一半数据**必须报错退出**，不能硬出报告：renderer 的组件文件会
+  #   全部显示 0%（它们只被 .tsx 测试覆盖），全局覆盖率从 88% 塌到 65%，
+  #   而阈值 60% **照样过** → 一份在骗人的报告。实测踩过：组件测试批量失败
+  #   → 退化成逐个跑（不插桩）→ 覆盖率数据整个没了，run 却还是绿的。
+  if [ ! -f "$COVERAGE_DIR/.vitest/coverage-final.json" ]; then
+    # ⚠️ 报错走 **stderr**：`c8_report` 的 stdout 会被 `REPORT=$(c8_report)`
+    #   捕获进变量 → 消息印在变量里，用户看不见（实测：守卫触发了但屏幕上
+    #   一行提示都没有，只看到一个莫名其妙的退出码 1）。
+    echo "── ❌ renderer 的覆盖率数据缺失（coverage/.vitest/coverage-final.json 不存在）" >&2
+    echo "   → 组件测试的批量运行没产出数据（多半是批量失败且补跑也没成功）。" >&2
+    echo "   → **不出报告**：缺这一半数据，renderer 的组件会全算 0%，" >&2
+    echo "      全局数字是偏低的假象（实测 88% → 65%），而阈值照样过 → 数字在骗人。" >&2
+    return 1
+  fi
+  rm -rf "$vitest8_lcov"
+  mkdir -p "$vitest8_lcov"
+  node "$PWD/scripts/istanbul-to-lcov.js" \
+    "$COVERAGE_DIR/.vitest/coverage-final.json" "$vitest8_lcov/lcov.info" || return 1
+
+  # 权威侧 = vitest8 ∪ 浏览器（**同一坐标系**（都是源文件行号）→ 取并集）
+  # 浏览器侧只覆盖「它真的加载过的模块」→ 没加载的文件保留 vitest8 的数据。
+  local auth_lcov="$COVERAGE_DIR/.lcov-auth"
+  rm -rf "$auth_lcov"
+  mkdir -p "$auth_lcov"
+  if [ -f "$browser_lcov" ]; then
+    node "$PWD/scripts/merge-lcov.js" "$auth_lcov/lcov.info" \
+      "$vitest8_lcov/lcov.info" "$browser_lcov" || return 1
+  else
+    cp "$vitest8_lcov/lcov.info" "$auth_lcov/lcov.info"
+  fi
+
+  # 并集 → 覆盖最终 lcov.info
+  #
+  # ⚠️ **coverage-v8 那份是「权威」的**（`--authoritative`）—— 它的行号正确；
+  #    node 侧对同一文件的行号是**随机**的（无 source map）。两份的第 N 行不是
+  #    同一行 → 取 max = **污染**（把随机值和真值混在一起），不是「更全的覆盖」。
+  #    权威语义 = 权威来源覆盖的文件**完全替换**其它来源。
+  node "$PWD/scripts/merge-lcov.js" --authoritative "$auth_lcov/lcov.info" \
+    "$COVERAGE_DIR/lcov.info" "$node_dir/lcov.info" "$auth_lcov/lcov.info" || return 1
+
+  # 文本报告：从合并后的 lcov 重新算（c8 report 只能读 temp 目录，
+  # 读不出合并结果）。
+  node "$PWD/scripts/lcov-summary.js" "$COVERAGE_DIR/lcov.info" \
+    --trust "$COVERAGE_DIR/.line-coverage-trusted.txt" || return 1
 }
 
 # 有没有「新鲜」的采集数据可复用。
@@ -304,8 +500,14 @@ if [ "$INSTRUMENT" -eq 1 ]; then
   else
     COLLECT=1
     acquire_collect_lock
+    # ⚠️ 先删旧 marker：它现在住在 $PWD（不能放 $COVERAGE_DIR 里 —— 采集开头
+    # 会 `rm -rf $COVERAGE_DIR`，marker 会被自己删掉 → 复用永远失效）。
+    # 但反过来，marker 活到采集结束才写 → 采集中途被 kill 时旧 marker 还在
+    # → 下次会误判「数据新鲜」→ 拿一份半截的覆盖率当完整的用。
+    # 所以：采集**开始**就删，采集**结束**才写。
+    rm -f "$COV_MARKER"
     rm -rf "$COVERAGE_DIR"
-    mkdir -p "$COV_TMP"
+    mkdir -p "$COV_TMP_NODE"
   fi
 fi
 
@@ -334,7 +536,12 @@ fi
 
 # 4) 覆盖率报告（采集模式下打印；--coverage 还要判阈值）
 if [ "$INSTRUMENT" -eq 1 ]; then
-  REPORT=$(c8_report)
+  # ⚠️ 必须检查返回码：c8_report 失败（比如覆盖率数据缺失）时 stdout 里是
+  #   **半截报告** → 直接印出去 + 判阈值 = 拿一份偏低的假象当结论。
+  REPORT=$(c8_report) || {
+    echo "── ❌ 覆盖率报告生成失败 → 不出结论（见上面的错误信息）" >&2
+    exit 1
+  }
   echo "$REPORT"
   echo "── coverage report written to ${COVERAGE_DIR}/ ──"
   if [ "$FAILED_COUNT" -gt 0 ]; then

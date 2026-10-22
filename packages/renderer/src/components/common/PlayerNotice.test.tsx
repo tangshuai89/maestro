@@ -87,6 +87,36 @@ describe('PlayerNotice', () => {
     expect(text).toMatch(/重新登录没用/);
   });
 
+  it('stream-failed：凭据状态未知 → 保留「可尝试重新登录」的建议', () => {
+    const { unmount } = render(
+      <PlayerNotice failure={fail({ reason: 'stream-failed' })} error={null} {...baseProps} />,
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/可尝试重新登录/);
+    unmount();
+
+    render(
+      <PlayerNotice
+        failure={fail({ reason: 'stream-failed', credential: 'unknown' })}
+        error={null}
+        {...baseProps}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/可尝试重新登录/);
+  });
+
+  it('stream-failed：凭据确认还活着 → **不提**「重新登录」（那是无效建议）', () => {
+    render(
+      <PlayerNotice
+        failure={fail({ reason: 'stream-failed', credential: 'valid' })}
+        error={null}
+        {...baseProps}
+      />,
+    );
+    const text = screen.getByRole('alert').textContent ?? '';
+    expect(text).toMatch(/音源暂时不可用/);
+    expect(text).not.toMatch(/重新登录/);
+  });
+
   it('autoSkip=true → 显示倒计时与「停留」按钮', () => {
     render(<PlayerNotice failure={fail({ autoSkip: true })} error={null} {...baseProps} />);
     expect(screen.getByText(/4s 后自动下一首/)).toBeInTheDocument();

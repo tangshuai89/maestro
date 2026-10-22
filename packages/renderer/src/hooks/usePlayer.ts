@@ -35,6 +35,21 @@ export interface PlayFailure {
   detail: string;
   /** false = 连续多首连挂（≥3）或无下一首 → PlayerNotice 不做倒计时自动跳。 */
   autoSkip: boolean;
+  /**
+   * 凭据三态（**服务端权威**，`GET /auth/status?validate=1&extended=1` 带回）：
+   * 还能不能调账号接口。
+   *
+   * - `'valid'`   → 探针确认凭据**还活着**
+   * - `'expired'` → 探针确认凭据死了（此时已走重登分支，不会走到 failure）
+   * - `'unknown'` → 没探 / 探针没结论（网络错误等）—— **不猜**
+   * - `undefined` → 状态请求整个失败 → 同 `'unknown'`
+   *
+   * 为什么要带进 failure：`stream-failed` 档的文案里原本无条件写「可尝试重新
+   * 登录」—— 但凭据确认还活着时，**重登是没用的建议**（凭据没坏，重登出来
+   * 还是那个好凭据）。这就是 ADR-110「凭据有效 ≠ 会员有效」在**文案层**的
+   * 落地：会员没了 → 重登没用；凭据还活着 → 提重登也是白提。
+   */
+  credential?: 'valid' | 'expired' | 'unknown';
 }
 import {
   readStoredProvider,
@@ -131,6 +146,21 @@ export function usePlayer(
    * transport commands (play / pause / resume) route through WPS instead of
    * the HTML <audio> element. For non-spotify tracks or when WPS isn't ready,
    * the existing <audio> path is used unchanged.
+   *
+   * ⚠️ **传给本 hook 的所有 ref 参数，引用必须终身稳定**（实测踩出来的）：
+   *
+   * `presentTrack` 的 useCallback 依赖里含 `wpsRef`（它要读 WPS 就绪状态）
+   * → 每次 render 换一个新的 ref 对象 → `presentTrack` 每次重建
+   * → `loadNextTrack`（依赖 presentTrack）跟着重建
+   * → 「provider 变化时自动加载」那个 effect（依赖 loadNextTrack）跟着重跑
+   * → 它 setState（setLoading / setFanOutCount）→ re-render
+   * → **回到第一步 → 无限循环**。
+   *
+   * 实测：调用方传 `{ current: wps }` 这种**字面量**（每次 render 新建）
+   * → vitest worker 直接被撑到 OOM（JS heap out of memory），测试挂 90 秒。
+   *
+   * 正确用法：`const wpsRef = useRef<...>(null)` 然后 `wpsRef.current = wps`
+   *（App.tsx 就是这么写的）→ 引用稳定 → 不会循环。
    */
   wpsRef?: RefObject<UseSpotifyWpsPlayer | null>,
   /**
@@ -183,6 +213,20 @@ export function usePlayer(
   qqQualityRef.current = qqQuality;
 
   const [deezerPreset, setDeezerPreset] = useState<string>(() => readStoredDeezerPreset());
+
+  // 「当前平台 / preset」的 ref 镜像 —— 用来回答「**await 期间有没有变过**」。
+  //
+  // ⚠️ 为什么不能直接比 useState 的值：loadNextTrack 是 useCallback，它闭包里的
+  //   `provider` 是**那次 render 的快照**；`const startedProvider = provider` 也是
+  //   同一个快照 → `provider !== startedProvider` **恒为 false** → D4 守护
+  //   （「await 期间用户切了平台 → 丢弃旧结果」）是**死代码**，从来没生效过。
+  //   实测症状：电台请求在途时用户切到网易云 → QQ 的歌被装到网易云界面上
+  //   （界面显示的是另一个平台的歌，流地址也指着旧平台）。
+  //   → 必须用 ref 读**最新值**（和 qqQualityRef / wpsPlayedIdRef 同一套做法）。
+  const providerRef = useRef<MusicProvider | null>(provider);
+  providerRef.current = provider;
+  const deezerPresetRef = useRef<string>(deezerPreset);
+  deezerPresetRef.current = deezerPreset;
 
   // Search-mode client queue. Non-empty → loadNextTrack advances within the
   // results instead of hitting the server radio. Held in a ref so
@@ -803,6 +847,9 @@ export function usePlayer(
           reason,
           detail: `音频加载失败（${code}）`,
           autoSkip: consecutiveFailuresRef.current < 3 && hasNextTrack(),
+          // 凭据三态带进来 → PlayerNotice 据此决定要不要提「重新登录」
+          // （凭据确认活着时，提了也是无效建议）。
+          credential: st?.credential,
         });
         setError(`音频加载失败（${code}），请尝试切歌`);
       })();
@@ -1253,6 +1300,13 @@ export function usePlayer(
       // Reco queue reached the end → pull the next AI batch and continue,
       // rather than looping back to #1 (the classic search-queue behaviour).
       const atEnd = q.idx >= q.tracks.length - 1;
+      // 拉下一批失败时要先把错误**记下来**（不是直接 setError）：下面的
+      // presentTrack 会 setError(null) —— 「切到下一首就清掉上一次的报错」是
+      // 有意设计（不该残留旧的「音频加载失败」弹窗），但它会把这条错误一起
+      // 清掉 → 用户只看到歌单循环回第 1 首，**完全不知道推荐服务挂了**
+      // （React 18 批处理下 setError(msg) 紧跟着 setError(null) → 净效果 null，
+      //  错误提示从来没出现过）。
+      let loadMoreError: string | null = null;
       if (atEnd && q.loadMore) {
         setLoading(true);
         try {
@@ -1274,8 +1328,13 @@ export function usePlayer(
           // Next batch had nothing playable → fall through to loop so playback
           // isn't a dead end.
         } catch (e) {
-          setError(`获取下一批推荐失败：${(e as Error).message}`);
-          if (queueRef.current !== q) return;
+          const msg = `获取下一批推荐失败：${(e as Error).message}`;
+          if (queueRef.current !== q) {
+            // 队列已经被换掉（用户切了源 / 重新搜索）→ 只报错，不动别人的队列。
+            setError(msg);
+            return;
+          }
+          loadMoreError = msg;
           // fall through to loop
         } finally {
           setLoading(false);
@@ -1283,6 +1342,9 @@ export function usePlayer(
       }
       q.idx = (q.idx + 1) % q.tracks.length;
       presentTrack(q.tracks[q.idx], q.unifiedItems?.[q.idx]);
+      // presentTrack 刚把 error 清了 → 把「下一批拉取失败」重新挂回去，
+      // 否则这条错误永远显示不出来（播放没断，但用户该知道推荐服务挂了）。
+      if (loadMoreError) setError(loadMoreError);
       void detectAndApplyLiked(q.unifiedItems?.[q.idx]);
       return;
     }
@@ -1307,9 +1369,13 @@ export function usePlayer(
       if (!next) return;
       // D4 守护：await 期间 provider / preset 变了 → 旧的 fetchNextTrack 结果
       // 丢弃（让新的 loadNextTrack 自然 presentTrack 正确曲）。
+      //
+      // ⚠️ 必须读 **ref**（最新值），不能读闭包里的 `provider`（那次 render 的
+      // 快照）—— 两者同源 → 判等恒真 → 这条守护曾经是**死代码**（见上面
+      // providerRef 的注释）。
       if (
-        provider !== startedProvider ||
-        (startedProvider === 'deezer' && deezerPreset !== startedPreset)
+        providerRef.current !== startedProvider ||
+        (startedProvider === 'deezer' && deezerPresetRef.current !== startedPreset)
       ) {
         return;
       }

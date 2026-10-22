@@ -608,6 +608,14 @@ export interface AuthStatusExtended extends AuthStatus {
    * - 'valid'   → validate=1 的探针确认还活着
    * - 'expired' → 探针确认死了（该重新登录）
    * - 'unknown' → 没探 / 探针没结论 —— **不猜**
+   *
+   * 与 `expired`(boolean) 的关系：**同一件事的两种表示，服务端保证恒等**
+   * （`expired === true` ⟺ `credential === 'expired'`）。这条恒等关系有服务端
+   * 单测钉住（auth-expired-validate.e2e.test.ts），不是"实现上碰巧一致"。
+   * - 只需要「死没死」时用 `expired`（语义直接，且不依赖 extended=1）
+   * - 需要「是不是**确认活着**」时用本字段 —— 只有三态能答这个问题：
+   *   凭据确认活着时，「重新登录」是**无效建议**（凭据没坏，重登出来还是
+   *   那个好凭据），文案不能提。ADR-110 的核心洞察在文案层的落地。
    */
   credential?: 'valid' | 'expired' | 'unknown';
   /**

@@ -198,6 +198,11 @@ export class AuthController {
           provider: 'deezer',
         },
         lastValidatedAt: null,
+        // Deezer 是匿名平台：既没有凭据也没有会员概念 → 两态都归 'unknown'。
+        // 但**形状要统一**：extended=1 就该带三态，不能因为这条 early return
+        // 就缺字段 —— 客户端按 `credential === 'valid'` 之类判断，缺字段会被
+        // 读成 unknown（对 Deezer 恰好是对的，但契约不该靠巧合成立）。
+        ...(extended === '1' ? { credential: 'unknown', entitlement: 'unknown' } : {}),
       };
     }
     const session = this.sessionService.resolve(req, res);

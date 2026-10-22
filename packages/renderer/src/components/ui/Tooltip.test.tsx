@@ -44,9 +44,19 @@ describe('Tooltip', () => {
     await userEvent.hover(trigger);
     await screen.findByRole('tooltip');
     await userEvent.unhover(trigger);
-    // 提示默认「可悬停」，移开触发元素后需把指针移到提示区域之外才关闭
-    fireEvent.pointerMove(document.body, { clientX: 300, clientY: 300 });
-    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    // 提示默认「可悬停」，移开触发元素后需把指针移到提示区域之外才关闭。
+    //
+    // ⚠️ **pointerMove 必须放进 waitFor 里重试**（2026-10-22 实测踩到 flaky）：
+    // Radix 的关闭链路是「trigger 的**原生** pointerleave → setState（grace area）
+    // → React effect 挂上 document 的 pointermove 监听 → 监听里判断指针是否
+    // 出界 → onClose」。**挂监听那一步是后续任务** → 机器负载高时它会比下面
+    // 这行 fireEvent 更晚 → 监听器还没挂上 → 这次 pointermove 没人接 →
+    // 提示永远不关 → 之前那条 1s 超时的 waitFor 直接红（而且只在 CI 高负载时红）。
+    // 放进 waitFor 里重试 = 断言语义不变（「最终会关」），但与负载无关。
+    await waitFor(() => {
+      fireEvent.pointerMove(document.body, { clientX: 300, clientY: 300 });
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
   });
 
   it('点触发元素 → 提示内容关闭', async () => {

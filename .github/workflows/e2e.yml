@@ -1,0 +1,79 @@
+# H7 —— 跨包 E2E 全链路（server 真后端 + renderer 真产物）
+#
+# 这条 workflow 验的是「**两个包拼起来能不能用**」：
+#   renderer（浏览器里跑真的出厂产物） → HTTP → server（真 NestJS 路由 /
+#   真控制器 / 真存储 / 真音频代理） → 假 provider（只有「平台本身」是假的）
+#
+# 与 visual.yml 的分工：
+#   - visual.yml：像素比对（改了 CSS 才跑，macOS runner，基线带平台后缀）
+#   - 本 workflow：**链路**验证（改了任何一端就跑，ubuntu runner 够用）
+#
+# ⚠️ 为什么 E2E 要**单独**一条 workflow（而不是并进 test.yml）：
+#   1. 它需要 **构建 renderer 产物**（vite preview 起 dist）→ 比单测慢得多；
+#   2. 它要**占端口**（3200 / 4173）→ 不能和别的 job 抢；
+#   3. 失败产物（trace / report）要单独上传，排查路径不同。
+
+name: E2E (cross-package)
+
+on:
+  pull_request:
+    paths:
+      - 'packages/server/src/**'
+      - 'packages/renderer/src/**'
+      - 'packages/electron/src/**'
+      - 'packages/common/src/**'
+      - 'tests/e2e/**'
+      - 'playwright.e2e.config.mjs'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: 是否声明了 playwright 依赖（读清单，不读 node_modules）
+        id: gate
+        run: |
+          if node -e "const p=require('./package.json');process.exit(p.devDependencies && p.devDependencies['@playwright/test'] ? 0 : 1)"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=E2E 已跳过::package.json 里还没有 @playwright/test"
+          fi
+
+      - if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
+      - name: 构建 common（server/renderer 依赖它的 dist）
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run build:common
+
+      - name: 构建 renderer（E2E 跑的是**出厂产物**，不是 dev server）
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run build:renderer
+
+      - name: 安装 Chromium
+        if: steps.gate.outputs.ready == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: 跑跨包 E2E
+        id: e2e
+        if: steps.gate.outputs.ready == 'true'
+        run: npx playwright test --config playwright.e2e.config.mjs
+
+      - name: 失败时上传 trace（能回放每一步）
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-trace
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 14

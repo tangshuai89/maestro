@@ -26,9 +26,23 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # ⚠️ **必须设 job 级超时**（默认 360 分钟 = 6 小时）。
+    #   实测踩过：浏览器覆盖采集的子进程没被清理 → 父进程永不退出 →
+    #   这一步卡满 6 小时才被 GitHub 强杀（2026-10-22，PR #114）。
+    #   根因已修（杀进程组 + 子进程 timeout + 脚本看门狗），
+    #   但**任何**未来未预料的挂起都不该再烧掉 6 小时和一份 runner 额度。
+    timeout-minutes: 45
 
     steps:
+      # ⚠️ **必须 fetch-depth: 0**（不能是默认的 1）：覆盖率 diff 门禁要拿
+      # `git diff <base>...HEAD` 算「本次 PR 新增/改了哪些行」→ shallow
+      # clone 下拿不到 base 的 commit → 门禁无法计算。
+      #
+      # ⚠️ 拿不到 base 时门禁**明确失败**（退出 2），不是静默放过 ——
+      # 静默放过 = 门禁形同虚设（这正是旧门禁的毛病）。
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # ⚠️ Node 版本**不能降回 20**：renderer 的 20 个 `*.test.mjs` 用自实现的
       # ESM loader 直接 import `*.ts` 源码（不走打包器），依赖 Node ≥ 22.18 的
@@ -50,14 +64,23 @@ jobs:
       - name: Build @maestro/common
         run: npm run build:common
 
+      # ⚠️ 浏览器覆盖采集（接线层 App.tsx / main.tsx）需要 Chromium。
+      #   单元测试**碰不到** App.tsx（纯接线层）→ 它的行覆盖恒为 0% →
+      #   diff 门禁会把「改 App.tsx」误判成「新增行没被执行过」→ 误拦。
+      #   装了浏览器，采集器就能把接线层的覆盖**真实地**记下来。
+      - name: Install Chromium（浏览器覆盖采集用）
+        run: npx playwright install --with-deps chromium
+
       - name: TypeScript type check
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
-      # 采集 + 判定 + 打印覆盖率报告（**不判阈值**：全局覆盖率在 PR 上判是
+      # 采集 + 判定 + 打印覆盖率报告（**不判全局阈值**：全局覆盖率在 PR 上判是
       # 粒度错配 —— 它拦不住任何具体的坏 PR，阈值留给 master，见下一步）。
+      # PR 上的覆盖率把关由**下面的 diff 粒度门禁**做（判据：本次新增/修改的
+      # 代码行必须被执行过）。
       - name: Run tests
         run: npm run test:ci
 
@@ -68,3 +91,25 @@ jobs:
       - name: Coverage threshold gate (≥60%)
         if: github.event_name == 'push'
         run: npm run test:coverage
+
+      # ── 覆盖率 diff 门禁（PR only）───────────────────────────────
+      #
+      # 全局阈值在 90% 的水位上等于不存在：实测要新增 **21324 行**零覆盖
+      # 代码才跌破 60% → 它拦不住任何"具体的坏 PR"。这个门禁换判据：
+      # **本次 PR 新增/修改的代码行必须被执行过**。
+      #
+      # 为什么不需要 base 分支的覆盖率基线：它问的是"你这次写的代码有没有被
+      # 跑到"，不是"比上次差多少"。所以不需要跑两遍套件、不需要存基线快照。
+      #
+      # 数据来源是**上一步 test:ci 刚采集的** lcov（test:ci 是插桩跑的，
+      # 已经在采集覆盖率）→ 不额外花时间，也保证"过没过"和"覆盖多少"来自
+      # 同一次执行。
+      - name: Coverage diff gate (新增代码必须被测到)
+        if: github.event_name == 'pull_request'
+        # ⚠️ --trust 是「行覆盖可信文件」清单（collect-line-coverage-trust.js 生成）。
+        #   不传 → 门禁**明确失败**（退出码 2），不硬判：不知道哪些文件的行号可信时，
+        #   拿行级数据判 = 拿可能错位的行号当真值。
+        run: |
+          node scripts/coverage-diff-gate.js \
+            --base ${{ github.event.pull_request.base.sha }} \
+            --trust coverage/.line-coverage-trusted.txt

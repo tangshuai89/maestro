@@ -25,6 +25,12 @@ export default tseslint.config(
       'src/**/*.test.ts',
       'src/**/*.spec.ts',
       'src/test-helpers/**',
+      // E2E 基建（跨包 E2E 的 server + 假 provider）：跟 test-helpers 同类 ——
+      // 是**夹具**不是出厂代码。它必须用 require() 动态 import（因为 env 必须在
+      // import AppModule **之前**设好 —— ConfigService 在构造时读 storageDir，
+      // 而 ESM 的 import 会被提升 → env 就晚了），这跟「no-require-imports」
+      // 规则直接冲突 → 整目录豁免。
+      'src/e2e/**',
       // Cleanup script in plain JS (TS parser chokes on duplicate `norm`).
       'src/scripts/cleanup-ne-fanout-mismatches.js',
     ],
