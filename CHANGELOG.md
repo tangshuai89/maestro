@@ -663,6 +663,29 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   兜底：一份可信数据都没有时（清单缺失）**退回**未分层总数并明确警告 —— 那是
   「没有数据」，不是「没覆盖」，不能报 0%。
 
+- **测试夹具与测试文件被编译进 server 的 dist → 跟着 electron 打包出货**（2026-10-23）
+
+  `packages/server` 的 `nest build` 用的 `tsconfig.json` 没有 `include`/`exclude`
+  → **src 下的一切都编译**，包括：
+
+  - `src/e2e/**`（跨包 E2E 的 server + 假 provider —— 夹具，不是出厂代码）
+  - **65 个 `*.test.ts`**（每个还带 `.d.ts` + `.map`）
+
+  而 `packages/electron/package.json` 的 electron-builder 配置会把
+  `../server/dist` **整个拷进应用包** → 出货的桌面端里带着 65 个测试文件和
+  一套「假 provider」夹具。
+
+  修法：新增 `packages/server/tsconfig.build.json`（`nest build` 优先用它），
+  排除 `src/e2e/**` / `src/test/**` / `*.test.ts` / `*.spec.ts`。
+  `tsconfig.json`（typecheck 用）**不**排除 → 夹具仍被类型检查
+  （实测 `tsc --listFiles` 仍含 2 个 e2e 文件）。
+
+  产物对比：`3.5M / 122 个 js / 65 个测试文件` → `1.5M / 55 个 js / 0 个测试文件`。
+
+  ⚠️ 一次性坑：`incremental: true` 的旧 `tsconfig.build.tsbuildinfo` 会让改动
+  **第一次构建看起来没生效** → 需要 `rm -rf dist *.tsbuildinfo`（CI 是干净环境，
+  不受影响）。
+
 - **浏览器覆盖采集在 CI 上卡满 6 小时被强杀（PR #114 首次 CI 暴露）**（2026-10-22）
 
   PR #114 的第一次 CI：`Test & TypeCheck & Lint` 这一步**跑了 6 小时**才被 GitHub
