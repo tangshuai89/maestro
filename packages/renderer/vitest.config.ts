@@ -15,6 +15,12 @@ import { resolve } from 'node:path';
 const SRC_DIR = resolve(__dirname, 'src');
 
 export default defineConfig({
+  // ⚠️ **必须显式设 root** —— vitest 默认用 **cwd** 当 root。
+  // `scripts/test.sh` 从**仓库根**跑 `npx vitest run -c packages/renderer/vitest.config.ts`
+  // → cwd = 仓库根 → root 也变成仓库根 → coverage 的 `include: ['src/**/*.{ts,tsx}']`
+  // （相对 root）一个都匹配不上 → 报告里 0 个文件、All files 0%。
+  // 实测：在 packages/renderer 目录里单跑是好的，换个 cwd 就废了。
+  root: __dirname,
   plugins: [react()],
   resolve: {
     alias: {

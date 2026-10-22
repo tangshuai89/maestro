@@ -54,7 +54,6 @@ FAILED_FILES=""
 COVERAGE_DIR="$PWD/coverage"
 # 采集数据分**两个** temp 目录（2026-10-21 修 —— 见下方「两条转换管线」注释）。
 COV_TMP_NODE="$COVERAGE_DIR/.tmp-node"
-COV_TMP_VITEST="$COVERAGE_DIR/.tmp-vitest"
 # 采集数据的"新鲜度"标记：--coverage 靠它决定复用还是重采。
 # ⚠️ 标记**不能**放在 $COVERAGE_DIR 里 —— 采集开头会 `rm -rf $COVERAGE_DIR`，
 # 标记会被自己删掉 → 每次都判定为「不新鲜」→ 复用永远失效。
@@ -103,15 +102,6 @@ COV_MARKER="$PWD/.coverage-collected-at"
 C8_NODE=(
   --clean=false --reporter=lcov
   "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP_NODE"
-  --extension .ts --extension .tsx --all
-  "--exclude=**/dist/**" "--exclude=**/*.d.ts"
-  "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs"
-)
-
-# vitest 管线（.test.tsx）：独立 temp 目录
-C8_VITEST=(
-  --clean=false --reporter=lcov
-  "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP_VITEST"
   --extension .ts --extension .tsx --all
   "--exclude=**/dist/**" "--exclude=**/*.d.ts"
   "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs"
@@ -189,9 +179,23 @@ run_pkg() {
   if [ "$pkg" = "renderer" ] && [ -n "$tsx_files" ]; then
     local ok=1
     if [ "$INSTRUMENT" -eq 1 ]; then
-      # → vitest 管线：独立的 temp 目录（见 C8_NODE 上方注释）
-      ( cd "$root" && npx c8 "${C8_VITEST[@]}" --src "packages/$pkg/src" \
-          npx vitest run -c "packages/$pkg/vitest.config.ts" --reporter=dot ) || ok=0
+      # → vitest 管线：**用 vitest 自己的 coverage provider**（@vitest/coverage-v8），
+      #   **不再用 c8 包 vitest**。
+      #
+      #   为什么（2026-10-21 实测，见 specs/stability/tasks.md H12）：c8 要把 V8 的
+      #   **字节偏移**映射回源码行，需要 **source map**（从 node 的 source-map-cache
+      #   拿）。vitest 的模块是 vite/esbuild 转换后在**内存**里执行的，source map 是
+      #   inline data URL → node 的 cache 里没有它 → c8 拿转换后 JS 的字节偏移去切
+      #   源 .ts 文件 → **行号随机**。但因为切的是完整源文件，**DA 条目数 = 源文件
+      #   行数** → 看起来「对齐」，极具欺骗性。
+      #
+      #   实测反例：一个**从未被调用**的函数，其函数体各行 hits 却是 170；而同一
+      #   函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
+      #
+      #   coverage-v8 走 vite 自己的 transform 链 → 拿得到 source map → 行号正确
+      #   （实测：同一个探针函数，行 hits = 0 ✓，函数 hits = 0 ✓）。
+      ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" \
+          --coverage --reporter=dot ) || ok=0
     else
       ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" --reporter=dot ) || ok=0
     fi
@@ -257,39 +261,61 @@ c8_report_one() {
     2>/dev/null || true
 }
 
-# 合并两条管线的 lcov → 最终报告。
+# 合并各管线的 lcov → 最终报告。
+#
+# 现在是**两份**：
+#   1. node 侧（common/server/electron 的 .test.ts + renderer 的 .test.mjs，
+#      ts-node / node 直跑）→ c8 —— ⚠️ 其中 .mjs 那部分**行号错位**（见下）
+#   2. renderer 的 .test.tsx（vitest 跑）→ **@vitest/coverage-v8** —— 行号正确
 c8_report() {
   local node_dir="$COVERAGE_DIR/.lcov-node"
-  local vitest_dir="$COVERAGE_DIR/.lcov-vitest"
-  rm -rf "$node_dir" "$vitest_dir"
-  mkdir -p "$node_dir" "$vitest_dir"
+  rm -rf "$node_dir"
+  mkdir -p "$node_dir"
 
   # 合并器自测：它只有几行逻辑，但写错会**静默**产出偏低的覆盖率 ——
   # 而那正是它要修的缺陷本身。报告前先自测，改坏了当场红。
   node "$PWD/scripts/merge-lcov.js" --self-test || return 1
 
   c8_report_one "$COV_TMP_NODE" "$node_dir"
-  c8_report_one "$COV_TMP_VITEST" "$vitest_dir"
 
   # 收集「哪些源文件的**行级**覆盖可信」。
   #
   # c8 要把 V8 的字节偏移映射回源码行，需要 source map（从 node 的
-  # source-map-cache 拿）。ts-node 跑的那部分有；node 直跑 .mjs 和 vitest 跑的
-  # 那部分**没有** → 它们的行号是**错位**的（esbuild 把 usePlayer.ts 从 2192 行
-  # 压成 1336 行，c8 拿转换后的字节偏移去切源文件 → 行号随机；但因为切的是完整
-  # 源文件，DA 条目数 = 源文件行数，**看起来「对齐」**）。
+  # source-map-cache 拿）。ts-node 跑的那部分有；**node 直跑 .mjs 的那部分没有**
+  # → 它的行号是**错位**的（esbuild 把 usePlayer.ts 从 2192 行压成 1336 行，c8 拿
+  # 转换后的字节偏移去切源文件 → 行号随机；但因为切的是完整源文件，DA 条目数 =
+  # 源文件行数，**看起来「对齐」**）。
   #
-  # 实测反例：一个**从未被调用**的函数，它的函数体各行 DA hits 却是 170；而同一
+  # 实测反例：一个**从未被调用**的函数，其函数体各行 DA hits 却是 170；而同一
   # 函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
   #
   # → 门禁据此只对可信文件用**行级**判据；不可信的一律用**函数级**（函数名是源码
   # 标识符，跨转换管线稳定 → 可信）。
+  #
+  # ⚠️ renderer 的 .test.tsx 现在走 @vitest/coverage-v8（行号正确）→ 它的文件
+  #    **全部可信**，由 collect-line-coverage-trust.js 从 coverage-v8 的产物里读。
   node "$PWD/scripts/collect-line-coverage-trust.js" \
-    "$COVERAGE_DIR/.line-coverage-trusted.txt" "$COV_TMP_NODE" "$COV_TMP_VITEST" || return 1
+    "$COVERAGE_DIR/.line-coverage-trusted.txt" "$COV_TMP_NODE" \
+    "$COVERAGE_DIR/.vitest" || return 1
 
-  # 并集（行/分支/函数命中取 max）→ 覆盖最终 lcov.info
-  node "$PWD/scripts/merge-lcov.js" "$COVERAGE_DIR/lcov.info" \
-    "$node_dir/lcov.info" "$vitest_dir/lcov.info" || return 1
+  # renderer 的 .tsx 覆盖率：coverage-v8 的 istanbul JSON → lcov
+  # （它自己的 lcov.info 用「相对 vitest root」的路径，和 git diff 对不上）
+  local vitest8_lcov="$COVERAGE_DIR/.lcov-vitest8"
+  if [ -f "$COVERAGE_DIR/.vitest/coverage-final.json" ]; then
+    rm -rf "$vitest8_lcov"
+    mkdir -p "$vitest8_lcov"
+    node "$PWD/scripts/istanbul-to-lcov.js" \
+      "$COVERAGE_DIR/.vitest/coverage-final.json" "$vitest8_lcov/lcov.info" || return 1
+  fi
+
+  # 并集 → 覆盖最终 lcov.info
+  #
+  # ⚠️ **coverage-v8 那份是「权威」的**（`--authoritative`）—— 它的行号正确；
+  #    node 侧对同一文件的行号是**随机**的（无 source map）。两份的第 N 行不是
+  #    同一行 → 取 max = **污染**（把随机值和真值混在一起），不是「更全的覆盖」。
+  #    权威语义 = 权威来源覆盖的文件**完全替换**其它来源。
+  node "$PWD/scripts/merge-lcov.js" --authoritative "$vitest8_lcov/lcov.info" \
+    "$COVERAGE_DIR/lcov.info" "$node_dir/lcov.info" "$vitest8_lcov/lcov.info" || return 1
 
   # 文本报告：从合并后的 lcov 重新算（c8 report 只能读 temp 目录，
   # 读不出合并结果）。
@@ -398,7 +424,7 @@ if [ "$INSTRUMENT" -eq 1 ]; then
     # 所以：采集**开始**就删，采集**结束**才写。
     rm -f "$COV_MARKER"
     rm -rf "$COVERAGE_DIR"
-    mkdir -p "$COV_TMP_NODE" "$COV_TMP_VITEST"
+    mkdir -p "$COV_TMP_NODE"
   fi
 fi
 

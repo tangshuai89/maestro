@@ -380,7 +380,7 @@
      - `.mjs`：node 的 type-stripping 不产出 source map
      - `.tsx`：vite/esbuild 转换后的 JS 在**内存**里，source map 是 inline
        data URL，node 的 `source-map-cache` 里没有
-     → **renderer 的行号全是错的** ✗
+       → **renderer 的行号全是错的** ✗
   4. 错位的样子：esbuild 把 `usePlayer.ts` 从 **2192 行压成 1336 行**（删掉 856
      行类型/空行）→ c8 拿**转换后 JS 的字节偏移**去切**源 .ts 文件** → 切出来的
      行号是**随机的**。但因为切的是完整源文件，**DA 条目数 = 源文件行数**
@@ -396,8 +396,33 @@
   **函数级覆盖是可信的** ✓ —— 函数名是**源码标识符**，不随转换器的字节布局
   变化 → 跨管线、跨 entry 都稳定。实测：从未被调用的探针函数，**FNDA 精确地是 0**。
 
-  - ✅ **修法**：
-    - 新增 `scripts/collect-line-coverage-trust.js`：扫两个 temp 目录的
+  - ✅ **彻底修复**（2026-10-22，`723cbca`）：renderer 改用
+    **@vitest/coverage-v8**（`1.6.1`，与现有 vitest 精确匹配）——
+    它走 **vite 自己的 transform 链** → 拿得到 source map → **行号正确**。
+    实测同一个探针：行 hits = **0** ✓、函数 hits = **0** ✓（c8 下是 170）。
+    - **行覆盖可信的文件：115 → 215**（common 8 / electron 21 /
+      **renderer 71** / server 115）→ renderer 的行覆盖**完全可信**
+    - ⇒ **门禁的盲区消除**：三层判据现在**全包生效**（修复前 renderer 只能靠
+      函数级，抓不到「已有函数里新增的未走到分支」）
+    - ⚠️ **四个必须记住的配置坑**（都实测踩过）：
+      1. **coverage 配置必须放在 `test` 块内**（顶层的不生效）—— vitest 1.6 的
+         `resolveConfig` 只合并 `viteConfig.test`，`configDefaults` 里的
+         `reportsDirectory` 一直是 `'./coverage'`
+      2. **`include` 必须相对 root**（`'src/**/*.{ts,tsx}'`）—— 用绝对路径时
+         v8 provider **一条都匹配不上**（报告里 0 个文件、All files 0%）
+      3. **必须显式设 `root: __dirname`** —— vitest 默认用 **cwd** 当 root。
+         `scripts/test.sh` 从**仓库根**跑（`npx vitest run -c packages/renderer/
+vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 root
+         一个都匹配不上。实测：**在 `packages/renderer` 目录里单跑是好的，
+         换个 cwd 就废了**（报告 0 个文件、All files 0%）。
+         ⚠️ 这条最阴险 —— 本地单跑验不出来，只有从仓库根跑才复现。
+      4. **不能用 coverage-v8 自己的 `lcov.info`** —— 它的 `SF:` 是「相对
+         vitest root」的（`src/App.tsx`），和 git diff 对不上；istanbul JSON 的
+         key 是**绝对路径** → 转成相对仓库根才对得上
+         → 新增 `scripts/istanbul-to-lcov.js` 做这个转换
+    - 死代码清理：vitest 管线不再走 c8 → `C8_VITEST` / `COV_TMP_VITEST` 删除
+  - ✅ **修法（第一版，三层判据）**：
+    - 新增 `scripts/collect-line-coverage-trust.js`：扫 temp 目录的
       `source-map-cache` → 产出「行覆盖可信的源文件」清单
     - 门禁改成**三层判据**：
       1. **函数级（主）**：新增代码所在函数的 FNDA=0 → 拦。**全包可靠**
@@ -415,17 +440,37 @@
     （没有前导斜杠）→ 同样匹配不到。修完实测：node 侧 **115 个**可信文件、
     vitest 侧 **0 个**（renderer 确实不可信 ✓）。给 collector 加了 `--self-test`
     并挂进 `test:ci` —— 静默降级必须有自测兜着。
+  - ✅ **合并器加「权威输入」语义**（`--authoritative`）：同一个源文件被**两条
+    转换管线**覆盖时（node 无 source map / coverage-v8 有），两份的「第 N 行」
+    **不是同一行** → 取 max = **污染**（把随机值和真值混在一起），不是「更全的
+    覆盖」。权威语义 = 权威来源覆盖的文件**完全替换**其它来源。
+    ⚠️ **但只有权威侧有「实质覆盖」（>0）时才替换**：有些文件**只被 `.test.mjs`
+    覆盖**（node 侧有真实用例，只是行号错位）→ 权威侧里它没有实质覆盖 →
+    若无条件替换会变成「0% 覆盖」，**比实际更差**（实际是被测过的）。
   - ✅ **顺带用函数级信号挖出了 `usePlayer.ts` 的真洞**（8 个函数从未被执行）：
-    | 函数                  | 坏了的用户可见症状                   |
-    | --------------------- | ------------------------------------ |
-    | `onTimeUpdate`        | **进度条不动**（时间不更新）          |
-    | `onEnded`             | **播完不自动下一首**（歌单停住）      |
-    | `seek`                | **拖进度条 / 点歌词跳转不生效**        |
-    | `handleDislike`       | **踩不了**（不喜欢按钮）              |
-    | `changeDeezerPreset`  | 切不了 Deezer 精选                   |
-    | `ensureGraph` / `onActiveChanged` | crossfade 的图构建 / 槽位切换回调 |
-    → 新增 `renderer/src/hooks/usePlayer.events.test.tsx`（9 条）全部补上。
-    复测：**函数级未执行数 8 → 0**（`usePlayer.ts` 函数覆盖 100%）。
+    | 函数                                                                    | 坏了的用户可见症状                |
+    | ----------------------------------------------------------------------- | --------------------------------- |
+    | `onTimeUpdate`                                                          | **进度条不动**（时间不更新）      |
+    | `onEnded`                                                               | **播完不自动下一首**（歌单停住）  |
+    | `seek`                                                                  | **拖进度条 / 点歌词跳转不生效**   |
+    | `handleDislike`                                                         | **踩不了**（不喜欢按钮）          |
+    | `changeDeezerPreset`                                                    | 切不了 Deezer 精选                |
+    | `ensureGraph` / `onActiveChanged`                                       | crossfade 的图构建 / 槽位切换回调 |
+    | → 新增 `renderer/src/hooks/usePlayer.events.test.tsx`（9 条）全部补上。 |
+    | 复测：**函数级未执行数 8 → 0**（`usePlayer.ts` 函数覆盖 100%）。        |
+  - ✅ **补 `useCoverArt.ts`**（装上 coverage-v8 后**新可见**的第一个真洞）：
+    它的权威覆盖是 **0%**，但它**不是没被测** —— 16 条断言都在
+    `useCoverArt.test.mjs`（node 管线，行号错位、覆盖归不到位），而所有测
+    usePlayer 的 `.test.tsx` 又都 `vi.mock('./useCoverArt')` → **两侧夹击**，
+    权威覆盖率里它是 0%。
+    → 新增 `renderer/src/hooks/useCoverArt.dom.test.tsx`（16 条）：同样的场景搬到
+    vitest 管线（行号可信），并补上 `.mjs` 没测的 **`useCoverArt()` hook 本体**
+    —— `presentCover` / `presentPlaceholder` / **epoch 竞态**（在途取色必须让位
+    给后到的封面）/ ref 为空时不崩。
+    复测：`useCoverArt.ts` **0% → 100% 行 / 100% 函数 / 95.45% 分支**。
+    ⚠️ 环境坑（实测）：**happy-dom 的 CSS 解析器不吃 `linear-gradient()`**
+    （整条被丢弃，读回来是 ''），且会把 `url(x)` 规范化成 `url("x")` → 断言必须
+    绕开 CSSOM 的解析结果，用「样式替身」直接比对**代码写进去的字符串**。
   - ⚠️ **「加了判据但主流程没调用」是真实事故（踩了两次）**：
     「judgeNewFunctions + 它的自测」都加进去了，但**主流程没调用它** →
     **自测全绿、门禁却还是老的行为**。单元自测和变异测试都抓不到（它们测的是
@@ -450,9 +495,9 @@
     关键理由**：覆盖率数据里的行号和函数名都可能有假货，源码没有。
   - ⚠️ **代价（诚实说明）**：函数被调用过 ≠ 函数体每一行都被走到。所以
     renderer 上的门禁**抓不到**「在已有函数里加了一个没走到的分支」。
-    要彻底解决得让 renderer 也产出 source map（装 `@vitest/coverage-v8`，
-    或让 vite-node 把 source map 注册进 node 的 cache）—— 那是**改覆盖率工具链**
-    的大工程，本轮没做。
+    ✅ **这条代价在 2026-10-22 已消除** —— 装上 `@vitest/coverage-v8` 后
+    renderer 的**行号是对的**（行覆盖可信文件 115 → 215，renderer 71 个全可信）
+    → 三层判据在 renderer 上**全部生效**，不再只能靠函数级。
   - ⚠️ **两个连带发现**（写测试时撞出来的）：
     1. **`wpsRef` 引用不稳定 → 无限循环**。`usePlayer` 的 `presentTrack` 依赖
        `wpsRef` → 每次 render 换新对象 → `presentTrack` 重建 → `loadNextTrack`
@@ -468,13 +513,13 @@
 
   这条是 2026-10-21 评估「下一个值得补强的是哪里」时算出来的：
 
-  | 场景                                 | 全局覆盖率 | 门禁结果 |
-  | ------------------------------------ | ---------: | -------- |
-  | 新增 100 行零覆盖代码                 |    89.65%   | ✅ 仍过  |
-  | 新增 500 行零覆盖代码                 |    88.82%   | ✅ 仍过  |
-  | 新增 1000 行零覆盖代码                |    87.81%   | ✅ 仍过  |
-  | `proxyAudio` 整块失去覆盖             |    87.57%   | ✅ 仍过  |
-  | **需要多少行零覆盖才跌破 60% 阈值**   | **21324 行** | —       |
+  | 场景                                |   全局覆盖率 | 门禁结果 |
+  | ----------------------------------- | -----------: | -------- |
+  | 新增 100 行零覆盖代码               |       89.65% | ✅ 仍过  |
+  | 新增 500 行零覆盖代码               |       88.82% | ✅ 仍过  |
+  | 新增 1000 行零覆盖代码              |       87.81% | ✅ 仍过  |
+  | `proxyAudio` 整块失去覆盖           |       87.57% | ✅ 仍过  |
+  | **需要多少行零覆盖才跌破 60% 阈值** | **21324 行** | —        |
 
   仓库自己的 workflow 注释早就写了这件事（`test.yml`：「一个 PR 把某个文件从
   80% 拉到 0%，全局仍然过」），但当时的结论是「挪到每日定时跑」—— 那只是
@@ -501,8 +546,8 @@
        文件整个不在 lcov 里 → 全部可执行行都算未覆盖
     3. **lcov 混了多轮采集**（同一文件出现多次）→ 静默合并会让后一轮的 0
        覆盖把前一轮盖掉 → 门禁拿到的数字是错的
-    另外：**拿不到 base ref 时明确失败**（退出 2），**不静默放过** ——
-    静默放过 = 门禁形同虚设（这正是旧门禁的毛病）。
+       另外：**拿不到 base ref 时明确失败**（退出 2），**不静默放过** ——
+       静默放过 = 门禁形同虚设（这正是旧门禁的毛病）。
   - ✅ **CI 接线的两个前提**（都验证过）：
     1. **`actions/checkout` 必须 `fetch-depth: 0`** —— 默认的 1 是浅克隆，
        拿不到 base 的 commit → diff 算不出来。`fetch-depth: 0` 会 fetch
@@ -513,13 +558,13 @@
        `merge-base(base, merge-commit)` = base → 三点 diff 只含 PR 的改动 ✓
   - ✅ **端到端验证**（真实 PR 场景）：
 
-    | 场景                            | 结果                     |
-    | ------------------------------- | ------------------------ |
-    | 改生产代码 + **没写测试**       | ❌ 拦下，精确报出 6 行   |
-    | 改生产代码 + **补了测试**       | ✅ 通过                   |
-    | 只加测试文件                    | ✅ 通过                   |
-    | lcov 不完整 / 基准不对 / 混多轮 | ❌ 明确报错退出 2         |
-    | 拿不到 base ref                | ❌ 明确报错退出 2         |
+    | 场景                            | 结果                   |
+    | ------------------------------- | ---------------------- |
+    | 改生产代码 + **没写测试**       | ❌ 拦下，精确报出 6 行 |
+    | 改生产代码 + **补了测试**       | ✅ 通过                |
+    | 只加测试文件                    | ✅ 通过                |
+    | lcov 不完整 / 基准不对 / 混多轮 | ❌ 明确报错退出 2      |
+    | 拿不到 base ref                 | ❌ 明确报错退出 2      |
 
   - ✅ **自测调真身**（`judgeAddedLines` 是共享函数，主流程和自测都调它）：
     最初自测里另写了一份实现，结果把主流程的 `hits === 0` 改成 `false` 自测
@@ -535,9 +580,9 @@
        （类型声明）都**不在 lcov 里**（c8 的 `--src` 只指向各包的 src/，
        `--exclude` 排除了 .d.ts）→ 改了它们会被判成「新增文件从未被任何测试
        import」→ **拦下一个完全合理的 PR**。修法：pathspec 收窄到 src/ 下
-       + 判据里再加一道 `src/` 检查 + 排除 .d.ts（双保险）。
-       ⚠️ 注释里**别直接写那条 pathspec** —— 里面的 `*` + `/` 组合会**提前
-       闭合块注释** → 整个文件语法错误（实测踩过）。
+       - 判据里再加一道 `src/` 检查 + 排除 .d.ts（双保险）。
+         ⚠️ 注释里**别直接写那条 pathspec** —— 里面的 `*` + `/` 组合会**提前
+         闭合块注释** → 整个文件语法错误（实测踩过）。
   - 💡 **将来可能加的第三种形态（先别做）**：「文件覆盖率不得比 base 低 X pp」。
     那个需要**基线快照**（base 分支的覆盖率数据）→ 要么每次跑两遍套件
     （+18 分钟），要么在仓库里存一份（每次 master 更新都改它 → 持续 diff
@@ -599,9 +644,9 @@
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                → GET /music/stream/:provider/:trackId
-                  → musicService.getStreamUrl() 拿上游 URL
-                    → proxyAudio() 转发到上游 CDN
+                    → GET /music/stream/:provider/:trackId
+                      → musicService.getStreamUrl() 拿上游 URL
+                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

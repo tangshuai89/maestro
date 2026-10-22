@@ -498,6 +498,47 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
     FNDA=0 → 拦（全包可靠）② **行级**只对行覆盖**可信**的文件启用
     （renderer 跳过 → 宁可漏报不误报）③ **文件级**新增文件完全不在 lcov 里 → 拦
 
+  ✅ **2026-10-22 彻底修复**：renderer 改用 **@vitest/coverage-v8**（`1.6.1`，
+  与现有 vitest 精确匹配）—— 它走 **vite 自己的 transform 链** → 拿得到
+  source map → **行号正确**。实测同一个探针：行 hits = **0** ✓、函数 hits = **0** ✓
+  （c8 下是 170）。
+
+  - **行覆盖可信的文件：115 → 215**（common 8 / electron 21 / **renderer 71** /
+    server 115）→ renderer 的行覆盖**完全可信**
+  - ⇒ **门禁盲区消除**：三层判据现在**全包生效**（修复前 renderer 只能靠函数级，
+    抓不到「已有函数里新增的未走到分支」）
+  - ⚠️ **三个配置坑**（都实测踩过，写在 `packages/renderer/vitest.config.ts` 里）：
+    1. **coverage 配置必须放在 `test` 块内** —— vitest 1.6 的 `resolveConfig`
+       只合并 `viteConfig.test`，顶层的不生效
+    2. **`include` 必须相对 root**（`'src/**/*.{ts,tsx}'`）—— 绝对路径时 v8
+       provider 一条都匹配不上（报告 0 个文件、All files 0%）
+    3. **不能用 coverage-v8 自己的 `lcov.info`** —— 它的 `SF:` 是「相对 vitest
+       root」的，和 git diff 对不上；istanbul JSON 的 key 是**绝对路径** →
+       新增 `scripts/istanbul-to-lcov.js` 做转换
+  - **合并器加「权威输入」语义**（`--authoritative`）：同一个源文件被**两条转换
+    管线**覆盖时（node 无 source map / coverage-v8 有），两份的「第 N 行」**不是
+    同一行** → 取 max = **污染**（把随机值和真值混在一起），不是「更全的覆盖」。
+    权威语义 = 权威来源覆盖的文件**完全替换**其它来源。
+    ⚠️ **只有权威侧有「实质覆盖」（>0）时才替换** —— 有些文件**只被 `.test.mjs`
+    覆盖**（node 侧有真实用例，只是行号错位），权威侧里它没有实质覆盖 →
+    无条件替换会变成「0% 覆盖」，比实际更差。
+  - **新可见性**：真实覆盖洞第一次看得见 —— `useCoverArt.ts` 真实 **0%**
+    （所有测 usePlayer 的文件都 `vi.mock('./useCoverArt')`，它从未被执行；
+    和 H8 的 api.ts 是**同一种病**）；`usePlayer.ts` 真实语句覆盖 **84.3%**
+    （之前报的 87.8% 是错位数据的假象）
+
+  ✅ **2026-10-22 补上 `useCoverArt.ts`**（新可见的第一个真洞，已修）：新增
+  `renderer/src/hooks/useCoverArt.dom.test.tsx`（16 条）—— 把原
+  `useCoverArt.test.mjs`（node 管线、行号错位、覆盖归不到位）的场景搬到 vitest
+  管线（行号可信），并补上 `.mjs` 没测的 **`useCoverArt()` hook 本体**：
+  `presentCover` / `presentPlaceholder` / **epoch 竞态**（在途取色必须让位给
+  后到的封面）/ ref 为空时不崩。
+
+  - 权威覆盖率：`useCoverArt.ts` **0% → 100% 行 / 100% 函数 / 95.45% 分支**
+  - ⚠️ 踩到的环境坑（实测）：**happy-dom 的 CSS 解析器不吃 `linear-gradient()`**
+    （整条被丢弃，读回来是 ''），且会把 `url(x)` 规范化成 `url("x")` → 断言必须
+    绕开 CSSOM 的解析结果，改用「样式替身」直接比对**代码写进去的字符串**
+
   **顺带用函数级信号挖出了 `usePlayer.ts` 的真洞** —— 8 个函数从未被执行过，
   其中 5 个是**用户可见功能**：`onTimeUpdate`（进度条不动）、`onEnded`
   （播完不自动下一首）、`seek`（拖进度条/点歌词跳转不生效）、`handleDislike`
@@ -506,9 +547,10 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   **函数级未执行数 8 → 0**。
 
   ⚠️ **代价（诚实说明）**：函数被调用过 ≠ 函数体每一行都被走到 → renderer 上的
-  门禁**抓不到**「在已有函数里加了一个没走到的分支」。要彻底解决得让 renderer
-  也产出 source map（装 `@vitest/coverage-v8` 等）—— 改覆盖率工具链的大工程，
-  本轮没做。
+  门禁**抓不到**「在已有函数里加了一个没走到的分支」。
+  ✅ **这条代价已消除**（同日，装 `@vitest/coverage-v8` 之后）：renderer 的行覆盖
+  现在**行号正确**（可信文件 115 → 215，renderer 71 个全可信）→ 三层判据在
+  renderer 上**全部生效**。
   ⚠️ **另一个盲区**：lcov 的 `FNDA` **按函数名索引** → 同名函数的次数互相掩盖
   （`usePlayer.ts` 里 18 个 `get`）。对「**新增**的函数」这个判据无影响（新增
   函数的名字在 base 里不存在 → 0 就是真的没被调用），但判「已有同名函数」时不可靠。
