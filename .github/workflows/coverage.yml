@@ -44,5 +44,10 @@ jobs:
 
       # 覆盖率步自己会跑完整套件（test.sh 的 --coverage 分支），所以这里
       # 只跑它、不再单独跑 test:ci —— 省掉一整遍套件。
+      # 浏览器覆盖采集（接线层 App.tsx / main.tsx）需要 Chromium —— 见
+      # test.yml 里同名步骤的注释。
+      - name: Install Chromium（浏览器覆盖采集用）
+        run: npx playwright install --with-deps chromium
+
       - name: Coverage report (+ ≥60% 阈值门禁)
         run: npm run test:coverage

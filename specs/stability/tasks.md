@@ -503,6 +503,18 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
     ⚠️ **但只有权威侧有「实质覆盖」（>0）时才替换**：有些文件**只被 `.test.mjs`
     覆盖**（node 侧有真实用例，只是行号错位）→ 权威侧里它没有实质覆盖 →
     若无条件替换会变成「0% 覆盖」，**比实际更差**（实际是被测过的）。
+  - ✅ **第二轮补测**（2026-10-22）：剩下 120 行逐段看过 → 大部分是**纯
+    `console.warn` 诊断分支**（无可观测差异 → 不追），值得测的**真竞态 / 真故障态**
+    补齐（卡死探测、电台在途切 provider、❤ 的陈旧 ticket、detect 期望值守护、
+    WPS 五条分支、兜底结果过期、音频图构建失败、越界 seek…）。
+    复测：未覆盖行 **120 → 66**，语句覆盖 **94.58% → 97.36%**、分支
+    **74.00% → 80.81%**。
+  - 🐛 **顺带挖出并修掉一个「死代码守护」**：`loadNextTrack` 的 D4 守护
+    （「await 期间用户切了平台 → 丢弃旧结果」）**从来没生效过** ——
+    `provider` 是 useState 的**闭包快照**，`startedProvider` 来自**同一个闭包**
+    → `provider !== startedProvider` **恒为 false**。
+    实测症状：电台请求在途时用户切到网易云 → **QQ 的歌被装到网易云界面上**。
+    修法：用 ref 读最新值（和 `qqQualityRef` / `wpsPlayedIdRef` 同一套做法）。
   - ✅ **顺带用函数级信号挖出了 `usePlayer.ts` 的真洞**（8 个函数从未被执行）：
     | 函数                                                                    | 坏了的用户可见症状                |
     | ----------------------------------------------------------------------- | --------------------------------- |
@@ -779,9 +791,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                            → GET /music/stream/:provider/:trackId
-                                                              → musicService.getStreamUrl() 拿上游 URL
-                                                                → proxyAudio() 转发到上游 CDN
+                                                                    → GET /music/stream/:provider/:trackId
+                                                                      → musicService.getStreamUrl() 拿上游 URL
+                                                                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

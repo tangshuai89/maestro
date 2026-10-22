@@ -37,6 +37,12 @@ WATCH=0
 CI_MODE=0
 COVERAGE=0
 INSTRUMENT=0
+# 浏览器端覆盖率（接线层 App.tsx / main.tsx）：默认开。
+# 关掉它 → 接线层的行覆盖恒为 0% → diff 门禁对「改 App.tsx」会误拦。
+COLLECT_BROWSER=1
+if [ "${MAESTRO_SKIP_BROWSER_COVERAGE:-0}" = "1" ]; then
+  COLLECT_BROWSER=0
+fi
 for arg in "$@"; do
   case "$arg" in
     --watch|-w) WATCH=1 ;;
@@ -303,6 +309,32 @@ c8_report() {
 
   c8_report_one "$COV_TMP_NODE" "$node_dir"
 
+  # ── 浏览器端覆盖率（接线层：App.tsx / main.tsx）────────────────
+  #
+  # 单元测试**碰不到** App.tsx（纯接线层，不导出逻辑）→ 它的行覆盖恒为 0%
+  # → diff 门禁会把「App.tsx 的任何新增行」判成「未覆盖」→ **误拦**。
+  # 浏览器里跑一次真实链路（E2E）就能把接线层的覆盖**真实地**记下来。
+  #
+  # ⚠️ 环境不具备时（没装 Chromium）**明确警告但不中断** —— 采集是增强，
+  #    不是单测的替代品；没有它只是「接线层无法判定」，不是「数字造假」。
+  local browser_lcov="$COVERAGE_DIR/.lcov-browser/lcov.info"
+  if [ "$COLLECT_BROWSER" -eq 1 ]; then
+    echo "── 采集浏览器端覆盖率（接线层）──"
+    if node "$PWD/scripts/collect-browser-coverage.mjs" --out "$browser_lcov"; then
+      echo "── 浏览器覆盖就绪 ──"
+    else
+      local rc=$?
+      if [ "$rc" -eq 2 ]; then
+        echo "── ⚠️  跳过浏览器覆盖采集（环境不具备：没装 @playwright/test / Chromium）" >&2
+        echo "   → **接线层（App.tsx / main.tsx）无法被判定**：它们的行覆盖恒为 0%," >&2
+        echo "     diff 门禁会把「改 App.tsx」误判成「新增行没被执行过」→ 误拦。" >&2
+        echo "   → 装浏览器：npx playwright install chromium" >&2
+      else
+        echo "── ⚠️  浏览器覆盖采集失败（退出码 $rc）—— 接线层将无法被判定" >&2
+      fi
+    fi
+  fi
+
   # 收集「哪些源文件的**行级**覆盖可信」。
   #
   # c8 要把 V8 的字节偏移映射回源码行，需要 source map（从 node 的
@@ -319,9 +351,11 @@ c8_report() {
   #
   # ⚠️ renderer 的 .test.tsx 现在走 @vitest/coverage-v8（行号正确）→ 它的文件
   #    **全部可信**，由 collect-line-coverage-trust.js 从 coverage-v8 的产物里读。
+  #    ⚠️ 浏览器侧（.lcov-browser）也是**可信**的：它经 source map 回映射到
+  #    源文件行号（v8-to-istanbul 干的活），行号是准的。
   node "$PWD/scripts/collect-line-coverage-trust.js" \
     "$COVERAGE_DIR/.line-coverage-trusted.txt" "$COV_TMP_NODE" \
-    "$COVERAGE_DIR/.vitest" || return 1
+    "$COVERAGE_DIR/.vitest" "$COVERAGE_DIR/.lcov-browser" || return 1
 
   # renderer 的 .tsx 覆盖率：coverage-v8 的 istanbul JSON → lcov
   # （它自己的 lcov.info 用「相对 vitest root」的路径，和 git diff 对不上）
@@ -345,14 +379,26 @@ c8_report() {
   node "$PWD/scripts/istanbul-to-lcov.js" \
     "$COVERAGE_DIR/.vitest/coverage-final.json" "$vitest8_lcov/lcov.info" || return 1
 
+  # 权威侧 = vitest8 ∪ 浏览器（**同一坐标系**（都是源文件行号）→ 取并集）
+  # 浏览器侧只覆盖「它真的加载过的模块」→ 没加载的文件保留 vitest8 的数据。
+  local auth_lcov="$COVERAGE_DIR/.lcov-auth"
+  rm -rf "$auth_lcov"
+  mkdir -p "$auth_lcov"
+  if [ -f "$browser_lcov" ]; then
+    node "$PWD/scripts/merge-lcov.js" "$auth_lcov/lcov.info" \
+      "$vitest8_lcov/lcov.info" "$browser_lcov" || return 1
+  else
+    cp "$vitest8_lcov/lcov.info" "$auth_lcov/lcov.info"
+  fi
+
   # 并集 → 覆盖最终 lcov.info
   #
   # ⚠️ **coverage-v8 那份是「权威」的**（`--authoritative`）—— 它的行号正确；
   #    node 侧对同一文件的行号是**随机**的（无 source map）。两份的第 N 行不是
   #    同一行 → 取 max = **污染**（把随机值和真值混在一起），不是「更全的覆盖」。
   #    权威语义 = 权威来源覆盖的文件**完全替换**其它来源。
-  node "$PWD/scripts/merge-lcov.js" --authoritative "$vitest8_lcov/lcov.info" \
-    "$COVERAGE_DIR/lcov.info" "$node_dir/lcov.info" "$vitest8_lcov/lcov.info" || return 1
+  node "$PWD/scripts/merge-lcov.js" --authoritative "$auth_lcov/lcov.info" \
+    "$COVERAGE_DIR/lcov.info" "$node_dir/lcov.info" "$auth_lcov/lcov.info" || return 1
 
   # 文本报告：从合并后的 lcov 重新算（c8 report 只能读 temp 目录，
   # 读不出合并结果）。

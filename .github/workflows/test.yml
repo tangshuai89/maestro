@@ -58,6 +58,13 @@ jobs:
       - name: Build @maestro/common
         run: npm run build:common
 
+      # ⚠️ 浏览器覆盖采集（接线层 App.tsx / main.tsx）需要 Chromium。
+      #   单元测试**碰不到** App.tsx（纯接线层）→ 它的行覆盖恒为 0% →
+      #   diff 门禁会把「改 App.tsx」误判成「新增行没被执行过」→ 误拦。
+      #   装了浏览器，采集器就能把接线层的覆盖**真实地**记下来。
+      - name: Install Chromium（浏览器覆盖采集用）
+        run: npx playwright install --with-deps chromium
+
       - name: TypeScript type check
         run: npm run typecheck
 

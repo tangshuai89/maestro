@@ -319,6 +319,26 @@ function readTrustedFiles(listPath) {
  * @param fnCounts    Map<函数名, 执行次数>
  * @returns Map<文件, string[]>  文件 → 未被执行的新函数名列表
  */
+/**
+ * 这个文件是**测试基建**（夹具）而不是出厂代码吗？
+ *
+ * ⚠️ 门禁判的是「PR 新增的代码有没有被执行过」。但测试基建**不在单测套件的
+ * 覆盖范围里**：
+ *   - `src/e2e/**`（跨包 E2E 的 server + 假 provider）：只有 Playwright 的
+ *     E2E 跑它，单测套件根本不 import → 它「不在 lcov 里」→ 被判成
+ *     「新增文件从未被任何测试 import」→ **误拦自己的提交**（实测踩到：
+ *     E2E 基建那个 commit 直接把门禁弄红了）。
+ *   - `src/test/**`（vitest setup）：同理。
+ *   - `*.test.*`：测试文件自身。
+ * → 与「覆盖率分母排除测试基建」是**同一个原则**：夹具不是出厂代码。
+ *   真正要管的是「**出厂代码**的新增逻辑有没有被执行过」。
+ */
+function isTestInfra(file) {
+  if (/\.test\.(ts|tsx|mjs|js)$/.test(file)) return true;
+  if (/(^|\/)src\/(test|e2e)\//.test(file)) return true;
+  return false;
+}
+
 function judgeNewFunctions(added, fnByLine, fnCounts) {
   /** @type {Map<string, string[]>} */
   const out = new Map();
@@ -326,7 +346,7 @@ function judgeNewFunctions(added, fnByLine, fnCounts) {
     if (!/\.(ts|tsx)$/.test(file)) continue;
     if (!/(^|\/)src\//.test(file)) continue;
     if (/\.d\.ts$/.test(file)) continue;
-    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+    if (isTestInfra(file)) continue;
     const map = fnByLine.get(file);
     if (!map) continue;
     const badFns = new Set();
@@ -362,7 +382,7 @@ function judgeAddedLines(added, lcov, trusted) {
     // 类型声明文件不是可执行代码（c8 的 --exclude=**/*.d.ts 也排除了它们）
     if (/\.d\.ts$/.test(file)) continue;
     // 测试文件本身不算（它们不在 lcov 里 —— 被 --exclude 排除了）
-    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+    if (isTestInfra(file)) continue;
 
     const da = lcov.get(file);
     if (!da) {
@@ -404,7 +424,7 @@ function judgeZeroCoverageFiles(added, lcov) {
     if (!/\.(ts|tsx)$/.test(file)) continue;
     if (!/(^|\/)src\//.test(file)) continue;
     if (/\.d\.ts$/.test(file)) continue;
-    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+    if (isTestInfra(file)) continue;
     const da = lcov.get(file);
     if (!da) continue; // 判据 1 已经报了
     const total = da.size;
@@ -491,10 +511,7 @@ function selfTest() {
         [33, 1],
       ]),
     ],
-    [
-      'packages/server/src/b.ts',
-      new Map([[2, 1]]),
-    ],
+    ['packages/server/src/b.ts', new Map([[2, 1]])],
   ]);
   const r2 = judgeAddedLines(added, lcovAll);
   expect('判定：全覆盖时不报', r2.size === 0);
@@ -581,9 +598,27 @@ function selfTest() {
       ['packages/server/src/ok.ts', new Set([5])],
     ]);
     const lcov2 = new Map([
-      ['packages/server/src/zeroed.ts', new Map([[1, 0], [2, 0]])],
-      ['packages/server/src/partial.ts', new Map([[1, 0], [2, 3]])],
-      ['packages/server/src/ok.ts', new Map([[1, 5], [2, 2]])],
+      [
+        'packages/server/src/zeroed.ts',
+        new Map([
+          [1, 0],
+          [2, 0],
+        ]),
+      ],
+      [
+        'packages/server/src/partial.ts',
+        new Map([
+          [1, 0],
+          [2, 3],
+        ]),
+      ],
+      [
+        'packages/server/src/ok.ts',
+        new Map([
+          [1, 5],
+          [2, 2],
+        ]),
+      ],
     ]);
     const z = judgeZeroCoverageFiles(added2, lcov2);
     expect('判据 2：全覆盖为 0 的文件被报出', z.includes('packages/server/src/zeroed.ts'));
@@ -643,8 +678,7 @@ function selfTest() {
     git(['commit', '-qm', 'base']);
     fs2.writeFileSync(
       p2.join(tmp, 'packages/server/src/svc.ts'),
-      'export function keep() { return 1; }\n' +
-        'export function neverCalled() { return 2; }\n',
+      'export function keep() { return 1; }\n' + 'export function neverCalled() { return 2; }\n',
     );
     git(['commit', '-qam', 'add untested fn']);
 
@@ -681,9 +715,7 @@ function selfTest() {
   //
   // 函数名是源码标识符 → 跨转换管线稳定 → 行级数据错位时唯一可靠的信号。
   {
-    const added2 = new Map([
-      ['packages/server/src/a.ts', new Set([10, 11, 20])],
-    ]);
+    const added2 = new Map([['packages/server/src/a.ts', new Set([10, 11, 20])]]);
     // 10/11 在 `neverCalled` 里（FNDA=0）→ 报；20 在 `called` 里（FNDA=3）→ 不报
     const fnByLine2 = new Map([
       [
@@ -724,10 +756,29 @@ function selfTest() {
     expect('行级判据：可信文件 → 报出未覆盖行', withTrust.has('packages/server/src/a.ts'));
 
     const withoutTrust = judgeAddedLines(added2, lcov2, new Set());
+    expect('行级判据：不可信文件 → 跳过（不误报）', !withoutTrust.has('packages/server/src/a.ts'));
+  }
+
+  // ── 6f. 测试基建**不归门禁管**（夹具不是出厂代码）────────────────
+  //
+  // 回归：E2E 基建（packages/server/src/e2e/**）只被 Playwright 的 E2E 跑，
+  // 单测套件不 import → 它「不在 lcov 里」→ 门禁判成「新增文件从未被任何
+  // 测试 import」→ **把自己的提交拦了**（实测踩到）。
+  {
+    const infra = new Map([
+      ['packages/server/src/e2e/e2e-server.ts', new Set([10, 11])],
+      ['packages/renderer/src/test/setup.ts', new Set([5])],
+      ['packages/renderer/src/hooks/usePlayer.core.test.tsx', new Set([7])],
+    ]);
+    const emptyLcov = new Map();
+    const infraAdded = judgeAddedLines(infra, emptyLcov, new Set());
     expect(
-      '行级判据：不可信文件 → 跳过（不误报）',
-      !withoutTrust.has('packages/server/src/a.ts'),
+      '测试基建 → 跳过（不误拦自己的提交）',
+      !infraAdded.has('packages/server/src/e2e/e2e-server.ts') &&
+        !infraAdded.has('packages/renderer/src/test/setup.ts'),
     );
+    const infraFns = judgeNewFunctions(infra, new Map(), new Map());
+    expect('测试基建 → 函数级判据也跳过', !infraFns.has('packages/server/src/e2e/e2e-server.ts'));
   }
 
   // ── 7. 不该被门禁管的文件类型 ───────────────────────────────────
@@ -785,13 +836,7 @@ function main() {
   // 不是运行时代码）。
   //
   // ⚠️ pathspec 末尾必须带 `**`（见 DIFF_PATHSPEC 的说明）。
-  const diffText = git([
-    'diff',
-    '-U0',
-    `${args.base}...HEAD`,
-    '--',
-    ...DIFF_PATHSPEC,
-  ]);
+  const diffText = git(['diff', '-U0', `${args.base}...HEAD`, '--', ...DIFF_PATHSPEC]);
   if (!diffText) {
     console.log('── diff 为空（本次 PR 没改 packages/ 下的文件）→ 跳过 ──');
     process.exit(0);
@@ -899,18 +944,39 @@ function main() {
   if (uncoveredByFile.size > 0) {
     console.log('');
     console.log(`   ⚠️  ${uncoveredByFile.size} 个文件里有未覆盖的新增/修改行：`);
+    /** @type {string[]} */
+    const zeroCoverageFiles = [];
     for (const [file, info] of uncoveredByFile) {
       const head = info.missing
         ? `（新增文件，从未被任何测试 import → 全部 ${info.lines.length} 行可执行代码未覆盖）`
         : `（${info.lines.length} 行）`;
       console.log(`     · ${file} ${head}`);
       const show = info.lines.slice(0, 20);
-      console.log(`         行号: ${show.join(', ')}${info.lines.length > show.length ? ' …' : ''}`);
+      console.log(
+        `         行号: ${show.join(', ')}${info.lines.length > show.length ? ' …' : ''}`,
+      );
+      // 这个文件**整体**一行都没被跑到 → 它的「未覆盖」不是「这几行没测」，
+      // 而是「**这个文件根本没有任何覆盖数据**」（接线层 / 只有 E2E 能跑的文件）。
+      const da = lcov.get(file);
+      if (!info.missing && da && da.size > 0 && [...da.values()].every((h) => h === 0)) {
+        zeroCoverageFiles.push(file);
+      }
+    }
+    if (zeroCoverageFiles.length) {
+      console.log('');
+      console.log(
+        `   ℹ️  其中 ${zeroCoverageFiles.length} 个文件**整体没有任何覆盖数据**` +
+          '（不是「这几行没测」，是「这个文件从没被执行过」）：',
+      );
+      for (const f of zeroCoverageFiles) console.log(`        · ${f}`);
+      console.log(
+        '      → 这类文件多半是**接线层**（App.tsx / main.tsx：只 import hook、' +
+          '不导出逻辑，单测碰不到）。',
+      );
+      console.log('      → 跑一次浏览器覆盖采集就能拿到它们的数据：npm run coverage:browser');
     }
     console.log('');
-    console.log(
-      '   说明：行覆盖只说明**这行被执行过**，不说明**这行的逻辑被断言过**。',
-    );
+    console.log('   说明：行覆盖只说明**这行被执行过**，不说明**这行的逻辑被断言过**。');
     console.log('         要更强的保证得靠 mutation testing（太慢，放不进 PR 门禁）。');
   }
 

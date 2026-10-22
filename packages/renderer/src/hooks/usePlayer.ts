@@ -214,6 +214,20 @@ export function usePlayer(
 
   const [deezerPreset, setDeezerPreset] = useState<string>(() => readStoredDeezerPreset());
 
+  // 「当前平台 / preset」的 ref 镜像 —— 用来回答「**await 期间有没有变过**」。
+  //
+  // ⚠️ 为什么不能直接比 useState 的值：loadNextTrack 是 useCallback，它闭包里的
+  //   `provider` 是**那次 render 的快照**；`const startedProvider = provider` 也是
+  //   同一个快照 → `provider !== startedProvider` **恒为 false** → D4 守护
+  //   （「await 期间用户切了平台 → 丢弃旧结果」）是**死代码**，从来没生效过。
+  //   实测症状：电台请求在途时用户切到网易云 → QQ 的歌被装到网易云界面上
+  //   （界面显示的是另一个平台的歌，流地址也指着旧平台）。
+  //   → 必须用 ref 读**最新值**（和 qqQualityRef / wpsPlayedIdRef 同一套做法）。
+  const providerRef = useRef<MusicProvider | null>(provider);
+  providerRef.current = provider;
+  const deezerPresetRef = useRef<string>(deezerPreset);
+  deezerPresetRef.current = deezerPreset;
+
   // Search-mode client queue. Non-empty → loadNextTrack advances within the
   // results instead of hitting the server radio. Held in a ref so
   // loadNextTrack's closure doesn't read a stale value. Unified search adds
@@ -1355,9 +1369,13 @@ export function usePlayer(
       if (!next) return;
       // D4 守护：await 期间 provider / preset 变了 → 旧的 fetchNextTrack 结果
       // 丢弃（让新的 loadNextTrack 自然 presentTrack 正确曲）。
+      //
+      // ⚠️ 必须读 **ref**（最新值），不能读闭包里的 `provider`（那次 render 的
+      // 快照）—— 两者同源 → 判等恒真 → 这条守护曾经是**死代码**（见上面
+      // providerRef 的注释）。
       if (
-        provider !== startedProvider ||
-        (startedProvider === 'deezer' && deezerPreset !== startedPreset)
+        providerRef.current !== startedProvider ||
+        (startedProvider === 'deezer' && deezerPresetRef.current !== startedPreset)
       ) {
         return;
       }

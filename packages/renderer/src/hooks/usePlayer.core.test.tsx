@@ -60,11 +60,15 @@ vi.mock('../api', async () => {
 const coverMocks = vi.hoisted(() => ({
   presentCover: vi.fn(),
   presentPlaceholder: vi.fn(),
+  // 封面背板给一个**真实 div**：`usePlayer` 的 bass 强度效果要往
+  // coverBackdropRef.current 上写 `--bass-intensity` —— ref 为 null 时
+  // 那条路径永远走不到（测不出来）。
+  coverBackdrop: null as HTMLDivElement | null,
 }));
 vi.mock('./useCoverArt', () => ({
   useCoverArt: () => ({
     bgLayerRef: { current: null },
-    coverBackdropRef: { current: null },
+    coverBackdropRef: { current: coverMocks.coverBackdrop },
     presentCover: coverMocks.presentCover,
     presentPlaceholder: coverMocks.presentPlaceholder,
   }),
@@ -215,6 +219,8 @@ beforeEach(() => {
   apiMocks.recomputeCrossPlatformLikeTotal.mockReturnValue({ display: '—' });
   apiMocks.reportRecoSignal.mockResolvedValue(undefined);
   apiMocks.getAuthStatusValidated.mockResolvedValue({ expired: false });
+  // 真实 div（bass 强度效果要往它身上写 CSS 变量）
+  coverMocks.coverBackdrop = document.createElement('div');
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -705,7 +711,12 @@ describe('杂项路径', () => {
   });
 
   it('EQ：总开关 / 预置 / 单频段 / 越界下标', async () => {
-    const { result } = setup();
+    const { result, a } = setup();
+    // 先起播（'play' 事件 → ensureAudioGraph → 建出槽位的 Web Audio 图）
+    // → EQ 的曲线才有地方可推（pushEqToFilters 遍历 slotGraphsRef）。
+    act(() => {
+      a.dispatchEvent(new Event('play'));
+    });
 
     // 总开关
     act(() => {
@@ -828,5 +839,650 @@ describe('同源重试与播放保位', () => {
     expect(result.current.track?.audioUrl).toBe('');
     await waitFor(() => expect(wps.transferHere).toHaveBeenCalled());
     await waitFor(() => expect(wps.play).toHaveBeenCalled());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 7. 边界与竞态（第二轮：把剩下 120 行未覆盖里「值得测」的部分补掉）
+//
+// 上一轮补完主路径后，usePlayer.ts 还剩 120 行 / 44 段未覆盖。逐段看过之后：
+//   - **真竞态 / 真故障态**（值得测）：卡死探测、兜底链的过期与跳过、
+//     ❤ 的陈旧 ticket 守护、detect 的期望值守护、音频图构建失败…
+//   - **纯 console.warn 诊断分支**（价值低）：逐条测只是给日志上保险，
+//     行为上没有可观测差异 → 不追。
+// 本轮覆盖前者。
+// ═══════════════════════════════════════════════════════════════════
+
+describe('卡死探测（同源重试后仍不出声）', () => {
+  it('重试后 00:00 不出声 → 走跨平台兜底（不卡在「等待播放」）', async () => {
+    // 用户实测过的症状：「QQ 对部分歌曲不返 purl，界面卡在『等待播放』」。
+    // play() resolve 只说明浏览器接受了请求，不代表出了声 → 靠探测定时器兜。
+    vi.useFakeTimers();
+    try {
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([multiItem('1')], 0);
+      });
+      expect(result.current.track?.provider).toBe('qq');
+
+      await act(async () => {
+        a.dataset.wantPlay = '1';
+        a.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+      });
+      // 同源 transient 重试（800ms）→ audio.load() + play() resolve
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      // 探测窗口（1500ms）内 currentTime 一直是 0 → 判定卡死 → 跨平台兜底
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      // 兜底到同首歌的网易云源（而不是卡住）。
+      // ⚠️ 这里**不能**用 waitFor：假定时器下 testing-library 的 waitFor 不会
+      // 自动推进时钟（它只认 jest 全局，vitest 下返回 false）→ 永远等不到 →
+      // 测试超时。假定时器里一律「推进时钟 + 同步断言」。
+      expect(result.current.track?.provider).toBe('netease');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('重试后其实在出声 → 探测不打扰（不误伤正常播放）', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([multiItem('1')], 0);
+      });
+      await act(async () => {
+        a.dataset.wantPlay = '1';
+        a.dispatchEvent(new Event('error'));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      // 音频其实走起来了 → currentTime > 0
+      a.currentTime = 5;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      // 没被判定卡死 → 不会换源（还在 QQ）
+      expect(result.current.track?.provider).toBe('qq');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('电台与队列的边界', () => {
+  it('电台返回 null → 保持 idle（不报错、不崩）', async () => {
+    apiMocks.fetchNextTrack.mockResolvedValue(null);
+    const { result } = setup();
+    await act(async () => {
+      await result.current.loadNextTrack();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.track).toBeNull();
+  });
+
+  it('电台请求失败 → 明确报错（不是静默）', async () => {
+    apiMocks.fetchNextTrack.mockRejectedValue(new Error('电台挂了'));
+    const { result } = setup();
+    await act(async () => {
+      await result.current.loadNextTrack();
+    });
+    expect(result.current.error).toBe('电台挂了');
+  });
+
+  it('追加到队列时全不可播 → 明确报错「没有可播放的音源」', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    const bad: UnifiedSearchItem = {
+      ...item('x'),
+      bestSource: null,
+      sources: [{ platform: 'qq', trackId: 'x', hasCopyright: false, url: '' }],
+      versions: [],
+    };
+    act(() => {
+      result.current.appendToQueue([bad]);
+    });
+    expect(result.current.error).toBe('没有可播放的音源');
+    // 队列没被污染
+    expect(result.current.track?.title).toBe('歌-1');
+  });
+});
+
+describe('❤ 的陈旧结果守护', () => {
+  it('unified：第二次 ❤ 让第一次的返回结果作废（不覆盖新状态）', async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    apiMocks.fanOutLike.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    await act(async () => {
+      const p1 = result.current.handleLike();
+      await Promise.resolve();
+      // 用户又点了一次 → 新 ticket
+      await result.current.handleLike();
+      // 第一次的结果这时才回来 → 必须被丢弃
+      resolveFirst({ success: true, liked: true, fannedOutTo: ['qq'] });
+      await p1;
+    });
+
+    // 第一次的返回没有把状态改回去
+    expect(result.current.track?.liked).toBe(true);
+  });
+
+  it('radio：第二次 ❤ 让第一次的返回结果作废', async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    apiMocks.toggleLike.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    apiMocks.fetchNextTrack.mockResolvedValue(radioTrack('r1'));
+    const { result } = setup();
+    await waitFor(() => expect(result.current.track?.id).toBe('r1'));
+
+    await act(async () => {
+      const p1 = result.current.handleLike();
+      await Promise.resolve();
+      await result.current.handleLike();
+      resolveFirst({ success: true, liked: false });
+      await p1;
+    });
+
+    // 陈旧结果（liked=false）没被应用
+    expect(result.current.track?.liked).toBe(true);
+  });
+
+  it('unified：踩的返回结果在切歌后作废（不把新歌标成不喜欢）', async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    apiMocks.dislikeMerged.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1', 'qq'), item('2', 'qq')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    // ⚠️ 别把「切歌」放进同一个 async act 里（嵌套 act → 状态更新不落地，
+    // 断言会读到旧值）→ 拆成独立的几段。
+    let p1: Promise<void> = Promise.resolve();
+    await act(async () => {
+      p1 = result.current.handleDislike();
+      await Promise.resolve();
+    });
+    // 踩的过程中切到第二首
+    act(() => {
+      result.current.playSearch([item('1', 'qq'), item('2', 'qq')], 1);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+    // 踩的返回结果这时才回来 → 必须被丢弃（不把新歌标成不喜欢）
+    await act(async () => {
+      resolveFirst({ success: true });
+      await p1;
+    });
+
+    // 新歌没被误标成「不喜欢」
+    expect(result.current.track?.title).toBe('歌-2');
+    expect(result.current.track?.liked).toBe(false);
+  });
+
+  it('detect 的期望值与当前状态不符 → 不应用（用户手动翻转后不被旧响应覆盖）', async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveDetect: (v: unknown) => void = () => {};
+      apiMocks.detectLiked.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveDetect = resolve;
+          }),
+      );
+      const { result } = setup();
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+
+      let settled: unknown = 'pending';
+      let polling: Promise<unknown> = Promise.resolve(null);
+      await act(async () => {
+        polling = result.current.refreshLikedStateUntilStable();
+        await Promise.resolve();
+      });
+      // 轮询期间用户自己点了 ❤（liked 变成 true）→ 期望值（false）已过期
+      await act(async () => {
+        await result.current.handleLike();
+      });
+      await act(async () => {
+        resolveDetect({ liked: true, fannedOutTo: ['qq', 'netease'], settled: true });
+        await vi.advanceTimersByTimeAsync(1_000);
+        settled = await polling;
+      });
+
+      // 期望值不符 → 这轮不计入稳定命中（继续轮询），不会用旧响应覆盖手动状态
+      expect(settled).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('WPS（Spotify 全曲）路径的分支', () => {
+  /** 一个可用的 WPS 替身。 */
+  function makeWps(over: Partial<Record<string, unknown>> = {}) {
+    return {
+      wpsReady: true,
+      state: { hasTrack: false, isPlaying: false, track: null, positionMs: 0 },
+      play: vi.fn().mockResolvedValue(undefined),
+      pause: vi.fn().mockResolvedValue(undefined),
+      resume: vi.fn().mockResolvedValue(undefined),
+      seek: vi.fn().mockResolvedValue(undefined),
+      transferHere: vi.fn().mockResolvedValue(undefined),
+      ...over,
+    };
+  }
+
+  it('同首歌换源 → 先停掉旧 WPS（防两路叠加出声）', async () => {
+    // ⚠️ 为什么不是「切到另一首歌」：presentTrack 在**换歌**时会把
+    // `wpsPlayedIdRef` 清成 null（设计如此，见 usePlayer 里那段注释）→
+    // 于是 effect 里 `shouldStopWpsBeforeTransition(null, ...)` 直接返回 false
+    // → 这条「先停 WPS」根本不会触发。
+    // 真正会触发的是**同一首歌换源**（unified id 不变 → isNewSong=false →
+    // ref 保留 → 新源不是 spotify → 必须先停旧的 WPS）。
+    const wps = makeWps();
+    const slots = createAudioSlots();
+    const elA = document.createElement('audio');
+    const elB = document.createElement('audio');
+    slots.ref('a')(elA);
+    slots.ref('b')(elB);
+    const wpsRef = { current: wps };
+    const { result } = renderHook(() => usePlayer(slots, wpsRef));
+
+    // 同一个 unified：spotify + qq 两个源
+    const both: UnifiedSearchItem = {
+      ...item('1', 'spotify'),
+      id: 'spotify:1',
+      sources: [
+        { platform: 'spotify', trackId: '1', hasCopyright: true, url: '/music/stream/spotify/1' },
+        { platform: 'qq', trackId: '1', hasCopyright: true, url: '/music/stream/qq/1' },
+      ],
+      versions: [
+        {
+          id: 'ver-1',
+          duration: 200,
+          sources: [
+            {
+              platform: 'spotify',
+              trackId: '1',
+              hasCopyright: true,
+              url: '/music/stream/spotify/1',
+            },
+            { platform: 'qq', trackId: '1', hasCopyright: true, url: '/music/stream/qq/1' },
+          ],
+          bestSource: 'spotify',
+        },
+      ],
+    };
+    act(() => {
+      result.current.playSearch([both], 0);
+    });
+    await waitFor(() => expect(result.current.track?.provider).toBe('spotify'));
+    await waitFor(() => expect(wps.play).toHaveBeenCalled());
+
+    // spotify 源挂了 → 自动换到同首歌的 QQ 源 → 旧 WPS 必须先停
+    await act(async () => {
+      elA.dataset.wantPlay = '0';
+      elA.dispatchEvent(new Event('error'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.track?.provider).toBe('qq'));
+    expect(wps.pause).toHaveBeenCalled();
+  });
+
+  it('transferHere 失败 → 仍然继续 play（设备还没注册完不该阻断）', async () => {
+    const wps = makeWps({
+      transferHere: vi.fn().mockRejectedValue(new Error('device not registered')),
+    });
+    const slots = createAudioSlots();
+    slots.ref('a')(document.createElement('audio'));
+    slots.ref('b')(document.createElement('audio'));
+    const wpsRef = { current: wps };
+    const { result } = renderHook(() => usePlayer(slots, wpsRef));
+
+    act(() => {
+      result.current.playSearch([item('1', 'spotify')], 0);
+    });
+    await waitFor(() => expect(wps.play).toHaveBeenCalled());
+    expect(result.current.error).toBeNull();
+  });
+
+  it('WPS play() 被拒 → 明确报错「WPS 播放失败：…」', async () => {
+    const wps = makeWps({ play: vi.fn().mockRejectedValue(new Error('not active')) });
+    const slots = createAudioSlots();
+    slots.ref('a')(document.createElement('audio'));
+    slots.ref('b')(document.createElement('audio'));
+    const wpsRef = { current: wps };
+    const { result } = renderHook(() => usePlayer(slots, wpsRef));
+
+    act(() => {
+      result.current.playSearch([item('1', 'spotify')], 0);
+    });
+    await waitFor(() => expect(result.current.error).toBe('WPS 播放失败：not active'));
+  });
+
+  it('暂停 → WPS 停（不是只停 <audio>）', async () => {
+    const wps = makeWps();
+    const slots = createAudioSlots();
+    slots.ref('a')(document.createElement('audio'));
+    slots.ref('b')(document.createElement('audio'));
+    const wpsRef = { current: wps };
+    const { result } = renderHook(() => usePlayer(slots, wpsRef));
+
+    act(() => {
+      result.current.playSearch([item('1', 'spotify')], 0);
+    });
+    await waitFor(() => expect(result.current.playing).toBe(true));
+    act(() => {
+      result.current.handlePlayPause();
+    });
+    await waitFor(() => expect(result.current.playing).toBe(false));
+    await waitFor(() => expect(wps.pause).toHaveBeenCalled());
+  });
+
+  it('WPS 就绪后重切当前歌（切到 WPS 全曲路径）', async () => {
+    const wps = makeWps();
+    const slots = createAudioSlots();
+    slots.ref('a')(document.createElement('audio'));
+    slots.ref('b')(document.createElement('audio'));
+    const wpsRef = { current: wps };
+    const { result } = renderHook(() => usePlayer(slots, wpsRef));
+
+    act(() => {
+      result.current.playSearch([item('1', 'spotify')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.provider).toBe('spotify'));
+    // fixture 没有 coverUrl → presentTrack 走的是 presentPlaceholder 分支
+    coverMocks.presentPlaceholder.mockClear();
+
+    act(() => {
+      result.current.refreshTrackForWps();
+    });
+    // 重切 → 封面重新刷一次（presentTrack 被重新调用）
+    await waitFor(() => expect(coverMocks.presentPlaceholder).toHaveBeenCalled());
+  });
+});
+
+it('切歌时清掉在途的卡死探测定时器（不留孤儿定时器）', async () => {
+  // 场景：同源重试后 play() resolve 了 → 起了卡死探测定时器 → 用户这时切歌
+  // → presentTrack 必须把那个定时器清掉（否则它会在新歌上触发 → 误判新歌卡死
+  // → 把新歌换掉）。
+  vi.useFakeTimers();
+  try {
+    const { result, a } = setup();
+    act(() => {
+      result.current.playSearch([multiItem('1')], 0);
+    });
+    await act(async () => {
+      a.dataset.wantPlay = '1';
+      a.dispatchEvent(new Event('error'));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000); // 同源重试 → 起了探测定时器
+    });
+    // 用户切歌 → presentTrack → clearStallTimer（此时定时器在途）
+    act(() => {
+      result.current.playSearch([multiItem('2')], 0);
+    });
+    // 旧探测定时器已被清掉 → 推进到窗口之后也不会触发旧歌的兜底
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(result.current.track?.provider).toBe('qq');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('电台在途时切了 provider → 丢弃旧结果（不让它把歌装到新平台）', async () => {
+  let resolveNext: (v: unknown) => void = () => {};
+  apiMocks.fetchNextTrack.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveNext = resolve;
+      }),
+  );
+  const { result } = setup();
+  // 电台请求在途 → 用户切到网易云
+  act(() => {
+    result.current.switchToProvider('netease');
+  });
+  await act(async () => {
+    resolveNext(radioTrack('r1'));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  // 旧 provider 的结果被丢弃（没装到网易云上）
+  expect(result.current.track?.id).not.toBe('r1');
+});
+
+describe('兜底链的过期与跳过', () => {
+  it('兜底结果回来时已切歌 → 丢弃（不把旧歌的源塞给新歌）', async () => {
+    let resolveEquiv: (v: unknown) => void = () => {};
+    apiMocks.findEquivalentSource.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveEquiv = resolve;
+        }),
+    );
+    const { result, a } = setup();
+    act(() => {
+      result.current.playSearch([item('1')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    // 兜底搜索在途
+    await act(async () => {
+      a.dataset.wantPlay = '0'; // 不走同源重试，直达跨平台兜底
+      a.dispatchEvent(new Event('error'));
+      await Promise.resolve();
+    });
+    // 期间用户切歌
+    act(() => {
+      result.current.playSearch([item('2')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+    // 兜底结果这时才回来 → 必须被丢弃
+    await act(async () => {
+      resolveEquiv({
+        source: { platform: 'netease', trackId: 'x', hasCopyright: true, url: '/u' },
+        reason: 'match',
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 新歌没被换成旧歌的源
+    expect(result.current.track?.title).toBe('歌-2');
+  });
+
+  it('服务端匹配抛错 → 静默走报错（不崩）', async () => {
+    apiMocks.findEquivalentSource.mockRejectedValue(new Error('network down'));
+    const { result, a } = setup();
+    act(() => {
+      result.current.playSearch([item('1')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    await act(async () => {
+      a.dataset.wantPlay = '0';
+      a.dispatchEvent(new Event('error'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 没崩，且给出了失败信号
+    expect(result.current.failure).not.toBeNull();
+  });
+});
+
+describe('音频图与探测的异常路径', () => {
+  it('音频图构建失败 → 明确 console.error（不是静默无声）', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const orig = (globalThis as any).AudioContext;
+    class BrokenContext extends orig {
+      createBiquadFilter() {
+        throw new Error('no web audio');
+      }
+    }
+    (globalThis as any).AudioContext = BrokenContext;
+    try {
+      const { result } = setup();
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+      await waitFor(() => {
+        expect(
+          spy.mock.calls.some((c) => String(c[0]).includes('failed to build audio graph')),
+        ).toBe(true);
+      });
+      expect(result.current.track?.title).toBe('歌-1');
+    } finally {
+      (globalThis as any).AudioContext = orig;
+      spy.mockRestore();
+    }
+  });
+
+  it('AudioContext 被挂起 → resume 失败只告警（不阻断播放）', async () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const orig = (globalThis as any).AudioContext;
+    class SuspendedContext extends orig {
+      state = 'suspended';
+      resume() {
+        return Promise.reject(new Error('resume blocked'));
+      }
+    }
+    (globalThis as any).AudioContext = SuspendedContext;
+    try {
+      const { result } = setup();
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+      await waitFor(() => {
+        expect(spy.mock.calls.some((c) => String(c[0]).includes('resume() rejected'))).toBe(true);
+      });
+      expect(result.current.error).toBeNull();
+    } finally {
+      (globalThis as any).AudioContext = orig;
+      spy.mockRestore();
+    }
+  });
+
+  it('没有标准 AudioContext → 回退到 webkitAudioContext', async () => {
+    const orig = (globalThis as any).AudioContext;
+    const origWebkit = (window as any).webkitAudioContext;
+    const w = window as any;
+    w.AudioContext = undefined;
+    w.webkitAudioContext = orig;
+    try {
+      const { result } = setup();
+      act(() => {
+        result.current.playSearch([item('1')], 0);
+      });
+      // 回退路径下依然能正常起播（没有抛错）
+      await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+      expect(result.current.error).toBeNull();
+    } finally {
+      w.AudioContext = orig;
+      w.webkitAudioContext = origWebkit;
+    }
+  });
+
+  it('切音质后的 seek 越界 → 忽略（不炸）', async () => {
+    const { result, a } = setup();
+    act(() => {
+      result.current.playSearch([item('1', 'qq')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    // 模拟浏览器拒绝越界的 seek
+    Object.defineProperty(a, 'currentTime', {
+      configurable: true,
+      get: () => 0,
+      set: () => {
+        throw new Error('IndexSizeError: out of range');
+      },
+    });
+    act(() => {
+      result.current.changeQuality('high');
+    });
+    await act(async () => {
+      a.dispatchEvent(new Event('loadedmetadata'));
+      await Promise.resolve();
+    });
+    // 没炸就行
+    expect(result.current.error).toBeNull();
+  });
+
+  it('非试听音源 → 复位 trial 标记（升级成功后不再显示 TRIAL）', async () => {
+    const { result, a } = setup();
+    act(() => {
+      result.current.playSearch([item('1', 'qq')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+    // 元数据时长与曲库一致 → 不是试听残片
+    Object.defineProperty(a, 'duration', { value: 200, configurable: true });
+
+    await act(async () => {
+      a.dispatchEvent(new Event('loadedmetadata'));
+      await Promise.resolve();
+    });
+    expect(result.current.trialFellBack).toBe(false);
+  });
+
+  it('登录态探不通 → 当作没过期（宁可少提示，不误伤正常降级）', async () => {
+    apiMocks.getAuthStatusValidated.mockRejectedValue(new Error('probe timeout'));
+    const { result, a } = setup();
+    act(() => {
+      // 单平台 item：没有别的源可兜底 → 才会走到 reportPlayFailure
+      result.current.playSearch([item('1', 'qq')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.provider).toBe('qq'));
+
+    await act(async () => {
+      a.dataset.wantPlay = '0';
+      a.dispatchEvent(new Event('error'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 探不通 → 没有弹重登，但失败仍然如实上报
+    expect(result.current.failure).not.toBeNull();
   });
 });
