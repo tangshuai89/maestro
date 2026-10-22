@@ -242,6 +242,34 @@ function judgeAddedLines(added, lcov) {
 }
 
 /**
+ * 判定 2：PR 触碰的文件里，整体覆盖率掉到 0% 的那些。
+ *
+ * 兜底判据 1 抓不到的情况：PR **删掉了**某个文件的测试（不产生新增行，
+ * 判据 1 无从下手），但那个文件的覆盖率会掉到 0%。
+ *
+ * ⚠️ 同样必须和主流程共用实现 —— 自测里另写一份的话，判据改坏了自测
+ * 测不出来（和判据 1 踩过的同一个坑）。
+ */
+function judgeZeroCoverageFiles(added, lcov) {
+  /** @type {string[]} */
+  const zeroFiles = [];
+  for (const file of added.keys()) {
+    if (!/\.(ts|tsx)$/.test(file)) continue;
+    if (!/(^|\/)src\//.test(file)) continue;
+    if (/\.d\.ts$/.test(file)) continue;
+    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
+    const da = lcov.get(file);
+    if (!da) continue; // 判据 1 已经报了
+    const total = da.size;
+    const covered = [...da.values()].filter((h) => h > 0).length;
+    if (total > 0 && covered === 0) {
+      zeroFiles.push(file);
+    }
+  }
+  return zeroFiles;
+}
+
+/**
  * 自测：用构造的 diff + lcov 验证门禁判据。
  *
  * 为什么需要：「一个永远通过的检查脚本可能只是因为规则写错而永远通过」。
@@ -398,6 +426,24 @@ function selfTest() {
     );
   }
 
+  // ── 6c. 判据 2（文件掉到 0%）────────────────────────────────────
+  {
+    const added2 = new Map([
+      ['packages/server/src/zeroed.ts', new Set([5])],
+      ['packages/server/src/partial.ts', new Set([5])],
+      ['packages/server/src/ok.ts', new Set([5])],
+    ]);
+    const lcov2 = new Map([
+      ['packages/server/src/zeroed.ts', new Map([[1, 0], [2, 0]])],
+      ['packages/server/src/partial.ts', new Map([[1, 0], [2, 3]])],
+      ['packages/server/src/ok.ts', new Map([[1, 5], [2, 2]])],
+    ]);
+    const z = judgeZeroCoverageFiles(added2, lcov2);
+    expect('判据 2：全覆盖为 0 的文件被报出', z.includes('packages/server/src/zeroed.ts'));
+    expect('判据 2：部分覆盖的不报', !z.includes('packages/server/src/partial.ts'));
+    expect('判据 2：有覆盖的不报', !z.includes('packages/server/src/ok.ts'));
+  }
+
   // ── 7. 不该被门禁管的文件类型 ───────────────────────────────────
   //
   // 配置文件（vite.config.ts 等）和类型声明（.d.ts）**不在 lcov 里**（c8 的
@@ -527,20 +573,8 @@ function main() {
   for (const info of uncoveredByFile.values()) totalUncovered += info.lines.length;
 
   // ── 判定 2：触碰的文件整体覆盖率 0% ─────────────────────────────
-  const zeroFiles = [];
-  for (const file of added.keys()) {
-    if (!/\.(ts|tsx)$/.test(file)) continue;
-    if (!/(^|\/)src\//.test(file)) continue;
-    if (/\.d\.ts$/.test(file)) continue;
-    if (/\.test\.(ts|tsx|mjs)$/.test(file)) continue;
-    const da = lcov.get(file);
-    if (!da) continue; // 判据 1 已经报了
-    const total = da.size;
-    const covered = [...da.values()].filter((h) => h > 0).length;
-    if (total > 0 && covered === 0) {
-      zeroFiles.push(file);
-    }
-  }
+  // 调**共享**的 judgeZeroCoverageFiles（自测也调它）。
+  const zeroFiles = judgeZeroCoverageFiles(added, lcov);
 
   // ── 报告 ────────────────────────────────────────────────────────
   console.log('── 覆盖率 diff 门禁 ──────────────────────────────────────');
