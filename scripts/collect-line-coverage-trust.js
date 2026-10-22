@@ -84,6 +84,39 @@ function selfTest() {
   main();
   const got = fs.readFileSync(out, 'utf8').split('\n').filter(Boolean);
   const rel = got.map((p) => p.replace(process.cwd() + '/', ''));
+  // coverage-v8 的产物（coverage-final.json，key 是绝对路径）→ 全部可信
+  {
+    const fs3 = require('node:fs');
+    const os3 = require('node:os');
+    const p3 = require('node:path');
+    const tmp2 = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'maestro-trust-v8-'));
+    fs3.writeFileSync(
+      p3.join(tmp2, 'coverage-final.json'),
+      JSON.stringify({
+        [p3.join(process.cwd(), 'packages/renderer/src/ok.ts')]: { statementMap: {}, s: {} },
+        [p3.join(process.cwd(), 'packages/renderer/src/miss.ts')]: { statementMap: {}, s: {} },
+        [p3.join(process.cwd(), 'node_modules/x/i.ts')]: { statementMap: {}, s: {} },
+      }),
+    );
+    const out2 = p3.join(tmp2, 'out.txt');
+    const argv2 = process.argv.slice(2);
+    process.argv = [argv2[0], argv2[1], out2, tmp2];
+    main();
+    const got2 = fs3.readFileSync(out2, 'utf8').split('\n').filter(Boolean);
+    const rel2 = got2.map((p) => p.replace(process.cwd() + '/', ''));
+    const v8Ok =
+      rel2.includes('packages/renderer/src/ok.ts') &&
+      rel2.includes('packages/renderer/src/miss.ts');
+    const v8NodeMod = rel2.some((p) => p.includes('node_modules'));
+    fs3.rmSync(tmp2, { recursive: true, force: true });
+    if (!v8Ok || v8NodeMod) {
+      console.error('❌ collect-line-coverage-trust 自测失败:');
+      if (!v8Ok) console.error('   ✗ coverage-v8 的文件没被认成可信');
+      if (v8NodeMod) console.error('   ✗ coverage-v8 的 node_modules 被误认');
+      process.exit(1);
+    }
+  }
+
   const ok = rel.includes('packages/server/src/ok.ts');
   const noData = rel.includes('packages/server/src/no-data.ts');
   const nodeMod = rel.some((p) => p.includes('node_modules'));
@@ -95,7 +128,9 @@ function selfTest() {
     if (nodeMod) console.error('   ✗ node_modules 被误认');
     process.exit(1);
   }
-  console.log('✅ collect-line-coverage-trust 自测通过（路径形态 + data 判据 + 排除规则）');
+  console.log(
+    '✅ collect-line-coverage-trust 自测通过（路径形态 + data 判据 + 排除规则 + coverage-v8 识别）',
+  );
 }
 
 function main() {
@@ -126,6 +161,31 @@ function main() {
       } catch {
         continue;
       }
+      // ── coverage-v8 的产物（@vitest/coverage-v8）──────────────────
+      //
+      // 它走 vite 自己的 transform 链，**拿得到 source map** → 行号正确 →
+      // 它报告的文件**全部可信**。
+      //
+      // 产物形态：`coverage-final.json`（istanbul 格式，key 是**绝对路径**）。
+      // ⚠️ 它自己的 `lcov.info` 用「相对 vitest root」的路径（`src/App.tsx`）
+      // → 和 git diff 对不上 → **不能用那份**，必须用 istanbul JSON。
+      if (name === 'coverage-final.json') {
+        try {
+          const json = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+          for (const abs of Object.keys(json)) {
+            const rel = path.relative(process.cwd(), abs).split(path.sep).join('/');
+            if (rel.startsWith('..')) continue;
+            if (!rel.startsWith('packages/')) continue;
+            if (rel.includes('/node_modules/')) continue;
+            if (rel.includes('/dist/')) continue;
+            trusted.add(rel);
+          }
+        } catch {
+          /* 读不到就跳过 */
+        }
+        continue;
+      }
+
       const cache = json['source-map-cache'];
       if (!cache) continue;
       for (const fileUrl of Object.keys(cache)) {
