@@ -463,6 +463,78 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   实测：`music.controller.ts` 从 **77.33%（979/1266）→ 87.84%（1112/1266）**，
   899-1001 段从 **0 行 → 97 行覆盖**；生产代码**零改动**（只新增测试文件）。
 
+- **test(e2e): 跨包全链路 E2E —— 搜索 → 播放 → 收藏 → 角标 → 刷新后仍在**
+  （H7 第 7 层，2026-10-22）
+
+  九层评估里**唯一还空着的一层**。之前仓库里有三种测试，但**没有一种能跨过包**：
+
+  | 已有手段                  | 覆盖到哪                                  | 缺什么                                  |
+  | ------------------------- | ----------------------------------------- | --------------------------------------- |
+  | Playwright 视觉回归       | 只有 3 个视图，**API 在网络层被 stub 掉** | 验不了「链路通不通」                    |
+  | server 的 `*.e2e.test.ts` | in-process HTTP 调内部 handler            | **没有 renderer 参与** → 验不了跨包契约 |
+  | renderer 的 hook 测试     | 把 `../api` 整个 mock 掉                  | 验不了 server 返回的形状对不对          |
+
+  新增：
+  - `packages/server/src/e2e/fake-provider.ts` + `e2e-server.ts` —— 起**真 NestJS**
+    （真路由 / 真控制器 / 真存储 / 真音频代理），只把**平台本身**换成假 provider。
+    **零产品代码改动**：provider 是 Nest 单例 → 直接替换实例上的方法。
+  - `tests/e2e/fullchain.spec.mjs` —— 浏览器里跑**真的出厂产物**（vite preview
+    起 dist），对着真后端走完「搜索 → 播放 → 收藏 → 跨平台角标 → 刷新后仍在」
+    - 「搜索无结果 → 明确空态」。
+  - `playwright.e2e.config.mjs` + `.github/workflows/e2e.yml` —— 独立于视觉回归
+    （那个只在渲染器路径变更时触发，**改后端不跑**）；E2E 在 server / renderer /
+    electron / common 任一路径变更时都跑。
+
+  断言全部钉在**跨包事实**上（「真的打到了 server 且返回 2xx」「收藏刷新后还在」）
+  而不是组件细节。
+
+  ⚠️ 实测踩到的五个坑（都写进了代码注释）：
+  1. **会话 cookie 必须同站** —— 页面 `127.0.0.1:4173`、API `localhost:3200`
+     是**跨站** → server 的 `SameSite=Lax` cookie **不发送** → 每个请求都是新
+     session → 收藏写进用完即弃的 session → 「刷新后红心还在」永远失败，
+     **看起来像产品 bug**。修法：注入 `window.electronAPI.apiBase`（生产环境
+     本来就靠 preload 推它）指向同站地址。
+  2. **`window.electronAPI` 替身必须完整** —— App 里
+     `window.electronAPI?.reportPlayerMode(mode)` 的 `?.` 只保护「对象为 null」，
+     **不保护「方法不存在」** → 少一个方法就是 TypeError → effect 抛错 →
+     **整个页面空白**。
+  3. **E2E 音频长度 = 假歌元数据长度** —— 短了会「播完自动切下一首」；短太多
+     （>45s）会被 `isResidualAudio` 判成「30s 试听」触发降级链。
+  4. **假 provider 的 `probeSession` 必须返回 `{alive:true}`** —— 少 `alive`
+     → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
+     fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  5. **NestJS 的 `@Post` 默认返 201**（不是 200）—— 断言「2xx」而不是写死 200。
+
+  顺带：**测试基建不进覆盖率分母** —— `src/test/`（vitest setup）与 `src/e2e/`
+  （E2E 基建）都是**夹具**不是出厂代码，单测套件永远不 import 它们 → 必然 0%
+  → 白拉低全局数字。c8 与 vitest 两边都加了 exclude（与「硬编码颜色门禁不扫
+  测试文件」同一原则）。
+
+- **fix(test): 覆盖率数据缺失时**不再出报告**、批处理 flaky 不再被吞**（2026-10-22）
+
+  这两条是**「门禁在骗人」级别**的缺陷 —— 都是本轮跑全量采集时实测撞出来的。
+
+  1. **组件测试批量失败 → 覆盖率数据整体消失，而 run 仍然绿**
+     - 现象：`Tooltip.test.tsx` 在高负载下 flaky（批量里挂、单跑绿）→ test.sh
+       退化成「逐个归因」→ **逐个跑不带插桩** → `coverage/.vitest` 根本没写 →
+       报告里 renderer 的组件文件**全是 0%** → **全局覆盖率从 88% 塌到 65%**，
+       而阈值 60% **照样过** → 一份在骗人的报告，run 还是绿的。
+     - 修法（三条一起）：
+       a. 逐个归因之后，**插桩模式下补跑一次带覆盖率的批量** → 数据能救回来；
+       b. **批量失败但逐个都过 = flaky → 明确记进失败清单**（run 变红）——
+       flaky 的危害正在于此，不该悄悄消失；
+       c. 报告阶段**硬校验**：renderer 那一半覆盖率数据缺失 → **报错退出、
+       不出报告**（而不是拿半截数据算一个偏低的数）。
+       报错走 stderr —— `REPORT=$(c8_report)` 会把 stdout 吞进变量，
+       消息印在变量里用户根本看不见（实测踩到）。
+  2. **`Tooltip.test.tsx` 的 flaky 本身**：Radix 的关闭链路是「trigger 的**原生**
+     pointerleave → setState(grace area) → React effect 挂上 document 的
+     pointermove 监听 → 监听里判出界 → onClose」。**挂监听是后续任务** → 机器
+     负载高时它比测试里那行 `fireEvent.pointerMove` 更晚 → 没人接 → 提示永远
+     不关 → 1s 超时直接红（且只在 CI 高负载时红）。
+     修法：把 `pointerMove` 放进 `waitFor` 里**重试** → 断言语义不变（「最终会关」），
+     但与负载无关。
+
 - **test(renderer): `usePlayer.ts` 补测 —— 未覆盖行 345 → 124，语句覆盖
   84.31% → 94.39%**（2026-10-22）
 

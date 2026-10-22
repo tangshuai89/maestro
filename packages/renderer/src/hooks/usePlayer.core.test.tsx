@@ -532,6 +532,50 @@ describe('AI 推荐批次续播', () => {
     // 没有变成死路：仍在播队列里的歌
     await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
   });
+
+  it('拉下一批期间队列被换掉 → 只报错，不动新队列', async () => {
+    // 竞态：await loadMore() 期间用户切了源 / 重新搜索 → queueRef 已经不是
+    // 原来那个 q。此时**绝不能**把新批次 push 进新队列（会串歌），
+    // 但失败原因要如实报出来。
+    //
+    // ⚠️ 这条分支是 diff 覆盖率门禁逼出来的：它指出「新增的这 4 行没有任何
+    // 测试走过」——门禁第一次在**本轮自己的新代码**上生效。
+    const { result } = setup();
+    let rejectLoadMore: (e: Error) => void = () => {};
+    const loadMore = vi.fn(
+      () =>
+        new Promise<UnifiedSearchItem[]>((_resolve, reject) => {
+          rejectLoadMore = reject;
+        }),
+    );
+    act(() => {
+      result.current.playSearch([item('1')], 0, loadMore);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    // 拉批途中 → 用户重新搜索（队列被换掉）
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pending = result.current.loadNextTrack();
+      await Promise.resolve();
+    });
+    act(() => {
+      result.current.playSearch([item('2')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+
+    // 批次请求这时才失败
+    await act(async () => {
+      rejectLoadMore(new Error('推荐服务挂了'));
+      await pending;
+      await Promise.resolve();
+    });
+
+    // 失败如实上报
+    expect(result.current.error).toBe('获取下一批推荐失败：推荐服务挂了');
+    // 新队列没被动过（还在播第二首）
+    expect(result.current.track?.title).toBe('歌-2');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════

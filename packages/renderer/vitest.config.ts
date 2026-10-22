@@ -69,6 +69,9 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.test.tsx',
         '**/*.test.mjs',
+        // 测试基建（vitest setup 文件）**不计入**覆盖率分母 —— 它是夹具不是
+        // 出厂代码，跟「硬编码颜色门禁不扫测试文件」是同一个原则。
+        '**/test/**',
       ],
     },
   },

@@ -105,6 +105,11 @@ C8_NODE=(
   --extension .ts --extension .tsx --all
   "--exclude=**/dist/**" "--exclude=**/*.d.ts"
   "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs"
+  # 测试基建不进覆盖率分母：`src/test/`（vitest setup）和 `src/e2e/`
+  # （跨包 E2E 的 server / 假 provider）。它们是**夹具**不是出厂代码 ——
+  # 单测套件永远不 import 它们 → 必然 0% → 白拉低全局数字。
+  # 与「硬编码颜色门禁不扫测试文件」是同一个原则。
+  "--exclude=**/test/**" "--exclude=**/e2e/**"
 )
 
 # ── 失败清单 ───────────────────────────────────────────────────────
@@ -201,6 +206,7 @@ run_pkg() {
     fi
     if [ "$ok" -eq 0 ]; then
       echo "  ⚠️ 组件测试批量失败 → 逐个归因"
+      local failed=0
       for f in $tsx_files; do
         local short="${f#$root/}"
         if [ "$CI_MODE" -eq 1 ]; then echo "  ▸ ${short}"; fi
@@ -209,6 +215,7 @@ run_pkg() {
         # 在有软链的路径下匹配不上 → 整段静默不跑
         ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" "${f#$PWD/}" --reporter=dot ) || rc=$?
         if [ "$rc" -ne 0 ]; then
+          failed=$((failed + 1))
           FAILED_COUNT=$((FAILED_COUNT + 1))
           FAILED_FILES="${FAILED_FILES} ${short}"
           [ "$CI_MODE" -eq 1 ] && echo "  ✗ ${short}"
@@ -216,6 +223,23 @@ run_pkg() {
           echo "  ✓ ${short}"
         fi
       done
+      # ⚠️ **逐个归因不带插桩** → 这一轮跑完，renderer 的覆盖率数据是**空的**
+      #   （coverage/.vitest 没被写）→ 报告里 renderer 的组件全是 0%，
+      #   全局覆盖率从 88% 塌到 65%，**而且没有任何报错**（阈值 60% 照样过）→
+      #   数字在骗人。所以：**插桩模式下必须补跑一次带覆盖率的批量**。
+      if [ "$INSTRUMENT" -eq 1 ]; then
+        echo "  ↻ 补跑带插桩的批量（恢复覆盖率数据）"
+        ( cd "$root" && npx vitest run -c "packages/$pkg/vitest.config.ts" \
+            --coverage --reporter=dot ) || true
+      fi
+      # ⚠️ 批量挂了但逐个都过 = **flaky**（批量里挂、单跑绿）。这种失败**不能
+      #   悄悄消失** —— 它正是上面「覆盖率数据变空」的元凶。所以明确记进失败
+      #   清单，让这次 run 变红（flaky 就是不可靠，应该被发现）。
+      if [ "$failed" -eq 0 ]; then
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_FILES="${FAILED_FILES} <renderer 组件测试 flaky：批量失败但逐个都通过>"
+        echo "  ✗ 批量失败但逐个都通过 → 判定为 flaky，记入失败清单"
+      fi
     elif [ "$CI_MODE" -eq 1 ]; then
       local tsx_count
       tsx_count=$(printf '%s\n' "$tsx_files" | grep -c . || true)
@@ -258,6 +282,7 @@ c8_report_one() {
     --extension .ts --extension .tsx \
     "--exclude=**/dist/**" "--exclude=**/*.d.ts" \
     "--exclude=**/*.test.ts" "--exclude=**/*.test.tsx" "--exclude=**/*.test.mjs" \
+    "--exclude=**/test/**" "--exclude=**/e2e/**" \
     2>/dev/null || true
 }
 
@@ -301,12 +326,24 @@ c8_report() {
   # renderer 的 .tsx 覆盖率：coverage-v8 的 istanbul JSON → lcov
   # （它自己的 lcov.info 用「相对 vitest root」的路径，和 git diff 对不上）
   local vitest8_lcov="$COVERAGE_DIR/.lcov-vitest8"
-  if [ -f "$COVERAGE_DIR/.vitest/coverage-final.json" ]; then
-    rm -rf "$vitest8_lcov"
-    mkdir -p "$vitest8_lcov"
-    node "$PWD/scripts/istanbul-to-lcov.js" \
-      "$COVERAGE_DIR/.vitest/coverage-final.json" "$vitest8_lcov/lcov.info" || return 1
+  # ⚠️ 缺了这一半数据**必须报错退出**，不能硬出报告：renderer 的组件文件会
+  #   全部显示 0%（它们只被 .tsx 测试覆盖），全局覆盖率从 88% 塌到 65%，
+  #   而阈值 60% **照样过** → 一份在骗人的报告。实测踩过：组件测试批量失败
+  #   → 退化成逐个跑（不插桩）→ 覆盖率数据整个没了，run 却还是绿的。
+  if [ ! -f "$COVERAGE_DIR/.vitest/coverage-final.json" ]; then
+    # ⚠️ 报错走 **stderr**：`c8_report` 的 stdout 会被 `REPORT=$(c8_report)`
+    #   捕获进变量 → 消息印在变量里，用户看不见（实测：守卫触发了但屏幕上
+    #   一行提示都没有，只看到一个莫名其妙的退出码 1）。
+    echo "── ❌ renderer 的覆盖率数据缺失（coverage/.vitest/coverage-final.json 不存在）" >&2
+    echo "   → 组件测试的批量运行没产出数据（多半是批量失败且补跑也没成功）。" >&2
+    echo "   → **不出报告**：缺这一半数据，renderer 的组件会全算 0%，" >&2
+    echo "      全局数字是偏低的假象（实测 88% → 65%），而阈值照样过 → 数字在骗人。" >&2
+    return 1
   fi
+  rm -rf "$vitest8_lcov"
+  mkdir -p "$vitest8_lcov"
+  node "$PWD/scripts/istanbul-to-lcov.js" \
+    "$COVERAGE_DIR/.vitest/coverage-final.json" "$vitest8_lcov/lcov.info" || return 1
 
   # 并集 → 覆盖最终 lcov.info
   #
@@ -453,7 +490,12 @@ fi
 
 # 4) 覆盖率报告（采集模式下打印；--coverage 还要判阈值）
 if [ "$INSTRUMENT" -eq 1 ]; then
-  REPORT=$(c8_report)
+  # ⚠️ 必须检查返回码：c8_report 失败（比如覆盖率数据缺失）时 stdout 里是
+  #   **半截报告** → 直接印出去 + 判阈值 = 拿一份偏低的假象当结论。
+  REPORT=$(c8_report) || {
+    echo "── ❌ 覆盖率报告生成失败 → 不出结论（见上面的错误信息）" >&2
+    exit 1
+  }
   echo "$REPORT"
   echo "── coverage report written to ${COVERAGE_DIR}/ ──"
   if [ "$FAILED_COUNT" -gt 0 ]; then

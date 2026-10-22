@@ -359,12 +359,68 @@
   主要是**原本被吞掉的覆盖被找回来了** —— 这正是这个缺陷的严重性所在：
   之前的数字是**系统性偏低**的。
 
-- [ ] **H7** 第 7/8 层空白：**E2E 全链路**与**稳定性压测**都不存在
-  - Playwright 只覆盖 3 个视图（无凭据首屏 / 剧场三档密度 / ButtonSmoke），
-    没有一条「登录 → 搜索 → 播放 → 收藏」的跨包链路
-  - `visual.yml` 靠 `paths` 过滤触发，**改后端不跑**
-  - 无任何并发/长稳脚本：`music.service.ts` 的 `mergeLibrary`、provider 并发 fan-out、
-    like-sync 队列都没验证过
+- [x] **H7** 第 7/8 层空白：**E2E 全链路**与**稳定性压测**都不存在
+
+  - ✅ **E2E 全链路（2026-10-22）** —— 新增 `tests/e2e/fullchain.spec.mjs` +
+    `packages/server/src/e2e/`（假 provider + E2E server）+ `playwright.e2e.config.mjs`
+    - `.github/workflows/e2e.yml`。链路是**真 server + 真 renderer 产物**：
+      浏览器里跑真的 dist → HTTP → 真 NestJS 路由/控制器/存储/音频代理 →
+      假 provider（只有「平台本身」是假的）。
+      覆盖：搜索 → 播放（真音频代理、真字节）→ 收藏（真 fan-out、**刷新后仍在**）
+      → 跨平台角标 → 空结果明确空态。
+  - ✅ **并发/长稳**：`packages/server/src/music/concurrency-stress.test.ts`
+    （800 并发混合写 / 专辑 fan-out / 跨 session 隔离 / **锁不跨网络 I/O** 不变量）。
+  - ✅ **`visual.yml` 只在渲染器路径变更时触发** → 补了 `e2e.yml`：
+    server / renderer / electron / common 任一路径变更都跑跨包 E2E。
+
+  **为什么之前没有这条链**（三种已有的测试都跨不过去）：
+
+  | 已有手段                  | 覆盖到哪                               | 缺什么                                  |
+  | ------------------------- | -------------------------------------- | --------------------------------------- |
+  | Playwright 视觉回归       | 只有 3 个视图，**API 在网络层被 stub** | 验不了「链路通不通」                    |
+  | server 的 `*.e2e.test.ts` | in-process HTTP 调内部 handler         | **没有 renderer 参与** → 验不了跨包契约 |
+  | renderer 的 hook 测试     | 把 `../api` 整个 mock 掉               | 验不了 server 返回的形状对不对          |
+
+  **设计约束（都是实测踩出来的）**：
+  - **零产品代码改动**：provider 是 Nest 单例 → 直接替换实例上的方法；
+    `MusicService.searchUnified` 同理；`SessionService.resolve` 包一层补假登录态。
+  - **会话 cookie 必须同站**：页面 `127.0.0.1:4173`、API `localhost:3200` 是
+    **跨站** → server 的 `SameSite=Lax` 会话 cookie **不发送** → 每个请求都是新
+    session → 收藏写进用完即弃的 session → 「刷新后红心还在」永远失败，
+    而且**看起来像产品 bug**。修法：注入 `window.electronAPI.apiBase`
+    （生产环境本来就靠 preload 推它）指向同站地址。
+  - **`window.electronAPI` 替身必须完整**：App 里有
+    `window.electronAPI?.reportPlayerMode(mode)` —— `?.` 只保护「对象为 null」，
+    **不保护「方法不存在」** → 少一个方法就是 TypeError → effect 抛错 →
+    **整个页面空白**（`.th-canvas` 根本不存在）。
+  - **E2E 音频长度 = 假歌元数据长度**：短了会「播完自动切下一首」；短太多
+    （>45s）会被 `isResidualAudio` 判成「30s 试听」触发降级链 → 测的链路就歪了。
+  - **假 provider 的 `probeSession` 必须返回 `{alive:true,...}`**：少 `alive`
+    → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
+    fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  - **测试基建不进覆盖率分母**：`src/test/`（vitest setup）和 `src/e2e/`
+    （E2E 基建）都是夹具不是出厂代码 → c8 / vitest 两边都加 exclude
+    （与「硬编码颜色门禁不扫测试文件」同一原则）。
+  - 🐛 **顺带挖出两个「门禁在骗人」级别的缺陷**（都是本轮跑全量采集时撞出来的）：
+    1. **组件测试批量失败 → 覆盖率数据整体消失，而 run 仍然绿**。
+       `Tooltip.test.tsx` 高负载下 flaky → test.sh 退化成「逐个归因」→
+       **逐个跑不带插桩** → `coverage/.vitest` 根本没写 → renderer 的组件文件
+       **全是 0%** → **全局覆盖率从 88% 塌到 65%**，而阈值 60% **照样过**。
+       修法三条一起：① 插桩模式下补跑一次带覆盖率的批量；② **批量失败但逐个
+       都过 = flaky → 记进失败清单**（run 变红，不该悄悄消失）；③ 报告阶段
+       **硬校验** renderer 那一半数据在不在 → 不在就**报错退出、不出报告**
+       （报错走 stderr：`REPORT=$(c8_report)` 会把 stdout 吞进变量）。
+    2. **`Tooltip.test.tsx` 的 flaky 本身**：Radix 的关闭链路是「trigger 的
+       **原生** pointerleave → setState(grace area) → React effect 挂上
+       document 的 pointermove 监听 → 判出界 → onClose」。**挂监听是后续任务**
+       → 负载高时它比测试里那行 `fireEvent.pointerMove` 更晚 → 没人接 →
+       提示永远不关 → 1s 超时直接红（且只在 CI 高负载时红）。
+       修法：把 `pointerMove` 放进 `waitFor` 里**重试** → 断言语义不变
+       （「最终会关」），但与负载无关。
+    3. **diff 门禁在本轮自己的新代码上生效了**：它指出
+       `usePlayer.ts` 新增的 4 行（竞态分支「拉批期间队列被换掉」）**没有任何
+       测试走过** → 补了一条竞态用例（`usePlayer.core.test.tsx`）。
+       这是门禁第一次抓到「我自己刚写的、以为测过了」的代码。
 
 - [x] **H12** renderer 的**行级覆盖数据是错位的** —— 看起来「对齐」，其实随机
 
@@ -723,9 +779,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                → GET /music/stream/:provider/:trackId
-                                                  → musicService.getStreamUrl() 拿上游 URL
-                                                    → proxyAudio() 转发到上游 CDN
+                                                            → GET /music/stream/:provider/:trackId
+                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
