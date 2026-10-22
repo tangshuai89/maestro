@@ -671,14 +671,28 @@ function main() {
     process.exit(2);
   }
 
-  // ── 判定 1：新增行未被执行 ──────────────────────────────────────
-  // 调**共享**的 judgeAddedLines（自测也调它）—— 判据只有一份实现，
-  // 不会出现「自测测副本、主流程测真身」导致自测测不出真身的问题。
-  const uncoveredByFile = judgeAddedLines(added, lcov);
+  // ── 判定 1（函数级，主判据）：新增代码所在的函数没被执行过 ────────
+  // 调**共享**的 judgeNewFunctions（自测也调它）。
+  const fnByLine = buildFunctionByLine(added);
+  const untestedFns = judgeNewFunctions(added, fnByLine, fnCounts);
+
+  // ── 判定 2（行级）：新增行未被执行 ────────────────────────────────
+  // ⚠️ **只对「行覆盖可信」的文件启用**。
+  //
+  // 行级覆盖需要 source map 才能把 V8 的字节偏移映射回源码行。没有 source map
+  // 时（renderer 的两条采集路径都没有 —— 见 collect-line-coverage-trust.js 的
+  // 说明），c8 拿**转换后 JS 的字节偏移**去切**源文件** → 行号是**随机的**，
+  // 但因为切的是完整源文件，DA 条目数 = 源文件行数，**看起来「对齐」**。
+  //
+  // 实测反例：一个**从未被调用**的函数，它的函数体各行 DA hits 却是 170；
+  // 而同一函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
+  // 拿这种数据判「新增代码有没有被测到」→ **漏报**（未覆盖的新代码看起来已覆盖）。
+  const trusted = readTrustedFiles(args.trust);
+  const uncoveredByFile = judgeAddedLines(added, lcov, trusted);
   let totalUncovered = 0;
   for (const info of uncoveredByFile.values()) totalUncovered += info.lines.length;
 
-  // ── 判定 2：触碰的文件整体覆盖率 0% ─────────────────────────────
+  // ── 判定 3：触碰的文件整体覆盖率 0% ─────────────────────────────
   // 调**共享**的 judgeZeroCoverageFiles（自测也调它）。
   const zeroFiles = judgeZeroCoverageFiles(added, lcov);
 
@@ -688,9 +702,18 @@ function main() {
   console.log(`   lcov    : ${args.lcov}（${lcov.size} 个文件）`);
   console.log(`   改动文件: ${added.size} 个（packages/ 下）`);
 
-  if (uncoveredByFile.size === 0 && zeroFiles.length === 0) {
+  if (uncoveredByFile.size === 0 && zeroFiles.length === 0 && untestedFns.size === 0) {
     console.log('   ✅ 本次改动的代码全部被执行过');
     process.exit(0);
+  }
+
+  if (untestedFns.size > 0) {
+    console.log('');
+    console.log(`   ⚠️  ${untestedFns.size} 个文件里有**从未被执行过**的新增函数：`);
+    for (const [file, fns] of untestedFns) {
+      console.log(`     · ${file}: ${fns.join(', ')}`);
+    }
+    console.log('   （新增的函数从没被调用过 → 那段代码一行都没跑过）');
   }
 
   if (uncoveredByFile.size > 0) {
