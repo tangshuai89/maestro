@@ -666,6 +666,24 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   **孙进程也没了**。变异测试：把 `kill(-pid)` 改回 `proc.kill()` → 孙进程存活 →
   自测变红 ✅（已实测）。
 
+- **覆盖率 diff 门禁的「可信文件清单」参数根本没实现 → 清单被完全忽略**（2026-10-22）
+
+  `scripts/coverage-diff-gate.js` 里有完整的「三层判据」设计（函数级为主 /
+  行级只对可信文件 / 文件级兜底）和对应的自测，但：
+
+  - `--trust` 参数**没在 `parseArgs` 里实现** → `args.trust` 恒为 undefined
+  - `readTrustedFiles(undefined)` → 返回 `null`
+  - 门禁的守卫是 `if (trusted && !trusted.has(file)) continue;` → `null` 是 falsy
+    → **守卫永不触发** → 行级判据对**所有**文件生效
+
+  即：文档和 commit message 描述的「行级只对可信文件启用」**从来没生效过**。
+  当时无害（renderer 已改用 `@vitest/coverage-v8`，行号恢复可信），但只要哪天
+  换回缺 source map 的采集路径 → 门禁会拿**错位的行号**判 renderer → 随机判决。
+
+  修法：`parseArgs` 补 `--trust`（默认 `coverage/.line-coverage-trusted.txt`）；
+  清单**缺失**时门禁**明确失败（退出码 2）**而不是默认「都可信」——不知道谁可信
+  时硬判 = 拿可能错位的行号当真值。补一条端到端用例钉住「缺失 → exit 2」。
+
 - **renderer 的行级覆盖数据是错位的 —— 看起来「对齐」，其实随机**（2026-10-21）
 
   写门禁测试时用探针函数撞出来的：一个**从未被调用**的函数，它的函数体各行

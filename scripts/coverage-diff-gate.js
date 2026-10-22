@@ -59,15 +59,24 @@ const { execFileSync } = require('node:child_process');
 
 // ── 参数 ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const out = { base: 'origin/master', lcov: 'coverage/lcov.info', selfTest: false };
+  const out = {
+    base: 'origin/master',
+    lcov: 'coverage/lcov.info',
+    // 「行覆盖可信的源文件」清单（scripts/collect-line-coverage-trust.js 生成）。
+    // ⚠️ 之前**这个参数根本没实现** → 可信清单被完全忽略 → 门禁对**所有**
+    //    文件（包括行号可能错位的）都用行级判据。
+    trust: 'coverage/.line-coverage-trusted.txt',
+    selfTest: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--base') out.base = argv[++i];
     else if (a === '--lcov') out.lcov = argv[++i];
+    else if (a === '--trust') out.trust = argv[++i];
     else if (a === '--self-test') out.selfTest = true;
     else if (a === '--help' || a === '-h') {
       console.log(
-        'usage: node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>]',
+        'usage: node scripts/coverage-diff-gate.js [--base <ref>] [--lcov <path>] [--trust <file>]',
         '       node scripts/coverage-diff-gate.js --self-test',
       );
       process.exit(0);
@@ -663,6 +672,9 @@ function selfTest() {
         '',
       ].join('\n'),
     );
+    // 造可信清单：把这个文件标成「行覆盖可信」→ 门禁才会对它用行级判据。
+    // ⚠️ 清单**缺失**时门禁会明确失败（exit 2）—— 那是对的：不知道谁可信就不该硬判。
+    fs2.writeFileSync(p2.join(tmp, 'trust.txt'), 'packages/server/src/svc.ts\n');
     // 造一个 diff：base 版本只有 keep，当前版本多了 neverCalled
     // ⚠️ 必须关掉 hooks —— 全局 core.hooksPath 指向 lefthook，在临时仓库里
     // 会去找配置然后失败（"No config files with names [lefthook] ..."）。
@@ -694,7 +706,7 @@ function selfTest() {
           '--lcov',
           p2.join(tmp, 'cov.info'),
           '--trust',
-          p2.join(tmp, 'nonexistent-trust.txt'),
+          p2.join(tmp, 'trust.txt'),
         ],
         { cwd: tmp, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
       );
@@ -702,13 +714,50 @@ function selfTest() {
       rc = err.status ?? 1;
       out = (err.stdout ?? '') + (err.stderr ?? '');
     }
-    fs2.rmSync(tmp, { recursive: true, force: true });
     expect(
       '端到端：新增的未测函数必须被主流程报出来',
       out.includes('neverCalled'),
       `主流程输出里没有 neverCalled（退出码 ${rc}）：\n${out.slice(0, 400)}`,
     );
     expect('端到端：门禁必须非零退出', rc !== 0, `退出码是 ${rc}`);
+
+    // ── 端到端 2：**可信清单缺失**必须明确失败（exit 2），不能硬判 ──
+    //
+    // 回归背景：--trust 参数一度**根本没在 parseArgs 里实现** → 清单被完全
+    // 忽略 → 门禁对所有文件都用行级判据（包括行号可能错位的）。
+    // 修好参数后还差一步：**清单缺失**时不能默认「都可信」——那是拿可能
+    // 错位的行号当真值。这里钉住「缺失 → 明确失败」。
+    {
+      const { execFileSync: ex2 } = require('node:child_process');
+      let rc2 = 0;
+      let out2 = '';
+      try {
+        ex2(
+          'node',
+          [
+            p2.join(__dirname, 'coverage-diff-gate.js'),
+            '--base',
+            'HEAD~1',
+            '--lcov',
+            p2.join(tmp, 'cov.info'),
+            '--trust',
+            p2.join(tmp, 'definitely-not-there.txt'),
+          ],
+          { cwd: tmp, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+      } catch (err) {
+        rc2 = err.status ?? 1;
+        out2 = (err.stdout ?? '') + (err.stderr ?? '');
+      }
+      expect(
+        '端到端：可信清单缺失 → 明确失败（退出码 2），不是硬判',
+        rc2 === 2 && out2.includes('可信'),
+        `退出码 ${rc2}，输出：\n${out2.slice(0, 300)}`,
+      );
+    }
+
+    // 临时仓库用完了才删（上面的两个端到端用例都要用它）
+    fs2.rmSync(tmp, { recursive: true, force: true });
   }
 
   // ── 6d. 函数级判据（主判据）─────────────────────────────────────
@@ -912,7 +961,19 @@ function main() {
   // 实测反例：一个**从未被调用**的函数，它的函数体各行 DA hits 却是 170；
   // 而同一函数里**必然执行**的 `setCurrentTime(0)` hits 却是 0。
   // 拿这种数据判「新增代码有没有被测到」→ **漏报**（未覆盖的新代码看起来已覆盖）。
+  // ⚠️ 可信清单**缺失**不是「都可信」，而是「**不知道谁可信**」→ 明确失败。
+  //   硬判（默认全信）= 拿可能错位的行号判 renderer = 随机判决。
+  //   静默放过 = 门禁形同虚设（这正是旧门禁的毛病）。
   const trusted = readTrustedFiles(args.trust);
+  if (!trusted) {
+    console.error(
+      `❌ 读不到「行覆盖可信文件」清单（${args.trust}）。\n` +
+        `   → 门禁**无法判断**哪些文件的行号可信（缺 source map 时行号是错位的）。\n` +
+        `   → 清单由 scripts/test.sh 的采集阶段生成（collect-line-coverage-trust.js）。\n` +
+        `   → 没有它就不判（静默硬判 = 拿随机行号当真值）。`,
+    );
+    process.exit(2);
+  }
   const uncoveredByFile = judgeAddedLines(added, lcov, trusted);
   let totalUncovered = 0;
   for (const info of uncoveredByFile.values()) totalUncovered += info.lines.length;
