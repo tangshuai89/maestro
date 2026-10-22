@@ -471,6 +471,44 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
     ⚠️ 环境坑（实测）：**happy-dom 的 CSS 解析器不吃 `linear-gradient()`**
     （整条被丢弃，读回来是 ''），且会把 `url(x)` 规范化成 `url("x")` → 断言必须
     绕开 CSSOM 的解析结果，用「样式替身」直接比对**代码写进去的字符串**。
+  - ✅ **全量复测**（`FORCE_COLLECT=1 bash scripts/test.sh --coverage`）：
+    141 个测试文件全绿（node 管线 82 个 + vitest 49 个 / 564 条），`CI_EXIT=0`。
+
+    | 指标                   | 修复前（c8 错位数据） | 修复后（coverage-v8） |
+    | ---------------------- | --------------------: | --------------------: |
+    | 全局行覆盖             |                90.38% |            **87.83%** |
+    | 全局分支覆盖           |                80.34% |            **79.76%** |
+    | 全局函数覆盖           |                85.06% |            **89.83%** |
+    | **行覆盖可信的行数**   |       24917（92.98%） |   **41848（89.74%）** |
+    | **行覆盖不可信的行数** |       17951（86.78%） |     **1020（9.51%）** |
+    - **全局行覆盖「降了」是好事**：之前的高水位有一部分是**错位数据凑出来的**
+      （把一个文件的两条管线的行号错位当成两条不同的行统计）。现在分母和分子
+      都是真话。剩下不可信的 1.02% 只来自 8 个**只被 `.test.mjs` 覆盖**的文件
+      （`index.ts` / `titleAlias.ts` / `setup.ts` / `main.ts` /
+      `album-types.ts` / `types.ts` / `eval-cli.ts` / `eval-genre-cli.ts`）。
+    - **diff 门禁在真实数据上通过**：`node scripts/coverage-diff-gate.js`
+      `--base origin/master` → 15 个改动文件「全部被执行过」，退出码 0。
+    - **8 个 CI 校验器全绿**：figma-code-connect / token-drift / hardcoded-colors /
+      readme-i18n + 4 个脚本自测（merge-lcov / istanbul-to-lcov /
+      coverage-diff-gate / collect-line-coverage-trust）。
+
+  - 🐛 **顺手修掉一个我自己早前提交引入的门禁回归**：`scan-hardcoded-colors.mjs`
+    会去扫**测试文件**，把测试里的**字面颜色夹具**当成产品硬编码 →
+    `lyricsShare.canvas.test.tsx` 和 `useCoverArt.dom.test.tsx` 没有预算条目 →
+    `npm run test:ci` 直接红。
+    改成**测试文件不参与**这个门禁（`TEST_FILE` 规则）：这个门禁管的是「**出厂
+    代码**里颜色只能来自令牌层」；测试文件不出厂，而且它**必须**断言字面量 ——
+    断言 `var(--token)` 等于没断言（token 一变测试跟着变，永远绿）。
+    ⚠️ 不排除的话后果很难受：棘轮预算**只许降不许升**，而新测试文件不在预算里
+    → 每加一个带颜色的测试文件门禁就红一次 → 大家会去调预算而不是修代码。
+    实测排除 49 个文件，**16 个产品文件的命中数一个都没变** → 没有误伤。
+  - ⚠️ **跑覆盖率采集时不能改 `scripts/test.sh`**（2026-10-22 实测踩到）：
+    bash 对**函数定义**是延迟解析的，且脚本是**按字节偏移**顺序读的 → 中途改
+    文件会让 bash 读到**半写状态**或**半个多字节字符**。
+    实测症状：`scripts/test.sh: line 442: <乱码>: command not found` → 退出码
+    **127**，但**测试全绿**、报告步骤没跑到。
+    ⚠️ 这个症状看起来像「脚本有 bug」，其实只是「**运行中被改了**」——
+    识别出来后应该**重跑**，别去 debug 逻辑。
   - ⚠️ **「加了判据但主流程没调用」是真实事故（踩了两次）**：
     「judgeNewFunctions + 它的自测」都加进去了，但**主流程没调用它** →
     **自测全绿、门禁却还是老的行为**。单元自测和变异测试都抓不到（它们测的是
@@ -644,9 +682,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                    → GET /music/stream/:provider/:trackId
-                      → musicService.getStreamUrl() 拿上游 URL
-                        → proxyAudio() 转发到上游 CDN
+                                        → GET /music/stream/:provider/:trackId
+                                          → musicService.getStreamUrl() 拿上游 URL
+                                            → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

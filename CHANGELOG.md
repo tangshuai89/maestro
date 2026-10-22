@@ -515,6 +515,10 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
     3. **不能用 coverage-v8 自己的 `lcov.info`** —— 它的 `SF:` 是「相对 vitest
        root」的，和 git diff 对不上；istanbul JSON 的 key 是**绝对路径** →
        新增 `scripts/istanbul-to-lcov.js` 做转换
+    4. **必须显式设 `root: __dirname`** —— vitest 默认拿 **cwd** 当 root；
+       `scripts/test.sh` 从**仓库根**跑 → root 变仓库根 → `include` 相对 root
+       一个都匹配不上。**在包目录里单跑是好的，换个 cwd 就废了** ——
+       本地单跑验不出来，只有从仓库根跑才复现
   - **合并器加「权威输入」语义**（`--authoritative`）：同一个源文件被**两条转换
     管线**覆盖时（node 无 source map / coverage-v8 有），两份的「第 N 行」**不是
     同一行** → 取 max = **污染**（把随机值和真值混在一起），不是「更全的覆盖」。
@@ -538,6 +542,38 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   - ⚠️ 踩到的环境坑（实测）：**happy-dom 的 CSS 解析器不吃 `linear-gradient()`**
     （整条被丢弃，读回来是 ''），且会把 `url(x)` 规范化成 `url("x")` → 断言必须
     绕开 CSSOM 的解析结果，改用「样式替身」直接比对**代码写进去的字符串**
+
+  ✅ **2026-10-22 全量复测（`FORCE_COLLECT=1 bash scripts/test.sh --coverage`）**
+  —— 141 个测试文件全绿（node 管线 82 个 + vitest 49 个 / 564 条），`CI_EXIT=0`：
+
+  | 指标                   | 修复前（c8 错位数据） | 修复后（coverage-v8） |
+  | ---------------------- | --------------------: | --------------------: |
+  | 全局行覆盖             |                90.38% |            **87.83%** |
+  | 全局分支覆盖           |                80.34% |            **79.76%** |
+  | 全局函数覆盖           |                85.06% |            **89.83%** |
+  | **行覆盖可信的行数**   |       24917（92.98%） |   **41848（89.74%）** |
+  | **行覆盖不可信的行数** |       17951（86.78%） |     **1020（9.51%）** |
+  - **全局行覆盖数字「降了」是好事** —— 之前的高水位里有一部分是**错位数据凑出来的**
+    （把一个文件的两条管线的行号错位当成两条不同的行统计）。现在分母和分子都是
+    真话：**89.74% 的行覆盖可信**，剩 1.02% 不可信（只剩 8 个只被 `.test.mjs`
+    覆盖的文件：`index.ts` / `titleAlias.ts` / `setup.ts` / `main.ts` /
+    `album-types.ts` / `types.ts` / `eval-cli.ts` / `eval-genre-cli.ts`）。
+  - **diff 门禁在真实数据上通过**：`node scripts/coverage-diff-gate.js`
+    `--base origin/master` → 15 个改动文件「全部被执行过」，退出码 0。
+  - **8 个 CI 校验器全绿**：figma-code-connect / token-drift / hardcoded-colors /
+    readme-i18n + 4 个脚本自测（merge-lcov / istanbul-to-lcov /
+    coverage-diff-gate / collect-line-coverage-trust）。
+
+  🐛 **顺手修掉一个我自己早前提交引入的门禁回归**：`scan-hardcoded-colors.mjs`
+  会去扫**测试文件**，把测试里的**字面颜色夹具**（`rgb(10, 20, 30)`）当成产品
+  硬编码 → `lyricsShare.canvas.test.tsx` 和 `useCoverArt.dom.test.tsx` 两个文件
+  没有预算条目 → `npm run test:ci` 直接红。
+  改成**测试文件不参与**这个门禁（`TEST_FILE` 规则）：这个门禁管的是「**出厂
+  代码**里颜色只能来自令牌层」；测试文件不出厂，而且它**必须**断言字面量 ——
+  断言 `var(--token)` 等于没断言。
+  ⚠️ 不排除的话后果很难受：棘轮预算**只许降不许升**，而新测试文件不在预算里 →
+  每加一个带颜色的测试文件门禁就红一次 → 大家会去调预算而不是修代码。
+  实测排除 49 个文件，**16 个产品文件的命中数一个都没变** → 没有误伤。
 
   **顺带用函数级信号挖出了 `usePlayer.ts` 的真洞** —— 8 个函数从未被执行过，
   其中 5 个是**用户可见功能**：`onTimeUpdate`（进度条不动）、`onEnded`

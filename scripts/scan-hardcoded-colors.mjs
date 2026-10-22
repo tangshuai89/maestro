@@ -41,6 +41,16 @@ const TOKEN_LAYER = new Set([
 ]);
 
 const EXT = /\.(scss|tsx|ts)$/;
+// 测试文件**不参与**这个门禁。
+//
+// 理由：这个门禁管的是「**出厂代码**里不许有硬编码颜色，颜色只能来自令牌层」。
+// 测试文件不出厂，而且它**必须**断言字面量 —— 断言 `var(--token)` 等于没断言
+// （token 自己变了，测试也跟着变，永远绿）。测试里的 `rgb(10, 20, 30)` 是
+// **夹具值**（打桩的像素数据），不是「设计令牌的复制品」。
+//
+// ⚠️ 不排除的话后果很难受：棘轮预算**只许降不许升**，而新测试文件不在预算里
+// → 每加一个带颜色的测试文件，门禁就红一次 → 大家会开始去调预算而不是修代码。
+const TEST_FILE = /\.(test|spec)\.(tsx|ts|jsx|js|mjs)$/;
 const COLOR_RE = /#[0-9a-fA-F]{3,8}\b|\brgba?\(\s*[^)]*\)|\bhsla?\(\s*[^)]*\)/g;
 
 function walk(dir, out = []) {
@@ -98,6 +108,7 @@ const selfRefs = [];
 for (const abs of files) {
   const rel = relative(REPO, abs);
   if (TOKEN_LAYER.has(rel)) continue;
+  if (TEST_FILE.test(rel)) continue;
   const raw = readFileSync(abs, 'utf8').split('\n');
   const stripped = stripComments(raw);
 
@@ -209,6 +220,9 @@ if (AS_JSON) {
 
 console.log(`硬编码颜色扫描 — ${files.length} 个文件`);
 console.log(`  令牌层（不计入）: ${[...TOKEN_LAYER].map((f) => f.split('/').pop()).join(', ')}`);
+console.log(
+  `  测试文件（不计入）: ${files.filter((f) => TEST_FILE.test(relative(REPO, f))).length} 个`,
+);
 console.log(
   `  命中总数: ${total} 处 / ${Object.keys(scopedByFile).length} 个文件` +
     (Object.keys(exemptHits).length
