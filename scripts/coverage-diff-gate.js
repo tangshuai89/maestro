@@ -151,7 +151,25 @@ function parseAddedLines(diffText) {
 function readLcov(lcovPath) {
   /** @type {Map<string, Map<number, number>>} */
   const files = new Map();
-  /** @type {Map<string, number>} 函数名 → 执行次数（跨文件累加） */
+  /**
+   * 函数执行次数：**按文件**分层 → Map<文件, Map<函数名, 次数>>
+   *
+   * ⚠️ 之前是**跨文件累加**的一个全局 map（函数名 → 次数）。那会让
+   * **不同文件里的同名函数互相掩盖**：
+   *
+   *   文件 A 有个 `get` 被调用过 5 次，文件 B 有个 `get` **从没被调用**
+   *   → 全局累加后 fnCounts['get'] = 5
+   *   → 门禁判「B 的新 `get` 已被执行过」→ **漏报**（真没测的代码放过）
+   *
+   * 仓库里 `get` / `init` / `render` 这种名字到处都是 → 命中概率很高。
+   * lcov 的 FNDA 本来就是**按文件记录**发的（`SF:` 段内）→ 按文件分层是
+   * 数据本身支持的，不需要额外假设。
+   *
+   * ⚠️ **同一个文件内**的同名函数仍然分不开（lcov 格式的固有限制：
+   * FNDA 的连接键只有函数名，没有行号）。这条已在 commit message 与
+   * tasks.md 里如实记录。
+   */
+  /** @type {Map<string, Map<string, number>>} */
   const fnCounts = new Map();
   /** @type {string[]} */
   const duplicates = [];
@@ -182,7 +200,13 @@ function readLcov(lcovPath) {
       const hits = Number(rest.slice(0, idx));
       const name = rest.slice(idx + 1);
       if (!Number.isFinite(hits)) continue;
-      fnCounts.set(name, (fnCounts.get(name) ?? 0) + hits);
+      if (!current) continue;
+      let perFile = fnCounts.get(current);
+      if (!perFile) {
+        perFile = new Map();
+        fnCounts.set(current, perFile);
+      }
+      perFile.set(name, (perFile.get(name) ?? 0) + hits);
     } else if (line.startsWith('end_of_record')) {
       current = null;
     }
@@ -325,7 +349,8 @@ function readTrustedFiles(listPath) {
  *
  * @param added       Map<文件, 新增行号集合>
  * @param fnByLine    Map<文件, Map<行号, 函数名>>（新增行 → 所属函数）
- * @param fnCounts    Map<函数名, 执行次数>
+ * @param fnCounts    Map<文件, Map<函数名, 执行次数>>（**按文件**分层 —— 跨文件
+ *                    的同名函数不能互相掩盖）
  * @returns Map<文件, string[]>  文件 → 未被执行的新函数名列表
  */
 /**
@@ -358,11 +383,14 @@ function judgeNewFunctions(added, fnByLine, fnCounts) {
     if (isTestInfra(file)) continue;
     const map = fnByLine.get(file);
     if (!map) continue;
+    // ⚠️ **按文件查**执行次数：跨文件的同名函数不能互相掩盖
+    //   （文件 A 的 `get` 被调用过 ≠ 文件 B 的 `get` 被调用过）
+    const perFile = fnCounts.get(file);
     const badFns = new Set();
     for (const ln of lines) {
       const fn = map.get(ln);
       if (!fn) continue; // 顶层语句 → 模块加载时必然执行 → 不算
-      if ((fnCounts.get(fn) ?? 0) === 0) badFns.add(fn);
+      if ((perFile?.get(fn) ?? 0) === 0) badFns.add(fn);
     }
     if (badFns.size > 0) out.set(file, [...badFns].sort());
   }
@@ -777,8 +805,13 @@ function selfTest() {
       ],
     ]);
     const fnda2 = new Map([
-      ['neverCalled', 0],
-      ['called', 3],
+      [
+        'packages/server/src/a.ts',
+        new Map([
+          ['neverCalled', 0],
+          ['called', 3],
+        ]),
+      ],
     ]);
     const r = judgeNewFunctions(added2, fnByLine2, fnda2);
     expect(
@@ -788,6 +821,34 @@ function selfTest() {
     expect(
       '函数级判据：被调用过的新函数不报',
       !JSON.stringify(r.get('packages/server/src/a.ts')).includes('called"'),
+    );
+  }
+
+  // ── 6d2. **跨文件**的同名函数不能互相掩盖 ──────────────────────
+  //
+  // 回归：fnCounts 曾经是**跨文件累加**的全局 map → 文件 A 里被调用过的
+  // `get` 会把文件 B 里**从没被调用**的 `get` 一起「洗白」→ 真没测的代码
+  // 静默放过（漏报）。仓库里 `get` / `init` / `render` 到处都是 → 命中率高。
+  {
+    const added2 = new Map([
+      ['packages/server/src/a.ts', new Set([5])],
+      ['packages/server/src/b.ts', new Set([5])],
+    ]);
+    const fnByLine2 = new Map([
+      ['packages/server/src/a.ts', new Map([[5, 'get']])],
+      ['packages/server/src/b.ts', new Map([[5, 'get']])],
+    ]);
+    const fnda2 = new Map([
+      // A 里的 get 被调用过 5 次
+      ['packages/server/src/a.ts', new Map([['get', 5]])],
+      // B 里的 get 从没被调用
+      ['packages/server/src/b.ts', new Map([['get', 0]])],
+    ]);
+    const r = judgeNewFunctions(added2, fnByLine2, fnda2);
+    expect('函数级判据：A 的 get 被调用过 → A 不报', !r.has('packages/server/src/a.ts'));
+    expect(
+      '函数级判据：B 的同名 get 从没被调用 → **B 要报**（跨文件不互相掩盖）',
+      JSON.stringify(r.get('packages/server/src/b.ts')) === '["get"]',
     );
   }
 
