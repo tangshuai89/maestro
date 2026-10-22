@@ -629,6 +629,43 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **浏览器覆盖采集在 CI 上卡满 6 小时被强杀（PR #114 首次 CI 暴露）**（2026-10-22）
+
+  PR #114 的第一次 CI：`Test & TypeCheck & Lint` 这一步**跑了 6 小时**才被 GitHub
+  取消（`##[error]The operation was canceled.`），不是失败，是**挂起**。
+
+  **根因**（日志定位，非猜测）：
+
+  1. `collect-browser-coverage.mjs` 用 `spawn('npx', ['vite', …])` 起 dev server。
+     `npx` 是**包装进程**，真正的 vite 是**孙进程**（vite 还会再 fork 一个常驻的
+     esbuild）。
+  2. 清理时只 `proc.kill('SIGTERM')` → 死的是 npx，**孙进程活下来**。
+  3. 孙进程继续持有 stdout/stderr 管道的**写端** → 父进程这边的 pipe 流**永远
+     收不到 EOF** → 事件循环不空 → **node 永不退出**。
+  4. `test.sh` 就卡在这一行 → CI job 烧满 6 小时。
+
+  **为什么本地不复现**：macOS 上 `npx → vite` 的信号恰好把整棵树带走了；
+  Linux runner 上 npx 是 node 脚本 spawn 子进程，SIGTERM 只到 npm 自己。
+  **只有 CI 会炸** —— 本地跑 13 分钟全绿，CI 挂 6 小时。
+
+  **证据**（CI 日志）：`[browser-cov]` 的 stdout 行出现 **0 次**，而 stderr 的
+  `[web]` 行出现了 1 次 → 父进程**从未退出**（stdout 缓冲区从未刷新）；
+  取消时的孤儿进程列表里 **`esbuild` 仍在存活**。
+
+  **修法**（四层防御）：
+
+  - `spawn(..., { detached: true })` → 子进程自成一个进程组
+  - 清理改成 `process.kill(-pid, 'SIGKILL')` **杀整个进程组**（npx + node + vite +
+    esbuild 一次带走），并 `destroy()` 管道 handle 让事件循环能排空
+  - 两处 `execFileSync` 加 `timeout: 120_000` → 子进程不退出最多等 2 分钟
+  - 脚本级**看门狗**（4 分钟）+ `test.yml` 的 `timeout-minutes: 45`
+    → 任何未预料的挂起都不该再烧掉 6 小时和一份 runner 额度
+
+  **回归测试**：`scripts/collect-browser-coverage.mjs --self-test` 造一个
+  「包装进程 → 孙进程」的结构（和 npx→vite 同构），断言 `killGroup` 之后
+  **孙进程也没了**。变异测试：把 `kill(-pid)` 改回 `proc.kill()` → 孙进程存活 →
+  自测变红 ✅（已实测）。
+
 - **renderer 的行级覆盖数据是错位的 —— 看起来「对齐」，其实随机**（2026-10-21）
 
   写门禁测试时用探针函数撞出来的：一个**从未被调用**的函数，它的函数体各行

@@ -24,7 +24,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build:common",
     "test": "bash scripts/test.sh",
-    "test:ci": "bash scripts/test.sh --ci && node scripts/figma-code-connect-validate.mjs && node scripts/check-token-drift.mjs && node scripts/scan-hardcoded-colors.mjs --gate && node scripts/check-readme-i18n.mjs --self-test --gate && node scripts/merge-lcov.js --self-test && node scripts/coverage-diff-gate.js --self-test && node scripts/collect-line-coverage-trust.js --self-test && node scripts/istanbul-to-lcov.js --self-test",
+    "test:ci": "bash scripts/test.sh --ci && node scripts/figma-code-connect-validate.mjs && node scripts/check-token-drift.mjs && node scripts/scan-hardcoded-colors.mjs --gate && node scripts/check-readme-i18n.mjs --self-test --gate && node scripts/merge-lcov.js --self-test && node scripts/coverage-diff-gate.js --self-test && node scripts/collect-line-coverage-trust.js --self-test && node scripts/istanbul-to-lcov.js --self-test && node scripts/collect-browser-coverage.mjs --self-test",
     "test:coverage": "bash scripts/test.sh --coverage",
     "coverage:diff-gate": "node scripts/coverage-diff-gate.js",
     "test:i18n": "node scripts/check-readme-i18n.mjs --self-test --gate",

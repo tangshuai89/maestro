@@ -157,7 +157,11 @@ if (process.argv[1] && process.argv[1].endsWith('browser-coverage-to-lcov.mjs'))
   const tmpJson = resolve(dirname(outPath), 'coverage-final.json');
   writeFileSync(tmpJson, JSON.stringify(istanbul));
   execFileSync(process.execPath, [resolve(REPO, 'scripts/istanbul-to-lcov.js'), tmpJson, outPath], {
+    // ⚠️ **必须给 timeout**：没有它，子进程一旦不退出，这里永远等下去
+    //   （2026-10-22 在 CI 上实测：浏览器覆盖采集卡满 6 小时被强杀）。
     stdio: 'inherit',
+    timeout: 120_000,
+    killSignal: 'SIGKILL',
   });
   console.log(`浏览器覆盖 → ${outPath}（${Object.keys(istanbul).length} 个文件）`);
 }
