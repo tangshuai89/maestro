@@ -142,9 +142,11 @@ function parseAddedLines(diffText) {
 function readLcov(lcovPath) {
   /** @type {Map<string, Map<number, number>>} */
   const files = new Map();
+  /** @type {Map<string, number>} 函数名 → 执行次数（跨文件累加） */
+  const fnCounts = new Map();
   /** @type {string[]} */
   const duplicates = [];
-  if (!fs.existsSync(lcovPath)) return { files, duplicates };
+  if (!fs.existsSync(lcovPath)) return { files, fnCounts, duplicates };
   const text = fs.readFileSync(lcovPath, 'utf8');
   let current = null;
   for (const line of text.split('\n')) {
@@ -163,11 +165,20 @@ function readLcov(lcovPath) {
       const n = Number(ln);
       const h = Number(hits);
       if (Number.isFinite(n)) files.get(current)?.set(n, Number.isFinite(h) ? h : 0);
+    } else if (line.startsWith('FNDA:')) {
+      // FNDA:<hits>,<name> —— 函数名是源码标识符，跨转换管线稳定 → 可信信号
+      const rest = line.slice(5);
+      const idx = rest.indexOf(',');
+      if (idx < 0) continue;
+      const hits = Number(rest.slice(0, idx));
+      const name = rest.slice(idx + 1);
+      if (!Number.isFinite(hits)) continue;
+      fnCounts.set(name, (fnCounts.get(name) ?? 0) + hits);
     } else if (line.startsWith('end_of_record')) {
       current = null;
     }
   }
-  return { files, duplicates };
+  return { files, fnCounts, duplicates };
 }
 
 /**
@@ -197,6 +208,89 @@ function pkgOf(f) {
   const parts = f.split('/');
   if (parts[0] === 'packages' && parts[1]) return parts[1];
   return ''; // 基准不一致 → 认不出
+}
+
+/**
+ * 用 TypeScript AST 解析源文件 → 「行号 → 所属函数名」映射。
+ *
+ * ## 命名规则必须和 V8 一致，否则会误报
+ *
+ * V8 只给**有名字**的函数命名：
+ * - `const foo = () => {}` / `function foo() {}` → 名字 = `foo` ✓
+ * - `const foo = useCallback((a) => {...}, [])` → **匿名参数** → V8 **不给名字**，
+ *   它的 range 归到**外层函数**（如 `usePlayer`）→ 这里也必须映射到外层，
+ *   否则查 lcov 里根本不存在的 `foo` → FNDA=undefined → **误报成"没被执行"**
+ *
+ * @param {Map<string, Set<number>>} added 哪些文件需要解析
+ * @returns {Map<string, Map<number, string>>}
+ */
+function buildFunctionByLine(added) {
+  /** @type {Map<string, Map<number, string>>} */
+  const out = new Map();
+  let ts;
+  try {
+    ts = require('typescript');
+  } catch {
+    return out; // 没有 typescript → 跳过函数级判据（不该发生，仓库有依赖）
+  }
+  for (const file of added.keys()) {
+    if (!/\.(ts|tsx)$/.test(file)) continue;
+    if (!fs.existsSync(file)) continue;
+    let sf;
+    try {
+      const src = fs.readFileSync(file, 'utf8');
+      sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);
+    } catch {
+      continue;
+    }
+    /** @type {Map<number, string>} */
+    const map = new Map();
+    const visit = (node, currentFn) => {
+      let fn = currentFn;
+      let named = false;
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        fn = node.name.text;
+        named = true;
+      } else if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+        fn = node.name.text;
+        named = true;
+      } else if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+      ) {
+        fn = node.name.text;
+        named = true;
+      }
+      if (named && fn) {
+        const start = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+        const end = sf.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+        for (let l = start; l <= end; l++) map.set(l, fn);
+      }
+      ts.forEachChild(node, (c) => visit(c, fn));
+    };
+    visit(sf, null);
+    out.set(file, map);
+  }
+  return out;
+}
+
+/**
+ * 读「行覆盖可信的源文件」清单。
+ *
+ * 由 scripts/collect-line-coverage-trust.js 生成（扫 node 的 source-map-cache）。
+ * 清单**不存在**时返回 null → 含义是「不信任任何文件的行级数据」（宁可漏报
+ * 也不误报）。
+ */
+function readTrustedFiles(listPath) {
+  if (!listPath || !fs.existsSync(listPath)) return null;
+  const set = new Set();
+  for (const line of fs.readFileSync(listPath, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (t) set.add(t);
+  }
+  return set;
 }
 
 /**
@@ -618,7 +712,7 @@ function main() {
   }
 
   const added = parseAddedLines(diffText);
-  const { files: lcov, duplicates } = readLcov(args.lcov);
+  const { files: lcov, fnCounts, duplicates } = readLcov(args.lcov);
   if (lcov.size === 0) {
     console.error(
       `❌ 读不到覆盖率数据（${args.lcov}）。\n` +
