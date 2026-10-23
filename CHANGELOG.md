@@ -655,7 +655,7 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   - `POST /music/track/likeCount` 补 try/catch → 平台偶发失败降级成 `null`
     （renderer 已经处理 null = 不显示徽标）。
 
-  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（10 条），
+  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（15 条），
   三个变异点全部被自测抓到：去掉 controller 的 try/catch → A1/A2 红；
   去掉 service 的包装 → B1/B2 红；storage 退回原地覆盖写 → C2/C3 红。
 
@@ -665,6 +665,13 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   两条 best-effort 分支）。门禁报的 6 行是**新增行里没被执行过的行** ——
   这正是「新增代码必须被测到」这条规则第一次在真 PR 上生效。补了 A3/C4/C5
   三条用例后复测：6 行全部 hits>0。
+
+  另外钉了一条**不变量**（D 组）：❤/踩/导入这几个端点现在**本来就安全**（远端
+  写走同步队列；唯一一处内联的 provider 调用——netease fmTrash——已有 try/catch）
+  —— 但那是「逐处碰巧安全」，没有东西钉住它。以后谁在请求路径上加一个内联
+  provider 调用而忘了兜底 → 又是一次偶发 500。D 组把「provider 全炸时这几个
+  端点仍必须 2xx」写成测试（变异测试实测：在 `fanOutLike` 的请求路径上加一个
+  没兜底的 `await qq.fetchLikedMidSet(...)` → D 组立刻红 ✅）。
 
 - **storage 的写不是原子的 → 进程在写一半被杀会留下半截文件 → 下次启动整个状态被清空**（2026-10-23）
 

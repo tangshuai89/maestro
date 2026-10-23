@@ -23,6 +23,11 @@
  *      语义 → 继续轮询、且**不会**把真实红心抹掉）。
  *   C. storage 的写是**原子**的：写到一半失败 → 旧文件**完好无损**
  *      （原地覆盖写会把文件截断 → 下次启动整个状态被清空）。
+ *   D. **其余 POST 端点（❤/踩/导入）的「不 500」不变量**：provider 全炸时
+ *      仍必须 2xx。这些端点现在**本来就安全**（远端写走同步队列、内联的
+ *      provider 调用都有兜底）—— 但那是「逐处碰巧安全」，没有东西钉住它。
+ *      D 组把它写成测试：以后谁在请求路径上加一个内联 provider 调用而忘了兜底
+ *      → 立刻红（变异测试已验证）。
  *
  * 不打真实网络：provider 方法全部打桩。
  * 运行: npx ts-node src/music/server-degrade.e2e.test.ts
@@ -111,6 +116,66 @@ async function main() {
       assert.ok(res.status < 500, `期望 <500，实际 ${res.status}`);
       assert.strictEqual(res.status, 201, `期望 201，实际 ${res.status}`);
     });
+
+    // ── D. 其余 POST 端点的「不 500」契约 ────────────────────────
+    //
+    // ❤/踩/导入这些端点**现在**已经是安全的（远端写走同步队列、内联的
+    // provider 调用都有 try/catch）—— 但那是「逐处碰巧安全」，没有东西钉住它。
+    // 以后谁在请求路径上新增一个内联 provider 调用而忘了兜底 → 又是一次偶发 500。
+    //
+    // 所以这里钉**不变量**：provider 全部抛异常时，这些端点仍必须 2xx。
+    // （不是给每个端点撒 try/catch —— 那是散落；这里是把不变量写成测试。）
+    {
+      const { QqMusicProvider: QP } = require('./qq.provider');
+      const { NeteaseMusicProvider: NP } = require('./netease.provider');
+      const qqP: any = app.get(QP);
+      const neteaseP: any = app.get(NP);
+      const boom = async () => {
+        throw new Error('平台炸了');
+      };
+      // 把所有可能出网的方法打成「必炸」
+      for (const name of [
+        'search',
+        'searchAlbums',
+        'getAlbumTracks',
+        'fetchLiked',
+        'fetchLikedMidSet',
+        'fetchPlaylistTracks',
+        'fetchRadioBatch',
+        'getLyrics',
+        'getTrackFavCount',
+        'getTrackLikeCount',
+        'fmTrash',
+      ]) {
+        if (typeof qqP[name] === 'function') qqP[name] = boom;
+        if (typeof neteaseP[name] === 'function') neteaseP[name] = boom;
+      }
+
+      const cases: Array<[string, string, unknown]> = [
+        ['like/merged', '/music/like/merged', {
+          mergedId: 'm-1',
+          sources: [{ platform: 'qq', trackId: 't-1' }],
+          liked: true,
+        }],
+        ['like/:trackId', '/music/like/t-1?provider=qq', { meta: {} }],
+        ['dislike/merged', '/music/dislike/merged', {
+          mergedId: 'm-1',
+          sources: [{ platform: 'qq', trackId: 't-1' }],
+        }],
+        ['dislike/:trackId', '/music/dislike/t-1?provider=qq', { meta: {} }],
+        ['library/import', '/music/library/import', {}],
+      ];
+
+      for (const [label, pathname, body] of cases) {
+        await check(`D. ${label}：provider 全炸 → 仍是 2xx（不 500）`, async () => {
+          const res = await client.call('POST', pathname, body);
+          assert.ok(
+            res.status < 500,
+            `期望 <500，实际 ${res.status}（body=${JSON.stringify(res.body ?? null).slice(0, 160)}）`,
+          );
+        });
+      }
+    }
 
     await app.close();
   }
