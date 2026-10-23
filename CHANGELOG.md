@@ -655,9 +655,16 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   - `POST /music/track/likeCount` 补 try/catch → 平台偶发失败降级成 `null`
     （renderer 已经处理 null = 不显示徽标）。
 
-  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（7 条），
+  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（10 条），
   三个变异点全部被自测抓到：去掉 controller 的 try/catch → A1/A2 红；
   去掉 service 的包装 → B1/B2 红；storage 退回原地覆盖写 → C2/C3 红。
+
+  ⚠️ **这个 PR 第一次跑 CI 时，diff 门禁把它拦下了** —— 而且拦得对：
+  新加的错误处理分支里有 3 处**没被任何测试覆盖**（controller 里「平台不是
+  qq/netease」那一支的 `return null`、storage 的「chmod 失败」与「清理失败」
+  两条 best-effort 分支）。门禁报的 6 行是**新增行里没被执行过的行** ——
+  这正是「新增代码必须被测到」这条规则第一次在真 PR 上生效。补了 A3/C4/C5
+  三条用例后复测：6 行全部 hits>0。
 
 - **storage 的写不是原子的 → 进程在写一半被杀会留下半截文件 → 下次启动整个状态被清空**（2026-10-23）
 

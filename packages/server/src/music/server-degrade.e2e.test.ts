@@ -103,6 +103,15 @@ async function main() {
       assert.strictEqual(res.body ?? null, null, `期望 null，实际 ${JSON.stringify(res.body)}`);
     });
 
+    await check('A3. likeCount（spotify）：不认识的平台 → 2xx + null', async () => {
+      const res = await client.call('POST', '/music/track/likeCount', {
+        platform: 'spotify',
+        trackId: 'x-1',
+      });
+      assert.ok(res.status < 500, `期望 <500，实际 ${res.status}`);
+      assert.strictEqual(res.status, 201, `期望 201，实际 ${res.status}`);
+    });
+
     await app.close();
   }
 
@@ -238,6 +247,59 @@ async function main() {
       assert.ok(
         !fs.existsSync(`${file}.tmp`),
         '写失败后残留了 .tmp 文件',
+      );
+    });
+
+    await check('C4. chmod 失败 → **写照常成功**（best-effort，不阻塞）', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-storage-'));
+      const svc = new StorageService({ storageDir: dir } as any);
+      svc.set('k1', { a: 1 });
+
+      const realChmod = fs.chmodSync;
+      (fs as any).chmodSync = () => {
+        throw new Error('只读盘');
+      };
+      let threw = false;
+      try {
+        (svc as any).writeLocked();
+      } catch {
+        threw = true;
+      } finally {
+        (fs as any).chmodSync = realChmod;
+      }
+      assert.ok(!threw, 'chmod 失败**不该**让整次写失败（Windows/只读盘上是 best-effort）');
+      const parsed = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+      assert.deepStrictEqual(parsed['k1'], { a: 1 }, '写应该已经落盘');
+    });
+
+    await check('C5. 清理也失败（unlink 抛）→ 抛的仍是**原始**错误', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-storage-'));
+      const svc = new StorageService({ storageDir: dir } as any);
+      svc.set('k1', 1);
+
+      const realWrite = fs.writeFileSync;
+      const realUnlink = fs.unlinkSync;
+      (fs as any).writeFileSync = (p: any, _d: any) => {
+        realWrite(p, '');
+        throw new Error('原始错误：磁盘满了');
+      };
+      (fs as any).unlinkSync = () => {
+        throw new Error('清理错误：unlink 失败');
+      };
+      let caught: any = null;
+      try {
+        (svc as any).writeLocked();
+      } catch (err) {
+        caught = err;
+      } finally {
+        (fs as any).writeFileSync = realWrite;
+        (fs as any).unlinkSync = realUnlink;
+      }
+      assert.ok(caught, '写失败时应该抛异常');
+      assert.strictEqual(
+        (caught as Error).message,
+        '原始错误：磁盘满了',
+        `抛出来的应该是**原始**写错误，不是清理错误：${(caught as Error).message}`,
       );
     });
 
