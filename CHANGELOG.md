@@ -655,7 +655,7 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   - `POST /music/track/likeCount` 补 try/catch → 平台偶发失败降级成 `null`
     （renderer 已经处理 null = 不显示徽标）。
 
-  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（15 条），
+  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（16 条），
   三个变异点全部被自测抓到：去掉 controller 的 try/catch → A1/A2 红；
   去掉 service 的包装 → B1/B2 红；storage 退回原地覆盖写 → C2/C3 红。
 

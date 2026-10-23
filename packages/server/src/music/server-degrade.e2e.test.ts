@@ -44,6 +44,22 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-degrade-'));
 process.env.STORAGE_DIR = tmpDir;
 delete process.env.MAESTRO_INTERNAL_TOKEN;
 
+// ── 网络陷阱 ────────────────────────────────────────────────────────
+//
+// 这个文件**不允许任何真实网络请求**：任何一次 fetch 直接炸。
+// 为什么：provider 方法是按「实例方法」打桩的，漏掉一个就会在 CI 上真的去
+// 打 QQ/网易云 —— 而线上接口会间歇性抽风（实测：CI runner 上 QQ 匿名搜索
+// 间歇 500），把「网络抖了」报成「你写错了」。
+//
+// 有了这层陷阱，**漏打的桩会当场变成一次失败**，而不是一次间歇红。
+let networkCalls = 0;
+const networkTargets: string[] = [];
+globalThis.fetch = ((input: unknown) => {
+  networkCalls++;
+  networkTargets.push(String(input));
+  throw new Error(`测试里不允许真实网络请求（被拦下）：${String(input)}`);
+}) as unknown as typeof globalThis.fetch;
+
 let passed = 0;
 let failed = 0;
 async function check(label: string, fn: () => void | Promise<void>) {
@@ -377,6 +393,14 @@ async function main() {
       assert.strictEqual(mode.toString(8), '600', `期望 600，实际 ${mode.toString(8)}`);
     });
   }
+
+  await check('E. 全程零真实网络请求（漏打的桩会当场暴露）', async () => {
+    assert.strictEqual(
+      networkCalls,
+      0,
+      `有 ${networkCalls} 次真实网络请求：${networkTargets.slice(0, 3).join(', ')}`,
+    );
+  });
 
   console.log('');
   if (failed > 0) {
