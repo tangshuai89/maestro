@@ -56,7 +56,18 @@ export default defineConfig({
       provider: 'v8',
       reportsDirectory: resolve(__dirname, '../../coverage/.vitest'),
       clean: true,
-      reporter: ['json', 'lcov', 'text'],
+      // ⚠️ **只留 'json'**（'lcov' 和 'text' 都去掉了）：
+      //
+      //   - 'lcov'：vitest 自己的 lcov.info 用的是「**相对 vitest root**」的
+      //     路径（`src/App.tsx`），和 git diff 对不上 → **没人能用**（仓库里
+      //     真正被读的是 coverage-final.json → istanbul-to-lcov.js 转出来的
+      //     那份）。留着一个「看着能用、其实路径不对」的文件 = 给下一个人
+      //     埋坑。
+      //   - 'text'：vitest 会自己打一份「All files 86.91%」的表 → **和本仓库
+      //     的覆盖率报告并列出现在同一份 CI 日志里，两个不同的「All files」
+      //     数字**互相打架**（实测踩到：CI 日志里同时出现 86.91% 和 91.8%）。
+      //     单一事实来源 = scripts/lcov-summary.js 的报告。
+      reporter: ['json'],
       // 覆盖率数据只统计 src/ 下的源码（测试文件自身不计入）。
       // ⚠️ include 必须是**相对 root**（= packages/renderer）的 glob ——
       // 用绝对路径时 v8 provider 一条都匹配不上（实测：报告里 0 个文件、
