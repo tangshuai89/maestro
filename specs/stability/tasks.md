@@ -687,6 +687,46 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   ⚠️ 这条 bug 的暴露方式值得记：**测试「提前结束」也是一种失败** —— 那个用例
   永远不返回，而定时器是 unref 的 → 进程静默退出（exit 0、后面的用例根本没打印）。
 
+- [x] **H15** `useAuth.ts` 的 OAuth 兜底段（IPC listener + 3s poll）**函数级 0 覆盖**
+      —— 补测 + 修 2 个真 bug（2026-10-23）
+
+  `useAuth.ts` 的 Spotify Electron 登录兜底段（`handleSpotifyLogin` 里「首次
+  `consumeOAuthCallback` 拿不到回调 → 注册 IPC listener + 3s poll」）是
+  **stability-bug1-spotify-120s-timeout 的修复本体** —— 当初把「登录界面转圈
+  120s」改成现在这样靠的就是它。实测覆盖率：`poll` / `finishErr` **一次都没被
+  执行过**（函数覆盖 20/22 = 90.91%）。
+
+  补了 7 条用例（F8–F14），全用假定时器驱动 3s tick，不依赖墙钟。
+
+  🐛 **顺带挖出 2 个真 bug**（都在这 25 行里，症状都是「同一个事件两种结果」）：
+
+  ① **用户拒绝授权 → 红色「登录失败」，而不是灰色「登录已取消」**
+  buffer 路径（`pending.error`）抛 `makeAuthError('AUTH_CANCELLED', ...)`，
+  而 **IPC 路径和 poll 路径抛的是裸 `new Error(msg)`** → catch 里
+  `err.code ?? 'AUTH_UNKNOWN'` → 落到 `AUTH_UNKNOWN`。同一个「用户点了拒绝」，
+  取决于回调从哪条路进来，面板要么 `AUTH_CANCELLED`（「登录已取消」/ INFO）、
+  要么 `AUTH_UNKNOWN`（「登录失败」/ **FATAL 红色**）——上报口径也跟着错。
+  修法：`finishErr` 改抛 `makeAuthError('AUTH_CANCELLED', ...)`，三条路径统一。
+
+  ② **拒绝一次 → renderer 里永久留一个 3s 轮询**
+  清理（`for (const fn of cleanups) fn()`）写在 `await` **之后**，而拒绝路径
+  会直接抛出去 → **跳过清理** → IPC listener 没退订、3s `setInterval` 没清 →
+  登录早就失败了，renderer 里还在每 3 秒发一次 `consumeOAuthCallback` IPC。
+  修法：清理挪进 `settle()`，成功 / 拒绝走同一条路。
+
+  复测 `useAuth.ts`：语句 **90.43% → 94.80%**、函数 **90.91% → 100%（23/23）**、
+  分支 **76.98% → 81.21%**、行 90.43% → 94.80%。
+
+  ✅ **变异验证**（门禁必须能主动抓出坏改动）：
+  - 还原 ① → F9 / F10 / F13 三条立刻红
+  - 还原 ② → F13 红（退订 spy 没被调用）
+  - 删掉 `settle()` 的 double-settle 守卫 → F14 红（清理被做了两次）
+
+  ⚠️ 踩坑留档：`consumeOAuthCallback` 这个 mock **序号 0 不是登录流程的首次
+  调用** —— 挂载时的一次性「排空 buffer」（K1）用的是同一个 mock，所以调用序是
+  `#0 挂载排空 → #1 首次 race → #2 起才是 poll tick`。按「首次调用」排期会全部
+  错位（表现为：poll 拿到的是排空时该给的值，用例看着像产品行为变了）。
+
 - [x] **H13** `usePlayer.ts` 真实未覆盖 **345 行 / 59 个连续段** —— 补测到 124 行
 
   H12 把行覆盖数据修可信之后，`usePlayer.ts`（播放链路的中枢）的**真实**未覆盖
@@ -863,9 +903,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                                            → GET /music/stream/:provider/:trackId
-                                                                                                              → musicService.getStreamUrl() 拿上游 URL
-                                                                                                                → proxyAudio() 转发到上游 CDN
+                                                                                                                → GET /music/stream/:provider/:trackId
+                                                                                                                  → musicService.getStreamUrl() 拿上游 URL
+                                                                                                                    → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
