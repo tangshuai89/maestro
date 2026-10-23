@@ -23,6 +23,7 @@
  */
 export {};
 const assert = require('node:assert');
+const { writeFileSync } = require('node:fs');
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 
@@ -58,6 +59,10 @@ const reg = {
   killed: [] as string[],
   openExternalCalls: [] as string[],
   fetchCalls: [] as string[],
+  /** 让 setIgnoreMouseEvents 抛错 → 控制器的 catch → main.ts 的 log 回调被调用 */
+  throwOnSetIgnoreMouseEvents: false,
+  /** 让 widevine components 探测失败 → main.ts 的 safeStr 分支被走到 */
+  widevineFails: false,
 };
 
 /** 假 <audio>… 不对，是假 webContents。 */
@@ -100,6 +105,7 @@ class FakeWindow {
   webContents = new FakeWebContents();
   winListeners: Rec[] = [];
   shown = 0;
+  shownInactive = 0;
   focused = 0;
   hidden = 0;
   destroyed = false;
@@ -110,6 +116,9 @@ class FakeWindow {
   lightVisCalls: boolean[] = [];
   maximized = false;
   fullScreen = false;
+  /** 窗口构造参数（main.ts 传给 BrowserWindow 的 opts）—— 桌面歌词的位置
+   *  夹取结果（x/y 在不在）只能从这里看。 */
+  opts: unknown = undefined;
 
   on(channel: string, handler: (...a: unknown[]) => void) {
     this.winListeners.push({ channel, handler });
@@ -145,6 +154,15 @@ class FakeWindow {
   }
   setAlwaysOnTop() {}
   setVisibleOnAllWorkspaces() {}
+  // 桌面歌词控制器要用的这两个（main.ts 传给控制器的接线回调
+  // —— loadTarget / clampToVisibleDisplay / log —— 只有控制器真的建起浮窗、
+  // 真的出过错时才会被调用 → 之前 main.ts 的这几个函数是 0 覆盖）。
+  showInactive() {
+    this.shownInactive++;
+  }
+  setIgnoreMouseEvents(..._a: unknown[]) {
+    if (reg.throwOnSetIgnoreMouseEvents) throw new Error('passthrough boom');
+  }
   setWindowButtonVisibility(v: boolean) {
     this.lightVisCalls.push(v);
   }
@@ -226,7 +244,10 @@ const fakeElectron = {
     addRecentDocument: () => {},
   },
   components: {
-    whenReady: async () => undefined,
+    whenReady: async () => {
+      if (reg.widevineFails) throw new Error('widevine boom');
+      return undefined;
+    },
     status: () => ({ ready: true }),
   },
   BrowserWindow: class {
@@ -236,6 +257,7 @@ const fakeElectron = {
       return reg.windows;
     }
     constructor(public opts: unknown) {
+      this.w.opts = opts;
       reg.windows.push(this.w);
     }
     get webContents() {
@@ -255,6 +277,8 @@ const fakeElectron = {
     getPosition = () => this.w.getPosition();
     setAlwaysOnTop = () => this.w.setAlwaysOnTop();
     setVisibleOnAllWorkspaces = () => this.w.setVisibleOnAllWorkspaces();
+    showInactive = () => this.w.showInactive();
+    setIgnoreMouseEvents = (...a: unknown[]) => this.w.setIgnoreMouseEvents(...a);
     setWindowButtonVisibility = (v: boolean) => this.w.setWindowButtonVisibility(v);
     setWindowButtonPosition = (p: unknown) => this.w.setWindowButtonPosition(p);
     setTitle = () => this.w.setTitle();
@@ -407,6 +431,24 @@ function menuItem(label: string): Record<string, unknown> {
 }
 
 async function main(): Promise<void> {
+  // 预置一份**屏外**的浮窗坐标（x=5000 超过 1920 宽的显示器）：
+  //   → main.ts 的 clampToVisibleDisplay 必然被调用（没有 bounds 就不调）
+  //   → 它返回 null → 窗口选项里**不带 x/y**（坐标失效只丢位置、保留尺寸）
+  //   → 这就是「拔掉外接显示器后浮窗不会被摆到空白区」那条逻辑的可观测后果。
+  try {
+    writeFileSync(
+      '/tmp/maestro-test-userdata/desktop-lyrics.json',
+      JSON.stringify({
+        enabled: false,
+        locked: false,
+        bounds: { x: 5000, y: 200, width: 860, height: 160 },
+      }),
+      'utf-8',
+    );
+  } catch {
+    /* 写不了就跳过这条断言，不让测试因为环境问题红 */
+  }
+
   loadMain();
   await flushReady();
 
@@ -596,6 +638,87 @@ async function main(): Promise<void> {
     const before = reg.killed.length;
     appHandlerOf('window-all-closed')();
     assert.ok(reg.killed.length > before, 'window-all-closed 没收 sidecar');
+  });
+
+  // ── 8. 桌面歌词浮窗：main.ts ↔ 控制器 的接线 ──────────────────
+  //
+  // main.ts 把 5 个**本地闭包**传给 DesktopLyricsController（loadTarget /
+  // clampToVisibleDisplay / log / fromOverlay / safeStr）。它们只有在控制器
+  // **真的建起浮窗**、**真的收到浮窗消息**时才会被调用 —— 所以「注册了通道」
+  // 不等于「接线被验证过」。之前这几个函数在 main.ts 里是 0 覆盖。
+  await check('20. 托盘「桌面歌词」→ 浮窗真的建起来了（loadTarget 走到了）', () => {
+    const before = reg.windows.length;
+    const item = menuItem('桌面歌词');
+    const click = item.click as ((i?: unknown) => void) | undefined;
+    assert.ok(typeof click === 'function', '托盘「桌面歌词」没有 click 处理');
+    (click as (i?: unknown) => void)();
+    assert.ok(reg.windows.length > before, '浮窗没建出来');
+    // 浮窗建出来后是「已加载才显示」→ 先不显示，等 did-finish-load
+    const overlay = reg.windows[reg.windows.length - 1];
+    assert.strictEqual(overlay.shownInactive, 0, '加载完之前不该 show（避免空框闪一下）');
+  });
+
+  await check('21. 浮窗消息只认浮窗自己（别的 renderer 不能锁死用户浮窗）', () => {
+    const overlay = reg.windows[reg.windows.length - 1];
+    const onControl = onOf('desktop-lyrics:overlay:control');
+    const onHover = onOf('desktop-lyrics:overlay:hover');
+
+    // ① 不是浮窗自己 → 忽略（preload 是主窗口和浮窗共用的桥，不校验 sender
+    //    等于把「关掉 / 锁死用户浮窗」的权限开给任意 renderer）
+    onControl({ sender: { notTheOverlay: true } }, { action: 'close' });
+    onHover({ sender: { notTheOverlay: true } }, { inside: true });
+    assert.ok(!overlay.destroyed, '非浮窗的 close 不该把浮窗关掉');
+
+    // ② 浮窗自己 → 生效
+    onControl({ sender: overlay.webContents }, { action: 'lock', locked: true });
+    onHover({ sender: overlay.webContents }, { inside: true });
+    // 锁定态不关窗（只是切点击穿透）
+    assert.ok(!overlay.destroyed, 'lock 不该关窗');
+  });
+
+  await check('22. 浮窗加载完成 → 才显示（did-finish-load 之后才 showInactive）', () => {
+    const overlay = reg.windows[reg.windows.length - 1];
+    // 触发浮窗 webContents 的 did-finish-load
+    const load = overlay.webContents.listeners.find((l) => l.channel === 'did-finish-load');
+    assert.ok(load, '浮窗没有监听 did-finish-load');
+    load!.handler();
+    assert.strictEqual(overlay.shownInactive, 1, '加载完才显示');
+  });
+
+  await check('23. 浮窗的历史坐标在屏外 → 丢弃位置、保留尺寸（clampToVisibleDisplay 生效）', () => {
+    const overlay = reg.windows[reg.windows.length - 1];
+    const opts = (overlay as unknown as { opts?: Record<string, unknown> }).opts;
+    assert.ok(opts, '没有拿到窗口构造参数');
+    // 屏外坐标 → 不下发 x/y（但尺寸还在）
+    assert.strictEqual(opts!.x, undefined, '屏外坐标不该下发');
+    assert.strictEqual(opts!.y, undefined, '屏外坐标不该下发');
+    assert.strictEqual(opts!.width, 860, '尺寸要保留（用户拉过的宽度不是白拉的）');
+  });
+
+  await check('24. 穿透设置出错 → 只告警不崩（控制器的 log 回调）', () => {
+    reg.throwOnSetIgnoreMouseEvents = true;
+    try {
+      const overlay = reg.windows[reg.windows.length - 1];
+      // 浮窗自己发的锁定消息（只有浮窗自己发才算）→ 走 applyMousePassthrough
+      onOf('desktop-lyrics:overlay:control')(
+        { sender: overlay.webContents },
+        { action: 'lock', locked: true },
+      );
+      assert.ok(!overlay.destroyed, '出错也不该把浮窗弄丢');
+    } finally {
+      reg.throwOnSetIgnoreMouseEvents = false;
+    }
+  });
+
+  await check('25. widevine 探测失败 → 不阻塞启动（safeStr 分支）', async () => {
+    reg.widevineFails = true;
+    try {
+      loadMain();
+      await flushReady();
+      assert.ok(reg.windows.length > 0, 'widevine 挂了也要把主窗口建起来');
+    } finally {
+      reg.widevineFails = false;
+    }
   });
 
   globalThis.fetch = origFetch;

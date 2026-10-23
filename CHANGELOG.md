@@ -560,6 +560,26 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   （流地址也指着旧平台）。
   修法：用 ref 读最新值（和 `qqQualityRef` / `wpsPlayedIdRef` 同一套做法）。
 
+- **test(electron): 补上 main.ts 里 5 个「从未被执行」的接线回调**（2026-10-23）
+
+  `main.ts` 把 5 个**本地闭包**传给 `DesktopLyricsController`
+  （`loadTarget` / `clampToVisibleDisplay` / `log` / `fromOverlay` / `safeStr`）。
+  它们只有在控制器**真的建起浮窗**、**真的收到浮窗消息**、**真的出错**时才会被调用
+  —— 所以「注册了通道」不等于「接线被验证过」。之前这 5 个函数在 main.ts 里全是
+  **0 覆盖**（`main.ts` 25 个函数里只有 5 个被执行到）。
+
+  借 `main.behavior.test.ts` 已有的**假 electron** harness（`Module._load` 换成
+  假的）驱动「托盘 → 桌面歌词 → 浮窗建起来 → 浮窗 IPC 只认自己」这条真实路径：
+
+  | 用例 | 覆盖到的                | 可观测的后果                                                                             |
+  | ---- | ----------------------- | ---------------------------------------------------------------------------------------- |
+  | 20   | `loadTarget`            | 托盘勾选后浮窗真的建出来了（且**加载完之前不显示**，避免空框闪一下）                     |
+  | 21   | `fromOverlay`           | **别的 renderer 不能锁死用户浮窗**（preload 是主窗口和浮窗共用的桥）                     |
+  | 22   | —                       | 浮窗 `did-finish-load` 之后才 `showInactive`                                             |
+  | 23   | `clampToVisibleDisplay` | 历史坐标在**屏外**（拔了外接显示器）→ 丢弃 x/y、**保留尺寸**（用户拉过的宽度不是白拉的） |
+  | 24   | `log`                   | 穿透设置出错 → **只告警不崩**（浮窗不丢）                                                |
+  | 25   | `safeStr`               | widevine 探测失败 → **不阻塞启动**（非 Spotify 源照常用）                                |
+
 - **test(e2e): 跨包 E2E 补上「跨平台降级链」—— 一个平台的流取不到就换另一个**
   （2026-10-23）
 

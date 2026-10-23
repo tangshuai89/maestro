@@ -398,6 +398,16 @@
   - **假 provider 的 `probeSession` 必须返回 `{alive:true,...}`**：少 `alive`
     → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
     fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  - ✅ **electron：main.ts 里 5 个「从未被执行」的接线回调**（2026-10-23）：
+    `main.ts` 把 `loadTarget` / `clampToVisibleDisplay` / `log` / `fromOverlay` /
+    `safeStr` 传给 `DesktopLyricsController` —— 它们只在控制器**真的建浮窗**、
+    **真的收到浮窗消息**、**真的出错**时才被调用 → 之前全是 0 覆盖。
+    借 `main.behavior.test.ts` 的假 electron harness 驱动「托盘 → 桌面歌词 →
+    浮窗 → 浮窗 IPC 只认自己」这条真实路径（+6 条用例）：
+    ① 托盘勾选 → 浮窗真的建出来（加载完之前不显示）；② **别的 renderer 不能
+    锁死用户浮窗**（preload 是主窗口和浮窗共用的桥）；③ 历史坐标在屏外 →
+    丢弃 x/y、**保留尺寸**；④ 穿透设置出错 → 只告警不崩；⑤ widevine 探测失败
+    → 不阻塞启动。
   - ✅ **跨包 E2E 补上「跨平台降级链」**（2026-10-23）：之前只覆盖顺利路径
     （搜索 → 播放 → 收藏 → 刷新后仍在）。产品最核心的卖点之一是**跨平台降级**
     （QQ 挂了自动换网易云/Deezer），而这条链**单测碰不到** —— 它要 server 的
@@ -843,9 +853,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                            → GET /music/stream/:provider/:trackId
-                                                                                              → musicService.getStreamUrl() 拿上游 URL
-                                                                                                → proxyAudio() 转发到上游 CDN
+                                                                                                    → GET /music/stream/:provider/:trackId
+                                                                                                      → musicService.getStreamUrl() 拿上游 URL
+                                                                                                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
