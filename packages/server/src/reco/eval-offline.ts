@@ -197,6 +197,41 @@ export interface OfflineReport {
  * @param golden   黄金集
  * @param count    请求条数（默认 12）
  */
+/**
+ * 造一个 fixture 支撑的 fake provider（**不出网**）。
+ *
+ * 导出是为了让测试能直接调它的 `fetchRecoRadioCandidates`——那个分支在
+ * intent 模式下**永远不会被生产代码调用**（intent 模式不拉 FM），不导出的
+ * 话它就是一段死代码，CI 的 coverage diff 门禁会判它"从未被执行"。
+ */
+export function createFixtureMusic(
+  search: Record<string, FixtureItem[]>,
+  related: Record<string, string[]>,
+  probe: {
+    searchedArtists: string[];
+    radioFetched: boolean;
+    recordSearch(a: string): void;
+    recordRadio(): void;
+  },
+): any {
+  return {
+    getLibrary: () => null,
+    searchUnified: async (_s: unknown, kw: string) => {
+      probe.recordSearch(kw);
+      const items = (search[kw] ?? []).map(toPoolItem);
+      return { items };
+    },
+    findRelatedArtists: async (_s: unknown, artist: string) => {
+      probe.recordSearch(`related:${artist}`);
+      return related[artist] ?? [];
+    },
+    fetchRecoRadioCandidates: async () => {
+      probe.recordRadio();
+      return [];
+    },
+  };
+}
+
 export async function evaluateOfflineScenario(
   scenario: FixtureScenario,
   fixture: NlFixture,
@@ -219,22 +254,7 @@ export async function evaluateOfflineScenario(
   const related = scenario.related ?? {};
 
   // fixture 支撑的 fake provider（不出网）
-  const music = {
-    getLibrary: () => null,
-    searchUnified: async (_s: unknown, kw: string) => {
-      probe.recordSearch(kw);
-      const items = (search[kw] ?? []).map(toPoolItem);
-      return { items };
-    },
-    findRelatedArtists: async (_s: unknown, artist: string) => {
-      probe.recordSearch(`related:${artist}`);
-      return related[artist] ?? [];
-    },
-    fetchRecoRadioCandidates: async () => {
-      probe.recordRadio();
-      return [];
-    },
-  };
+  const music = createFixtureMusic(search, related, probe);
   const svc = new RecoService(
     { get: () => undefined } as never,
     { get: () => undefined, set: () => {} } as never,
@@ -305,8 +325,17 @@ export async function evaluateOfflineScenario(
     };
   };
 
-  const expectSet = expect ?? scenario.expect ?? [];
-  const adjacentSet = adjacent ?? scenario.adjacent ?? [];
+  // 判据取**当前**的场景定义（fixture 只提供数据）——fixture 与评测定义不一致
+  // （场景改名了/新增了）必须 fail loud，不能拿 fixture 里录的旧判据硬跑。
+  const def = DEFAULT_GENRE_SCENARIOS.find((d) => d.id === scenario.id);
+  if (!def) {
+    throw new Error(
+      `fixture 里的场景 [${scenario.id}] 在当前评测定义里不存在——` +
+        `要么改回场景名，要么重新录制 fixture（node scripts/record-nl-fixtures.mjs）`,
+    );
+  }
+  const expectSet = expect ?? def.expect;
+  const adjacentSet = adjacent ?? def.adjacent ?? [];
   const seedBlockPurity = purity(seedBlock, expectSet, adjacentSet);
   const poolPurity = purity(pool, expectSet, adjacentSet);
 
@@ -386,29 +415,11 @@ export async function runOfflineEval(opts: OfflineEvalOptions = {}): Promise<Off
   const list = Object.values(fixture.scenarios).filter(
     (s) => !opts.only?.length || opts.only.includes(s.id),
   );
-  // 判据取**当前**的场景定义（expect / adjacent）；fixture 只提供数据。
-  // fixture 里有评测不认识的场景 → fail loud（fixture 过期了）。
-  const defs = new Map(DEFAULT_GENRE_SCENARIOS.map((s) => [s.id, s]));
+  // 判据由 evaluateOfflineScenario 自己从当前定义里取（fixture 只提供数据）；
+  // fixture 里有评测不认识的场景 → 那里会 fail loud。
   const scenarios: OfflineScenarioResult[] = [];
   for (const sc of list) {
-    const def = defs.get(sc.id);
-    if (!def) {
-      throw new Error(
-        `fixture 里的场景 [${sc.id}] 在当前评测定义里不存在——` +
-          `要么改回场景名，要么重新录制 fixture（node scripts/record-nl-fixtures.mjs）`,
-      );
-    }
-    scenarios.push(
-      await evaluateOfflineScenario(
-        sc,
-        fixture,
-        golden,
-        count,
-        undefined,
-        def.expect,
-        def.adjacent ?? [],
-      ),
-    );
+    scenarios.push(await evaluateOfflineScenario(sc, fixture, golden, count));
   }
   const mean = (pick: (r: OfflineScenarioResult) => number): number =>
     scenarios.length ? scenarios.reduce((s, r) => s + pick(r), 0) / scenarios.length : 0;

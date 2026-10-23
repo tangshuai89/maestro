@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   compareOfflineToBaseline,
+  createFixtureMusic,
   evaluateOfflineScenario,
   formatOfflineReport,
   loadFixture,
@@ -23,6 +24,7 @@ const {
   runOfflineEval,
   DEFAULT_FIXTURE_DIR,
 } = require('./eval-offline');
+const { createPoolProbe } = require('./eval-invariants');
 
 async function main() {
   // ── 4. fixture / 黄金集缺失 → fail loud ────────────────
@@ -128,7 +130,159 @@ async function main() {
     console.log('  ✓ 基线对比: 下降超容差 → 红 / 不低于基线 → 绿');
   }
 
-  // ── 6. 场景级：种子被 anchorLimit 截断 → 不变量变红（真实 fixture 上做） ──
+  // ── 6. 覆盖评测自身的分支（CI 的 coverage diff 门禁会判"新增行没被测到"）──
+  {
+    // 6a. fixture 里有、但当前场景定义里没有的场景 → 明确报错（fail loud）
+    const sc: any = Object.values(fixture.scenarios)[0];
+    await assert.rejects(
+      () => evaluateOfflineScenario({ ...sc, id: '__不存在的场景__' }, fixture, golden, 12),
+      /在当前评测定义里不存在/,
+      'fixture 与评测定义不一致时必须 fail loud',
+    );
+
+    // 6b. 黄金集覆盖不足 → 拒绝给结论（不当通过算）
+    const noTags = await evaluateOfflineScenario(
+      { ...sc, id: 'jazz', search: {}, related: {}, picks: [], queue: [] },
+      fixture,
+      {},
+      12,
+    );
+    assert.ok(noTags.inconclusive, '黄金集为空 → 拒绝给结论');
+    assert.strictEqual(noTags.pass, false, '拒绝给结论 ≠ 通过');
+    // 报告里也要打出来（"拒绝给结论"这行在报告格式里）
+    const repInconclusive = formatOfflineReport({
+      at: Date.now(),
+      fixtureRecordedAt: 'x',
+      count: 12,
+      scenarios: [noTags],
+      average: {
+        seedBlockPurity: 0,
+        poolPurity: 0,
+        queuePurity: 0,
+        pickRetention: 0,
+        goldenCoverage: 0,
+        passRate: 0,
+      },
+    });
+    assert.match(repInconclusive, /拒绝给结论/);
+
+    // 6c. 基线里缺这个场景 → 判红（提示要更新基线）
+    const rep = await runOfflineEval({ only: ['jazz'] });
+    const cmp = compareOfflineToBaseline({ scenarios: [] }, rep, 5);
+    assert.strictEqual(cmp.ok, false, '基线缺场景 → 门禁必须红');
+    assert.ok(cmp.lines.some((l: string) => l.includes('基线里没有这个场景')));
+
+    // 6d. fake provider 的 FM 分支：intent 模式永不拉 FM，但那段代码要被测到
+    const probe = createPoolProbe();
+    const fake = createFixtureMusic({}, {}, probe);
+    const radios = await fake.fetchRecoRadioCandidates();
+    assert.deepStrictEqual(radios, []);
+    assert.strictEqual(probe.radioFetched, true, 'fake 的 FM 分支记录到了调用');
+
+    // 6e. CLI 入口：导出成可测的 runCli（CI 门禁判"新增文件没被 import"）
+    const { runCli } = require('./eval-offline-cli');
+    const code = await runCli(['--only=jazz', '--json']);
+    assert.strictEqual(code, 0, 'CLI 跑单个场景应返回 0');
+    const { runCli: sweepRunCli } = require('./sweep-cli');
+    assert.strictEqual(await sweepRunCli(['--only=jazz', '--json']), 0, '扫描 CLI 应返回 0');
+    // 6f. CLI 的各种参数分支（"--k=v" 与 "--k v" 两种写法都要走通）
+    assert.strictEqual(
+      await runCli([
+        '--only=jazz',
+        '--json',
+        '--count=8',
+        '--tolerance=10',
+        '--baseline',
+        path.join(__dirname, '../../../../specs/eval-driven-nl/baseline.json'),
+        '--fixture-dir',
+        path.join(__dirname, '__fixtures__'),
+      ]),
+      0,
+      'CLI 各种参数写法都应正常跑完',
+    );
+    // 基线文件不存在 → 跳过对比但不算失败
+    assert.strictEqual(
+      await runCli(['--only=jazz', '--baseline', path.join(__dirname, '__no_baseline__.json')]),
+      0,
+      '没有基线文件时跳过对比、仍算通过',
+    );
+    // fixture 目录不存在 → 明确报错（不静默）
+    await assert.rejects(
+      () => runCli(['--fixture-dir', path.join(__dirname, '__no_such_dir__')]),
+      /fixture 不存在/,
+      'fixture 缺失必须 fail loud',
+    );
+    // 扫描 CLI 的非 JSON 分支
+    assert.strictEqual(await sweepRunCli(['--only=jazz']), 0, '扫描 CLI 表格分支');
+    // 6g. CLI 的**失败路径**：造一个"种子块填不满"的坏 fixture
+    //     → 不变量门禁红 → CLI 报"门禁未通过"并返回 1；
+    //     同时黄金集为空 → 报"拒绝给结论"。
+    const os = require('node:os');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-eval-'));
+    const mkItem = (t: string, a: string) => ({
+      title: t,
+      artist: a,
+      album: '',
+      duration: 200,
+      bestSource: 'qq',
+      versionType: 'studio',
+      inLibrary: false,
+    });
+    const badSeeds = ['A1', 'A2', 'A3', 'A4'];
+    const badScenario = {
+      id: 'jazz',
+      text: '来点儿爵士乐',
+      expect: ['jazz'],
+      adjacent: [],
+      intent: {},
+      seeds: badSeeds,
+      related: {},
+      search: Object.fromEntries(badSeeds.map((a) => [a, [mkItem(`${a} Song`, a)]])),
+      picks: [],
+      queue: [],
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, 'nl-search.json'),
+      JSON.stringify({
+        recordedAt: 'x',
+        sessionId: 'x',
+        librarySize: 0,
+        anchors: [],
+        anchorSearch: {},
+        scenarios: { jazz: badScenario },
+      }),
+    );
+    fs.writeFileSync(path.join(tmpDir, 'genre-golden.json'), JSON.stringify({}));
+    const badCode = await runCli([
+      '--fixture-dir',
+      tmpDir,
+      '--baseline',
+      path.join(tmpDir, '__no_baseline__.json'),
+    ]);
+    assert.strictEqual(badCode, 1, '不变量红 → CLI 必须返回 1');
+
+    // 6h. --save 会真的写基线文件（覆盖写盘分支）
+    const savePath = path.join(tmpDir, 'saved-baseline.json');
+    assert.strictEqual(
+      await runCli(['--only=jazz', '--save', savePath]),
+      0,
+      '带 --save 应正常跑完',
+    );
+    assert.ok(fs.existsSync(savePath), '基线文件已写出');
+
+    // 6i. 未知参数 → 忽略（default 分支）；"--k --k2" 形式 → take() 返回 undefined
+    assert.strictEqual(
+      await runCli(['--only=jazz', '--unknown-flag', '--save', '--json']),
+      0,
+      '未知参数应被忽略',
+    );
+
+    console.log(
+      '  ✓ 分支覆盖: 未知场景 / 黄金集不足 / 基线缺场景 / fake FM / 两个 CLI / 失败路径 / --save',
+    );
+  }
+
+  // ── 7. 场景级：种子被 anchorLimit 截断 → 不变量变红（真实 fixture 上做） ──
   {
     const sc: any = Object.values(fixture.scenarios).find((s: any) => (s.seeds?.length ?? 0) >= 3);
     assert.ok(sc, 'fixture 里要有一个 ≥3 个种子的场景');

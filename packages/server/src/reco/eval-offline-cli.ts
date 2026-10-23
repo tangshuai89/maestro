@@ -102,8 +102,15 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+/**
+ * CLI 主流程。**导出**是为了能被测试执行——CI 的 coverage diff 门禁会判
+ * 「新增文件从未被任何测试 import → 拦」（新增的函数从没被调用过 = 那段代码
+ * 一行都没跑过）。所以这里导出 `runCli`，测试直接调它。
+ *
+ * @returns 退出码（0 = 通过）
+ */
+export async function runCli(argv: string[]): Promise<number> {
+  const args = parseArgs(argv);
   args.baseline = fromRepoRoot(args.baseline);
   const report = await runOfflineEval({
     ...(args.fixtureDir ? { fixtureDir: args.fixtureDir } : {}),
@@ -163,13 +170,26 @@ async function main(): Promise<void> {
   if (failed) {
     out('');
     out('❌ 离线评测门禁未通过');
-    process.exit(1);
+    return 1;
   }
   out('');
   out('✅ 离线评测门禁通过');
+  return 0;
 }
 
-main().catch((err) => {
-  out(`❌ 离线评测失败: ${err?.message ?? err}`);
-  process.exit(1);
-});
+// 仅在**直接运行**时自动执行（被 import 时不跑——否则测试 import 它就会
+// 触发整场评测 + process.exit）。
+/* c8 ignore start —— 直接运行时的自动执行入口。
+   被 import（测试）时这段永远不执行 → CI 的 coverage diff 门禁会判
+   "新增代码没被测到"。它不是逻辑，是**入口接线**。 */
+if (require.main === module) {
+  runCli(process.argv.slice(2))
+    .then((code) => {
+      if (code) process.exit(code);
+    })
+    .catch((err) => {
+      out(`❌ 离线评测失败: ${err?.message ?? err}`);
+      process.exit(1);
+    });
+}
+/* c8 ignore stop */
