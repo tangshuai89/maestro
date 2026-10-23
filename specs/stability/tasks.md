@@ -727,6 +727,67 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `#0 挂载排空 → #1 首次 race → #2 起才是 poll tick`。按「首次调用」排期会全部
   错位（表现为：poll 拿到的是排空时该给的值，用例看着像产品行为变了）。
 
+- [ ] **H16** 合并器把 node 侧**正确**的行数据整份丢掉 —— 覆盖率被低估 + 门禁会误拦
+      （2026-10-23 实测，**未修**，先留档）
+
+  起因：为了回答「`backup-crypto` 的断言补实 vs `useAuth` 的 OAuth 轮询」，
+  先去量了 `backup-crypto.ts` 的真实覆盖 —— 结果发现**它的「低覆盖」是假的**：
+  `FNDA:11,encryptBundle`（加解密函数被调用了 11 次），但合并后的 lcov 里
+  `DA:34..95`（整个加解密核心）全是 0 命中。
+
+  - **真相**：node 侧（`.test.mjs`）的**行号是准的**，13 组用例把整个加解密核心
+    跑了一遍 → node 侧 `LH:406/408`，未覆盖的正好是 **135-136 行**
+    （`catch { throw new Error('备份内容损坏') }` —— 「解密后 JSON 解析失败」
+    这条分支从来没被触发过）。**语义完全对得上**。
+  - **为什么被丢了**：合并器（`scripts/merge-lcov.js`）的规则是「权威侧
+    （vitest8 ∪ browser）只要有**任一**实质命中 → **整文件替换** node 侧的行
+    数据」。而 `backup-crypto.ts` 在 vitest 侧也有命中（`generatePassphrase`
+    被某个 `.test.tsx` 调了 108 次）→ 触发替换 → node 侧那 406 条真命中被丢弃。
+  - **影响面**（实测 `coverage/.lcov-node` vs `coverage/.lcov-auth`）：
+    **24 个文件**真正重叠，合计 **568 条 node 侧行命中被丢弃**。最严重的：
+    | 文件                         | node 侧 | 合并后（= 权威侧） | 真相                                                                                                                                                      |
+    | ---------------------------- | ------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `lib/spotify-wps.ts`         | 488/534 | 138/534（25.8%）   | **91%**（`spotify-wps.test.mjs` 是 814 行的完整套件，mock SDK 后覆盖 connect/disconnect/play/seek/事件/错误分支；未覆盖的正是「404 设备未找到重试」那段） |
+    | `lib/backup-crypto.ts`       | 406/408 | 313/408（76.7%）   | **99.5%**                                                                                                                                                 |
+    | `hooks/usePlayer.helpers.ts` | 382/382 | 358/382            | 100%                                                                                                                                                      |
+    | `lib/likedCache.ts`          | 71/71   | 47/71              | 100%                                                                                                                                                      |
+  - **门禁会误拦**：`coverage-diff-gate.js` 的判定是「行级 / 函数级 / 整体 0%
+    **三者全清**才放行」，而这些文件都在「行级可信」清单里 → 行级判据生效 →
+    改一个 `.test.mjs` **确实覆盖了**的行，合并后的 lcov 说它 0 命中 → **误拦**
+    （函数级判据其实是通过的，但它是 AND 关系）。
+
+  ⚠️ **顺带推翻了一个既有前提**：`collect-line-coverage-trust.js` 和
+  `merge-lcov.js` 的注释都写着「node 侧 `.test.mjs` 的行号是**随机错位**的，
+  必须丢弃」。实测**不成立**：node 的 type-stripping 是**按原位抹掉类型**的
+  → 行位置完整保留 → 行号是准的。
+  - 证据 A：`usePlayer.ts` 的 node 命中行是 **1-131 连续一段**，而 1-131 正好是
+    「import + 类型 import + re-export 块」= **模块顶层**。`.test.mjs` 只调纯函数
+    → 顶层执行一次 → 顶层被算成命中，hook 体（200+ 行）一次没跑 → **完全正确**。
+  - 证据 B：`backup-crypto.ts` 的 node 未覆盖行 = 135-136 = 唯一那条不可达的
+    catch → **语义对得上**。
+  - 证据 C：`usePlayer.ts` 两侧重合率只有 6%（auth 2186 / node 131）—— 不是
+    「坐标系不同」，而是**两边真跑的测试不同**（`.test.tsx` 跑 hook 体，
+    `.test.mjs` 只跑纯函数）。
+
+  ⇒ 真正的问题不是「行号错位」，而是**两个不同的问题**：
+  1. **node 侧过度归因**：模块顶层区域（含注释/空行）被整段算成命中
+     （`artistAlias.ts` 的 47 行文件头注释块整段命中；它的 1-47 正好是注释）→
+     百分比被**虚高**。
+  2. **权威侧覆盖不全**：只反映 vitest 管线跑过的部分 → 对 `.test.mjs` 为主
+     的文件**低估**。
+
+  **修的方向**（本轮**没做** —— 涉及改「行覆盖分母」这个语义，风险是数字虚高
+  → 门禁漏拦，得单独跑一轮评测 + 基线 + 回归门禁）：
+  1. 合并器改成**行级并集**（两侧行号同坐标系，`DA` 取 max），不再整文件替换；
+  2. 重新定义行覆盖分母：**只算真实代码行**（剔除注释/空行）→ 顺手解决过度归因；
+  3. 门禁的「行级可信清单」语义要跟着改（现在它按「有无 source map」判，
+     而两侧其实都有可靠的行号）。
+
+  验收口径（先定死，避免又造一个「数字在骗人」的指标）：
+  - `spotify-wps.ts` 行覆盖应显示 **≈91%**（不是 25.8%）
+  - `backup-crypto.ts` 应显示 **≈99.5%**（不是 76.7%）
+  - 门禁在「改一行 `.test.mjs` 覆盖得到的老代码」时**不得**报未覆盖
+
 - [x] **H13** `usePlayer.ts` 真实未覆盖 **345 行 / 59 个连续段** —— 补测到 124 行
 
   H12 把行覆盖数据修可信之后，`usePlayer.ts`（播放链路的中枢）的**真实**未覆盖
@@ -903,9 +964,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                                                → GET /music/stream/:provider/:trackId
-                                                                                                                  → musicService.getStreamUrl() 拿上游 URL
-                                                                                                                    → proxyAudio() 转发到上游 CDN
+                                                                                                                    → GET /music/stream/:provider/:trackId
+                                                                                                                      → musicService.getStreamUrl() 拿上游 URL
+                                                                                                                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
