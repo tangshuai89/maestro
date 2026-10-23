@@ -66,6 +66,29 @@
 - [x] **F2** prettier 全过
 - [x] **F3** `npm run reco:eval:offline` 在干净工作区可复现基线数字
 
+## Phase G — PR 门禁接线（仓库自己的 coverage diff 门禁）
+
+> 门禁样板：`scripts/coverage-diff-gate.js`（判据 = **新增/修改的行有没有被执行过**，
+> 刻意不用基线快照）。它问的是"你这次写的代码有没有被跑到"。
+
+- [x] **G1** CLI 入口**从未被执行**：两个 CLI 的自动执行块被 c8 记成未覆盖的新增行
+      → 改成导出 `runCli(argv)` + `require.main === module` 守卫 +
+      `/* c8 ignore start/stop */` 包住入口接线（接线层不是逻辑）
+- [x] **G2** `eval-offline.ts` 的 fixture music 工厂**没有导出** → 测不到
+      → 提成导出的 `createFixtureMusic`
+- [x] **G3** `reco.service.ts` 的空池兜底写在 catch 里 → 那几行几乎永远跑不到
+      → 提为模块级 `EMPTY_POOL`（import 时就执行）
+- [x] **G4** 候选池缓存命中路径**从没被测到**（`filterPoolByExclude` 只被"排除集为空"
+      触发，函数第一行就早退 → 真正的过滤逻辑是死代码）
+      → `reco-pool-edge.test.ts` 用**非空排除集**打这条分支
+- [x] **G5** "空库 + intent 不报 library_empty"这条路径从没被测到
+      → `reco-pool-edge.test.ts` 跑完整 `run()`（LLM 打桩），断言日志分支 + 出歌
+- [x] **G6** "候选池构建抛异常 → 回退空池"这条兜底从没被测到
+      → `reco-pool-edge.test.ts` 模拟 provider 集成漂移（少一个方法）→ TypeError
+- [x] **G7** 门禁本地可复现：`git archive HEAD` 出一份干净副本 → 按 `scripts/test.sh`
+      的 c8 参数跑 reco 测试 → 生成 lcov → 跑 `coverage-diff-gate.js --base <base>`
+      （隔离副本 = 不受并行 session 的工作区改动干扰）
+
 ## 评测抓出来的问题（都已修）
 
 ### 离线层（L1）抓的
