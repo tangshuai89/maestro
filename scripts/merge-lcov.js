@@ -312,6 +312,118 @@ function selfTest() {
       `合并结果不对：\n${merged}`,
     );
 
+    // ── 权威文件：**函数级跨侧并集**（行仍然只用权威侧）────────────
+    //
+    // 行号会平移（node 侧独有文件的命中行有 29.7% 落在注释/空行上）→ 行不能混。
+    // 但**函数名是源码标识符**、跨转换器稳定 → FNDA 可以跨侧取 max：
+    // 「这个函数跑没跑过」的真相是两条管线的并集，整文件替换会把它丢掉
+    // （实测丢了 22 个真跑过的函数 → 门禁对它们误判「从未执行」→ 假红）。
+    {
+      const fs4 = require('node:fs');
+      const os4 = require('node:os');
+      const p4 = require('node:path');
+      const tmp4 = fs4.mkdtempSync(p4.join(os4.tmpdir(), 'maestro-merge-fnunion-'));
+      const nodeInfo4 = p4.join(tmp4, 'node.info');
+      const authInfo4 = p4.join(tmp4, 'auth.info');
+      const out4 = p4.join(tmp4, 'out.info');
+      // node 侧（行错位）：第 5 行命中；函数 g 跑过（2 次）
+      fs4.writeFileSync(
+        nodeInfo4,
+        [
+          'SF:packages/x/src/a.ts',
+          'FN:3,g',
+          'FNF:1',
+          'FNH:1',
+          'FNDA:2,g',
+          'DA:5,9',
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+      // 权威侧（行正确）：第 9 行命中；函数 g **没跑过**（0 次）
+      fs4.writeFileSync(
+        authInfo4,
+        [
+          'SF:packages/x/src/a.ts',
+          'FN:3,g',
+          'FNF:1',
+          'FNH:0',
+          'FNDA:0,g',
+          'DA:9,4',
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+      const argv4 = process.argv.slice(2);
+      process.argv = [argv4[0], argv4[1], '--authoritative', authInfo4, out4, nodeInfo4, authInfo4];
+      main();
+      const merged4 = fs4.readFileSync(out4, 'utf8');
+      fs4.rmSync(tmp4, { recursive: true, force: true });
+      expect(
+        '权威文件：函数命中次数跨侧并集（node 侧跑过 → 不丢）',
+        /FNDA:2,g/.test(merged4),
+        `函数并集没生效：\n${merged4}`,
+      );
+      expect(
+        '权威文件：行仍然只用权威侧（node 侧的错位行不混进来）',
+        merged4.includes('DA:9,4') && !merged4.includes('DA:5,9'),
+        `行不该跨侧混合：\n${merged4}`,
+      );
+    }
+
+    // ── 只有「对该文件有真实覆盖」的一侧才参与函数并集 ─────────────
+    //
+    // c8 的 `--all` 会给**从没被执行过**的文件也列一份 0 命中的函数清单，
+    // 而那些名字是 c8 自己猜的（跟权威侧不一致）→ 混进来会污染函数分母
+    // （实测全局 % Funcs 从 88.6% 掉到 87.1%）。
+    {
+      const fs5 = require('node:fs');
+      const os5 = require('node:os');
+      const p5 = require('node:path');
+      const tmp5 = fs5.mkdtempSync(p5.join(os5.tmpdir(), 'maestro-merge-fnall-'));
+      const nodeInfo5 = p5.join(tmp5, 'node.info');
+      const authInfo5 = p5.join(tmp5, 'auth.info');
+      const out5 = p5.join(tmp5, 'out.info');
+      // node 侧：只有 0 命中（=--all 占位，没有真跑过）
+      fs5.writeFileSync(
+        nodeInfo5,
+        [
+          'SF:packages/x/src/b.tsx',
+          'FN:3,ghost',
+          'FNF:1',
+          'FNH:0',
+          'FNDA:0,ghost',
+          'DA:1,0',
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+      // 权威侧：真跑过，函数名是 real
+      fs5.writeFileSync(
+        authInfo5,
+        [
+          'SF:packages/x/src/b.tsx',
+          'FN:3,real',
+          'FNF:1',
+          'FNH:1',
+          'FNDA:2,real',
+          'DA:2,1',
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+      const argv5 = process.argv.slice(2);
+      process.argv = [argv5[0], argv5[1], '--authoritative', authInfo5, out5, nodeInfo5, authInfo5];
+      main();
+      const merged5 = fs5.readFileSync(out5, 'utf8');
+      fs5.rmSync(tmp5, { recursive: true, force: true });
+      expect(
+        '没真跑过的一侧：它的 0 命中函数名不混进分母',
+        !/FNDA:0,ghost/.test(merged5) && /FNDA:2,real/.test(merged5),
+        `不该混入 --all 的占位函数名：\n${merged5}`,
+      );
+    }
+
     // ── 权威侧**无实质覆盖**时不该替换 ─────────────────────────────
     //
     // 有些文件只被 .test.mjs 覆盖（node 侧有真实用例，但行号错位）。
@@ -438,9 +550,44 @@ function main() {
     }
     const parsed = parseLcov(fs.readFileSync(input, 'utf8'));
     for (const [file, data] of parsed) {
-      // 权威来源已经给了这个文件 → **完全替换**，不取 max
+      // 权威来源已经给了这个文件 → **行/分支完全替换**，不取 max
       // （两份的行号坐标系不同，取 max = 污染）
-      if (authoritativeFiles.has(file)) continue;
+      if (authoritativeFiles.has(file)) {
+        // ⚠️ **但函数级（FNDA）可以跨侧并集** ——
+        //
+        // 行号会平移（node 的类型剥离会删掉纯类型行 → 命中行整体偏移，
+        // 实测 node 独有文件的命中行有 **29.7% 落在注释/空行上**），
+        // 所以行数据不能跨侧混合。
+        //
+        // 但**函数名是源码标识符**、不随转换器变 → FNDA 可以跨侧取 max：
+        // 同一个源文件被两条管线覆盖时，「这个函数跑没跑过」的真相是
+        // **两条管线的并集**。整文件替换会把这个真相丢掉 ——
+        // 实测丢了 **22 个函数**（backup-crypto 的 5 个加解密函数、
+        // spotify-wps 的 4 个、降级链的 pickFallbackSource/pickUpgradeSource…），
+        // 它们**确实被 .test.mjs 测过**，却因为权威侧（vitest 那条管线）
+        // 没跑到而显示 0 覆盖 → diff 门禁会把「改了这些函数」误判成
+        // 「新增的函数从没被执行过」→ **假红**。
+        //
+        // ⚠️ **只从「对该文件有真实覆盖」的一侧并集**：c8 的 `--all` 会给
+        //    **从没被执行过**的文件也列一份 0 命中的函数清单，而那些名字是
+        //    c8 自己猜的（跟权威侧不一致）→ 混进来会**污染函数分母**
+        //    （实测全局 % Funcs 从 88.6% 掉到 87.1%）。
+        const target = merged.get(file);
+        const sideHasRealCoverage =
+          [...data.da.values()].some((v) => v > 0) || [...data.fnda.values()].some((v) => v > 0);
+        if (sideHasRealCoverage) {
+          for (const [name, hits] of data.fnda) {
+            const cur = target.fnda.get(name) ?? 0;
+            if (hits > cur) target.fnda.set(name, hits);
+            // 权威侧没有这个函数（只被 .test.mjs 那条管线看到）→ 把 FN 补上，
+            // 否则会写出一条没有对应 FN 的 FNDA（lcov 格式不完整）。
+            if (!target.fn.has(name) && data.fn.has(name)) {
+              target.fn.set(name, data.fn.get(name));
+            }
+          }
+        }
+        continue;
+      }
       let target = merged.get(file);
       if (!target) {
         target = {

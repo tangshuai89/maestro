@@ -398,6 +398,16 @@
   - **假 provider 的 `probeSession` 必须返回 `{alive:true,...}`**：少 `alive`
     → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
     fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  - 🐛 **权威侧不再整文件替换 —— 函数级改成跨管线并集**（2026-10-23）：
+    行级必须完全替换（node 侧行号会平移：实测 29.7% 的命中行落在注释/空行上），
+    但**函数名是源码标识符、跨转换器稳定** → 函数级应该跨侧取 max。
+    原来的整文件替换把真相丢了：**22 个真跑过的函数**（backup-crypto 的 5 个加解密
+    函数、spotify-wps 的 4 个、降级链的 pickFallbackSource/pickUpgradeSource…）
+    显示成 0 覆盖 → diff 门禁会对它们**假红**。
+    ⚠️ 只从「**对该文件有真实覆盖**」的一侧并集 —— c8 的 `--all` 会给从没跑过的
+    文件也列一份 0 命中的函数清单（名字是 c8 自己猜的）→ 混进来污染分母
+    （实测全局 % Funcs 从 88.6% 掉到 87.1%）。两条都加了自测。
+    复测：全局函数覆盖 **88.60% → 90.41%**（43 个函数救回、0 个反而丢掉）。
   - ✅ **electron：main.ts 里 5 个「从未被执行」的接线回调**（2026-10-23）：
     `main.ts` 把 `loadTarget` / `clampToVisibleDisplay` / `log` / `fromOverlay` /
     `safeStr` 传给 `DesktopLyricsController` —— 它们只在控制器**真的建浮窗**、
@@ -853,9 +863,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                                    → GET /music/stream/:provider/:trackId
-                                                                                                      → musicService.getStreamUrl() 拿上游 URL
-                                                                                                        → proxyAudio() 转发到上游 CDN
+                                                                                                            → GET /music/stream/:provider/:trackId
+                                                                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
