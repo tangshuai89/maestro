@@ -1,0 +1,741 @@
+{
+  "at": 1792721877630,
+  "fixtureRecordedAt": "2026-10-23T02:15:33.944Z",
+  "count": 12,
+  "scenarios": [
+    {
+      "id": "jazz",
+      "text": "来点儿爵士乐",
+      "expect": ["jazz"],
+      "seeds": ["Miles Davis", "John Coltrane", "Chet Baker", "Ella Fitzgerald"],
+      "poolSize": 16,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 1,
+      "pickRetention": 0.375,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "16 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "electronic",
+      "text": "放点适合夜跑的电子乐",
+      "expect": ["electronic"],
+      "seeds": ["Daft Punk", "The Chemical Brothers", "Disclosure", "Calvin Harris"],
+      "poolSize": 27,
+      "seedBlockSize": 19,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 1,
+      "pickRetention": 0.75,
+      "queuePurity": 1,
+      "goldenCoverage": 0.9629629629629629,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（19 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 19 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "27 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "rock90s",
+      "text": "九十年代摇滚，排除周杰伦",
+      "expect": ["rock"],
+      "seeds": ["Nirvana", "Radiohead", "Oasis", "Pearl Jam"],
+      "poolSize": 32,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 1,
+      "pickRetention": 0.5833333333333334,
+      "queuePurity": 1,
+      "goldenCoverage": 0.71875,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "32 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "folk",
+      "text": "周末慵懒的中文民谣",
+      "expect": ["folk"],
+      "seeds": ["宋冬野", "马頔", "陈粒", "尧十三"],
+      "poolSize": 28,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 0.5714285714285714,
+      "pickRetention": 0.75,
+      "queuePurity": 0.6666666666666666,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "28 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "prog-house",
+      "text": "像 Deadmau5 那种 prog house，节奏快一点",
+      "expect": ["electronic"],
+      "seeds": ["Deadmau5", "Eric Prydz", "Above & Beyond", "Fehrplay"],
+      "poolSize": 30,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 0.9666666666666667,
+      "pickRetention": 0.4166666666666667,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "30 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "synth80s",
+      "text": "八十年代合成器",
+      "expect": ["electronic"],
+      "seeds": [
+        "Depeche Mode",
+        "Pet Shop Boys",
+        "Eurythmics",
+        "Duran Duran",
+        "Tears for Fears",
+        "A Flock of Seagulls",
+        "Gary Numan",
+        "Simple Minds"
+      ],
+      "poolSize": 45,
+      "seedBlockSize": 33,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 0.24242424242424243,
+      "poolPurity": 1,
+      "pickRetention": 1,
+      "queuePurity": 0.08333333333333333,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "8 个种子全部被深挖（8/8）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（33 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 33 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "45 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "citypop-jp",
+      "text": "日式 city pop",
+      "expect": ["citypop"],
+      "seeds": ["山下達郎", "竹内まりや", "大貫妙子", "角松敏生"],
+      "poolSize": 33,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 1,
+      "pickRetention": 0.9090909090909091,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "33 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "rock-no-punk",
+      "text": "要摇滚，但别要朋克",
+      "expect": ["rock"],
+      "seeds": ["Led Zeppelin", "The Rolling Stones", "Queen", "AC/DC"],
+      "poolSize": 28,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 1,
+      "pickRetention": 0.9166666666666666,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "28 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "ref-track",
+      "text": "像《光辉岁月》那种感觉",
+      "expect": ["rock"],
+      "seeds": ["Beyond", "谭咏麟", "张国荣", "陈百强", "太极乐队", "达明一派", "黑豹乐队"],
+      "poolSize": 36,
+      "seedBlockSize": 24,
+      "seedBlockPurity": 0.8333333333333334,
+      "seedBlockPurityStrict": 0.25,
+      "poolPurity": 0.8611111111111112,
+      "pickRetention": 0.8181818181818182,
+      "queuePurity": 0.25,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "7 个种子全部被深挖（7/7）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "86% 的种子有候选（6/7）；没贡献：Beyond",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（24 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 24 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "36 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "afrobeat",
+      "text": "来点 afrobeat",
+      "expect": ["afrobeat"],
+      "seeds": ["Fela Kuti", "Burna Boy", "Wizkid", "Davido"],
+      "poolSize": 28,
+      "seedBlockSize": 22,
+      "seedBlockPurity": 0.9090909090909091,
+      "seedBlockPurityStrict": 0.9090909090909091,
+      "poolPurity": 0.9285714285714286,
+      "pickRetention": 0.5833333333333334,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（22 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 22 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "28 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "jazz-fusion",
+      "text": "爵士加电子，fusion 那种",
+      "expect": ["jazz", "electronic"],
+      "seeds": [
+        "Herbie Hancock",
+        "Weather Report",
+        "Jaco Pastorius",
+        "Chick Corea",
+        "Jaga Jazzist",
+        "The Cinematic Orchestra",
+        "Bonobo",
+        "Nils Petter Molvær"
+      ],
+      "poolSize": 55,
+      "seedBlockSize": 33,
+      "seedBlockPurity": 0.9696969696969697,
+      "seedBlockPurityStrict": 0.9696969696969697,
+      "poolPurity": 0.9818181818181818,
+      "pickRetention": 0.75,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "8 个种子全部被深挖（8/8）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（33 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 33 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "55 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "count-20",
+      "text": "来 20 首适合发呆的爵士",
+      "expect": ["jazz"],
+      "seeds": ["Miles Davis", "John Coltrane", "Chet Baker", "Bill Evans"],
+      "poolSize": 16,
+      "seedBlockSize": 16,
+      "seedBlockPurity": 1,
+      "seedBlockPurityStrict": 1,
+      "poolPurity": 1,
+      "pickRetention": 0.21428571428571427,
+      "queuePurity": 1,
+      "goldenCoverage": 1,
+      "invariants": [
+        {
+          "id": "no-radio-in-intent-mode",
+          "pass": true,
+          "detail": "未拉 FM",
+          "catches": "2026-10-20：FM 排在候选池里，\"要爵士\"被大流行淹没"
+        },
+        {
+          "id": "all-seeds-searched",
+          "pass": true,
+          "detail": "4 个种子全部被深挖（4/4）",
+          "catches": "2026-10-20：anchorLimit 默认只深挖 3 个种子，第 4 位代表艺人被丢弃"
+        },
+        {
+          "id": "seed-artists-contribute",
+          "pass": true,
+          "detail": "每个种子都有候选",
+          "catches": "种子失效（搜不到或全被时长/坏版本过滤）→ 风格无处可依"
+        },
+        {
+          "id": "seed-block-first",
+          "pass": true,
+          "detail": "种子块在前（16 条）",
+          "catches": "2026-10-20：交错合并让\"相邻艺人\"插到种子中间，模型和补位都先撞上它们"
+        },
+        {
+          "id": "excluded-absent",
+          "pass": true,
+          "detail": "排除项没漏",
+          "catches": "排除艺人是用户明说的负向约束，漏了就等于没排除"
+        },
+        {
+          "id": "seed-block-fills-request",
+          "pass": true,
+          "detail": "种子块 16 条 ≥ 请求 12 首",
+          "catches": "2026-10-20：中文民谣只有 6 首种子 < 12 → 模型被迫挑 6 首流行 OST 凑数"
+        },
+        {
+          "id": "pool-not-empty",
+          "pass": true,
+          "detail": "16 条候选",
+          "catches": "检索崩了（种子全失败且兜底也没兜住）"
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "average": {
+    "seedBlockPurity": 0.9760101010101009,
+    "poolPurity": 0.94246632996633,
+    "queuePurity": 0.8333333333333334,
+    "pickRetention": 0.6722132034632035,
+    "goldenCoverage": 0.9734760802469135,
+    "passRate": 1
+  }
+}

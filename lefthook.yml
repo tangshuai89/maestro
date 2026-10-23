@@ -12,6 +12,17 @@
 pre-commit:
   parallel: false
   commands:
+    nl-offline-eval:
+      # 改了 NL 检索（reco/**）就跑离线回放评测——**0 元 / 0 网络 / 2.8 秒**。
+      #
+      # 为什么挂在 pre-commit：NL 歌单的质量问题是"改了但行为没变"型
+      # （2026-10-20 实测：候选池缓存 key 不含构建参数 → 改了参数，旧缓存命中
+      # 10 分钟 → 连续三轮评测数字一模一样）。这种问题只有"每次改动都自动量
+      # 一遍"才抓得到，靠自觉跑是抓不到的。
+      #
+      # 门禁判据 = 7 条不变量 + 纯度不低于入库基线（specs/eval-driven-nl/）。
+      glob: 'packages/server/src/reco/**'
+      run: cd packages/server && npx ts-node src/reco/eval-offline-cli.ts
     prettier:
       # 只对**暂存区**的文件跑，且只格式化 git 已跟踪的类型。
       # lint-staged 会在格式化后自动重新 add（v15+ 不再需要显式 git add）。
