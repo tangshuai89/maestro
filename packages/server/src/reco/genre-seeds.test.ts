@@ -41,8 +41,10 @@ const {
   assert.deepStrictEqual(genreArtists('爵士乐'), jazz);
   assert.deepStrictEqual(genreArtists('爵士'), jazz);
   // 未收录流派 → 空数组（不抛）
-  assert.deepStrictEqual(genreArtists('afrobeat'), []);
+  assert.deepStrictEqual(genreArtists('hyperpop'), []);
   assert.deepStrictEqual(genreArtists(''), []);
+  // 冷门流派（2026-10-23 补录：LLM 提过 afrobeat，但代码映射表当时没有）
+  assert.ok(genreArtists('afrobeat').length > 0, 'afrobeat 有代表艺人');
   console.log('  ✓ genreArtists: jazz 命中 / 别名一致 / 未知流派空');
 }
 

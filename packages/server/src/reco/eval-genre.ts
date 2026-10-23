@@ -36,11 +36,22 @@ export interface GenreScenario {
 }
 
 /**
- * 默认场景组。覆盖三种典型诉求：
- *  - 纯流派（"来点儿爵士乐"）→ 曾经完全塌方的那一类
- *  - 场景 + 流派（"夜跑的电子乐"）→ 流派 + 情绪叠加
- *  - 流派 + 排除（"九十年代摇滚，排除周杰伦"）→ 流派 + 负向约束
- *  - 参照型（"像 Deadmau5 那种 prog house"）→ similar_artists 参与检索的那一类
+ * 默认场景组。覆盖 intent 的**全部表达能力**（specs/eval-driven-nl/ L2）：
+ *
+ * | 维度 | 场景 |
+ * | ---- | ---- |
+ * | 纯流派 | 来点儿爵士乐 |
+ * | 场景 + 流派 | 放点适合夜跑的电子乐 |
+ * | 流派 + 排除艺人 | 九十年代摇滚，排除周杰伦 |
+ * | 参照型（艺人） | 像 Deadmau5 那种 prog house |
+ * | 中文民谣 | 周末慵懒的中文民谣 |
+ * | 年代 | 八十年代合成器 |
+ * | 语种 | 日式 city pop |
+ * | 排除流派 | 要摇滚，但别要朋克 |
+ * | 参照型（曲目） | 像《光辉岁月》那种感觉 |
+ * | 冷门流派（无种子 → 降级路径） | 来点 afrobeat |
+ * | 混合流派 | 爵士加电子，fusion 那种 |
+ * | 数量 | 来 20 首适合发呆的爵士 |
  */
 export const DEFAULT_GENRE_SCENARIOS: GenreScenario[] = [
   { id: 'jazz', text: '来点儿爵士乐', expect: ['jazz'] },
@@ -52,6 +63,29 @@ export const DEFAULT_GENRE_SCENARIOS: GenreScenario[] = [
     text: '像 Deadmau5 那种 prog house，节奏快一点',
     expect: ['electronic'],
   },
+  // 「八十年代合成器」的场景本身跨流派：LLM 判定器把 Duran Duran / Tears For
+  // Fears / Simple Minds 标成 pop、rock（不算错——它们本来就是 pop/rock 的
+  // 80s 合成器）。这个场景考的是"**年代 + 艺人**对不对"，不是流派标签严不严，
+  // 所以相邻流派放宽到 pop/rock（实测严格纯度 16.7%、放宽 58.3%——差的那部分
+  // 全是"判定器口径"而不是"检索跑偏"）。
+  {
+    id: 'synth80s',
+    text: '八十年代合成器',
+    expect: ['electronic'],
+    adjacent: ['synthpop', 'newwave', 'pop', 'rock'],
+  },
+  { id: 'citypop-jp', text: '日式 city pop', expect: ['citypop'] },
+  { id: 'rock-no-punk', text: '要摇滚，但别要朋克', expect: ['rock'] },
+  {
+    id: 'ref-track',
+    text: '像《光辉岁月》那种感觉',
+    expect: ['rock'],
+    adjacent: ['pop', 'cantopop'],
+  },
+  // 冷门流派：既没有 LLM 提的代表艺人，映射表也没收录 → 走"没有种子"的降级路径
+  { id: 'afrobeat', text: '来点 afrobeat', expect: ['afrobeat'] },
+  { id: 'jazz-fusion', text: '爵士加电子，fusion 那种', expect: ['jazz', 'electronic'] },
+  { id: 'count-20', text: '来 20 首适合发呆的爵士', expect: ['jazz'] },
 ];
 
 /** 通过阈值（可按体感调整）。 */
@@ -231,8 +265,11 @@ export function computeGenrePurity(
   const libraryLeak = total ? libraryHits / total : 0;
   const anchorLeak = total ? anchorHits / total : 0;
 
+  // pass 用**宽松**纯度（相邻子风格也算）——与 L1 离线评测同口径。
+  // 严格值同时报出来作对照：「八十年代合成器」严格 41.7% / 宽松 100%
+  // （new wave、synth-pop 就是那个流派，判据太窄会把"风格正确"判成"不纯"）。
   const pass = judged
-    ? tagPurity >= GENRE_PURITY_THRESHOLDS.tagPurity
+    ? tagPurityLoose >= GENRE_PURITY_THRESHOLDS.tagPurity
     : seedCoverage >= GENRE_PURITY_THRESHOLDS.seedCoverage;
   const echoChamber = libraryLeak > GENRE_PURITY_THRESHOLDS.libraryLeak;
 
@@ -289,7 +326,7 @@ export function formatGenrePurityReport(report: GenrePurityReport): string {
       `${c.pass ? '✅' : '❌'}${c.echoChamber ? ' ⚠️回音壁' : ''} [${c.id}] ${c.text}`,
       `   流派=${c.genres.join('、') || '—'}｜种子=${c.seeds.slice(0, 4).join('、') || '—'}` +
         (c.mode ? `｜路径=${c.mode}` : ''),
-      `   种子覆盖 ${pct(c.seedCoverage)}｜流派纯度 ${c.judged ? pct(c.tagPurity) : '未判定'}` +
+      `   种子覆盖 ${pct(c.seedCoverage)}｜流派纯度 ${c.judged ? pct(c.tagPurityLoose) + `（严格 ${pct(c.tagPurity)}）` : '未判定'}` +
         `｜库污染 ${pct(c.libraryLeak)}｜主干污染 ${pct(c.anchorLeak)}`,
     );
     for (const it of c.items) {

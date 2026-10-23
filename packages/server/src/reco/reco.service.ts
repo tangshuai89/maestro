@@ -76,8 +76,54 @@ const EXPLORE_ARTIST_COUNT = 2;
 /** 同一归一艺人在最终推荐里的上限——防"一位歌手占满整批"。 */
 const ARTIST_CAP = 2;
 /** 候选池：按艺人搜索时取多少条（越大越可能捞到冷门曲，但每多一条就多一份
- *  解析成本；20 条足够覆盖搜索首屏）。 */
-const CANDIDATE_SEARCH_PAGE_SIZE = 10;
+ *  解析成本；20 条足够覆盖搜索首屏）。
+ *
+ *  ⚠️ **2026-10-23 评测发现：10 条不够**。平台搜索的前 10 条里，常常混着
+ *  「**歌名叫这个**、歌手却是别人」的条目——搜 "Beyond" 第一条是 Daft Punk 的
+ *  同名曲、搜 "Queen" 第一条是中文歌《Queen》。候选池的 `artistMatches`
+ *  过滤会把它们全丢掉 → 该艺人一条候选都贡献不了（实测 Human League /
+ *  College / Queen / Beyond / Fela Kuti 全部归零）。
+ *
+ *  成本几乎为零：provider 侧本来就取 30 条（`doSearchOneProvider` 里写死的
+ *  `search(..., 30)`），是**统一搜索层自己 slice 成 pageSize**——调大它等于
+ *  把已经取回来的数据多给几页。 */
+const CANDIDATE_SEARCH_PAGE_SIZE = 20;
+
+/** 导出给 fixture 录制脚本用——录制必须按**同样的 pageSize**，否则录下来的
+ *  数据和真实池对不上（pageSize 变了，池里能捞到的曲目就变了）。 */
+export const CANDIDATE_SEARCH_PAGE = CANDIDATE_SEARCH_PAGE_SIZE;
+
+/**
+ * intent 模式（风格意图检索）的候选池参数。
+ *
+ * 抽成常量有两个原因：
+ *  1. **评测扫描**（`reco/sweep.ts`）要能覆盖它们——参数从"拍脑袋"变成"跑数据选"
+ *  2. 每个数字都有出处（见 `specs/eval-driven-nl/` 的 L3 结论）
+ */
+export const INTENT_POOL_PARAMS = {
+  /** 每个艺人最多取几条候选。 */
+  perArtistCandidates: 6,
+  /** 每个艺人最多进池几条（防"一位歌手占满整批"）。 */
+  perArtistCap: 4,
+  /** 分组合并：种子条目连续排前（相邻艺人可能风格漂，不插队）。 */
+  grouped: true,
+  /**
+   * 每个种子扩几个相邻艺人。**1**（不是全局的 2）——
+   * 离线扫描（`npm run reco:eval:sweep`）实测：1 个的队列纯度略高（85.4% vs
+   * 84.7%）、种子块纯度持平，但**平台搜索少一半**（省延迟，也少网易云 405 限流）。
+   */
+  relatedPerAnchor: 1,
+} as const;
+
+/** 扫描时可覆盖的 intent 池参数。 */
+export type IntentPoolParams = Partial<{
+  perArtistCandidates: number;
+  perArtistCap: number;
+  grouped: boolean;
+  anchorLimit: number;
+  relatedPerAnchor: number;
+  maxPoolSize: number;
+}>;
 /** 每位主干艺人取几个相邻艺人（相邻艺人会各自再触发一次艺人搜索，
  *  2 个是"够有新鲜感"与"别把 QQ/网易云搜爆/别让用户干等"之间的折中）。 */
 const RELATED_PER_ANCHOR = 2;
@@ -277,6 +323,14 @@ export class RecoService {
       throw new BadRequestException('library_empty：先 POST /music/library/import');
     }
 
+    // NL 意图驱动的检索（specs/nl-intent-retrieval/）。
+    //
+    // 背景：「来点儿爵士乐」以前只会变成 prompt 里一行软提示，候选池照样是
+    // 用户库的口味档案（陈奕迅/汪苏泷…）——LLM 面对 40 首流行只能挑流行。
+    // 现在风格指令会**变成检索种子**：流派 → 代表艺人 → 平台真实曲目。
+    const intentSeeds = opts.intent ? buildIntentSeeds(opts.intent) : null;
+    const intentMode = Boolean(intentSeeds?.styleDirective);
+
     // intent 传了就用 intent.target_count（spec §数据模型：8-20 已 clamp 过），
     // 不传则保持原 opts.count 行为
     const requestedCount = opts.intent?.target_count ?? opts.count;
@@ -293,13 +347,6 @@ export class RecoService {
     const signals = this.loadSignals(session);
     const negatives = negativeTracks(signals);
     const exclude = this.mergeExclude(opts.exclude, [...history, ...negatives]);
-    // NL 意图驱动的检索（specs/nl-intent-retrieval/）。
-    //
-    // 背景：「来点儿爵士乐」以前只会变成 prompt 里一行软提示，候选池照样是
-    // 用户库的口味档案（陈奕迅/汪苏泷…）——LLM 面对 40 首流行只能挑流行。
-    // 现在风格指令会**变成检索种子**：流派 → 代表艺人 → 平台真实曲目。
-    const intentSeeds = opts.intent ? buildIntentSeeds(opts.intent) : null;
-    const intentMode = Boolean(intentSeeds?.styleDirective);
     // 参考曲目只有歌名时（"光辉岁月"），搜一下拿到真艺人再进种子池。
     if (intentMode && intentSeeds && intentSeeds.tracks.length) {
       const resolved = await this.resolveTrackArtists(session, intentSeeds.tracks);
@@ -1013,7 +1060,12 @@ ${mood}${avoid}
       radio: 0,
     };
     for (const c of candidates) byOrigin[c.origin]++;
-    return { candidates, byOrigin, dropped: pool.dropped };
+    return {
+      candidates,
+      byOrigin,
+      deepDivedArtists: pool.deepDivedArtists ?? [],
+      dropped: pool.dropped,
+    };
   }
 
   private async buildPool(
@@ -1025,7 +1077,7 @@ ${mood}${avoid}
     seed?: { title: string; artist: string },
     bannedArtists?: Set<string>,
     opts: { noCache?: boolean } = {},
-    intentOpts: { intentSeeds?: IntentSeeds } = {},
+    intentOpts: { intentSeeds?: IntentSeeds; poolParams?: IntentPoolParams } = {},
   ): Promise<{ pool: CandidatePoolResult; cached: boolean }> {
     // intent 模式（specs/nl-intent-retrieval/）：候选池**只**来自意图种子
     // （流派代表艺人 / 用户点名的艺人），口味档案与平台 FM 都不参与——
@@ -1079,6 +1131,25 @@ ${mood}${avoid}
         : pickExploreArtists(profile.artists, exploreCandidates, EXPLORE_ARTIST_COUNT);
     // 被信号拉黑的艺人 / 种子歌自身：不进候选（种子歌本身用户已经在听）。
     const poolExclude = seed ? [...exclude, { title: seed.title, artist: seed.artist }] : exclude;
+    // ⚠️ intent 模式：**种子艺人的库内曲目不算"重复"**。
+    //
+    // 背景（2026-10-23 真实链路评测发现）：用户库里本来就有大量该风格的歌
+    // （中文民谣场景：库里 1566 首，陈粒/马頔/宋冬野/赵雷 都在）→ 库内去重把
+    // 这些"正好是用户想要的"曲目全滤掉 → 种子块凑不满 12 首 → 模型只好从
+    // **漂移的相邻艺人**里挑（实测混进 4 首虞书欣/周深的流行 OST，流派纯度
+    // 从 100% 掉到 66.7%）。
+    //
+    // "别推荐我已有的"是**发现类**推荐的规矩（普通"✨推荐"）；用户明确说
+    // "来点中文民谣"时，库里的民谣歌**正是**答案，不该被排除。
+    //
+    // ⚠️ 只放宽**库内去重**这一项——"用户跳过过的""刚推荐过的"照旧排除
+    //（那是用户明确的负向信号，跟"库里已有"不是一回事）。
+    const poolLibrary =
+      intentMode && anchors.length
+        ? library.filter(
+            (it) => !anchors.some((a) => normalizeKey(it.artist ?? '', '') === normalizeKey(a, '')),
+          )
+        : library;
     const deps = {
       searchArtist: (artist: string) =>
         this.musicService
@@ -1100,10 +1171,24 @@ ${mood}${avoid}
     };
 
     try {
+      // intent 模式的池参数：默认值见 INTENT_POOL_PARAMS；评测扫描会覆盖它们
+      // （`reco/sweep.ts`）——**生产路径永远用默认值**。
+      const intentPoolParams = intentMode
+        ? {
+            perArtistCandidates: INTENT_POOL_PARAMS.perArtistCandidates,
+            perArtistCap: INTENT_POOL_PARAMS.perArtistCap,
+            grouped: INTENT_POOL_PARAMS.grouped,
+            // anchorLimit：普通模式只深挖 3 位主干（口味够了）；intent 模式的种子
+            // **全是流派代表艺人**（每个都在风格内），截断就是白白浪费——全用上。
+            anchorLimit: Math.max(anchors.length, 1),
+            relatedPerAnchor: INTENT_POOL_PARAMS.relatedPerAnchor,
+            ...(intentOpts.poolParams ?? {}),
+          }
+        : {};
       const pool = await buildCandidatePool(deps, {
         anchors,
         exploreArtists,
-        library,
+        library: poolLibrary,
         exclude: poolExclude,
         relatedPerAnchor: RELATED_PER_ANCHOR,
         bannedArtists: bannedArtists ? [...bannedArtists] : undefined,
@@ -1113,16 +1198,7 @@ ${mood}${avoid}
         // 否则 12 首的队列会被少数几位艺人占满（实测中文民谣场景种子只有 4 位
         // 艺人 → 池里凑不出 12 首民谣 → 模型被迫挑风格外的条目凑数）。
         // grouped = 流派条目连续排前（相邻艺人可能漂，不插队）。
-        // anchorLimit：普通模式只深挖 3 位主干（口味够了）；intent 模式的种子
-        // **全是流派代表艺人**（每个都在风格内），截断就是白白浪费——全用上。
-        ...(intentMode
-          ? {
-              perArtistCandidates: 6,
-              perArtistCap: 4,
-              grouped: true,
-              anchorLimit: Math.max(anchors.length, 1),
-            }
-          : {}),
+        ...intentPoolParams,
       });
       // intent 模式：风格种子捞不满时，把**库口味艺人**追加到队尾兜底
       // （宁可掺几首用户常听的，也别交白卷）。口味候选排在后面，模型会优先
@@ -1161,6 +1237,7 @@ ${mood}${avoid}
         pool: {
           candidates: [],
           byOrigin: { artist: 0, 'related-artist': 0, radio: 0 },
+          deepDivedArtists: [],
           dropped: {
             inLibrary: 0,
             badVersion: 0,
@@ -1227,6 +1304,7 @@ ${mood}${avoid}
       this.logger.log(`reco: intent 候选不足，口味兜底追加 ${extra.length} 首（排在队尾）`);
       return {
         candidates: [...intentPool.candidates, ...extra],
+        deepDivedArtists: intentPool.deepDivedArtists ?? [],
         byOrigin: {
           artist: intentPool.byOrigin.artist + tastePool.byOrigin.artist,
           'related-artist': intentPool.byOrigin['related-artist'],

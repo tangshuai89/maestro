@@ -92,6 +92,14 @@ export interface CandidatePoolResult {
   candidates: RecoCandidate[];
   /** 各来源贡献条数——调参时看这个就知道哪条路在供血。 */
   byOrigin: Record<CandidateOrigin, number>;
+  /**
+   * 实际被**深挖**的艺人（= 作为 anchor/种子被搜的，不管有没有搜到结果）。
+   *
+   * 为什么单独报：判定"种子有没有被认真搜过"不能看搜索日志——相邻艺人里经常
+   * 混着种子本人（Deezer 的相关图会把 Miles Davis 的相关艺人里列进 Chet Baker），
+   * 看日志会把"被截断的种子"误判成"搜过了"。这里只记**以种子身份**被搜的。
+   */
+  deepDivedArtists: string[];
   /** 被过滤掉的原因统计（库内/坏版本/时长/去重/超配额）。 */
   dropped: {
     inLibrary: number;
@@ -226,10 +234,16 @@ export async function buildCandidatePool(
   // 相邻艺人一查到就追加进同一个池（此时主干搜索还在飞）
   const neighborLists = await neighborPromise;
   const seenNeighbor = new Set<string>();
+  // ⚠️ 相邻艺人里**可能混着主干艺人自己**（Deezer 的相关图会把 A 的相关艺人
+  // 里再列出 A，或 A 与 B 互为相关）。同一个艺人被搜两次 → 它的曲目同时出现在
+  // "深挖"和"相邻"两个桶 → intent 模式的种子块被**从中间劈开**（种子块前置
+  // 这条不变量会红）。这里先排掉与主干重名的。
+  const anchorNames = opts.anchors;
   for (const { anchor, names } of neighborLists) {
     for (const name of names.slice(0, limits.relatedPerAnchor)) {
       const key = normalizeKey(name, '');
       if (!key || seenNeighbor.has(key)) continue;
+      if (anchorNames.some((a) => artistMatches(name, a))) continue;
       seenNeighbor.add(key);
       enqueue({ artist: name, origin: 'related-artist', seedArtist: anchor });
     }
@@ -295,7 +309,8 @@ export async function buildCandidatePool(
     radio: 0,
   };
   for (const c of candidates) byOrigin[c.origin]++;
-  return { candidates, byOrigin, dropped };
+  const deepDivedArtists = targets.filter((t) => t.origin === 'artist').map((t) => t.artist);
+  return { candidates, byOrigin, deepDivedArtists, dropped };
 }
 
 /** 多路轮转合并（`[[a,b],[c],[d,e]]` → `a,c,d,b,e`），让 prompt 里不同来源交错。 */
