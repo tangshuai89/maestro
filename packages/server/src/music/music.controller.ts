@@ -634,13 +634,28 @@ export class MusicController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = this.sessionService.resolve(req, res);
-    if (body?.platform === 'qq') {
-      return this.qq.getTrackFavCount(session.providers.qq ?? {}, body.trackId);
+    // ⚠️ **平台偶发失败不能变成 500**（2026-10-23）。
+    //
+    // 这是搜索结果上「多少人喜欢」的小徽标 —— 拿不到就**不显示**而已，
+    // 没有任何理由让整个搜索结果列表跟着报错。provider 内部的 try/catch
+    // 只盖住 fetch 本身，**withTimeout 之外的异常**（provider 抛的鉴权错、
+    // 响应形状不兼容等）还是会冒到这里 → 500。
+    //
+    // 降级成 null：renderer 已经处理 null（`if (r) s.likeCount = r`）→ 不显示徽标。
+    try {
+      if (body?.platform === 'qq') {
+        return await this.qq.getTrackFavCount(session.providers.qq ?? {}, body.trackId);
+      }
+      if (body?.platform === 'netease') {
+        return await this.netease.getTrackLikeCount(session.providers.netease ?? {}, body.trackId);
+      }
+      return null;
+    } catch (err) {
+      this.logger.warn(
+        `track/likeCount failed (${body?.platform}/${body?.trackId}): ${(err as Error).message}`,
+      );
+      return null;
     }
-    if (body?.platform === 'netease') {
-      return this.netease.getTrackLikeCount(session.providers.netease ?? {}, body.trackId);
-    }
-    return null;
   }
 
   /**

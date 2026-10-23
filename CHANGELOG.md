@@ -629,6 +629,36 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **搜索路径上的两个 POST 端点没有错误隔离 —— 一次内部抖动就变成 500**（2026-10-23）
+
+  用户报「搜索歌曲时偶尔出现 POST 500」。查下来**不是**搜索路径坏了（大修期间
+  `music.controller.ts` 的 search 端点、`music.service.ts` 的搜索方法、
+  `search.util.ts` 合计只动了 5 行，搜索/红心/provider 的测试全绿），
+  而是这两个端点**没有错误隔离**：
+
+  - `POST /music/like/detect` → `detectLikedAndSync`：内部任何一次偶发异常
+    （存储写、锁竞争、provider 抖动、状态形状不兼容）冒到 controller 就 500。
+  - `POST /music/track/likeCount` → 直接调 provider，**连 try/catch 都没有**
+    （provider 内部的 try 只盖住 fetch 本身）。
+
+  500 的代价不是「报错」这么轻：前端把这次 detect 当成「探测失败」→ ❤ 角标
+  一直不亮，而且**看不出**是哪层坏了。
+
+  修法（跟仓库既有的「`searchAlbumsOneProvider` 契约：本方法绝不 throw」同一套）：
+
+  - `detectLikedAndSync` 加「**绝不 throw**」契约 → 内部异常时降级成
+    `{liked:false, fannedOutTo:[], settled:false}`。
+    `settled:false` 是前端**已有的**「中间态」语义（继续轮询、不把读数当稳定
+    命中）→ **和今天 500 之后的行为完全一致**，只是不再把一次内部抖动放大成 500。
+    ⚠️ 不能降级成 `settled:true` + `liked:false` —— 那会被前端当成「确认没红心」
+    → **把真实红心抹掉**（比 500 严重）。
+  - `POST /music/track/likeCount` 补 try/catch → 平台偶发失败降级成 `null`
+    （renderer 已经处理 null = 不显示徽标）。
+
+  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（7 条），
+  三个变异点全部被自测抓到：去掉 controller 的 try/catch → A1/A2 红；
+  去掉 service 的包装 → B1/B2 红；storage 退回原地覆盖写 → C2/C3 红。
+
 - **覆盖率 diff 门禁的函数级判据：跨文件的同名函数互相掩盖 → 真没测的代码被放过**（2026-10-23）
 
   `fnCounts` 曾经是**跨文件累加**的全局 map（函数名 → 执行次数）。后果：
