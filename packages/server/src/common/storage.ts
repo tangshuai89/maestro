@@ -62,12 +62,36 @@ export class StorageService {
    * 文件的旧权限。Windows 上 fs.chmodSync 仅作 best-effort（不抛错）。
    */
   private writeLocked(): void {
-    fs.writeFileSync(this.file, JSON.stringify(this.cache, null, 2));
+    // ⚠️ **原子写**：先写临时文件，再 rename 覆盖。
+    //
+    // 原地 `writeFileSync(file, …)` 是「**先截断再写**」→ 进程在写的过程中
+    // 被杀（dev 模式的 watch 重启、用户直接关 app、机器断电）→ 文件停在
+    // 半截 → 下次启动 `JSON.parse` 失败 → **整个状态被清空**（红心/登录态
+    // 「莫名消失」）。load() 有兜底不会崩，但用户看到的是"我的歌单空了"。
+    //
+    // `rename` 在同一文件系统上是**原子**的 → 读到的永远要么是旧的完整内容、
+    // 要么是新的完整内容，**不会有半截**。
+    const tmp = `${this.file}.tmp`;
     try {
-      fs.chmodSync(this.file, 0o600);
+      fs.writeFileSync(tmp, JSON.stringify(this.cache, null, 2));
+      // chmod 打在**临时文件**上 → rename 之后最终文件就是 0600
+      // （rename 保留 inode 的权限位）。
+      try {
+        fs.chmodSync(tmp, 0o600);
+      } catch (err) {
+        // Windows 或只读盘上 chmod 可能失败——日志降级到 debug，不阻塞写。
+        this.logger.debug(`storage chmod 0o600 skipped: ${(err as Error).message}`);
+      }
+      fs.renameSync(tmp, this.file);
     } catch (err) {
-      // Windows 或只读盘上 chmod 可能失败——日志降级到 debug，不阻塞写。
-      this.logger.debug(`storage chmod 0o600 skipped: ${(err as Error).message}`);
+      // 写失败 → 别把半截的临时文件留在磁盘上（下次写会覆盖它，但留个垃圾
+      // 文件让人困惑）。
+      try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+      throw err;
     }
   }
 
