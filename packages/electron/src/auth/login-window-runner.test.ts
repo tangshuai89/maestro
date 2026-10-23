@@ -418,5 +418,216 @@ void (async () => {
     console.log('✅ T9.F3 capture=null + 关窗 → LOGIN_CANCELLED');
   }
 
-  console.log('\n🎉 login-window-runner.test.ts: all 11 cases passed');
+  // ═══════════════════════════════════════════════════════════════════
+  // 第二轮（2026-10-23）：补**竞态与错误守卫**的分支。
+  //
+  // 之前只测了「主路径 + 监听器/定时器不泄漏」。剩下的 12 处分支全是**防御性
+  // 代码**——它们的失败方式是**静默**的：
+  //   - cookie 被**删除**（用户登出）时若不拦 → 会去捕获一个「已失效」的态
+  //   - 关窗/超时的**竞态**（已 resolve 之后又来事件）若不拦 → 重复 resolve
+  //   - 窗口 close 抛异常 / cookies.off 抛异常 → 清理路径本身炸掉
+  //   - createWindow 抛异常 → 登录窗口开不起来，报错信息还丢了
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── 10. createWindow 抛异常 → LOGIN_FAILED（登录窗口开不起来）────
+  {
+    const p = runLoginWindow(
+      baseConfig({} as MinimalBrowserWindow, {
+        createWindow: () => {
+          throw new Error('no display');
+        },
+      }),
+    );
+    await assert.rejects(p, (err: Error & { code: string; message: string }) => {
+      assert.strictEqual(err.code, 'LOGIN_FAILED');
+      assert.ok(/no display/.test(err.message), '错误信息带上了原因');
+      return true;
+    });
+    console.log('✅ 10. createWindow 抛异常 → LOGIN_FAILED（信息不丢）');
+  }
+
+  // ── 11. cookies.on 注册监听器抛异常 → LOGIN_FAILED ───────────────
+  {
+    const state = { onCount: 0 };
+    const boomSession: MinimalSession = {
+      cookies: {
+        on() {
+          throw new Error('session gone');
+        },
+        off() {
+          /* ignore */
+        },
+      },
+    };
+    const win: MinimalBrowserWindow = {
+      webContents: { session: boomSession },
+      isDestroyed: () => false,
+      close() {},
+    };
+    const p = runLoginWindow(baseConfig(win));
+    await assert.rejects(p, (err: Error & { code: string; message: string }) => {
+      assert.strictEqual(err.code, 'LOGIN_FAILED');
+      assert.ok(/session gone/.test(err.message));
+      return true;
+    });
+    assert.strictEqual(state.onCount, 0);
+    console.log('✅ 11. cookies.on 抛异常 → LOGIN_FAILED');
+  }
+
+  // ── 12. cookie **被删除**（用户登出）→ 不触发捕获 ─────────────────
+  {
+    const { win, state } = makeFake();
+    let captured = 0;
+    const p = runLoginWindow(
+      baseConfig(win, {
+        capture: async () => {
+          captured++;
+          return { ok: true };
+        },
+      }),
+    );
+    // removed=true 的事件（Electron 的 cookie 'changed' 事件带这个标志）
+    for (const l of state.listeners) {
+      (l as (e: unknown, c: unknown, cause: string, removed: boolean) => void)(
+        {},
+        { name: 'x', domain: 'example.com' },
+        'expired',
+        true,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(captured, 0, '删除事件不该触发捕获');
+    (win as unknown as { fireClosed: () => void }).fireClosed();
+    await assert.rejects(p, (err: Error & { code: string }) => {
+      assert.strictEqual(err.code, 'LOGIN_CANCELLED');
+      return true;
+    });
+    console.log('✅ 12. cookie removed=true → 不触发捕获');
+  }
+
+  // ── 13. cookie 没有 domain 字段 → 视为空串（不匹配任何域名）────────
+  {
+    const { win, state } = makeFake();
+    let captured = 0;
+    const p = runLoginWindow(
+      baseConfig(win, {
+        capture: async () => {
+          captured++;
+          return null;
+        },
+      }),
+    );
+    for (const l of state.listeners) {
+      (l as (e: unknown, c: unknown, cause: string, removed: boolean) => void)(
+        {},
+        { name: 'x' }, // 没有 domain
+        'explicit',
+        false,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(captured, 0, '无 domain 的 cookie 不该触发捕获');
+    (win as unknown as { fireClosed: () => void }).fireClosed();
+    await assert.rejects(p, () => true);
+    console.log('✅ 13. cookie 无 domain → 不匹配（不捕获）');
+  }
+
+  // ── 14. markerNames 过滤：非标记 cookie 不触发捕获 ───────────────
+  {
+    const { win, state } = makeFake();
+    let captured = 0;
+    const p = runLoginWindow(
+      baseConfig(win, {
+        markerNames: ['pt_key'],
+        capture: async () => {
+          captured++;
+          return null;
+        },
+      }),
+    );
+    for (const l of state.listeners) {
+      (l as (e: unknown, c: unknown, cause: string, removed: boolean) => void)(
+        {},
+        { name: 'other_cookie', domain: 'example.com' },
+        'explicit',
+        false,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(captured, 0, '非标记 cookie 不该触发捕获');
+    (win as unknown as { fireClosed: () => void }).fireClosed();
+    await assert.rejects(p, () => true);
+    console.log('✅ 14. markerNames 过滤生效');
+  }
+
+  // ── 15. 已 resolve 之后的 cookie 事件 / 关窗 → 忽略（不重复结算）──
+  {
+    const { win, state } = makeFake();
+    const p = runLoginWindow(
+      baseConfig(win, {
+        capture: async () => ({ ok: true }),
+      }),
+    );
+    await p; // 已成功
+    // 事后再来一个 cookie 事件 + 关窗 → 不能炸、不能重复 resolve
+    for (const l of state.listeners) {
+      (l as (e: unknown, c: unknown, cause: string, removed: boolean) => void)(
+        {},
+        { name: 'x', domain: 'example.com' },
+        'explicit',
+        false,
+      );
+    }
+    (win as unknown as { fireClosed: () => void }).fireClosed();
+    await new Promise((r) => setTimeout(r, 20));
+    console.log('✅ 15. resolve 之后的 cookie 事件 / 关窗 → 忽略');
+  }
+
+  // ── 16. 关窗时 capture **不在途** → LOGIN_CANCELLED（else 分支）──
+  {
+    const { win } = makeFake();
+    const p = runLoginWindow(
+      baseConfig(win, {
+        capture: async () => null, // 立刻返回 → capturing 已落定
+      }),
+    );
+    (win as unknown as { fireClosed: () => void }).fireClosed();
+    await assert.rejects(p, (err: Error & { code: string }) => {
+      assert.strictEqual(err.code, 'LOGIN_CANCELLED');
+      return true;
+    });
+    console.log('✅ 16. 关窗（capture 不在途）→ LOGIN_CANCELLED');
+  }
+
+  // ── 17. 清理路径本身抛异常（窗口 close 抛 / cookies.off 抛）→ 不炸 ──
+  {
+    const boomSession: MinimalSession = {
+      cookies: {
+        on(_e, listener) {
+          (boomSession as unknown as { l?: unknown }).l = listener;
+        },
+        off() {
+          throw new Error('off failed');
+        },
+      },
+    };
+    const win: MinimalBrowserWindow = {
+      webContents: { session: boomSession },
+      isDestroyed: () => false,
+      close() {
+        throw new Error('close failed');
+      },
+    };
+    const p = runLoginWindow(
+      baseConfig(win, {
+        capture: async () => ({ ok: true }),
+      }),
+    );
+    // 成功路径 + 清理路径双炸 → promise 仍然正常 resolve（不能被清理异常带崩）
+    const result = await p;
+    assert.deepStrictEqual(result, { ok: true });
+    console.log('✅ 17. 清理路径抛异常（close/off）→ 仍正常 resolve');
+  }
+
+  console.log('\n🎉 login-window-runner.test.ts: all 19 cases passed');
 })();

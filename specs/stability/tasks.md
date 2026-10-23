@@ -625,6 +625,36 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
        'rapid-skip' → **也走硬切**（连按 ⏭ 不淡变，否则双声叠加）。测 crossfade
        必须先等过这个窗口。
 
+- [x] **H14** electron 侧分支覆盖最低（72.9%）—— 补守卫分支 + 修一个真 bug
+      （2026-10-23）
+
+  electron 是四个包里**分支覆盖最低**的。逐段看下来，缺口集中在**「状态不在预期」**
+  的防御性路径（窗口没了 / 消息不完整 / 订阅者抛错）—— 失败方式是**静默**的。
+
+  - `auth/login-window-runner.ts`（登录窗口 = QQ / 网易云登录的主路径）：
+    12 处未覆盖分支 → **2 处**。补：cookie 被**删除**（用户登出）时不能去捕获、
+    cookie 没有 domain 时不匹配、markerNames 过滤、已 resolve 之后再来事件要忽略、
+    createWindow / cookies.on 抛异常要报成 LOGIN_FAILED、清理路径自己抛异常也不能
+    带崩 promise。
+  - `auth/oauth-buffer.ts`：3 处 → **0 处**。
+  - `desktop-lyrics/desktop-lyrics-controller.ts`：12 处 → 5 处。
+  - `dev-port.ts`：`RENDERER_PORT` 是**垃圾值**时不能采信（否则 electron main 会去
+    连一个不存在的服务 → 窗口黑屏，日志里看不出「端口是脏的」）。
+
+  复测：electron 分支覆盖 **72.92% → 79.75%**，行 91.82% → 92.55%。
+
+  🐛 **顺带挖出一个真 bug**（测试用例挂住才暴露的）：`OAuthCallbackBuffer.peek()`
+  在条目过期时做了 `this.pending = null`，而 `main.ts` 的
+  `'consume-oauth-callback'` handler 正是「**先 peek() 打诊断日志，再 consume()**」
+  → peek 把过期条目清掉 → consume() 看到 pending 为空 → **注册一个 waiter 永久
+  等待**（TTL 10 分钟，timer 是 unref 的）→ **Spotify 登录界面永远转圈**，
+  日志里只有 `hasPending=false, no pending`。
+  修法：`peek()` 的语义是「看一眼，**不消费**」→ 过期时**只返回 null、不清 pending**；
+  清理交给 `consume()`（它自己也有 TTL 判断 → 过期时清掉并返回 null → 上层据此
+  报错「授权已过期」，而不是干等）。
+  ⚠️ 这条 bug 的暴露方式值得记：**测试「提前结束」也是一种失败** —— 那个用例
+  永远不返回，而定时器是 unref 的 → 进程静默退出（exit 0、后面的用例根本没打印）。
+
 - [x] **H13** `usePlayer.ts` 真实未覆盖 **345 行 / 59 个连续段** —— 补测到 124 行
 
   H12 把行覆盖数据修可信之后，`usePlayer.ts`（播放链路的中枢）的**真实**未覆盖
@@ -801,9 +831,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                            → GET /music/stream/:provider/:trackId
-                                                                              → musicService.getStreamUrl() 拿上游 URL
-                                                                                → proxyAudio() 转发到上游 CDN
+                                                                                    → GET /music/stream/:provider/:trackId
+                                                                                      → musicService.getStreamUrl() 拿上游 URL
+                                                                                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

@@ -560,6 +560,45 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   （流地址也指着旧平台）。
   修法：用 ref 读最新值（和 `qqQualityRef` / `wpsPlayedIdRef` 同一套做法）。
 
+- **fix(electron): `peek()` 吃掉过期 OAuth 条目 → 登录界面永久转圈**（2026-10-23）
+
+  **症状**：Spotify 登录「授权回来」之后，界面一直转圈，直到 10 分钟 TTL 超时。
+  日志里只有 `hasPending=false, no pending`，看不出发生了什么。
+
+  **根因**：`main.ts` 的 `'consume-oauth-callback'` handler 是「**先 peek() 打诊断
+  日志，再 consume()**」，而 `OAuthCallbackBuffer.peek()` 在条目**过期**时做了
+  `this.pending = null`：
+
+  1. `peek()` 发现过期 → **把 pending 清掉**；
+  2. `consume()` 看到 pending 为空 → **注册一个 waiter 永久等待**（TTL 10 分钟，
+     且那个 timer 是 `unref` 的 → 进程都不被它拖住，纯粹干等）；
+  3. ⇒ renderer 的 `consume()` **永远不返回**。
+
+  **修法**：`peek()` 的语义是「看一眼，**不消费**」→ 过期时**只返回 null，不清
+  pending**。清理交给 `consume()`（它自己也有 TTL 判断 → 过期时清掉并返回 null
+  → 上层据此报错「授权已过期」，而不是干等）。
+
+  这条是补测试时**用例挂住**才暴露的：一条断言「peek 过期条目后 consume 应立即
+  返回 null」的用例**永远不返回**，而测试进程因为定时器 unref 直接静默退出
+  （exit 0、后面几条用例根本没打印）—— **「测试提前结束」也是一种失败**。
+
+- **test(electron): 补 electron 侧的守卫分支 —— 分支覆盖 72.9% → 更高**
+  （2026-10-23）
+
+  electron 是四个包里**分支覆盖最低**的（72.92%）。逐段看下来，缺口集中在
+  **「状态不在预期」**的防御性路径 —— 它们的失败方式是静默的：浮窗不显示、
+  设置改了不生效、一个订阅者抛错把其它订阅者一起带走。
+
+  - `auth/login-window-runner.ts`（12 处分支）—— **登录窗口**（QQ / 网易云登录
+    的主路径）：cookie 被**删除**（用户登出）时不能去捕获、cookie 没有 domain
+    时不匹配、markerNames 过滤、已 resolve 之后再来事件要忽略、createWindow /
+    cookies.on 抛异常要报成 LOGIN_FAILED、清理路径自己抛异常也不能带崩 promise。
+  - `auth/oauth-buffer.ts`（3 处）—— OAuth 回调的 TTL 边界。
+  - `desktop-lyrics/desktop-lyrics-controller.ts`（12 处）—— 浮窗：窗口没了之后
+    的迟到事件、缺字段的 IPC 消息、订阅者抛错。
+  - `dev-port.ts`（7 处）—— `RENDERER_PORT` 是**垃圾值**时不能采信（否则 electron
+    main 会去连一个不存在的服务 → 窗口黑屏，日志里看不出「端口是脏的」）。
+
 - **fix(e2e): E2E 改用专用端口 3210 —— 别再静默打到用户自己的 server**
   （2026-10-23）
 
