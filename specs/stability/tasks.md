@@ -398,6 +398,18 @@
   - **假 provider 的 `probeSession` 必须返回 `{alive:true,...}`**：少 `alive`
     → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
     fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  - ✅ **跨包 E2E 补上「跨平台降级链」**（2026-10-23）：之前只覆盖顺利路径
+    （搜索 → 播放 → 收藏 → 刷新后仍在）。产品最核心的卖点之一是**跨平台降级**
+    （QQ 挂了自动换网易云/Deezer），而这条链**单测碰不到** —— 它要 server 的
+    音频代理真的返 502 → renderer 的 onError → 跨平台兜底 → 换源 → UI 跟着换。
+    新用例：假 provider 里第二首歌「QQ 源取不到流、网易云源是好的」→ 断言
+    `<audio>` 的 src 最终换成 `/music/stream/netease/…`，且**真的**先打过 QQ 的流。
+    顺带修了假 provider 的两个**形状错误**（正是它们让这条链一开始跑不起来）：
+    ① `provider.search()` 必须返回 **Track[]**（`id`=平台曲目 id、`provider`），
+    早先返回 FakeSong（merged id + `platform` 字段）→ server 拼出
+    `/music/stream/undefined/qq%3Ae2e-2` → 前端 502，**看起来像「降级失败」**；
+    ② **每个平台必须返回自己那一份**（搜 netease 要返回网易云的源），否则
+    「QQ 挂了 → 自动换网易云」无从触发（等价源搜索是按平台发的）。
   - 🐛 **E2E 端口隔离**（2026-10-23 实测）：E2E server 原来用 **3200** ——
     那正是 **Electron sidecar 的端口** → 用户开着 app 时端口被占 → Playwright 的
     `reuseExistingServer`（本地默认 true）**静默复用了用户那个真 server** →
@@ -831,9 +843,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                    → GET /music/stream/:provider/:trackId
-                                                                                      → musicService.getStreamUrl() 拿上游 URL
-                                                                                        → proxyAudio() 转发到上游 CDN
+                                                                                            → GET /music/stream/:provider/:trackId
+                                                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

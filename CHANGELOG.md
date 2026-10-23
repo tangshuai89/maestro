@@ -560,6 +560,27 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   （流地址也指着旧平台）。
   修法：用 ref 读最新值（和 `qqQualityRef` / `wpsPlayedIdRef` 同一套做法）。
 
+- **test(e2e): 跨包 E2E 补上「跨平台降级链」—— 一个平台的流取不到就换另一个**
+  （2026-10-23）
+
+  之前跨包 E2E 只覆盖「搜索 → 播放 → 收藏 → 刷新后仍在」一条**顺利路径**。
+  但产品最核心的卖点之一是**跨平台降级**（QQ 挂了自动换网易云/Deezer），而这条链
+  **单测根本碰不到**：它要 server 的音频代理真的返 502 → renderer 的 onError →
+  跨平台兜底 → 换源 → UI 跟着换。
+
+  新增用例：假 provider 里第二首歌「QQ 源取不到流、网易云源是好的」→ 点它 →
+  断言 `<audio>` 的 src 最终换成 `/music/stream/netease/…`，且**真的**先打过
+  QQ 的流（先失败再换源，不是压根没试）。
+
+  顺带修了假 provider 的两个**形状错误**（它们让这条链一开始根本跑不起来）：
+
+  - `provider.search()` 必须返回 **Track[]**（`id`=平台曲目 id、`provider`=平台名），
+    早先统一返回 FakeSong（`id`=merged id、平台字段叫 `platform`）→ server 的
+    等价源搜索拿到 `provider: undefined, id: 'qq:e2e-2'` → 拼出的流地址是
+    `/music/stream/undefined/qq%3Ae2e-2` → 前端 502，**看起来像「降级失败」**。
+  - **每个平台必须返回自己那一份**：搜 netease 要返回网易云的源，否则「QQ 挂了 →
+    自动换网易云」无从触发（等价源搜索是按平台发的）。
+
 - **fix(electron): `peek()` 吃掉过期 OAuth 条目 → 登录界面永久转圈**（2026-10-23）
 
   **症状**：Spotify 登录「授权回来」之后，界面一直转圈，直到 10 分钟 TTL 超时。

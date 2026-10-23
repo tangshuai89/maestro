@@ -69,6 +69,7 @@ const {
   createFakeState,
   defaultSongs,
   makeSilentWav,
+  toTrackForPlatform,
   E2E_AUDIO_PATH,
 } = require('./fake-provider');
 
@@ -81,6 +82,16 @@ function toUnifiedItem(song: any) {
     // 交给 server 的音频代理去拉 → 前端拿到的是**后端代理相对路径**
     url: `/music/stream/${song.platform}/${song.trackId}`,
   };
+  // 同一首歌的**第二个平台源**（跨平台降级链用）
+  const sources: any[] = [source];
+  if (song.alt) {
+    sources.push({
+      platform: song.alt.platform,
+      trackId: song.alt.trackId,
+      hasCopyright: true,
+      url: `/music/stream/${song.alt.platform}/${song.alt.trackId}`,
+    });
+  }
   return {
     id: song.id,
     title: song.title,
@@ -88,14 +99,14 @@ function toUnifiedItem(song: any) {
     album: song.album,
     coverUrl: '',
     duration: song.duration,
-    sources: [source],
+    sources,
     bestSource: song.platform,
     versionType: 'studio',
     versions: [
       {
         id: `ver-${song.trackId}`,
         duration: song.duration,
-        sources: [source],
+        sources,
         bestSource: song.platform,
       },
     ],
@@ -105,6 +116,11 @@ function toUnifiedItem(song: any) {
 async function main(): Promise<void> {
   const port = Number(process.env.E2E_PORT ?? 3210);
   const state = createFakeState(defaultSongs());
+  // 第二首歌的 **QQ 源故意取不到流**（网易云那个源是好的）→ 用来验证
+  // 「跨平台降级链」：server 代理返 502 → renderer 自动换到网易云源。
+  for (const song of state.songs) {
+    if (song.brokenPrimary) state.brokenTrackIds.add(song.trackId);
+  }
   const fake = createFakeProviderMethods(state);
 
   const app = await NestFactory.create(AppModule, { logger: false });
@@ -215,11 +231,15 @@ async function main(): Promise<void> {
       items: items.slice((page - 1) * pageSize, page * pageSize),
     };
   };
-  music.searchTracks = async (_session: unknown, _provider: string, keyword: string) => {
+  music.searchTracks = async (_session: unknown, provider: string, keyword: string) => {
     const kw = (keyword ?? '').trim();
-    return kw
+    const hits = kw
       ? state.songs.filter((s: any) => s.title.includes(kw) || s.artist.includes(kw))
       : state.songs;
+    // ⚠️ 返回 **Track 形状**（前端把它当 Track 用：id=平台曲目 id、provider=平台名）
+    return hits
+      .map((s: any) => toTrackForPlatform(s, (provider || 'qq') as never))
+      .filter((t: any): t is NonNullable<typeof t> => t !== null);
   };
 
   // ⚠️ 不指定 host：renderer 产物在浏览器里用的是 `http://localhost:3210`

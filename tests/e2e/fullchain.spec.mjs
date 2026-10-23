@@ -129,6 +129,35 @@ test.describe('跨包全链路', () => {
     });
   });
 
+  test('一个平台的流取不到 → 自动降级到另一个平台（跨包降级链）', async ({ page }) => {
+    // 这条链**单测碰不到**：server 的音频代理真的返 502 → renderer 的
+    // onError → 跨平台兜底 → 换源 → UI 跟着换。
+    //
+    // 假 provider 里第二首歌「QQ 源取不到流、网易云源是好的」→ 点它。
+    await seedProvider(page);
+    const calls = trackApiCalls(page);
+    await page.goto('/');
+    await expect(page.locator('.th-canvas')).toBeVisible({ timeout: 30_000 });
+
+    await page.locator('.titlebar-btn.search-btn').click();
+    await page.locator('.sp-search-input').fill('E2E');
+    await expect(page.locator('.sp-result-count')).toContainText('2 MATCHES', { timeout: 20_000 });
+
+    // 第二首歌：它的 QQ 源是坏的
+    await page.locator('.sp-item .sp-row').nth(1).click();
+
+    // 音频元素最终换到了**网易云**的流（而不是一直卡在 QQ）
+    await expect
+      .poll(async () => await page.locator('audio').first().getAttribute('src'), {
+        timeout: 30_000,
+      })
+      .toContain('/music/stream/netease/');
+
+    // 而且真的打过 QQ 的流（先失败再换源，不是压根没试）
+    expect(calls.some((c) => c.url.includes('/music/stream/qq/'))).toBe(true);
+    expect(calls.some((c) => c.url.includes('/music/stream/netease/'))).toBe(true);
+  });
+
   test('搜索无结果 → 明确空态，不崩', async ({ page }) => {
     await seedProvider(page);
     await page.goto('/');
