@@ -398,6 +398,16 @@
   - **假 provider 的 `probeSession` 必须返回 `{alive:true,...}`**：少 `alive`
     → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
     fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  - 🐛 **E2E 端口隔离**（2026-10-23 实测）：E2E server 原来用 **3200** ——
+    那正是 **Electron sidecar 的端口** → 用户开着 app 时端口被占 → Playwright 的
+    `reuseExistingServer`（本地默认 true）**静默复用了用户那个真 server** →
+    测的不是假 provider（真 server 的 QQ 搜索返回 60 条真实结果），而且
+    **「收藏」那一步会把红心写进用户真实的账号**。
+    修法：专用端口 **3210** + 两个 webServer 都 `reuseExistingServer: false`
+    （起不来就明确失败）+ 覆盖采集器加**起飞前端口空闲检查**（占用 → 退出码 3）。
+    另把 `window.electronAPI` 替身抽成共享模块（`tests/e2e/electronStub.mjs`），
+    两处共用 —— 之前各写一份，其中一份漏方法 → App 直接崩（`?.` 只保护对象为
+    null，**不保护方法缺失**）。
   - **测试基建不进覆盖率分母**：`src/test/`（vitest setup）和 `src/e2e/`
     （E2E 基建）都是夹具不是出厂代码 → c8 / vitest 两边都加 exclude
     （与「硬编码颜色门禁不扫测试文件」同一原则）。
@@ -791,9 +801,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                    → GET /music/stream/:provider/:trackId
-                                                                      → musicService.getStreamUrl() 拿上游 URL
-                                                                        → proxyAudio() 转发到上游 CDN
+                                                                            → GET /music/stream/:provider/:trackId
+                                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

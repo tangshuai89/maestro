@@ -163,7 +163,9 @@ export function createFakeProviderMethods(state: FakeProviderState) {
       _quality?: string,
     ): Promise<string> {
       state.calls.getStreamPath += 1;
-      return `http://127.0.0.1:${process.env.E2E_PORT ?? 3200}${E2E_AUDIO_PATH}#${trackId}`;
+      // ⚠️ 端口默认 **3210**（不是 3200）：3200 是 Electron sidecar 的端口 →
+      // 指着它 = 拉的是**用户真 server** 的流（实测：返回 502，E2E 直接红）。
+      return `http://127.0.0.1:${process.env.E2E_PORT ?? 3210}${E2E_AUDIO_PATH}#${trackId}`;
     },
 
     async like(_session: unknown, trackId: string): Promise<boolean> {

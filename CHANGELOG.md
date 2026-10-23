@@ -560,6 +560,33 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   （流地址也指着旧平台）。
   修法：用 ref 读最新值（和 `qqQualityRef` / `wpsPlayedIdRef` 同一套做法）。
 
+- **fix(e2e): E2E 改用专用端口 3210 —— 别再静默打到用户自己的 server**
+  （2026-10-23）
+
+  **症状**：用户开着 maestro app 时（Electron 把 server 作为 sidecar 起在
+  **3200**），E2E 开始失败：搜索返回 **60 条真实 QQ 结果**而不是假 provider 的
+  2 条 → 断言「2 MATCHES」红。
+
+  **根因（三层，都得修）**：
+  1. **端口撞车**：E2E server 用 3200 = app sidecar 的端口 → 起不来；
+  2. **静默复用**：Playwright 的 `reuseExistingServer`（本地默认 true）→
+     **复用了用户那个真 server** → 测的根本不是假 provider；
+  3. **副作用**：E2E 的「收藏」步骤会把红心写进**用户真实的账号**。
+
+  **修法**：
+  - E2E server 改用**专用端口 3210**（`E2E_PORT` 可覆盖）；假 provider 的
+    「上游音频」地址同步跟着改（否则拉的是用户真 server 的流 → 502）。
+  - `playwright.e2e.config.mjs` 的两个 webServer 都改成
+    **`reuseExistingServer: false`** —— 起不来就**明确失败**，绝不默默用别人的。
+  - 浏览器覆盖采集器同样：端口 3210 + **起飞前检查端口是否空闲**（占用 → 退出码
+    3 + 明确提示，不静默复用）。
+  - `window.electronAPI` 替身抽成**共享模块**（`tests/e2e/electronStub.mjs`），
+    E2E 与覆盖采集共用一份 —— 之前各写一份，其中一份漏了方法 → App 直接崩
+    （`?.` 只保护对象为 null，不保护方法缺失）。
+
+  **实测**：用户 app 的 server 照常跑在 3200 的情况下，E2E 2 条全绿 ✓，
+  浏览器覆盖采集正常 ✓（App.tsx 66% / main.tsx 100%）。
+
 - **feat(coverage): 浏览器端覆盖率接进统计 —— 接线层（App.tsx）不再「无法判定」**
   （2026-10-22）
 
@@ -628,6 +655,39 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   「没有可播放的音源」那条报错同一原则）。
 
 ### Fixed
+
+- **NL 歌单在空库下必然 400 `library_empty` —— 意图检索压根不依赖个人库，这道闸设错了位置**（2026-10-23）
+
+  **现象**：从没导入过 ❤ 库的用户（或库跟着 session 漂移后读不到的用户）点 NL 歌单
+  「生成队列」→ 意图解析**完全正确**（「我理解的意图」正常显示），但下一步必炸
+  `library_empty：先 POST /music/library/import`。
+
+  **根因**：`reco.run()` 顶部无条件要求库非空，且这道检查跑在 intent 判定**之前**。
+  但 intent 模式（`specs/nl-intent-retrieval/`）的候选池**只**来自意图种子
+  （流派代表艺人 → 平台真实目录），口味档案与平台 FM 都不参与 —— 它们正是"要爵士给
+  大流行"的污染源。库在 NL 路径只有两处用途：① `dedupAgainstLibrary`（空库 = 不去重，
+  无害）② `appendTasteFallback`（空库 = 兜不出东西，但那是 spec §风险设计的降级 →
+  回退自由生成，不是错误）。`specs/nl-playlist/spec.md` §风险也早写了"首次 import
+  用户库时 prompt 没库上下文 → 退化为'通用'推荐，**不报错**"。
+
+  **修法**：库的前置检查只对**没传 intent** 的普通推荐路径生效。判据是"**有没有传
+  intent**"而不是"意图里有没有风格指令" —— 用后者会让"来点好听的"这种空流派意图又
+  撞回同一个错。普通「✨推荐」路径行为一字未变（仍 400；前端 `useReco` 的
+  「库空 → 自动 import」兜底照旧生效）。
+
+  **证据**：真实服务端到端验证（新 session + 空库 +「来点儿蒸汽波」）→ **HTTP 201**，
+  `mode=select`，候选池 58 首，产出 12 首**全是蒸汽波**（Macintosh Plus / Vektroid /
+  Blank Banshee / Saint Pepsi / Windows96 / Daft Punk），逐首带真实音源（QQ / Deezer）。
+  修复前此处必 400。
+
+  **回归**：`reco.test.ts` 新增 3 例（空库+intent 放行 / 空库+无 intent 仍拒 /
+  空库+intent 无风格指令放行），47 → 50。
+
+  **顺带定位到用户侧根因**：用户的 ❤ 库**并没有丢** —— 它挂在旧 session 下；应用
+  启动时 cookie 没被带上，服务端新建了 session 并用 `Set-Cookie` 覆盖，于是当前会话
+  读不到那个库（`librarySize: 0`）。用当前 `SESSION_SECRET` 重签旧 session id 可验证
+  服务端仍认得它、`librarySize: 1174`。库已通过应用自己的 import 路径恢复（1566 首：
+  网易云 437 / QQ 1265 / Spotify 1000）。
 
 - **覆盖率 diff 门禁的函数级判据：跨文件的同名函数互相掩盖 → 真没测的代码被放过**（2026-10-23）
 
