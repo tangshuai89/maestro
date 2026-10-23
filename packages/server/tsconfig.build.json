@@ -1,0 +1,8 @@
+{
+  "//": "构建产物用的 tsconfig —— 与 tsconfig.json 的差别只有「排除哪些文件」",
+  "//why": "测试夹具不是出厂代码，不该进 dist（electron 的打包会带 dist/e2e/）",
+  "//how": "@nestjs/cli 的 nest build 优先用 tsconfig.build.json（存在即用）",
+  "//note": "tsconfig.json（typecheck 用）**不**排除它们 → 夹具仍被类型检查",
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/e2e/**", "src/test/**", "**/*.test.ts", "**/*.spec.ts"]
+}

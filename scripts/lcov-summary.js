@@ -94,34 +94,47 @@ function main() {
       if (t) trusted.add(t);
     }
   }
+  /** 这个文件的**行级**覆盖可信吗？（分支/函数的口径不依赖行号） */
+  const lineTrustOf = (file) => (trustKnown ? trusted.has(file) : false);
   const files = parseLcov(fs.readFileSync(lcovPath, 'utf8'));
 
-  // 按目录聚合
+  // 按目录聚合（**分「可信 / 不可信」两桶**）
+  //
+  // ⚠️ 为什么要分桶：行级覆盖只在**有 source map** 的采集里可信（见
+  // collect-line-coverage-trust.js）。缺 source map 时 c8 拿转换后 JS 的
+  // 字节偏移去切源文件 → 行号随机（但 DA 条目数 = 源文件行数，看起来
+  // 「对齐」）→ 那些「未覆盖行号」是**假的**。
+  // → 混在一起报成「总覆盖率」= **一份在骗人的报告**（实测踩过：
+  //   某个测试文件跑不起来 → 覆盖率从 80% 塌成 32%，看着像天大的覆盖洞，
+  //   其实只是那次测试没跑成）。
   const dirAgg = new Map();
+  const newAgg = () => ({ lines: [0, 0], branches: [0, 0], functions: [0, 0] });
   for (const [file, data] of files) {
     const s = statsFor(data);
     const dir = path.dirname(file);
     let agg = dirAgg.get(dir);
     if (!agg) {
-      agg = { lines: [0, 0], branches: [0, 0], functions: [0, 0] };
+      agg = { trusted: newAgg(), untrusted: newAgg() };
       dirAgg.set(dir, agg);
     }
-    agg.lines[0] += s.lines.covered;
-    agg.lines[1] += s.lines.total;
-    agg.branches[0] += s.branches.covered;
-    agg.branches[1] += s.branches.total;
-    agg.functions[0] += s.functions.covered;
-    agg.functions[1] += s.functions.total;
+    // 可信性**只影响行级**（分支/函数的口径不依赖行号）
+    const target = lineTrustOf(file) ? agg.trusted : agg.untrusted;
+    target.lines[0] += s.lines.covered;
+    target.lines[1] += s.lines.total;
+    target.branches[0] += s.branches.covered;
+    target.branches[1] += s.branches.total;
+    target.functions[0] += s.functions.covered;
+    target.functions[1] += s.functions.total;
   }
 
-  const total = { lines: [0, 0], branches: [0, 0], functions: [0, 0] };
+  const total = { trusted: newAgg(), untrusted: newAgg() };
   for (const agg of dirAgg.values()) {
-    total.lines[0] += agg.lines[0];
-    total.lines[1] += agg.lines[1];
-    total.branches[0] += agg.branches[0];
-    total.branches[1] += agg.branches[1];
-    total.functions[0] += agg.functions[0];
-    total.functions[1] += agg.functions[1];
+    for (const k of ['lines', 'branches', 'functions']) {
+      total.trusted[k][0] += agg.trusted[k][0];
+      total.trusted[k][1] += agg.trusted[k][1];
+      total.untrusted[k][0] += agg.untrusted[k][0];
+      total.untrusted[k][1] += agg.untrusted[k][1];
+    }
   }
 
   const pad = (s, n) => String(s).padEnd(n);
@@ -136,7 +149,6 @@ function main() {
   // 「对齐」）。实测：一个**从未被调用**的函数，其函数体各行 hits 却是 170。
   //
   // → 不可信的行覆盖**不能**和可信的混在一起报成「总覆盖率」。
-  const lineTrustOf = (file) => (trustKnown ? trusted.has(file) : false);
   const trustedLines = [0, 0];
   const untrustedLines = [0, 0];
   for (const [file, data] of files) {
@@ -152,9 +164,7 @@ function main() {
         `不可信 ${untrustedLines[1]} 行（${tp(untrustedLines[0], untrustedLines[1])}%）`,
     );
     if (untrustedLines[1] > 0) {
-      out.push(
-        '   ⚠️ 不可信的那部分行覆盖**行号是错位的**（缺 source map）—— 其中的',
-      );
+      out.push('   ⚠️ 不可信的那部分行覆盖**行号是错位的**（缺 source map）—— 其中的');
       out.push('      「% Lines」和「未覆盖行号」**不要当真**（函数覆盖 % Funcs 仍可信）。');
     }
     out.push('');
@@ -167,16 +177,33 @@ function main() {
   out.push('-----------------|---------|----------|---------|---------|----------------');
   for (const dir of [...dirAgg.keys()].sort()) {
     const a = dirAgg.get(dir);
+    // ⚠️ 目录行：只要这个目录里**混有不可信文件**，它的「% Lines」就不是
+    //   一个能当真的数字 → 标 `~`（和文件行同一套约定）。
+    const mixed = a.untrusted.lines[1] > 0;
+    const lineCol = mixed ? '    ~' : num(pct(a.trusted.lines[0], a.trusted.lines[1]));
     out.push(
-      `${pad(dir, 17)}|${num(pct(a.lines[0], a.lines[1]))}|${num(pct(a.branches[0], a.branches[1]))}|` +
-        `${num(pct(a.functions[0], a.functions[1]))}|${num(pct(a.lines[0], a.lines[1]))}|`,
+      `${pad(dir, 17)}|${lineCol}|${num(pct(a.trusted.branches[0], a.trusted.branches[1]))}|` +
+        `${num(pct(a.trusted.functions[0], a.trusted.functions[1]))}|${lineCol}|`,
     );
   }
   out.push('-----------------|---------|----------|---------|---------|----------------');
+  // ── 「All files」行 = **只统计可信部分** ─────────────────────────
+  //
+  // ⚠️ 这一行被 `coverage_threshold_gate` 读（≥60% 那条底线）→ 它判的
+  //   必须是**能当真的数字**。混着不可信数据 = 拿假行号当真值。
+  //
+  // ⚠️ 兜底：**一份可信数据都没有**时（清单缺失 / 采集环境不具备）不能报
+  //   0%（那是「没有数据」，不是「没覆盖」）→ 退回混合总数并**明确警告**。
+  const hasTrusted = total.trusted.lines[1] > 0;
+  const headline = hasTrusted ? total.trusted : total.untrusted;
+  if (!hasTrusted) {
+    out.push('   ⚠️ **没有一份可信的行覆盖数据** → 下面的「All files」退回未分层总数（不可信）');
+  }
   out.push(
-    `${pad('All files', 17)}|${num(pct(total.lines[0], total.lines[1]))}|` +
-      `${num(pct(total.branches[0], total.branches[1]))}|${num(pct(total.functions[0], total.functions[1]))}|` +
-      `${num(pct(total.lines[0], total.lines[1]))}|`,
+    `${pad('All files', 17)}|${num(pct(headline.lines[0], headline.lines[1]))}|` +
+      `${num(pct(headline.branches[0], headline.branches[1]))}|` +
+      `${num(pct(headline.functions[0], headline.functions[1]))}|` +
+      `${num(pct(headline.lines[0], headline.lines[1]))}|`,
   );
   out.push('-----------------|---------|----------|---------|---------|----------------');
 

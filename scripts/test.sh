@@ -431,6 +431,11 @@ report_failures() {
 }
 
 # 阈值判定：≥60% 行覆盖。参数 = c8 报告文本。
+#
+# ⚠️ 读的是报告里的「All files」行 → 那一行**只统计可信部分**的覆盖
+#   （不可信的 = 缺 source map → 行号错位 → 「未覆盖行号」是假的）。
+#   混在一起判 = 拿假行号当真值。
+#   兜底：一份可信数据都没有时（清单缺失）报告会退回未分层总数并打印警告。
 coverage_threshold_gate() {
   local REPORT="$1"
   # Parse the "All files" row from the text report. Columns are pipe-delimited:
