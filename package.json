@@ -47,6 +47,8 @@
     "visual:baseline": "npm run build:renderer && node scripts/run-playwright.mjs test --config playwright.config.mjs --update-snapshots",
     "reco:eval": "cd packages/server && npx ts-node src/reco/eval-cli.ts",
     "reco:eval:genre": "cd packages/server && npx ts-node src/reco/eval-genre-cli.ts",
+    "reco:eval:offline": "cd packages/server && npx ts-node src/reco/eval-offline-cli.ts",
+    "reco:eval:sweep": "cd packages/server && npx ts-node src/reco/sweep-cli.ts",
     "e2e:server": "cd packages/server && npx ts-node src/e2e/e2e-server.ts",
     "e2e": "playwright test --config playwright.e2e.config.mjs",
     "coverage:browser": "node scripts/collect-browser-coverage.mjs"

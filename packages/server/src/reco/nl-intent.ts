@@ -116,7 +116,10 @@ const SYSTEM_PROMPT = `你是 Maestro 播放器的"音乐口味翻译官"。把�
 7. target_count 默认 12。只在用户明确表达数量意图时才改（"多来点"→16~18，
    "少一点/就几首"→8~10）；没有数量词就填 12，别因为场景"听起来应该很多"而加
 8. **genre_artists（检索种子，重要）**：用户提到任何流派时，给出该流派的
-   2-4 位**公认代表艺人**（要真实存在、且不是冷门到搜不到的那种）。
+   4-6 位**公认代表艺人**（要真实存在、且不是冷门到搜不到的那种）。
+   ⚠️ **别只给 2-3 位**：每位种子在平台上能捞到的曲目有限（实测中文民谣的
+   种子平均每人只出 2 首），给少了候选池就凑不满 12 首 → 系统只能拿**风格外**
+   的歌来凑数（实测混进 4 首流行 OST，流派纯度从 100% 掉到 67%）。
    例：用户说"来点儿爵士乐" → genre_artists=[{"genre":"jazz","artists":["Miles Davis",
    "John Coltrane","Chet Baker","Ella Fitzgerald"]}]。
    服务端会拿这些艺人去音乐平台搜真实曲目——**这一步决定了最终队列的风格纯度**，
@@ -124,7 +127,7 @@ const SYSTEM_PROMPT = `你是 Maestro 播放器的"音乐口味翻译官"。把�
 9. similar_tracks 用 "歌名 - 艺人" 格式（如 "Take Five - Dave Brubeck"），
    便于服务端解析出艺人去检索
 schema：
-{mood:string,genres:string[0-6],tempo:'slow'|'medium'|'fast'|'any',language:'zh'|'en'|'ja'|'ko'|'any',era?:{from?:number,to?:number},similar_artists:string[0-4],similar_tracks:string[0-4],exclude_artists:string[0-8],exclude_genres:string[0-4],genre_artists:[{genre:string,artists:string[0-4]}],target_count:number,rationale:string}`;
+{mood:string,genres:string[0-6],tempo:'slow'|'medium'|'fast'|'any',language:'zh'|'en'|'ja'|'ko'|'any',era?:{from?:number,to?:number},similar_artists:string[0-4],similar_tracks:string[0-4],exclude_artists:string[0-8],exclude_genres:string[0-4],genre_artists:[{genre:string,artists:string[0-6]}],target_count:number,rationale:string}`;
 
 /**
  * 构造 LLM 输入消息。库上下文 ≤ 50 首（normalizeKey 去重），

@@ -82,6 +82,7 @@ const GENRE_ARTIST_MAP: Record<string, string[]> = {
   newage: ['Enya', 'Kitaro', 'Yanni', 'Secret Garden'],
   world: ['Cesária Évora', 'Ali Farka Touré', 'Of Monsters and Men'],
   indie: ['Arcade Fire', 'Tame Impala', 'Bon Iver', 'Fleet Foxes', '陈鸿宇'],
+  afrobeat: ['Fela Kuti', 'Burna Boy', 'Wizkid', 'Davido', 'Tony Allen', 'Ebo Taylor'],
 };
 
 /**
@@ -185,6 +186,10 @@ const GENRE_ALIASES: Record<string, string> = {
   punk: 'rock',
   朋克: 'rock',
   // others
+  afrobeat: 'afrobeat',
+  afrobeats: 'afrobeat',
+  afrofusion: 'afrobeat',
+  非洲节奏: 'afrobeat',
   postrock: 'postrock',
   后摇: 'postrock',
   shoegaze: 'postrock',
@@ -223,8 +228,10 @@ const GENRE_ALIASES: Record<string, string> = {
 
 /** 流派种子总数上限——每个种子 = 一次 4 平台搜索，不能太多（延迟）。 */
 export const MAX_INTENT_ARTIST_SEEDS = 8;
-/** 单个流派最多取几个代表艺人。 */
-export const MAX_ARTISTS_PER_GENRE = 4;
+/** 单个流派最多取几个代表艺人。
+ *  6（不是 4）：每位种子在平台上能捞到的曲目有限（中文民谣实测人均 2 首），
+ *  种子给少了候选池凑不满 12 首 → 系统只能拿风格外的歌凑数。 */
+export const MAX_ARTISTS_PER_GENRE = 6;
 
 /**
  * 归一流派字符串：去空白/分隔符 → 小写 → 查别名表。

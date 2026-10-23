@@ -173,6 +173,44 @@ async function main() {
     console.log('  ✓ 冷门流派（无种子）: 退回口味池 / 仍不拉 FM');
   }
 
+  // ── 2g. 池缓存命中路径（filterPoolByExclude）─────────────────
+  //    连着建两次同一个池 → 第二次走缓存分支（那条路径以前从没被测到，
+  //    coverage diff 门禁会判"新增行没被测到"）。
+  {
+    const svc = makeService({ searched: [], radio: 0, related: [] });
+    const seeds = {
+      artists: ['Miles Davis', 'John Coltrane', 'Chet Baker', 'Ella Fitzgerald'],
+      tracks: [],
+      styleDirective: true,
+    };
+    const first = await svc['buildPool'](
+      { id: 's1' } as any,
+      PROFILE as any,
+      [],
+      [],
+      12,
+      undefined,
+      undefined,
+      {},
+      { intentSeeds: seeds },
+    );
+    assert.ok(first.pool.candidates.length > 0, '第一次建池');
+    const second = await svc['buildPool'](
+      { id: 's1' } as any,
+      PROFILE as any,
+      [],
+      [],
+      12,
+      undefined,
+      undefined,
+      {},
+      { intentSeeds: seeds },
+    );
+    assert.strictEqual(second.cached, true, '第二次应命中池缓存');
+    assert.ok(second.pool.candidates.length > 0, '缓存命中后仍有候选');
+    console.log('  ✓ 池缓存命中路径: 第二次建池走缓存分支');
+  }
+
   // ── 3. 普通模式回归：口味主干照旧、FM 照旧 ─────────────────
   {
     const log = { searched: [] as string[], radio: 0, related: [] as string[] };
