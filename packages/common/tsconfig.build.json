@@ -1,0 +1,8 @@
+{
+  "//": "构建产物用的 tsconfig —— 与 tsconfig.json 的差别只有「排除哪些文件」",
+  "//why": "测试文件不是出厂代码，不该进 dist —— @maestro/common 会跟着 server 的 sidecar 一起出货（pack-server-deps 的隔离安装会跑 prepare）",
+  "//how": "build / prepare 显式用 -p tsconfig.build.json；tsconfig.json（typecheck 用）**不**排除它们 → 测试文件仍被类型检查",
+  "//note": "清 dist 由 scripts/clean-dist.cjs 负责（tsc 不删旧输出 → 已删除的源文件会留下陈旧产物）",
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

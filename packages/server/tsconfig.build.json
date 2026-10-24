@@ -3,6 +3,16 @@
   "//why": "测试夹具不是出厂代码，不该进 dist（electron 的打包会带 dist/e2e/）",
   "//how": "@nestjs/cli 的 nest build 优先用 tsconfig.build.json（存在即用）",
   "//note": "tsconfig.json（typecheck 用）**不**排除它们 → 夹具仍被类型检查",
+  "//note2": "src/test-helpers/ 是 2026-10-24 补的：它只被 *.test.ts / *.e2e.test.ts 引用，但**没被**排除 → 实测它的产物进了 dist/test-helpers/，跟着 extraResources 一起出货",
+  "//note3": "清 dist 由 scripts/clean-dist.cjs 负责 —— 实测 nest build **不清** dist，删掉的源文件会留下陈旧产物（_tmp-dbg2.js 已经跟着 dmg 出过一次货）",
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "src/e2e/**", "src/test/**", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/e2e/**",
+    "src/test/**",
+    "src/test-helpers/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

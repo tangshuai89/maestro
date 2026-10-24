@@ -5,6 +5,9 @@
   "description": "Cross-package shared utilities for maestro (fuzzy keys, normalizers, etc.)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,10 +16,10 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "prepare": "tsc",
+    "build": "node scripts/clean-dist.cjs dist && tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node dist/normalizer.test.js",
+    "test": "node scripts/run-tests.cjs",
     "lint": "eslint ."
   },
   "dependencies": {

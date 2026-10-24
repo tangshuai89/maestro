@@ -807,6 +807,93 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **产物里混进了测试代码 —— common / electron / server / common 的 src**（2026-10-24）
+
+  收口覆盖率口径时顺带发现的**出货卫生**问题（实测）：
+
+  - **`app.asar` 里有 11 个 `*.test.js`**（`main.behavior.test.js` /
+    `preload.test.js` / `dev-port.test.js` …）—— electron 的 `build.files` 把
+    dist 下**所有**文件都收进去（只排除了 map / d.ts）。
+  - **产物里 `@maestro/common/dist/` 躺着 5 个测试文件**的 `.js`/`.d.ts`
+    —— common 的 `build`/`prepare` 用的是**含测试文件**的 tsconfig，而
+    `prepare` 会在打包时的隔离安装里跑 → **跟着出货**。
+  - 外加一个**陈旧产物** `__gate_probe.test.js`（源文件已删，`tsc` 不清旧输出
+    → 一直留在 dist 里）。
+
+  **同一类问题在另外两个包里也漏了**（顺着「出货路径有四条」逐条查出来的）：
+
+  - **`server/dist/test-helpers/` 里的测试夹具**在出厂产物里 ——
+    `src/test-helpers/` **只被 `*.test.ts` 引用**，但构建 tsconfig 排除了
+    `src/test/**` 却**漏了** `src/test-helpers/**`。
+  - **`server/dist/reco/_tmp-dbg2.js`** —— 一个**从没提交过**的本地调试残留，
+    源文件删了之后产物一直躺在 dist 里，
+    ⚠️ **它已经跟着一个 dmg 出过货**（`Resources/server/reco/_tmp-dbg2.js`）。
+    实测确认：`nest build` 跑完它**依然在** → 它**根本不清** dist。
+  - **`@maestro/common/src/` 整个跟着出货**（含 5 个 `*.test.ts`）——
+    common 的 `package.json` **没有 `files` 字段** → npm 打包时把整个目录
+    都带上（`src` / `scripts` / `tsconfig*.json`）。
+
+  **修法**：
+
+  1. `packages/{common,electron}/tsconfig.build.json`（`extends` 现有配置 +
+     `exclude: ["**/*.test.ts"]`）→ `build`/`dev` 显式用它；
+     `tsconfig.json`（typecheck 用）**不**排除 → 测试文件仍被类型检查。
+  2. `packages/{common,electron}/scripts/clean-dist.cjs` → **build 前清 dist**
+     （治陈旧产物）；server 同样加一个（`nest build` 不清）。
+  3. electron 的 `build.files` 再加一道保险 `!dist/**/*.test.js`。
+  4. `packages/common` 的 `npm test` 原来只跑 5 个测试文件里的 **1 个**
+     （另外 4 个在这个包里从来没跑过；仓库根的 `npm test` 跑全部 5 个 → CI 是绿的，
+     **掩盖了包级脚本的过时**）→ 改成 `scripts/run-tests.cjs` **自动发现**全部
+     `src/*.test.ts` 并**逐个进程**跑（每个测试文件自己 `process.exit(1)`，
+     不能 import 到一起）。
+  5. `packages/server/tsconfig.build.json` 补 `src/test-helpers/**`。
+  6. `packages/common/package.json` 加 `"files": ["dist"]`
+     → 出厂包里只带 dist（`exports.import` 仍指向 `./src/index.ts`
+     —— 改它会让浏览器覆盖率的**文件归属**变掉；出厂包里没人用 ESM 条件
+     解析它：sidecar 是 CJS、renderer 已预打包）。
+
+  ⚠️ **clean 脚本放包内而不是仓库根**：`@maestro/common` 会被
+  `npm install file:... --install-links` **复制**到
+  `packages/electron/pack-server-deps/node_modules/` → 那个副本里
+  `../../scripts/` **不存在** → 引用仓库根路径会直接崩。
+
+  ⚠️ **踩到的坑：清 dist + 增量构建 = 空产物（静默无输出）**
+  server 的 tsconfig 开了 `incremental` → tsc 把「编译到哪了」记在**包根目录**的
+  `tsconfig.build.tsbuildinfo`（**不在 dist 里**）→ 清掉 dist 之后
+  `nest build` 判定「全都编译过了」→ **一个文件都不产出**，
+  **退出码 0，屏幕一行输出都没有**。
+  ⇒ 清 dist 的同时**必须**清掉构建的增量状态。
+  这是典型的**静默降级** —— 验收只能用**正向信号**（产物真的在），
+  「没看到报错」会被当场骗过去。
+
+  **验收**（实测）：`asar list | grep test` → **0**（原来 11）；产物里
+  `@maestro/common` → **只有 dist + package.json**（`src` 不再跟出去）；
+  `npm test -w @maestro/common` → **5/5 个测试文件全跑** ✅；
+  `npm run pack` → dmg 145M ✅；`npm run pack:verify` → ✅
+  （含「出厂包里没有测试代码」与「sidecar 能解析到 `@maestro/common/dist/index.js`」）
+
+- **出货卫生**只靠人肉验收** —— 现在有门禁了**（2026-10-24）
+
+  #21/#22 修完之后，「产物干净」这件事**只靠人肉验收**（本地打一次包、
+  `asar list` 一下）。**一次性的验收会腐烂** —— 半年后没人记得 dist 要排除
+  测试文件，一行 tsconfig 改动就能把测试代码重新送出去，
+  而**没有任何门禁会红**。
+
+  - 新增 `scripts/check-artifact-hygiene.cjs` → 判四个出货包的 dist：
+    **测试代码**（文件名含 `.test.`/`.spec.`，或路径里有
+    `test`/`e2e`/`test-helpers` 段）、**陈旧产物**（dist 里的文件在 src 里
+    找不到对应源文件）、**源码**（dist 里出现 `.ts`）。
+  - **CI 新增一个 job**（`artifact-hygiene`，与 `check` **并行**）→ 先跑自测、
+    再构建全部出厂产物、最后 `--require-built` 判。
+    ⚠️ `--require-built`：没构建过 = **失败**，不是跳过
+    （「跳过」= 门禁形同虚设）。
+  - `packages/electron/scripts/verify-pack.sh` 补 macOS 端到端那层
+    （CI 打不了 dmg）：asar + sidecar 扫一遍。
+    ⚠️ `node_modules` 只查 `@maestro/*` —— 第三方包自带 `test/` 目录是正常的
+    （实测不排除会一次报出 120+ 个假阳性，门禁直接被噪音淹掉）。
+  - 自测用夹具造出四类违规，断言检查器**都抓得到** —— 只断言「干净时通过」
+    是不够的，那不证明它拦得住东西。
+
 - **`npm run pack` 不重建 server / renderer → 打进去的是上一次的产物（静默发旧货）**（2026-10-24）
 
   打包真正带走的是 `Resources/server`（来自 `server/dist`）和 `Resources/renderer`
