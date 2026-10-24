@@ -11,6 +11,7 @@ import {
   nativeImage,
   // 多显示器：还原浮窗历史坐标前要确认它还落在某块屏的 workArea 内。
   screen,
+  globalShortcut,
 } from 'electron';
 import * as path from 'path';
 import { devRendererUrl, waitForDevPort } from './dev-port';
@@ -24,6 +25,8 @@ import {
   type OverlayWindowLike,
 } from './desktop-lyrics/desktop-lyrics-controller';
 import { oauthBuffer } from './auth/oauth-buffer';
+import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts';
+import type { TrayCommand } from './preload';
 import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
@@ -189,6 +192,9 @@ let tray: Tray | null = null;
  */
 let desktopLyrics: DesktopLyricsController | null = null;
 
+/** 已注册成功的全局热键（退出时注销）。见 §7.3。 */
+let registeredGlobalShortcuts: string[] = [];
+
 interface PlaybackState {
   isPlaying: boolean;
   title?: string;
@@ -208,8 +214,14 @@ function showMainWindow(): void {
   }
 }
 
-/** Send a transport command to the renderer's player. */
-function sendTrayCommand(command: 'playpause' | 'next' | 'prev'): void {
+/**
+ * Send a playback command to the renderer's player.
+ *
+ * 通道名还是 `tray:command`（preload 白名单 + `ipc-surface.test.ts` 的卫生
+ * 检查都钉着它）—— 但**来源有两个**：托盘菜单 和 全局热键
+ * （`global-shortcuts.ts`）。命令集见 `playback-command.ts`。
+ */
+function sendTrayCommand(command: TrayCommand): void {
   // T9 (consistency-fixes F4)：mainWindow 在 quit/close 期间可能已 destroyed，
   // 直接 send 会抛 `Object has been destroyed`。isDestroyed 检查后静默
   // 丢弃——tray click 在 app 退出时本就没意义。
@@ -1108,6 +1120,25 @@ app.whenReady().then(async () => {
   });
   registerDesktopLyricsIpc();
 
+  // ── 全局热键（§7.3 · specs/desktop-integration）──────────────────────
+  // 放在桌面歌词 controller 建好之后 —— 快捷键要能开关那个浮窗。
+  //
+  // ⚠️ **只注册非媒体键**：媒体键归 renderer 的 `navigator.mediaSession`。
+  //   Electron 在 macOS 上把媒体键实现成 globalShortcut 时会占住那条
+  //   remote command center 通道并**关掉 Chromium 自己的处理** → 媒体键
+  //   会变成"有时双触发、有时失灵"。`global-shortcuts.ts` 里有守卫挡住。
+  registeredGlobalShortcuts = registerGlobalShortcuts({
+    globalShortcut,
+    sendCommand: sendTrayCommand,
+    // 浮窗是主进程拥有的窗口 → 直接调 controller；切换后 main 会通过
+    // 既有的 `desktop-lyrics:changed` 通道把新状态推给 renderer。
+    toggleDesktopLyrics: () => {
+      desktopLyrics?.toggle();
+    },
+    warn: (message) => logger.warn('global-shortcuts:', message),
+  });
+  logger.log('global shortcuts registered:', registeredGlobalShortcuts.length);
+
   // 1. 启动 sidecar（prod 模式才有），等它就绪
   try {
     await startSidecar();
@@ -1141,6 +1172,9 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  // 全局热键：退出前注销（不注销的话，别的 App 可能抢不到这些组合键）。
+  unregisterGlobalShortcuts({ globalShortcut }, registeredGlobalShortcuts);
+  registeredGlobalShortcuts = [];
   // 浮窗：把拖动中的位置补落盘 + 关窗（否则拖一半退出会丢位置）。
   desktopLyrics?.dispose();
   // T10 (consistency-fixes G1)：发 SIGTERM 后等 ≤500ms 让 sidecar flushSync。

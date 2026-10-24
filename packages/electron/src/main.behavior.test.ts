@@ -55,6 +55,10 @@ const reg = {
   menuTemplate: [] as Array<Record<string, unknown>>,
   cookies: [] as Cookie[],
   removedCookies: [] as Array<{ url: string; name: string }>,
+  /** 已注册的全局热键 accelerator（§7.3）。 */
+  globalShortcuts: [] as string[],
+  /** 全局热键的回调（用来真的"按"一下快捷键）。 */
+  globalShortcutCallbacks: new Map<string, () => void>(),
   spawned: [] as Array<{ args: unknown[]; env?: Record<string, string> }>,
   killed: [] as string[],
   openExternalCalls: [] as string[],
@@ -249,6 +253,24 @@ const fakeElectron = {
       return undefined;
     },
     status: () => ({ ready: true }),
+  },
+  // 全局热键（§7.3）：main 启动时会注册一组 accelerator。假实现记录注册表，
+  // 让测试能断言"注册了什么 / 有没有误注册媒体键"。
+  globalShortcut: {
+    register: (accelerator: string, cb: () => void): boolean => {
+      reg.globalShortcuts.push(accelerator);
+      reg.globalShortcutCallbacks.set(accelerator, cb);
+      return true;
+    },
+    unregister: (accelerator: string): void => {
+      reg.globalShortcuts = reg.globalShortcuts.filter((a) => a !== accelerator);
+      reg.globalShortcutCallbacks.delete(accelerator);
+    },
+    unregisterAll: (): void => {
+      reg.globalShortcuts = [];
+      reg.globalShortcutCallbacks.clear();
+    },
+    isRegistered: (accelerator: string): boolean => reg.globalShortcuts.includes(accelerator),
   },
   BrowserWindow: class {
     /** 底层假窗口；所有方法都转发到它（箭头函数字段，this 固定是这个实例）。 */
@@ -640,6 +662,41 @@ async function main(): Promise<void> {
     assert.ok(reg.killed.length > before, 'window-all-closed 没收 sidecar');
   });
 
+  // ── 7.5 全局热键（§7.3）：main 真的注册了，且**没有**误注册媒体键 ──
+  //
+  // 「媒体键注册成 globalShortcut 会关掉 Chromium 自己的媒体键处理」→
+  // 媒体键必须只走 renderer 的 navigator.mediaSession。
+  // 这条断言在**主进程这一层**再守一次（`global-shortcuts.test.ts` 守的是
+  // 模块层）：万一以后有人绕过模块直接在 main.ts 里注册媒体键，这里会红。
+  await check('19b. 全局热键已注册，且一个媒体键都没有', () => {
+    assert.ok(reg.globalShortcuts.length > 0, '全局热键一条都没注册');
+    const mediaKeys = [
+      'MediaPlayPause',
+      'MediaNextTrack',
+      'MediaPreviousTrack',
+      'MediaStop',
+      'MediaRewind',
+      'MediaFastForward',
+    ];
+    for (const accel of reg.globalShortcuts) {
+      assert.ok(
+        !mediaKeys.includes(accel),
+        `主进程注册了媒体键 ${accel} —— 会关掉 Chromium 自己的媒体键处理`,
+      );
+    }
+  });
+
+  await check('19c. before-quit → 全局热键全部注销', () => {
+    const before = reg.globalShortcuts.length;
+    assert.ok(before > 0, '前置状态不对：没有已注册的全局热键');
+    appHandlerOf('before-quit')();
+    assert.strictEqual(
+      reg.globalShortcuts.length,
+      0,
+      `退出后应全部注销，还剩 ${reg.globalShortcuts.join(',')}`,
+    );
+  });
+
   // ── 8. 桌面歌词浮窗：main.ts ↔ 控制器 的接线 ──────────────────
   //
   // main.ts 把 5 个**本地闭包**传给 DesktopLyricsController（loadTarget /
@@ -719,6 +776,45 @@ async function main(): Promise<void> {
     } finally {
       reg.widevineFails = false;
     }
+  });
+
+  // 真的"按"一下全局热键 → 主进程这一侧的接线要真的通。
+  // （只断言"注册了"不够 —— 回调体里接错线也看不出来。）
+  //
+  // ⚠️ **必须放在最后**：这个用例会真的 toggle 桌面歌词，而那个状态是
+  // **持久化到磁盘**的（prefs.enabled）→ 放在中间会把后面那些"点托盘开浮窗"
+  // 的用例变成"点托盘关浮窗"→ 连锁失败。
+  await check('26. 按下 ⌃⌥D → 桌面歌词浮窗真的被切换', async () => {
+    // 前置：把持久化的浮窗状态重置成「关」——
+    //   前面的用例（20）把浮窗**开过并落盘**了 → 直接 toggle 会变成"关闭"，
+    //   于是看不到新窗口。状态是**进程启动时**读进来的 → 必须写在 loadMain 之前。
+    try {
+      writeFileSync(
+        '/tmp/maestro-test-userdata/desktop-lyrics.json',
+        JSON.stringify({
+          enabled: false,
+          locked: false,
+          bounds: { x: 5000, y: 200, width: 860, height: 160 },
+        }),
+        'utf-8',
+      );
+    } catch {
+      /* 写不了就跳过 */
+    }
+    // 换进程 = 上一个进程的全局快捷键被系统释放了 → fake 里对应清空。
+    // 不清的话新实例会认为这些组合键「已被占用」→ 一条都注册不上。
+    reg.globalShortcuts = [];
+    reg.globalShortcutCallbacks.clear();
+    loadMain();
+    await flushReady();
+    const cb = reg.globalShortcutCallbacks.get('Control+Option+D');
+    assert.ok(cb, '⌃⌥D 没注册上');
+    const before = reg.windows.length;
+    cb!();
+    assert.ok(
+      reg.windows.length > before,
+      '按 ⌃⌥D 之后没有新的浮窗 → 快捷键没接到 controller.toggle()',
+    );
   });
 
   globalThis.fetch = origFetch;

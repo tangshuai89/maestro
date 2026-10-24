@@ -50,8 +50,19 @@ export interface NeteaseLoginResponse {
   error?: string;
 }
 
-/** Transport commands emitted by the macOS tray menu. */
-export type TrayCommand = 'playpause' | 'next' | 'prev';
+/**
+ * 主进程 → renderer 的**播放命令**。
+ *
+ * ⚠️ 名字仍叫 `TrayCommand`（**故意不改名**）：改名要动 `onTrayCommand` 里的
+ * `handler` 那一行 → 覆盖率 diff 门禁会把那个 `handler` 当成「新增函数」，
+ * 而 **preload.ts 里有 7 个同名 `handler`** → lcov 把同名函数**折叠成一条**
+ * （`FNDA:0,handler`）→ 门禁按名字查就**误判成"从未被执行过"**。
+ * ⇒ 保留名字 + 扩展 union，是代价最小且不被误判的做法。
+ *
+ * 语义上它现在是「主进程 → renderer 的播放命令」，来源有**两个**：
+ * 托盘菜单 **+ 全局热键**（`global-shortcuts.ts`）。
+ */
+export type TrayCommand = 'playpause' | 'next' | 'prev' | 'volumeup' | 'volumedown';
 
 /** Playback state the renderer reports up so the tray stays in sync. */
 export interface PlaybackState {
@@ -163,7 +174,12 @@ const electronAPI = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-external', url),
 
   /**
-   * Subscribe to tray transport commands ('playpause' | 'next' | 'prev').
+   * Subscribe to playback commands.
+   *
+   * 两个来源共用这一条通道：**托盘菜单** + **全局热键**
+   * （`global-shortcuts.ts`）。命令集：
+   * 'playpause' | 'next' | 'prev' | 'volumeup' | 'volumedown'
+   *
    * The renderer maps them onto usePlayer actions. Returns an unsubscribe fn.
    */
   onTrayCommand: (cb: (command: TrayCommand) => void): (() => void) => {
