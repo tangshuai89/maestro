@@ -54,6 +54,9 @@
 'use strict';
 
 const fs = require('node:fs');
+// lcov 解析 + 「行级可信」判定的**唯一真源**（与 merge-lcov / lcov-summary 共用）
+const { readLcov: readLcovShared, isLineTrustworthy } = require('./lib/lcov.js');
+
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
@@ -64,7 +67,9 @@ function parseArgs(argv) {
     lcov: 'coverage/lcov.info',
     // 「行覆盖可信的源文件」清单（scripts/collect-line-coverage-trust.js 生成）。
     // ⚠️ 之前**这个参数根本没实现** → 可信清单被完全忽略 → 门禁对**所有**
-    //    文件（包括行号可能错位的）都用行级判据。
+    //    文件（包括行号不可信的那些）都用行级判据。
+    // ⚠️ 2026-10-24：清单**只是判据的一半** —— 最终判据在 scripts/lib/lcov.js
+    //    的 `isLineTrustworthy()`（清单 ∪ 「全 0 命中」），报告端共用同一套。
     trust: 'coverage/.line-coverage-trusted.txt',
     selfTest: false,
   };
@@ -147,7 +152,14 @@ function parseAddedLines(diffText) {
 }
 
 // ── lcov ────────────────────────────────────────────────────────────
-/** 读 lcov.info → Map<文件, Map<行号, hits>> */
+/**
+ * 读 lcov.info → Map<文件, Map<行号, hits>> + 每文件的函数计数。
+ *
+ * ⚠️ 解析本身在 `scripts/lib/lcov.js`（**三个脚本共用的唯一真源**）—— 2026-10-24
+ *    之前这里、merge-lcov.js、lcov-summary.js 各写一份，**三份行为都不一样**
+ *    （重复文件的处理、FN: 的解析各不相同）→ 容易出现「报告说 A、门禁说 B」。
+ *    这里只做**形状适配**（门禁要 `Map<文件, Map<行号, hits>>` + 函数计数）。
+ */
 function readLcov(lcovPath) {
   /** @type {Map<string, Map<number, number>>} */
   const files = new Map();
@@ -173,43 +185,12 @@ function readLcov(lcovPath) {
   const fnCounts = new Map();
   /** @type {string[]} */
   const duplicates = [];
-  if (!fs.existsSync(lcovPath)) return { files, fnCounts, duplicates };
-  const text = fs.readFileSync(lcovPath, 'utf8');
-  let current = null;
-  for (const line of text.split('\n')) {
-    if (line.startsWith('SF:')) {
-      current = line.slice(3).trim();
-      if (files.has(current)) {
-        // ⚠️ 同一文件出现多次 = lcov 里有**多轮采集的数据**（比如手工合并了
-        // 两次采集结果）。静默合并会让后一轮的 0 覆盖把前一轮盖掉 → 门禁
-        // 拿到的数字是错的。明确报出来，不硬判。
-        duplicates.push(current);
-        continue;
-      }
-      files.set(current, new Map());
-    } else if (line.startsWith('DA:') && current) {
-      const [ln, hits] = line.slice(3).split(',');
-      const n = Number(ln);
-      const h = Number(hits);
-      if (Number.isFinite(n)) files.get(current)?.set(n, Number.isFinite(h) ? h : 0);
-    } else if (line.startsWith('FNDA:')) {
-      // FNDA:<hits>,<name> —— 函数名是源码标识符，跨转换管线稳定 → 可信信号
-      const rest = line.slice(5);
-      const idx = rest.indexOf(',');
-      if (idx < 0) continue;
-      const hits = Number(rest.slice(0, idx));
-      const name = rest.slice(idx + 1);
-      if (!Number.isFinite(hits)) continue;
-      if (!current) continue;
-      let perFile = fnCounts.get(current);
-      if (!perFile) {
-        perFile = new Map();
-        fnCounts.set(current, perFile);
-      }
-      perFile.set(name, (perFile.get(name) ?? 0) + hits);
-    } else if (line.startsWith('end_of_record')) {
-      current = null;
-    }
+
+  const { files: parsed, duplicates: dups } = readLcovShared(lcovPath);
+  duplicates.push(...dups);
+  for (const [file, data] of parsed) {
+    files.set(file, data.da);
+    fnCounts.set(file, data.fnda);
   }
   return { files, fnCounts, duplicates };
 }
@@ -429,10 +410,15 @@ function judgeAddedLines(added, lcov, trusted) {
     }
     // ⚠️ 该文件的**行覆盖不可信** → 不用行级判据（函数级判据覆盖了它）。
     //
-    // 行级数据在缺 source map 的采集里是**错位**的：c8 拿转换后 JS 的字节偏移
-    // 去切源文件 → 行号随机（但 DA 条目数 = 源文件行数，看起来「对齐」）。
-    // 实测反例：一个**从未被调用**的函数，其函数体各行 DA hits 却是 170。
-    if (trusted && !trusted.has(file)) continue;
+    // 「行覆盖不可信」= 有命中、但那些命中的**行号**是错位的 → 行级判据不能
+    // 用（用它会拿假行号当真值）。判据在 scripts/lib/lcov.js 里（**唯一真源**）
+    // —— 报告端（lcov-summary）必须用同一套，否则会出现「报告说可信、门禁说
+    // 不可信」的矛盾。
+    //
+    // ⚠️ 2026-10-24：「**从没被加载过**」的文件（全 0 命中）现在**算可信** →
+    //    行级判据对它生效 → 报错时能指出**具体哪几行**没跑到（以前只能报
+    //    「整个文件 0%」）。结论不变（照样拦）。
+    if (trusted && !isLineTrustworthy(file, da, trusted)) continue;
     const bad = [...lines].filter((ln) => {
       const hits = da.get(ln);
       // 不在 DA 记录里 = 不可执行行（注释/类型声明/空行）→ 跳过
@@ -852,11 +838,13 @@ function selfTest() {
     );
   }
 
-  // ── 6e. 行级判据只对「可信文件」生效 ─────────────────────────────
+  // ── 6e. 行级判据对哪些文件生效 ──────────────────────────────────
   //
-  // 行覆盖在 renderer 上是**错位**的（见 collect-line-coverage-trust.js）。
-  // 不可信的文件必须**跳过行级判据** —— 否则未覆盖的新代码看起来已覆盖
-  // （漏报），或者反过来误报。
+  // ⚠️ 2026-10-24 **口径变了**（判据统一到 scripts/lib/lcov.js）：
+  //   - 「**全 0 命中**」的文件（从没被任何测试加载过）→ c8 的 `--all` 给的
+  //     DA 是 **1..N 连续的真实源文件行**（实测行号是准的）→ **可信**
+  //     → 行级判据**生效** → 能精确指出「哪几行没跑到」（以前只能报整个文件 0%）。
+  //   - 「**有命中但行号错位**」的文件 → 不可信 → **跳过**行级判据。
   {
     const added2 = new Map([['packages/server/src/a.ts', new Set([5])]]);
     const lcov2 = new Map([['packages/server/src/a.ts', new Map([[5, 0]])]]);
@@ -865,8 +853,23 @@ function selfTest() {
     const withTrust = judgeAddedLines(added2, lcov2, trusted2);
     expect('行级判据：可信文件 → 报出未覆盖行', withTrust.has('packages/server/src/a.ts'));
 
-    const withoutTrust = judgeAddedLines(added2, lcov2, new Set());
-    expect('行级判据：不可信文件 → 跳过（不误报）', !withoutTrust.has('packages/server/src/a.ts'));
+    // ⚠️ **反转**：原来这条断言是「不在清单里 → 跳过行级判据」。
+    //   但这个文件是**全 0 命中**的（`DA:5,0`）→ 行号是准的 → 可信 →
+    //   行级判据**应该生效** → 报出那一行。
+    const zeroHit = judgeAddedLines(added2, lcov2, new Set());
+    expect(
+      '行级判据：**全 0 命中**的文件（不在清单里）→ 行号是准的 → 判据生效',
+      zeroHit.has('packages/server/src/a.ts'),
+    );
+
+    // 「跳过行级判据」那条路径仍然要有覆盖：**有命中但行号错位**的文件。
+    const misaligned = new Map([['packages/server/src/misaligned.ts', new Map([[5, 7]])]]);
+    const added3 = new Map([['packages/server/src/misaligned.ts', new Set([5])]]);
+    const skipped = judgeAddedLines(added3, misaligned, new Set());
+    expect(
+      '行级判据：**有命中但行号错位**的文件（不在清单里）→ 跳过（不误报）',
+      !skipped.has('packages/server/src/misaligned.ts'),
+    );
   }
 
   // ── 6f. 测试基建**不归门禁管**（夹具不是出厂代码）────────────────

@@ -21,41 +21,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-
-function parseLcov(text) {
-  /** @type {Map<string, {da: Map<number, number>, brda: Map<string, number>, fnda: Map<string, number>}>} */
-  const files = new Map();
-  for (const block of text.split('end_of_record')) {
-    let file = null;
-    for (const line of block.split('\n')) {
-      if (line.startsWith('SF:')) {
-        file = line.slice(3).trim();
-        if (!files.has(file)) {
-          files.set(file, { da: new Map(), brda: new Map(), fnda: new Map() });
-        }
-      } else if (file && line.startsWith('DA:')) {
-        const [ln, hits] = line.slice(3).split(',');
-        const n = Number(ln);
-        const h = Number(hits);
-        if (Number.isFinite(n)) files.get(file).da.set(n, Number.isFinite(h) ? h : 0);
-      } else if (file && line.startsWith('BRDA:')) {
-        const parts = line.slice(5).split(',');
-        if (parts.length < 4) continue;
-        const taken = parts[3] === '-' ? 0 : Number(parts[3]);
-        files
-          .get(file)
-          .brda.set(`${parts[0]},${parts[1]},${parts[2]}`, Number.isFinite(taken) ? taken : 0);
-      } else if (file && line.startsWith('FNDA:')) {
-        const rest = line.slice(5);
-        const idx = rest.indexOf(',');
-        if (idx < 0) continue;
-        const hits = Number(rest.slice(0, idx));
-        files.get(file).fnda.set(rest.slice(idx + 1), Number.isFinite(hits) ? hits : 0);
-      }
-    }
-  }
-  return files;
-}
+// lcov 解析 + 「行级可信」判定的**唯一真源**（与 merge-lcov / coverage-diff-gate 共用）
+const { readLcov, isLineTrustworthy } = require('./lib/lcov.js');
 
 const pct = (covered, total) => (total === 0 ? 100 : Math.round((covered / total) * 10000) / 100);
 
@@ -94,19 +61,25 @@ function main() {
       if (t) trusted.add(t);
     }
   }
+  const { files } = readLcov(lcovPath);
   /** 这个文件的**行级**覆盖可信吗？（分支/函数的口径不依赖行号） */
-  const lineTrustOf = (file) => (trustKnown ? trusted.has(file) : false);
-  const files = parseLcov(fs.readFileSync(lcovPath, 'utf8'));
+  // ⚠️ 判据在 scripts/lib/lcov.js 里（**唯一真源**）—— 报告端和门禁端必须
+  //    用同一套，否则会出现「报告说可信、门禁说不可信」的矛盾。
+  const lineTrustOf = (file) =>
+    trustKnown ? isLineTrustworthy(file, files.get(file)?.da, trusted) : false;
 
   // 按目录聚合（**分「可信 / 不可信」两桶**）
   //
-  // ⚠️ 为什么要分桶：行级覆盖只在**有 source map** 的采集里可信（见
-  // collect-line-coverage-trust.js）。缺 source map 时 c8 拿转换后 JS 的
-  // 字节偏移去切源文件 → 行号随机（但 DA 条目数 = 源文件行数，看起来
-  // 「对齐」）→ 那些「未覆盖行号」是**假的**。
-  // → 混在一起报成「总覆盖率」= **一份在骗人的报告**（实测踩过：
-  //   某个测试文件跑不起来 → 覆盖率从 80% 塌成 32%，看着像天大的覆盖洞，
-  //   其实只是那次测试没跑成）。
+  // ⚠️ 为什么要分桶：**行级数字只有在「行号可信」时才能当真值**。
+  //   「行号不可信」= 该文件有命中、但那些命中的**行号**是错位的
+  //   （H16 之后剩下的这一类极少见：node 侧无 source map 的那批已被证明
+  //   行号是准的 → 进了信任清单）。
+  //
+  //   ⚠️ **但「从没被加载过」的文件（全 0 命中）现在算「可信」** ——
+  //     c8 的 `--all` 会把它们列进 lcov（DA = 1..N 连续的真实源文件行，
+  //     实测行号是准的），它们是 0% 覆盖 → **必须按 0% 计入分母**。
+  //     否则「新增一个从没被测过的文件」**完全不影响总数** → 覆盖率在骗人
+  //     （实测虚高 1.46pp：92.13% vs 真实 90.67%）。
   const dirAgg = new Map();
   const newAgg = () => ({ lines: [0, 0], branches: [0, 0], functions: [0, 0] });
   for (const [file, data] of files) {
@@ -143,12 +116,15 @@ function main() {
 
   // ── 可信性标注（**数字必须诚实**）───────────────────────────────
   //
-  // 行级覆盖只在**有 source map** 的采集里可信（见
-  // scripts/collect-line-coverage-trust.js）。缺 source map 时 c8 拿转换后
-  // JS 的字节偏移去切源文件 → 行号随机（但 DA 条目数 = 源文件行数，看起来
-  // 「对齐」）。实测：一个**从未被调用**的函数，其函数体各行 hits 却是 170。
+  // 「行级可信」= 该文件的**行号**能当真值（判据见 scripts/lib/lcov.js）。
   //
-  // → 不可信的行覆盖**不能**和可信的混在一起报成「总覆盖率」。
+  // ⚠️ 2026-10-24 **H16 之后口径变了**：
+  //   - 「从没被加载过」的文件（全 0 命中，c8 的 `--all` 列出来的）→
+  //     **行号是准的**（DA = 1..N 连续的真实源文件行）→ 算**可信** →
+  //     按 0% 计入分母。否则「新增一个从没被测过的文件」**完全不影响总数**
+  //     → 覆盖率在骗人（实测虚高 1.46pp）。
+  //   - 剩下的「不可信」= 有命中、但**行号**是错位的 → 那些「未覆盖行号」
+  //     是**假的** → 不能和可信的混在一起报成「总覆盖率」。
   const trustedLines = [0, 0];
   const untrustedLines = [0, 0];
   for (const [file, data] of files) {
@@ -164,13 +140,13 @@ function main() {
         `不可信 ${untrustedLines[1]} 行（${tp(untrustedLines[0], untrustedLines[1])}%）`,
     );
     if (untrustedLines[1] > 0) {
-      out.push('   ⚠️ 不可信的那部分行覆盖**行号是错位的**（缺 source map）—— 其中的');
-      out.push('      「% Lines」和「未覆盖行号」**不要当真**（函数覆盖 % Funcs 仍可信）。');
+      out.push('   ⚠️ 不可信的那部分**行号是错位的** → 其中的「% Lines」和「未覆盖行号」');
+      out.push('      **不要当真**（函数覆盖 % Funcs 仍可信）。');
     }
     out.push('');
   } else {
     out.push('── ⚠️ 找不到「行覆盖可信文件」清单 → 本报告的**行覆盖数字全部不可信**');
-    out.push('   （缺 source map 时行号是错位的；% Funcs 仍然可信）');
+    out.push('   （有命中、但行号是错位的那部分不能当真；% Funcs 仍然可信）');
     out.push('');
   }
 
@@ -191,6 +167,11 @@ function main() {
   //
   // ⚠️ 这一行被 `coverage_threshold_gate` 读（≥60% 那条底线）→ 它判的
   //   必须是**能当真的数字**。混着不可信数据 = 拿假行号当真值。
+  //
+  // ⚠️ 2026-10-24（P2）：「从没被加载过」的文件（全 0 命中）现在算**可信**
+  //   → 它们按 0% **计入分母** → 「All files」== 合并后 lcov 的整体行覆盖。
+  //   修之前它们被踢出分母 → 报告虚高 1.46pp（92.13% vs 真实 90.67%），
+  //   且「新增一个从没被测过的文件」**完全不影响总数**。
   //
   // ⚠️ 兜底：**一份可信数据都没有**时（清单缺失 / 采集环境不具备）不能报
   //   0%（那是「没有数据」，不是「没覆盖」）→ 退回混合总数并**明确警告**。

@@ -854,6 +854,104 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   - 还原分支级并集 → 「分支级跨侧并集」红
   - 还原注释/空行过滤 → 「LF 应为 4」「注释/空行的 DA 条目被剔除」两条红
 
+- [x] **H17** 覆盖率**总数**虚高 1.46pp —— 从没被加载过的文件被踢出了分母
+      （2026-10-24，H16 的下游：单文件对了，总数还不对）
+
+  H16 让**单个文件**的行覆盖回到真实，但「总覆盖率」这个**总数**还在虚高。
+  实测（CI 日志，#120 合并那次）：
+
+  ```
+  ── 合并 2 份 lcov：145 个文件，行覆盖 27774/30632 = 90.67%   ← 合并后 lcov 的真值
+  ── 行覆盖可信性：可信 30147 行（92.13%），不可信 485 行（0%）  ← 485 行全是 0 命中
+  ── total line coverage: 92.13%                               ← 报告报的是可信桶
+  ```
+
+  差值 **30632 − 30147 = 485** 行**全是 0 命中** → 被踢出分母 → 虚高 **1.46pp**。
+  更要紧的是：**「新增一个从没被测过的文件」完全不影响总数** → 覆盖率在骗人。
+
+  - **那 485 行是什么**（实测）：`server/src/main.ts`(35)、
+    `server/src/music/album-types.ts`(52)、`server/src/music/types.ts`(116)、
+    `server/src/reco/eval-cli.ts`(140)、`server/src/reco/eval-genre-cli.ts`(142)
+    —— 全是**从没被任何测试加载过**的文件。它们在 lcov 里的 DA 条目是
+    **1..N 连续的真实源文件行**（`types.ts` 1..297 / 源文件 298 行）→ **行号是准的**，
+    「0% 覆盖」这个**结论也是真的** → 必须按 0% 计入分母。
+  - ⚠️ **归因修正**：这个虚高**不是** H16 引入的 —— H16 **之前**就虚高
+    **1.84pp**（合并值 90.72% vs 报告 92.56%），是「All files 只算可信」那一条
+    单独造成的；H16 反而把它**收窄**到 1.46pp。剩下的 1.46pp 全部来自
+    「从没被加载的文件被踢出分母」。
+
+  **顺带修掉两个「静默」问题**：
+
+  1. **合并器丢文件**（pre-existing，`fb00665` 起）：权威侧「存在但一行都没
+     命中」的文件既不进 `merged`，又因为 `if (input === authoritative) continue;`
+     把权威输入整个跳过 → **两头落空 → 从合并结果里消失**。实测
+     `packages/renderer/src/desktop-lyrics/main.tsx` 就是这样丢的（auth 侧 71 个
+     文件里有它、0 命中；合并后 137 个文件里没有）→ 修后 **138** 个。
+  2. **三份 lcov 解析实现、三种语义**：`merge-lcov.js` / `lcov-summary.js` /
+     `coverage-diff-gate.js` 各写一份，重复文件的处理各不相同（取 max / 后者覆盖
+     前者 / 保留第一个+报错）→ 抽出 `scripts/lib/lcov.js` 作**唯一真源**。
+
+  **已做**：
+  - 新增 `scripts/lib/lcov.js`：统一 `parseLcov` + 统一「行级可信」判据
+    （信任清单 ∪ **全 0 命中**）；
+  - 报告端（`lcov-summary.js`）与门禁端（`coverage-diff-gate.js`）**用同一套判据**
+    → 不会再出现「报告说可信、门禁说不可信」；
+  - 合并器：权威侧 0 命中的文件**不再丢**；行/分支/函数**统一走一条并集路径**；
+  - 门禁对「从没被加载」的文件**行级判据生效** → 报错能指出**具体哪几行**没跑到
+    （以前只能报「整个文件 0%」）。结论不变（照样拦）；
+  - `merge-lcov.js` 的自测改成**调真身**（`mergeSources`）—— 原来自测里另写了
+    一份合并逻辑的副本，合并逻辑改坏了自测测不出来。
+
+  **验收**（同一份数据 + 同一份信任清单）：
+
+  |                  | 可信桶                 | 不可信桶     | All files          |
+  | ---------------- | ---------------------- | ------------ | ------------------ |
+  | 修复前           | 43348 行（**92.48%**） | 880 行（0%） | 92.48%（**虚高**） |
+  | 修复后           | 44228 行（**90.64%**） | **0 行**     | **90.64%**         |
+  | 合并后 lcov 真值 | —                      | —            | **90.64%** ✓       |
+
+  ⇒ **报告值 == 合并后 lcov 的整体行覆盖**（自洽）→ 虚高归零。
+
+  **变异验证**（逐个还原 → 对应用例必须红）：
+  - 还原「全 0 命中 → 可信」→ 共享模块 + 门禁各红一条
+  - 还原「权威侧 0 命中的文件不丢」→ 合并器红两条
+  - 还原「重复文件保留第一个」→ 共享模块红三条
+  - 还原门禁的旧判据 → 门禁红一条
+
+- [ ] **H18** 产物里混进了**测试代码** —— common / electron 两个包
+      （2026-10-24 实测，**未修**）
+
+  H17 收口覆盖率口径时顺带发现的**出货卫生**问题（与覆盖率无关，独立关注点）：
+
+  - **`packages/common` 没有 `tsconfig.build.json`** → `build: tsc` / `prepare: tsc`
+    用的是 `tsconfig.json`（`include: ["src"]`，**包含测试文件**）→ **5 个测试文件
+    的 `.js` / `.d.ts` 都被编进 `dist/`**。而 `prepare` 会在 `npm install` 时跑
+    （打包时 `pack-server-deps` 隔离安装会触发）→ **跟着 `@maestro/common` 出货**。
+    实测产物里就有：`artistAlias.test.js` / `contract.test.js` /
+    `grouping.test.js` / `mask.test.js` / `normalizer.test.js`。
+  - **`packages/common/dist/__gate_probe.test.js`** —— 已删除的探针留下的**陈旧
+    产物**（源文件已不在，`tsc` 不清旧输出）→ 也跟着出货。
+  - **`packages/electron` 同样中招**（**agent 的清单里漏了**）：`packages/electron/dist/`
+    里有全部测试文件，而 `build.files` 是 `dist/**/*`（只排除了 map / d.ts）→
+    **11 个测试文件进了 `app.asar`**（实测 `asar list` 可见
+    `dist/main.behavior.test.js` / `dist/preload.test.js` 等）。
+  - **`packages/common` 的 `npm test` 只跑 5 个测试文件里的 1 个**
+    （`"test": "npm run build && node dist/normalizer.test.js"`）→ 包级脚本过时
+    （根 `npm test` 跑全部 5 个 ✓）。
+
+  **修法**（不能照搬 server 的方案 —— server 的 `npm test` 不存在，而 common 的
+  `npm test` 现在跑的是 `dist/normalizer.test.js`）：
+  - common 加 `tsconfig.build.json`（exclude `**/*.test.ts`）→ `build` / `prepare`
+    改用它 → build 前清 `dist`（治陈旧产物）；
+  - common 的 `npm test` 改成从 `src` 跑**全部 5 个**（用 ts-node，与根
+    `scripts/test.sh` 的 `run_pkg common` 一致）；
+  - electron 同上加 `tsconfig.build.json`（或至少 `build.files` 排除
+    `!dist/**/*.test.js`）+ build 前清 `dist`。
+
+  **验收**：`npm run pack` + `npm run pack:verify`；**`asar list | grep test`
+  必须 0 命中**；`Resources/server/node_modules/@maestro/common/dist` 里
+  grep test 必须 0 命中。
+
 - [x] **H13** `usePlayer.ts` 真实未覆盖 **345 行 / 59 个连续段** —— 补测到 124 行
 
   H12 把行覆盖数据修可信之后，`usePlayer.ts`（播放链路的中枢）的**真实**未覆盖
@@ -1030,9 +1128,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                    → GET /music/stream/:provider/:trackId
-                                                                                      → musicService.getStreamUrl() 拿上游 URL
-                                                                                        → proxyAudio() 转发到上游 CDN
+                                                                                            → GET /music/stream/:provider/:trackId
+                                                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

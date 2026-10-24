@@ -10,24 +10,34 @@
  * - **node 侧**（`ts-node` 跑 `.test.ts`）：ts-node 注册了 source-map-support
  *   → `source-map-cache` **有** → 行号正确 ✓
  * - **node 侧**（`node` 直接跑 `.test.mjs`，renderer 的纯函数档）：node 的
- *   type-stripping **不产出 source map** → 行号**错位** ✗
- * - **vitest 侧**（`.test.tsx`）：vite/esbuild 转换后的 JS 在**内存**里，
- *   source map 是 inline data URL，node 的 `source-map-cache` 里**没有** →
- *   行号**错位** ✗
+ *   type-stripping **不产出 source map**，但它**按原位抹掉类型**（行数不变）
+ *   → **行位置完整保留 → 行号是准的** ✓（2026-10-24 实测推翻旧前提，见下）
+ * - **vitest 侧**（`.test.tsx`）：走 `@vitest/coverage-v8`（自带 source map）
+ *   → 行号正确 ✓
  *
- * 行号错位长什么样（2026-10-21 实测）：
+ * ## ⚠️ 2026-10-24：旧判据的前提**已被推翻**（详见下面的「2026-10-24」章节）
  *
- *   - esbuild 把 `usePlayer.ts` 从 2192 行压成 1336 行（删掉 856 行类型/空行）
- *   - c8 拿不到 source map → 拿 **转换后 JS 的字节偏移** 去切 **源 .ts 文件**
- *   - 切出来的行号是**随机的** —— 但因为切的是完整源文件，**DA 条目数 = 源文件
- *     行数**，看起来「对齐」，极具欺骗性
- *   - 实测反例：一个**从未被调用**的函数，它的函数体各行 DA hits 却是 170
- *     （模块顶层语句的次数）；而同一函数里**必然执行**的 `setCurrentTime(0)`
- *     hits 却是 0
+ * 这里原来写着「vitest 侧 / node 直跑 .mjs 的行号**错位** → renderer 的行级
+ * 覆盖不可信」，并引用了「esbuild 把 `usePlayer.ts` 从 2192 行压成 1336 行 →
+ * 行号随机」作为证据。**那个证据说的是另一条路径**：
  *
- * ⇒ **renderer 的行级覆盖数字不可信**（server/common/electron 的可信）。
- * 门禁若拿行级数据判「新增代码有没有被测到」，在 renderer 上会**漏报**（未覆盖
- * 的新代码看起来已覆盖）甚至**误报**。
+ *   - 那是 **c8 包 vitest** 时代的做法（vite/esbuild 转换后的 JS 在**内存**里
+ *     跑，source map 是 inline data URL → node 的 `source-map-cache` 里没有
+ *     → c8 拿转换后字节偏移去切源文件 → 行号随机）。H12 已经把 renderer 的
+ *     `.test.tsx` 迁到 `@vitest/coverage-v8`（自带 source map）→ **那条路径
+ *     不再是行错位的来源**。
+ *   - node 自己的 type-stripping 是**按原位抹掉类型**（行数不变）→ 行位置完整
+ *     保留 → 行号是准的。证据：`backup-crypto.ts` 的 node 侧未覆盖行 = 135-136
+ *     = 唯一那条不可达的 catch → **语义完全对得上**。
+ *
+ * ⇒ 现在的判据是「**node 侧出现在 V8 覆盖结果里的文件**」都可信
+ *   （ts-node 有 source map；type-stripping 保行位置）。
+ *
+ * ## 兜底判据在 scripts/lib/lcov.js 里
+ *
+ * 「**全 0 命中**」的文件（从没被任何测试加载过）也算行级可信 —— 它们在 lcov
+ * 里的 DA 是 **1..N 连续的真实源文件行**，「0% 覆盖」这个结论是真的 → 必须按
+ * 0% 计入分母。那条判据由 `isLineTrustworthy()` 统一实现，报告端和门禁端共用。
  *
  * ## 函数级覆盖为什么可信
  *
