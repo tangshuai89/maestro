@@ -168,3 +168,64 @@ if [ -x "$ELECTRON" ]; then
 else
   echo "（找不到可执行的 $ELECTRON，跳过实测）"
 fi
+
+echo
+echo "── 出厂 sidecar 实测（真的起一次）──────────────────"
+# 判据：把出厂的 `Resources/server/main.js` **真的起一次**，探它一个接口。
+#
+# ⚠️ 为什么必须真起：上面的检查只验证了「依赖能解析」（require.resolve）——
+#   那**不覆盖**「进程起不来 / 端口不通 / 鉴权头不对 / 环境变量没生效」
+#   这一整类出货事故。实测踩过：sidecar 缺 @nestjs/core → app 启动即崩，
+#   而 dmg 那时候已经出来了（要等用户装上才发现）。
+#
+# 用 `ELECTRON_RUN_AS_NODE=1` 把它当纯 node 进程跑 → 不需要 GUI、不需要签名。
+# 探 `/storage/info`（不依赖任何平台凭据 → 不会因为没配 Spotify/Deezer 而误报）。
+if [ ! -x "$ELECTRON" ]; then
+  echo "（找不到可执行的 $ELECTRON，跳过）"
+else
+  # 端口要**现找一个空闲的** —— 写死端口会撞上"上次跑剩下来的 sidecar"
+  # （实测踩到：脚本中途报错退出 → sidecar 变孤儿进程 → 下次跑端口被占 →
+  #  误报成"出厂 sidecar 起不来"）。
+  SIDECAR_PROBE_PORT=$(node -e "const s=require('net').createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});")
+  SIDECAR_PROBE_TOKEN="verify-pack-$$"
+  SIDECAR_PROBE_DIR="$(mktemp -d)"
+  ELECTRON_RUN_AS_NODE=1 \
+    PORT="$SIDECAR_PROBE_PORT" \
+    STORAGE_DIR="$SIDECAR_PROBE_DIR/.storage" \
+    STORAGE_BACKUP_DIR="$SIDECAR_PROBE_DIR/backups" \
+    MAESTRO_INTERNAL_TOKEN="$SIDECAR_PROBE_TOKEN" \
+    "$ELECTRON" "$SERVER/main.js" > "$SIDECAR_PROBE_DIR/server.log" 2>&1 &
+  SIDECAR_PROBE_PID=$!
+
+  # ⚠️ 收尾要**保证**执行：脚本中途出错退出时，sidecar 会变成孤儿进程
+  #    （占着端口 + 一直跑着）。trap 挂 EXIT。
+  cleanup_probe() {
+    kill "$SIDECAR_PROBE_PID" 2>/dev/null
+    rm -rf "$SIDECAR_PROBE_DIR" 2>/dev/null
+  }
+  trap cleanup_probe EXIT
+
+  SIDECAR_READY=0
+  for _ in $(seq 1 60); do
+    if curl -sf -H "X-Maestro-Token: $SIDECAR_PROBE_TOKEN" \
+      "http://127.0.0.1:${SIDECAR_PROBE_PORT}/storage/info" > /dev/null 2>&1; then
+      SIDECAR_READY=1
+      break
+    fi
+    # 进程提前退出 → 不用再等了
+    if ! kill -0 "$SIDECAR_PROBE_PID" 2>/dev/null; then break; fi
+    sleep 0.25
+  done
+
+  if [ "$SIDECAR_READY" -eq 1 ]; then
+    echo "✅ 出厂 sidecar 起来了，/storage/info 有响应（端口 ${SIDECAR_PROBE_PORT}）"
+  else
+    echo "❌ **出厂 sidecar 起不来 / 接口不通** —— 这个包不能发"
+    echo "   最后几行日志："
+    tail -6 "$SIDECAR_PROBE_DIR/server.log" 2>/dev/null | sed 's/^/     /'
+  fi
+
+  # 收尾：精确停这个 PID（不要 pkill —— 会误杀别的进程）
+  cleanup_probe
+  trap - EXIT
+fi

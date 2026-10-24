@@ -25,12 +25,38 @@ tsc 编译 + 整 dist/ 走 sidecar 是更稳的方案。
 
 ## 验收标准
 
-- [ ] `npm run build:server` 产出 packages/server/dist/（已存在，nest build 跑过）
-- [ ] `node packages/server/dist/main.js` 独立启动后 :3200 正常服务（已验过）
-- [ ] `npm run pack`（electron-builder）产物 Resources 里有 server/dist
-- [ ] Electron packaged 启动后，main spawn sidecar → 等端口 ready → 打开 BrowserWindow
-- [ ] 关闭 BrowserWindow / app quit 时 sidecar 跟着 kill
-- [ ] renderer 端通过 preload 拿到 sidecar URL（替代 hardcode localhost:3200）
+> ⚠️ 2026-10-24：这 6 条以前**全是"人肉验收一次"** —— 勾选框一直没动，
+> 因为没人说得清"哪条证据守着它"。现在每条都指到**具体的自动化证据**：
+> 有一条是人肉（且当时验过），其余五条都有机器可重复跑的检查。
+
+- [x] `npm run build:server` 产出 packages/server/dist/
+      —— **CI 的 `artifact-hygiene` job** 跑 `npm run build`（四个包全建）+ `scripts/check-artifact-hygiene.cjs --require-built` 判定；
+      `pack.cjs` 的 `REQUIRED_ARTIFACTS` 也断言 `packages/server/dist/main.js` 在
+- [x] `node packages/server/dist/main.js` 独立启动后 :3200 正常服务
+      —— **2026-10-24 自动化**：`scripts/verify-pack.sh` 新增「出厂 sidecar 实测」
+      —— 用 `ELECTRON_RUN_AS_NODE=1` 把**出厂的** `Resources/server/main.js`
+      **真的起一次**，探 `/storage/info`（不依赖任何平台凭据）。
+      ⚠️ 以前只验了「依赖能解析」（require.resolve）→ **不覆盖**"进程起不来 /
+      端口不通 / 鉴权头不对"这一整类出货事故
+- [x] `npm run pack`（electron-builder）产物 Resources 里有 server/dist
+      —— `pack.cjs` 的 `REQUIRED_ARTIFACTS` + `verify-pack.sh` 的
+      「server/main.js 存在」；`pack:verify` 里有新鲜度断言
+- [x] Electron packaged 启动后，main spawn sidecar → 等端口 ready → 打开 BrowserWindow
+      —— `packages/electron/src/main.behavior.test.ts` 用例 3
+      「sidecar 被 spawn，waitForSidecar 的探针走的是 fetch」
+      （假 `child_process` + 全局 fetch 打桩，跑的是**真的** main）
+- [x] 关闭 BrowserWindow / app quit 时 sidecar 跟着 kill
+      —— 同文件 用例 18「before-quit → sidecar 收 SIGTERM（等落盘）」+ 用例 19「window-all-closed → sidecar 也被收掉」
+- [x] renderer 端通过 preload 拿到 sidecar URL（替代 hardcode localhost:3200）
+      —— `packages/electron/src/preload.test.ts` §5
+      「onSidecarReady：写回 apiBase / internalToken」
+
+### 仍然是人肉的那一步
+
+- [ ] **签名 / 公证**（A1）：`security find-identity -v -p codesigning` → 0 valid
+      identities；dmg 未经签名与公证 → 别人机器上会被 Gatekeeper 拦。
+      → 需要 Apple Developer 账号（$99/年，1–3 天批）+ Developer ID 证书 +
+      Apple 专用密码。**这是外部审批，不在工程范围内。**
 
 ## 实现范围（v1）
 

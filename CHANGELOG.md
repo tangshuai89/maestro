@@ -1814,6 +1814,38 @@ evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可�
 
 ### Tests
 
+- **出厂验收 6 条勾选框一直空着 —— 现在每条都指到具体的自动化证据**（2026-10-24）
+
+  `specs/packaging/spec.md` 的「验收标准」6 条**一条没勾**，而且没人说得清
+  「哪条证据守着它」。勾选框空着 = 分不清它是"没做"还是"做了但没记证据" ——
+  这类**欠账**最消耗个人开发者：清单看着长，其实早就不欠。
+
+  核了一遍才发现 **5 条早就有机器可重复跑的证据**（只是没记）：
+
+  | 验收项                                       | 证据                                                           |
+  | -------------------------------------------- | -------------------------------------------------------------- |
+  | `build:server` 产出 dist                     | CI `artifact-hygiene` job + `pack.cjs` 的 `REQUIRED_ARTIFACTS` |
+  | packaged 启动后 spawn sidecar → 等端口 ready | `main.behavior.test.ts` 用例 3                                 |
+  | 关闭 app 时 sidecar 跟着 kill                | 同文件 用例 18 / 19                                            |
+  | renderer 端通过 preload 拿到 sidecar URL     | `preload.test.ts` §5                                           |
+  | 产物 Resources 里有 server/dist              | `pack.cjs` + `verify-pack.sh`                                  |
+
+  **第 2 条（`node packages/server/dist/main.js` 独立启动后正常服务）真的没有
+  自动化** → 本次补上：`scripts/verify-pack.sh` 新增「出厂 sidecar 实测」——
+  用 `ELECTRON_RUN_AS_NODE=1` 把**出厂的** `Resources/server/main.js`
+  **真的起一次**，探 `/storage/info`（不依赖任何平台凭据 → 不会因为没配
+  Spotify/Deezer 而误报）。
+
+  ⚠️ 以前只验了「依赖能解析」（`require.resolve`）→ **不覆盖**
+  「进程起不来 / 端口不通 / 鉴权头不对 / 环境变量没生效」这一整类出货事故
+  （实测踩过：sidecar 缺 `@nestjs/core` → app 启动即崩，而 dmg 那时候已经出来了）。
+
+  踩到的两个坑（都写进脚本注释）：
+  - bash 里 `$VAR` 紧跟**全角** `）` → bash 把全角字符算进变量名
+    → `SIDECAR_PROBE_PORT: unbound variable` → 一律用 `${VAR}`
+  - 端口写死 → 撞上「上次跑剩下来的 sidecar」（脚本中途退出会留孤儿进程）
+    → 改成**现找一个空闲端口**（node `net.listen(0)`）+ `trap` 保证收尾
+
 - **修复：合并器把 node 侧「正确」的行数据整份丢掉 —— 覆盖率被低估、门禁会误拦**
   （2026-10-23 定位 → **2026-10-24 已修**，详见 `specs/stability/tasks.md` H16）
 

@@ -171,3 +171,31 @@ castlabs/electron-releases#8244344c…") is not fixed in project.`
     出厂包里没人用 ESM 条件去解析它（sidecar 是 CJS、renderer 已预打包）→ 无副作用。
   - 验收（实测）：隔离安装后 `@maestro/common` 目录里**只有 `dist/` + package.json**；
     `require.resolve('@maestro/common')` → 解析到 `dist/index.js` ✅；导出可用 ✅
+
+- [x] 23. 出货验收**全是"人肉验一次"** —— 6 条勾选框一直空着（**2026-10-24 完成**）
+  - 现象：`specs/packaging/spec.md` 的「验收标准」6 条**一条没勾**，而且
+    **没人说得清哪条证据守着它** —— 勾选框空着 = 没人知道它是"没做"还是
+    "做了但没记证据"。这类"欠账"最消耗个人开发者：清单看着长，其实早就不欠。
+  - 做法：**给每一条指到具体的自动化证据**（不是重写实现）——
+    1. `npm run build:server` 产出 dist → CI 的 `artifact-hygiene` job
+       （`npm run build` 四个包全建 + `--require-built` 判定）+ `pack.cjs`
+       的 `REQUIRED_ARTIFACTS`
+    2. `node packages/server/dist/main.js` 独立启动后正常服务
+       → **本次新增自动化**：`scripts/verify-pack.sh` 的「出厂 sidecar 实测」
+    3. `npm run pack` 产物 Resources 里有 server/dist → `pack.cjs` +
+       `verify-pack.sh`
+    4. packaged 启动后 spawn sidecar → 等端口 ready → 打开 BrowserWindow
+       → `main.behavior.test.ts` 用例 3
+    5. 关闭 app 时 sidecar 跟着 kill → 同文件 用例 18 / 19
+    6. renderer 端通过 preload 拿到 sidecar URL → `preload.test.ts` §5
+  - **本次新增的自动化**（第 2 条）：`verify-pack.sh` 里用
+    `ELECTRON_RUN_AS_NODE=1` 把**出厂的** `Resources/server/main.js`
+    **真的起一次**，探 `/storage/info`（不依赖任何平台凭据 → 不会因为
+    没配 Spotify/Deezer 而误报）。
+    ⚠️ 以前只验了「依赖能解析」（`require.resolve`）→ **不覆盖**
+    「进程起不来 / 端口不通 / 鉴权头不对 / 环境变量没生效」这一整类出货事故。
+  - 踩到的两个坑（都记在脚本注释里）：
+    - bash 里 `$VAR` 紧跟**全角** `）` → bash 会把全角字符算进变量名
+      → `SIDECAR_PROBE_PORT: unbound variable` → 一律用 `${VAR}`。
+    - 端口写死 → 撞上"上次跑剩下来的 sidecar"（脚本中途退出会留孤儿进程）
+      → 改成**现找一个空闲端口**（node `net.listen(0)`）+ `trap` 保证收尾。
