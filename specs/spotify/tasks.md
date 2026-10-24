@@ -71,9 +71,30 @@
 > （$99/年）做 macOS code-sign / notarize，否则 Gatekeeper 拦 dmg。
 
 - [ ] 41. **买 Apple Developer Account**（[developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/)，$99/年，1–3 天批）—— **⚠️ 先提交**（1–3 天延迟），同时跑 #42-#44
-- [ ] 42. `pip install --upgrade castlabs-evs`
-- [ ] 43. `python3 -m castlabs_evs.account signup`（e-mail 验证，凭据缓存 `~/.castlabs-evs/`）—— **0 成本**
-- [ ] 44. EVS 签出 dev 用 .app：`python3 -m castlabs_evs.vmp sign-pkg <dist/mac-arm64/Maestro.app>` —— `?wpsDebug=1` 重跑验证 license 返 200 + `hasTrack=true`
+  - ⚠️ 2026-10-24 实测：本机 `security find-identity -v -p codesigning` →
+    **0 valid identities**（只有腾讯 IOA MDM 的、不受信）→ electron-builder 打包时
+    直接跳过 codesigning（"skipped macOS application code signing"）。
+    ⇒ **没有 Developer ID 证书 → 不签名 / 不 notarize 的 dmg 会被 Gatekeeper 拦。**
+- [x] 42. `pip install --upgrade castlabs-evs`
+  - ✅ **2026-10-24 实测：已经装好了** —— `~/.castlabs-evs-venv/bin/` 下
+    `evs-vmp` 和 `evs-account` 都在，`evs-vmp sign-pkg --help` 正常。
+    （重装命令：`~/.castlabs-evs-venv/bin/pip install --upgrade castlabs-evs`）
+- [ ] 43. **注册 EVS 账号**（e-mail 验证，凭据缓存 `~/.castlabs-evs/`）—— **0 成本**
+  - ❌ **2026-10-24 实测：`~/.castlabs-evs/` 目录不存在** → **账号从没注册过**。
+  - ⚠️ **命令入口**：`evs-account signup`（**不是** `python3 -m castlabs_evs.account signup`
+    —— castlabs-evs 只提供 `evs-vmp` / `evs-account` 两个 CLI，**没有
+    `python3 -m castlabs_evs` 的 `__main__`**；这个坑在
+    `packages/electron/afterPack-vmp.cjs` 的注释里已经踩过并修掉）。
+  - 命令：`~/.castlabs-evs-venv/bin/evs-account signup`（要邮箱 + 密码，**得本人来**）
+- [ ] 44. EVS 签出 dev 用 .app —— ⚠️ **命令入口要改**：`python3 -m castlabs_evs.vmp
+sign-pkg` 不存在（见 #43）→ 用
+      `~/.castlabs-evs-venv/bin/evs-vmp sign-pkg <dist/mac-arm64/Maestro.app>`
+  - ⚠️ `sign-pkg` 收的是「**包含 .app 的目录**」，不是 `.app` 本身。
+  - 验证：`?wpsDebug=1` 重跑 → license 返 200 + `hasTrack=true`
+  - ⚠️ 前提：`npm run pack` 得先跑通（**已通**，见 `specs/stability/tasks.md` A2）
 - [ ] 45. `afterPack-vmp.cjs` 钩子**生产模式**（无 `SKIP_VMP=1`）跑通：sign → codesign → notarize → dmg
+  - 依赖 #41（Developer ID 证书）+ #43（EVS 凭据）
+  - ⚠️ notarize 还需要 **Apple 专用密码**（不是登录密码）+ 在 `electron-builder`
+    配置里配 `appleId` / `appleIdPassword` / `teamId`。
 - [ ] 46. 装 EVS-signed dmg → 登录 Premium → 播整曲 / Spotify 桌面端可见 "maestro-xxxx" 设备 / transport / token 1h 重连不掉播
 - [ ] 47. CI 化（可选）：EVS 凭据进 GitHub Actions secret，`EVS_NO_ASK=1` 跑 release tag 自动出 prod-signed dmg
