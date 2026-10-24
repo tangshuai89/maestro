@@ -19,6 +19,24 @@
   - 无 EVS 凭据时 `SKIP_VMP=1 npm run pack` 先验打包管线
   - 有 EVS 后完整链：VMP sign → codesign → notarize → dmg
   - 对应：`specs/packaging/tasks.md` #16
+  - ✅ **2026-10-23：打包管线验通**（`SKIP_VMP=1`）→ 产出
+    `release/Maestro-1.0.0-arm64.dmg`（**105M**），electron = 43.2.0+wvcus。
+    剩下只差「有 EVS 凭据后的 VMP sign → codesign → notarize」那半条。
+    - **两个前置坑**（踩过）：
+      1. `pack` 之前必须先有 `packages/electron/dist/main.js` → 跑
+         `npm run build:electron`（= `tsc`）。`pack` 脚本**不含** build，
+         缺了会报 `Application entry file "dist/main.js" … does not exist`。
+      2. electron-builder 算版本时找的是 **appDir 下**的
+         `packages/electron/node_modules/electron/package.json` —— 但本仓的
+         electron 声明是 **git URL**（castlabs EVS 版），且被 npm **提升到了
+         根** `node_modules` → 那个路径不存在 → 报
+         `Cannot compute electron version from installed node modules`。
+         修法：把 `packages/electron/node_modules/electron` 软链到根的那份
+         （或改用 `electronVersion` 字段显式指定）。
+    - codesign 在本机**没有有效证书**（只有腾讯 IOA MDM 的、不受信）→
+      electron-builder 跳过签名（预期行为，Apple 凭据到位后才有）。
+    - 顺带验了 PR #115：打出来的 app 里 `Resources/server` **1.6M、0 个测试
+      文件、没有 e2e 目录**（tsconfig.build.json 的排除生效）。
 
 ## G. CI 收尾（先做基础设施，后续补测试自动受益）
 

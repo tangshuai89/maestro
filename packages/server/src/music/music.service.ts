@@ -3437,6 +3437,36 @@ export class MusicService {
     sources: Array<{ platform: MusicProvider; trackId: string }>,
     meta?: LikeMeta,
   ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[]; settled: boolean }> {
+    // ⚠️ **契约：本方法绝不 throw**（2026-10-23）。
+    //
+    // 它是「搜索 → 切歌」路径上的**同步 POST**。内部任何一次偶发异常
+    // （存储写、锁竞争、provider 抖动、状态形状不兼容）如果冒到 controller，
+    // 就变成 **HTTP 500** —— 用户的 ❤ 角标一直不亮，而**看不出**是哪层坏了。
+    //
+    // 降级形状 = `{liked:false, fannedOutTo:[], settled:false}`：
+    //   `settled:false` 是前端**已有的**「中间态」语义（前端会继续轮询、
+    //   不把这个读数当稳定命中）→ **和今天 500 之后的行为完全一致**，
+    //   只是不再把一次内部抖动放大成 500。
+    //
+    //   ⚠️ 不能降级成 `settled:true` + `liked:false` —— 那会被前端当成
+    //   「确认没红心」→ **把真实的红心抹掉**（比 500 严重）。
+    try {
+      return await this.detectLikedAndSyncInner(session, mergedId, sources, meta);
+    } catch (err) {
+      this.logger.error(
+        `detectLikedAndSync(${mergedId}) failed → 降级为未落定: ${(err as Error).message}`,
+      );
+      return { liked: false, fannedOutTo: [], settled: false };
+    }
+  }
+
+  /** detectLikedAndSync 的真身（可能抛）——契约见上面那个包装器。 */
+  private async detectLikedAndSyncInner(
+    session: Session,
+    mergedId: string,
+    sources: Array<{ platform: MusicProvider; trackId: string }>,
+    meta?: LikeMeta,
+  ): Promise<{ liked: boolean; fannedOutTo: MusicProvider[]; settled: boolean }> {
     const byPlatform = this.groupByPlatform(sources);
 
     // 每个平台：判断是否已红心（任一变体在收藏里就算），并选一个代表 trackId

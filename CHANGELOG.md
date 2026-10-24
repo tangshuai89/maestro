@@ -831,6 +831,67 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   读不到那个库（`librarySize: 0`）。用当前 `SESSION_SECRET` 重签旧 session id 可验证
   服务端仍认得它、`librarySize: 1174`。库已通过应用自己的 import 路径恢复（1566 首：
   网易云 437 / QQ 1265 / Spotify 1000）。
+- **搜索路径上的两个 POST 端点没有错误隔离 —— 一次内部抖动就变成 500**（2026-10-23）
+
+  用户报「搜索歌曲时偶尔出现 POST 500」。查下来**不是**搜索路径坏了（大修期间
+  `music.controller.ts` 的 search 端点、`music.service.ts` 的搜索方法、
+  `search.util.ts` 合计只动了 5 行，搜索/红心/provider 的测试全绿），
+  而是这两个端点**没有错误隔离**：
+
+  - `POST /music/like/detect` → `detectLikedAndSync`：内部任何一次偶发异常
+    （存储写、锁竞争、provider 抖动、状态形状不兼容）冒到 controller 就 500。
+  - `POST /music/track/likeCount` → 直接调 provider，**连 try/catch 都没有**
+    （provider 内部的 try 只盖住 fetch 本身）。
+
+  500 的代价不是「报错」这么轻：前端把这次 detect 当成「探测失败」→ ❤ 角标
+  一直不亮，而且**看不出**是哪层坏了。
+
+  修法（跟仓库既有的「`searchAlbumsOneProvider` 契约：本方法绝不 throw」同一套）：
+
+  - `detectLikedAndSync` 加「**绝不 throw**」契约 → 内部异常时降级成
+    `{liked:false, fannedOutTo:[], settled:false}`。
+    `settled:false` 是前端**已有的**「中间态」语义（继续轮询、不把读数当稳定
+    命中）→ **和今天 500 之后的行为完全一致**，只是不再把一次内部抖动放大成 500。
+    ⚠️ 不能降级成 `settled:true` + `liked:false` —— 那会被前端当成「确认没红心」
+    → **把真实红心抹掉**（比 500 严重）。
+  - `POST /music/track/likeCount` 补 try/catch → 平台偶发失败降级成 `null`
+    （renderer 已经处理 null = 不显示徽标）。
+
+  回归测试 `packages/server/src/music/server-degrade.e2e.test.ts`（16 条），
+  三个变异点全部被自测抓到：去掉 controller 的 try/catch → A1/A2 红；
+  去掉 service 的包装 → B1/B2 红；storage 退回原地覆盖写 → C2/C3 红。
+
+  ⚠️ **这个 PR 第一次跑 CI 时，diff 门禁把它拦下了** —— 而且拦得对：
+  新加的错误处理分支里有 3 处**没被任何测试覆盖**（controller 里「平台不是
+  qq/netease」那一支的 `return null`、storage 的「chmod 失败」与「清理失败」
+  两条 best-effort 分支）。门禁报的 6 行是**新增行里没被执行过的行** ——
+  这正是「新增代码必须被测到」这条规则第一次在真 PR 上生效。补了 A3/C4/C5
+  三条用例后复测：6 行全部 hits>0。
+
+  另外钉了一条**不变量**（D 组）：❤/踩/导入这几个端点现在**本来就安全**（远端
+  写走同步队列；唯一一处内联的 provider 调用——netease fmTrash——已有 try/catch）
+  —— 但那是「逐处碰巧安全」，没有东西钉住它。以后谁在请求路径上加一个内联
+  provider 调用而忘了兜底 → 又是一次偶发 500。D 组把「provider 全炸时这几个
+  端点仍必须 2xx」写成测试（变异测试实测：在 `fanOutLike` 的请求路径上加一个
+  没兜底的 `await qq.fetchLikedMidSet(...)` → D 组立刻红 ✅）。
+
+- **storage 的写不是原子的 → 进程在写一半被杀会留下半截文件 → 下次启动整个状态被清空**（2026-10-23）
+
+  `writeLocked` 用的是 `fs.writeFileSync(this.file, …)` —— 那是「**先截断再写**」。
+  进程在写的过程中被杀（dev 模式的 watch 重启、用户直接关 app、机器断电）→
+  文件停在半截 → 下次启动 `JSON.parse` 失败（load 有兜底，不会崩）→
+  **整个状态被清空**：红心、登录态、歌单「莫名消失」。
+
+  修法：先写 `state.json.tmp` 再 `rename` 覆盖 —— 同一文件系统上 `rename` 是
+  **原子**的 → 读到的永远要么是旧的完整内容、要么是新的完整内容。
+  顺带：chmod 打在临时文件上（rename 保留 inode 权限位 → 最终文件仍是 0600）；
+  写失败时清掉半截的 `.tmp`，不往磁盘上留垃圾。
+
+  回归测试里那条「写失败 → 旧文件完好无损」**一开始是假绿的**：它把
+  `fs.writeFileSync` 整个 stub 成抛异常 —— 而真实形态是「**先截断再失败**」。
+  不模拟截断的话，连原地覆盖写都测不出区别（原地写也是「什么都没发生」）。
+  改成「先截断再抛」后，退回原地覆盖写就会红。
+
 
 - **覆盖率 diff 门禁的函数级判据：跨文件的同名函数互相掩盖 → 真没测的代码被放过**（2026-10-23）
 
