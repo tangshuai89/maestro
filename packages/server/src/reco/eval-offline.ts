@@ -34,8 +34,9 @@ import { normalizeKey } from '@maestro/common';
 import { RecoService, type IntentPoolParams } from './reco.service';
 import { checkPoolInvariants, createPoolProbe, type InvariantResult } from './eval-invariants';
 import { artistMatches } from './candidate-pool';
-import { resolveGenreTag } from './genre-seeds';
+import { resolveGenreTag, buildIntentSeeds } from './genre-seeds';
 import { DEFAULT_GENRE_SCENARIOS } from './eval-genre';
+import type { NLIntent } from './nl-intent';
 
 /** fixture 里的一条曲目（裁剪过的最小形状）。 */
 export interface FixtureItem {
@@ -167,6 +168,22 @@ export interface OfflineScenarioResult {
   queuePurity: number;
   /** 黄金集覆盖率——池里被标注的比例。低于阈值 → 不给结论。 */
   goldenCoverage: number;
+  /**
+   * 种子产出率 = 「真的产出了候选的种子」/ 种子总数。
+   *
+   * ⚠️ **只报不判**：录制数据里没有的艺人天然产不出候选 → 这个数被
+   * 「fixture 覆盖了多少艺人」主导，不是代码质量。判它会制造假红。
+   * （想判「种子有没有被稀释」→ 看 `seedShare`。）
+   */
+  seedHitRate: number;
+  /**
+   * 种子块占候选池的比例 = 种子块大小 / 池大小。
+   *
+   * 判「意图模式有没有被稀释」用这个：口味档案 / 平台 FM 混进池子时，
+   * 种子块占比会掉 —— 这正是"要爵士给大流行"那条失败路径的量化形态。
+   * 与 fixture 覆盖度无关 → **参与基线对比**。
+   */
+  seedShare: number;
   invariants: InvariantResult[];
   /** 通过 = 不变量全过 + 种子块纯度达标 + 黄金集覆盖够。 */
   pass: boolean;
@@ -185,6 +202,7 @@ export interface OfflineReport {
     queuePurity: number;
     pickRetention: number;
     goldenCoverage: number;
+    seedShare: number;
     passRate: number;
   };
 }
@@ -297,6 +315,16 @@ export async function evaluateOfflineScenario(
   const isSeed = (artist: string): boolean => seeds.some((s) => artistMatches(artist, s));
   const seedBlock = pool.filter((c) => isSeed(c.artist));
 
+  // 种子产出率 = 真的产出了候选的种子 / 种子总数。
+  // ⚠️ **只报不判**：录制数据里没有的艺人天然产不出候选 → 这个数被"fixture
+  // 录了多少艺人"主导，判它会制造假红。
+  const seedHitRate = seeds.length
+    ? seeds.filter((s) => pool.some((c) => artistMatches(c.artist, s))).length / seeds.length
+    : 0;
+  // 种子块占池的比例 —— 判"意图模式有没有被稀释"用这个：口味档案 / 平台 FM
+  // 混进池子时它会掉。**与 fixture 覆盖度无关** → 参与基线对比。
+  const seedShare = pool.length ? seedBlock.length / pool.length : 0;
+
   // 纯度：黄金标签命中期望流派的比例（**只在有标注的条目上算分母**）
   // strict = 只认期望流派；loose = 期望 + 相邻子风格（"八十年代合成器"里的
   // new wave / synth-pop 属于该流派，不该被判成跑偏）。
@@ -327,15 +355,19 @@ export async function evaluateOfflineScenario(
 
   // 判据取**当前**的场景定义（fixture 只提供数据）——fixture 与评测定义不一致
   // （场景改名了/新增了）必须 fail loud，不能拿 fixture 里录的旧判据硬跑。
+  //
+  // ⚠️ 例外：**派生的变体**（`--no-llm-anchor`）在场景定义里**故意不存在**
+  // ——它复用母场景的判据，由调用方显式传 `expect` / `adjacent`。
+  // 母场景本身仍然 fail loud（没定义 + 没显式判据 → 抛）。
   const def = DEFAULT_GENRE_SCENARIOS.find((d) => d.id === scenario.id);
-  if (!def) {
+  if (!def && !expect) {
     throw new Error(
       `fixture 里的场景 [${scenario.id}] 在当前评测定义里不存在——` +
         `要么改回场景名，要么重新录制 fixture（node scripts/record-nl-fixtures.mjs）`,
     );
   }
-  const expectSet = expect ?? def.expect;
-  const adjacentSet = adjacent ?? def.adjacent ?? [];
+  const expectSet = expect ?? def!.expect;
+  const adjacentSet = adjacent ?? def?.adjacent ?? [];
   const seedBlockPurity = purity(seedBlock, expectSet, adjacentSet);
   const poolPurity = purity(pool, expectSet, adjacentSet);
 
@@ -393,6 +425,8 @@ export async function evaluateOfflineScenario(
     pickRetention,
     queuePurity: queuePurity.purity,
     goldenCoverage,
+    seedHitRate,
+    seedShare,
     invariants,
     pass,
     ...(inconclusive ? { inconclusive } : {}),
@@ -404,6 +438,30 @@ export interface OfflineEvalOptions {
   count?: number;
   /** 只跑这些场景 id。 */
   only?: string[];
+}
+
+/**
+ * 构造一条「LLM 没给流派代表艺人」的意图 —— 用来评测**确定性兜底**路径。
+ *
+ * ⚠️ 必须走**真身** `buildIntentSeeds`（不是自己抄一份"流派 → 艺人"的逻辑）：
+ * 抄一份的话，改坏了真身它照样绿 —— 测的就不是真身了（与本模块
+ * 「走真实代码路径」的原则一致）。
+ */
+export function buildFallbackIntent(genre: string, count: number): NLIntent {
+  return {
+    mood: '',
+    genres: [genre],
+    tempo: 'any',
+    language: 'any',
+    similar_artists: [],
+    similar_tracks: [],
+    exclude_artists: [],
+    exclude_genres: [],
+    // ⚠️ 关键：LLM **没给**流派代表艺人 → buildIntentSeeds 会走映射表兜底
+    genre_artists: [],
+    target_count: count,
+    rationale: '',
+  };
 }
 
 /** 跑全部场景。 */
@@ -434,6 +492,7 @@ export async function runOfflineEval(opts: OfflineEvalOptions = {}): Promise<Off
       queuePurity: mean((r) => r.queuePurity),
       pickRetention: mean((r) => r.pickRetention),
       goldenCoverage: mean((r) => r.goldenCoverage),
+      seedShare: mean((r) => r.seedShare),
       passRate: mean((r) => (r.pass ? 1 : 0)),
     },
   };
@@ -450,6 +509,7 @@ export function formatOfflineReport(report: OfflineReport): string {
     `检索层  种子块纯度 ${pct(a.seedBlockPurity)}｜全池纯度 ${pct(a.poolPurity)}`,
     `策展层  队列纯度   ${pct(a.queuePurity)}｜picks 保留率 ${pct(a.pickRetention)}`,
     `黄金集  覆盖率     ${pct(a.goldenCoverage)}（低于 ${pct(MIN_GOLDEN_COVERAGE)} 不给结论）`,
+    `结构    种子块占池 ${pct(a.seedShare)}`,
     `通过率  ${pct(a.passRate)}`,
   ];
   for (const s of report.scenarios) {
@@ -458,7 +518,7 @@ export function formatOfflineReport(report: OfflineReport): string {
       `${s.pass ? '✅' : '❌'} [${s.id}] ${s.text}`,
       `   种子=${s.seeds.slice(0, 4).join('、') || '—'}｜池 ${s.poolSize}（种子块 ${s.seedBlockSize}）`,
       `   种子块纯度 ${pct(s.seedBlockPurity)}（严格 ${pct(s.seedBlockPurityStrict)}）｜全池 ${pct(s.poolPurity)}｜队列 ${pct(s.queuePurity)}` +
-        `｜picks 保留 ${pct(s.pickRetention)}｜黄金覆盖 ${pct(s.goldenCoverage)}`,
+        `｜picks 保留 ${pct(s.pickRetention)}｜黄金覆盖 ${pct(s.goldenCoverage)}｜种子占池 ${pct(s.seedShare)}｜种子产出 ${pct(s.seedHitRate)}`,
     );
     if (s.inconclusive) lines.push(`   ⚠️ ${s.inconclusive}`);
     for (const inv of s.invariants.filter((i) => !i.pass)) {
@@ -470,7 +530,15 @@ export function formatOfflineReport(report: OfflineReport): string {
 
 /** 与入库基线对比。`tolerancePt` 是允许的下降百分点。 */
 export function compareOfflineToBaseline(
-  baseline: { scenarios: Array<{ id: string; seedBlockPurity: number; queuePurity: number }> },
+  baseline: {
+    scenarios: Array<{
+      id: string;
+      seedBlockPurity: number;
+      queuePurity: number;
+      /** 种子块占池比例（2026-10-24 起入库；旧基线没有这个字段 → 只提示不判）。 */
+      seedShare?: number;
+    }>;
+  },
   report: OfflineReport,
   tolerancePt = 5,
 ): { ok: boolean; lines: string[] } {
@@ -485,12 +553,24 @@ export function compareOfflineToBaseline(
     }
     const seedDelta = (cur.seedBlockPurity - base.seedBlockPurity) * 100;
     const queueDelta = (cur.queuePurity - base.queuePurity) * 100;
-    const bad = seedDelta < -tolerancePt || queueDelta < -tolerancePt;
+    // 种子占池比例：**旧基线没有这个字段** → 只提示、不判（别拿 undefined 算
+    // 出一个 NaN 然后乱判红）。等基线更新后它就参与判定。
+    const shareDelta =
+      typeof base.seedShare === 'number' ? (cur.seedShare - base.seedShare) * 100 : null;
+    const bad =
+      seedDelta < -tolerancePt ||
+      queueDelta < -tolerancePt ||
+      (shareDelta !== null && shareDelta < -tolerancePt);
     if (bad) ok = false;
+    const shareText =
+      shareDelta === null
+        ? '｜种子占池 —（旧基线没这个维度）'
+        : `｜种子占池 ${pct(base.seedShare ?? 0).padStart(7)} → ${pct(cur.seedShare).padStart(7)}` +
+          ` (${shareDelta >= 0 ? '+' : ''}${shareDelta.toFixed(1)}pt)`;
     lines.push(
-      `  ${bad ? '❌' : '✅'} ${cur.id.padEnd(14)} 种子块 ${pct(base.seedBlockPurity).padStart(7)} → ${pct(cur.seedBlockPurity).padStart(7)}` +
+      `  ${bad ? '❌' : '✅'} ${cur.id.padEnd(24)} 种子块 ${pct(base.seedBlockPurity).padStart(7)} → ${pct(cur.seedBlockPurity).padStart(7)}` +
         ` (${seedDelta >= 0 ? '+' : ''}${seedDelta.toFixed(1)}pt)｜队列 ${pct(base.queuePurity).padStart(7)} → ${pct(cur.queuePurity).padStart(7)}` +
-        ` (${queueDelta >= 0 ? '+' : ''}${queueDelta.toFixed(1)}pt)`,
+        ` (${queueDelta >= 0 ? '+' : ''}${queueDelta.toFixed(1)}pt)${shareText}`,
     );
   }
   return { ok, lines };

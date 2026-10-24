@@ -162,3 +162,39 @@ jobs:
       #    「跳过」= 门禁形同虚设（这正是旧门禁的毛病）。
       - name: 出货产物不许带测试代码 / 陈旧产物 / 源码
         run: node scripts/check-artifact-hygiene.cjs --require-built
+
+  # ── NL 检索离线评测门禁（specs/eval-driven-nl/ L1）──────────────
+  #
+  # AGENTS.md 写的是「**PR 门禁主体**」，但 **CI 里从来没跑过** →
+  # 那道门禁只靠人肉自觉（本地 pre-commit hook 跑；`--no-verify`、
+  # 换机器、或者忘了装 hook 就直接绕过去了）。
+  #
+  # 为什么单独一个 job（不塞进 check）：
+  #   · 它是「逻辑回归网」，与「代码对不对」是两类信号 → 分开看得见
+  #   · 与 check **并行**跑 → 不拖慢主门禁
+  #   · 失败直接落在 PR 的 checks 列表里，不用翻 23 分钟的日志
+  #
+  # 成本：**0 元 / 0 网络 / ~3 秒**（录制的 fixture + 冻结的黄金集）。
+  nl-eval-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # @maestro/common 的 main 指向 dist（编译产物，不入库）—— server 的
+      # ts-node 解析不到它 → 必须先构建（与 test.yml 同一个理由）。
+      - name: Build @maestro/common
+        run: npm run build:common
+
+      # ⚠️ 这条命令**不做任何"没有基线就跳过"的退让**：缺基线 / 黄金集覆盖不足
+      #   / 纯度低于基线 → 一律非零退出（specs/eval-driven-nl/ L1 明文要求）。
+      - name: NL 检索离线评测（0 元 / 0 网络 / 确定性）
+        run: npm run reco:eval:offline

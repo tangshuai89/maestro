@@ -200,11 +200,18 @@ async function main() {
       0,
       'CLI 各种参数写法都应正常跑完',
     );
-    // 基线文件不存在 → 跳过对比但不算失败
+    // 基线文件不存在 → **门禁拒绝判定**（返回 1）
+    //
+    // ⚠️ 这条断言**反转过**：旧实现是「跳过对比、仍算通过」。
+    //   那等于「少一条判据 = 门禁自动变弱」，而实测这个洞能开多大：
+    //   把 jazz 的黄金标签全改成 pop（纯度 100% → 0%）+ 基线缺失
+    //   → 门禁照样「✅ 通过」、exit 0。纯度崩了都拦不住。
+    //   spec L1 明写「基线入库」「不静默按通过算」→ 缺基线是**配置坏了**，
+    //   必须显式失败。
     assert.strictEqual(
       await runCli(['--only=jazz', '--baseline', path.join(__dirname, '__no_baseline__.json')]),
-      0,
-      '没有基线文件时跳过对比、仍算通过',
+      1,
+      '没有基线文件时必须拒绝判定（不能静默按通过算）',
     );
     // fixture 目录不存在 → 明确报错（不静默）
     await assert.rejects(
@@ -260,6 +267,69 @@ async function main() {
       path.join(tmpDir, '__no_baseline__.json'),
     ]);
     assert.strictEqual(badCode, 1, '不变量红 → CLI 必须返回 1');
+
+    // 6g-2. **纯度不达标**（不变量全过、黄金集覆盖也够）→ CLI 必须返回 1
+    //
+    // ⚠️ 这条覆盖旧实现的一个洞：CLI 原来只判「不变量 + 基线对比」，
+    //   **完全没看** 场景级 pass（种子块纯度 ≥ 0.7）。这里造一个
+    //   「不变量全过、但种子块的歌全是 pop」的 fixture → 纯度 0% → 必须红。
+    const popScenario = {
+      ...badScenario,
+      search: Object.fromEntries(
+        badSeeds.map((a) => [a, [1, 2, 3, 4].map((i) => mkItem(`${a} Song ${i}`, a))]),
+      ),
+    };
+    const popDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-eval-pop-'));
+    fs.writeFileSync(
+      path.join(popDir, 'nl-search.json'),
+      JSON.stringify({
+        recordedAt: 'x',
+        sessionId: 'x',
+        librarySize: 0,
+        anchors: [],
+        anchorSearch: {},
+        scenarios: { jazz: popScenario },
+      }),
+    );
+    // 黄金集把这些歌标成 **pop**（期望是 jazz）→ 覆盖率 100%（不是覆盖不足），
+    // 但纯度 0% → 场景级判定必须不通过。
+    const popGolden: Record<string, string[]> = {};
+    for (const a of badSeeds) {
+      for (let i = 1; i <= 4; i++) popGolden[`${a} Song ${i}|${a}`] = ['pop'];
+    }
+    fs.writeFileSync(path.join(popDir, 'genre-golden.json'), JSON.stringify(popGolden));
+    const popCode = await runCli([
+      '--fixture-dir',
+      popDir,
+      '--baseline',
+      path.join(popDir, '__no_baseline__.json'),
+    ]);
+    assert.strictEqual(popCode, 1, '纯度不达标（不变量却全过）→ CLI 必须返回 1');
+
+    // 6g-3. **黄金集覆盖不足**（不变量全过）→ CLI 必须返回 1
+    //
+    // spec §风险与局限：「覆盖率低于阈值时**拒绝给结论**（fail loud）」。
+    // 旧实现只打一条 ⚠️ 警告就继续，最后照样输出「✅ 门禁通过」。
+    const coverDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-eval-cover-'));
+    fs.writeFileSync(
+      path.join(coverDir, 'nl-search.json'),
+      JSON.stringify({
+        recordedAt: 'x',
+        sessionId: 'x',
+        librarySize: 0,
+        anchors: [],
+        anchorSearch: {},
+        scenarios: { jazz: popScenario },
+      }),
+    );
+    fs.writeFileSync(path.join(coverDir, 'genre-golden.json'), JSON.stringify({}));
+    const coverCode = await runCli([
+      '--fixture-dir',
+      coverDir,
+      '--baseline',
+      path.join(coverDir, '__no_baseline__.json'),
+    ]);
+    assert.strictEqual(coverCode, 1, '黄金集覆盖不足（拒绝给结论）→ CLI 必须返回 1');
 
     // 6h. --save 会真的写基线文件（覆盖写盘分支）
     const savePath = path.join(tmpDir, 'saved-baseline.json');
