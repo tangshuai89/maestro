@@ -131,20 +131,53 @@ export async function runCli(argv: string[]): Promise<number> {
     out(`❌ 不变量门禁未通过（${broken.length} 个场景）：${broken.map((s) => s.id).join('、')}`);
   }
 
-  // 门禁 2：黄金集覆盖不足的场景 → 拒绝给结论（不当通过，也不当不通过）
+  // 门禁 2：黄金集覆盖不足的场景 → **拒绝给结论 = 门禁红**
+  //
+  // ⚠️ 旧实现只打一条 ⚠️ 警告就继续走，最后照样输出"✅ 离线评测门禁通过"——
+  //   那就是"静默按通过算"，**违反 spec L1 的明文要求**。
+  //   实测：把黄金集清空 → 12 个场景全部"结论不可信" → 门禁却报通过。
   const inconclusive = report.scenarios.filter((s) => s.inconclusive);
   if (inconclusive.length) {
     out('');
-    out(`⚠️ 黄金集覆盖不足，结论不可信：${inconclusive.map((s) => s.id).join('、')}`);
+    out(
+      `❌ 黄金集覆盖不足，结论不可信（**拒绝给结论**，不按通过算）：` +
+        `${inconclusive.map((s) => s.id).join('、')}`,
+    );
+    for (const s of inconclusive) out(`   ⚠️ [${s.id}] ${s.inconclusive}`);
   }
 
-  // 门禁 3：纯度不低于入库基线（容差 tolerance 个百分点）
+  // 门禁 3：**场景级判定**（种子块纯度 ≥ 0.7 / 黄金集覆盖达标）
+  //
+  // ⚠️ 旧实现**完全没看** `s.pass` —— 只判了不变量。场景纯度崩了（比如种子块
+  //   纯度掉到 0）只要不变量还绿，门禁就当没事发生。
+  //   实测：把 jazz 的黄金标签全改成 pop（纯度 100% → 0%）+ 基线缺失 →
+  //   门禁照样"✅ 通过"、exit 0。
+  // 这里只报「既没有不变量红、也不是覆盖不足」的纯度不达标场景（避免三重重复报）。
+  const notPassed = report.scenarios.filter(
+    (s) => !s.pass && !s.inconclusive && s.invariants.every((i) => i.pass),
+  );
+  if (notPassed.length) {
+    out('');
+    out(
+      `❌ 场景判定未通过（${notPassed.length} 个场景的种子块纯度 / 覆盖不达标）：` +
+        `${notPassed.map((s) => s.id).join('、')}`,
+    );
+    for (const s of notPassed) {
+      out(
+        `   ✗ [${s.id}] 种子块纯度 ${(s.seedBlockPurity * 100).toFixed(1)}%` +
+          `｜黄金覆盖 ${(s.goldenCoverage * 100).toFixed(1)}%`,
+      );
+    }
+  }
+
+  // 门禁 4：纯度不低于入库基线（容差 tolerance 个百分点）
   //
   // ⚠️ 带 --save 时，对比**只作提示不参与判定**：这一轮正在**替换**基线，
   // 拿旧基线判门禁必然红（数字变了 = 基线要更新），那是噪声不是回归。
   const savingBaseline = Boolean(args.save);
+  const baselineExists = fs.existsSync(args.baseline);
   let baselineOk = true;
-  if (fs.existsSync(args.baseline)) {
+  if (baselineExists) {
     const baseline = JSON.parse(fs.readFileSync(args.baseline, 'utf8'));
     const cmp = compareOfflineToBaseline(baseline, report, args.tolerance);
     baselineOk = cmp.ok;
@@ -154,9 +187,18 @@ export async function runCli(argv: string[]): Promise<number> {
         `${savingBaseline ? '｜本轮在更新基线，仅作提示' : ''}：`,
     );
     for (const l of cmp.lines) out(l);
-  } else {
+  } else if (savingBaseline) {
     out('');
-    out(`⚠️ 没有基线文件（${args.baseline}）—— 跳过对比。跑一次 --save 建立基线。`);
+    out(`ℹ️ 没有基线文件（${args.baseline}）—— 本轮在建立基线，跳过对比。`);
+  } else {
+    // ⚠️ **缺基线 = 门禁拒绝判定**（不是"跳过对比然后当通过"）
+    //   少一条判据就等于门禁变弱：实测"纯度崩到 0 + 缺基线"照样 exit 0。
+    //   spec L1 明写「基线入库」，CI 里基线是入库文件 → 缺了就是配置坏了。
+    out('');
+    out(`❌ 没有基线文件（${args.baseline}）—— **门禁拒绝在无基线的情况下判定**。`);
+    out(
+      '   → 跑一次 `npm run reco:eval:offline -- --save specs/eval-driven-nl/baseline.json` 建立基线。',
+    );
   }
 
   if (args.save) {
@@ -166,7 +208,13 @@ export async function runCli(argv: string[]): Promise<number> {
     out(`\n已保存基线：${p}`);
   }
 
-  const failed = broken.length > 0 || (!savingBaseline && !baselineOk);
+  // 门禁是否通过。**四道门都要算**（旧实现只算「不变量 + 基线对比」，
+  // 漏了场景级判定和「黄金集覆盖不足」→ 两处静默通过）。
+  const failed =
+    broken.length > 0 ||
+    inconclusive.length > 0 ||
+    notPassed.length > 0 ||
+    (!savingBaseline && (!baselineExists || !baselineOk));
   if (failed) {
     out('');
     out('❌ 离线评测门禁未通过');
