@@ -340,6 +340,30 @@ async function main() {
     );
     assert.ok(fs.existsSync(savePath), '基线文件已写出');
 
+    // 6h-2. **缺基线 + 带 --save** → 走"本轮在建立基线，跳过对比"的分支
+    //
+    // ⚠️ 这条是**覆盖率 diff 门禁逼出来的**，不是凑数：
+    //   「没有基线文件 + --save」这条分支在日常/CI 里**永远走不到**
+    //   （仓库里的基线一直存在 → baselineExists 恒为 true）→
+    //   `eval-offline-cli.ts` 里那两行（打印"本轮在建立基线"）行覆盖恒为 0
+    //   → CI 的「新增代码必须被测到」门禁直接拦下整个 PR。
+    //
+    //   也就是说：**这条分支第一次有测试覆盖，是门禁在逼我们写**。
+    //   它本身是个真路径（第一次建基线时就是这个组合）。
+    const savePath2 = path.join(tmpDir, 'saved-baseline-fresh.json');
+    assert.strictEqual(
+      await runCli([
+        '--only=jazz',
+        '--baseline',
+        path.join(tmpDir, '__no_baseline_fresh__.json'),
+        '--save',
+        savePath2,
+      ]),
+      0,
+      '缺基线但带 --save → 本轮在建立基线，**不该**拒绝判定（对比是待建的那一轮）',
+    );
+    assert.ok(fs.existsSync(savePath2), '缺基线 + --save 也要把基线写出来');
+
     // 6i. 未知参数 → 忽略（default 分支）；"--k --k2" 形式 → take() 返回 undefined
     assert.strictEqual(
       await runCli(['--only=jazz', '--unknown-flag', '--save', '--json']),
