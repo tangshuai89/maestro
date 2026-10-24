@@ -38,22 +38,38 @@
  *   - 函数（`FNDA`）同理：命中次数取 max（不求和 —— 求和会让"覆盖"与
  *     "执行次数"混为一谈，而门禁只关心有没有执行过）
  *
- * ## 「权威输入」：行号坐标系不同的两份数据**不能取 max**
+ * ## 「权威输入」：行号坐标系**已经是同一套**（2026-10-24 实测推翻旧前提）
  *
- * ⚠️ 取 max 的前提是**两份数据的行号指的是同一件事**。
+ * ⚠️ **旧前提（已推翻）**：这里原来写着「node 直跑 `.test.mjs` 的行号是**随机
+ * 错位**的 → 权威侧覆盖的文件必须**整份替换**，不能取 max」。
  *
- * 实际情况：同一个源文件可能被**两种转换管线**覆盖 ——
- *   - `node` 直跑 `.test.mjs`（node 自己的 type-stripping，**无 source map**）
- *     → c8 拿转换后 JS 的字节偏移去切源 .ts 文件 → **行号随机**
- *   - `vitest` + `@vitest/coverage-v8`（走 vite 的 transform 链，**有 source map**）
- *     → 行号正确
+ * **实测不成立**，三条证据：
+ *   1. node 的 type-stripping 是**按原位抹掉类型**（把类型替成空白，**行数不变**）
+ *      → 行位置完整保留 → 行号是准的。
+ *   2. `backup-crypto.ts`：node 侧未覆盖行 = **135-136** = 唯一那条不可达的
+ *      `catch { throw new Error('备份内容损坏') }` —— 语义完全对得上。
+ *   3. `usePlayer.ts`：node 侧命中行 = **1-131 连续一段** = 正好是「import +
+ *      类型 import + re-export」块 = **模块顶层**；`.test.mjs` 只调纯函数 →
+ *      顶层执行一次 → 顶层算命中、hook 体一次没跑 → **完全正确**。
  *
- * 这两份的「第 100 行」**根本不是同一行** → 取 max = **污染**（把随机值
- * 和真值混在一起），不是「更全的覆盖」。
+ * 那句「esbuild 把 usePlayer.ts 从 2192 行压成 1336 行」说的是**另一件事**：
+ * 那是 **c8 包 vitest** 时代的问题（vite/esbuild 转换后的 JS 在内存里跑，
+ * source map 是 inline data URL → node 的 source-map-cache 里没有 → c8 拿
+ * 转换后字节偏移切源文件）。H12 已经把 renderer 的 `.test.tsx` 迁到
+ * `@vitest/coverage-v8`（自带 source map）→ **那条路径不再是行错位的来源**。
  *
- * 所以加了 `--authoritative <file>`：被指定的那份是**权威**的，它覆盖的
- * 文件**完全替换**其它来源的数据（不是取 max）。其它来源只贡献它**没有**的
- * 文件。
+ * ⇒ 现在两侧的行号**指的是同一件事** → **行级取 max 是「更全的真相」，
+ * 不是污染**。而原来的「整文件替换」会**丢掉 node 侧的真覆盖**：
+ * 实测 24 个文件重叠、**568 条行命中被丢**（`spotify-wps.ts` 真实 91% 被写成
+ * 25.8%、`backup-crypto.ts` 真实 99.5% 被写成 76.7%）→ 覆盖率被低估，
+ * 且 diff 门禁会把「`.test.mjs` 确实测过的老代码」判成「未覆盖」→ **误拦**。
+ *
+ * ## 「行覆盖分母」只算真实代码行
+ *
+ * node 侧的 v8 覆盖是**区间**（block range）→ 一段区间会把中间的**注释 / 空行**
+ * 一起算成命中（实测 node 侧独有文件的命中行有 **29.7% 落在注释/空行上**）。
+ * ⇒ 写输出时**剔除注释/空行的 DA 条目**：分母只算真实代码行，顺带解决
+ * 「过度归因」造成的**虚高**。实测全局行覆盖 92.11% → 90.71%（更诚实，不是更松）。
  *
  * ## 用法
  *
@@ -135,11 +151,68 @@ function parseLcov(text) {
   return files;
 }
 
+/**
+ * 「真实代码行」的行号集合 —— 剔除空行 / 行注释 / 块注释。
+ *
+ * 为什么需要：node 侧的 v8 覆盖是**区间**（block range）→ 一段区间会把中间的
+ * 注释 / 空行一起算成「命中」（实测 node 侧独有文件的命中行有 29.7% 落在
+ * 注释/空行上）→ 行覆盖的**分母**被注释撑大、**分子**被虚高 → 百分比失真。
+ *
+ * ⇒ 写输出时把注释/空行的 DA 条目剔掉：分母只算真实代码行。
+ *
+ * ⚠️ **源文件不存在时返回 null** → 调用方**不过滤**（保留全部 DA 条目）。
+ *    这条很重要：自测用合成 lcov（`SF:src/x.ts` 这种不存在的路径），
+ *    过滤逻辑若在文件缺失时「当作全是非代码行」→ 自测的合成数据会被清空。
+ *
+ * ⚠️ **块注释内部行（不带 `*` 前缀的）算作代码行** —— 这是**保守**方向：
+ *    分母偏大 → 百分比偏低 → 门禁偏严。宁可偏严不可偏松。
+ */
+const realCodeLinesCache = new Map();
+function realCodeLines(file) {
+  if (realCodeLinesCache.has(file)) return realCodeLinesCache.get(file);
+  let result = null;
+  try {
+    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+      const src = fs.readFileSync(file, 'utf8').split('\n');
+      const set = new Set();
+      let inBlock = false;
+      for (let i = 0; i < src.length; i++) {
+        const t = src[i].trim();
+        if (inBlock) {
+          if (t.includes('*/')) inBlock = false;
+          continue;
+        }
+        if (t === '' || t.startsWith('//')) continue;
+        if (t.startsWith('/*')) {
+          if (!t.includes('*/')) inBlock = true;
+          continue;
+        }
+        set.add(i + 1);
+      }
+      result = { set, total: src.length };
+    }
+  } catch {
+    result = null;
+  }
+  realCodeLinesCache.set(file, result);
+  return result;
+}
+
 /** 写出一份 lcov.info。 */
 function writeLcov(files) {
   const out = [];
   for (const [file, data] of files) {
-    const lh = [...data.da.values()].filter((h) => h > 0).length;
+    // 行覆盖分母只算真实代码行（剔除注释/空行）——
+    // 见 realCodeLines() 的注释：node 侧的 block range 会把注释算成命中。
+    const real = realCodeLines(file);
+    const daEntries = [...data.da.entries()].sort((a, b) => a[0] - b[0]);
+    const keptDa = real
+      ? // ⚠️ 行号**超出源文件行数**的条目**保留**（那是陈旧/异常数据，
+        //   静默丢掉等于把「覆盖缺口」藏起来 → 保守方向是保留并让它暴露）。
+        daEntries.filter(([ln]) => ln > real.total || real.set.has(ln))
+      : daEntries;
+
+    const lh = keptDa.filter(([, h]) => h > 0).length;
     const fnHits = [...data.fnda.values()].filter((h) => h > 0).length;
 
     // BRDA 里的 taken 是「该分支被走到几次」；`0` 也算"这条分支存在"，
@@ -167,10 +240,10 @@ function writeLcov(files) {
     for (const [key, taken] of brEntries) {
       out.push(`BRDA:${key},${taken}`);
     }
-    // 行汇总
-    out.push(`LF:${data.da.size}`);
+    // 行汇总（分母 = 真实代码行数，不是 DA 条目总数）
+    out.push(`LF:${keptDa.length}`);
     out.push(`LH:${lh}`);
-    for (const [ln, hits] of [...data.da.entries()].sort((a, b) => a[0] - b[0])) {
+    for (const [ln, hits] of keptDa) {
       out.push(`DA:${ln},${hits}`);
     }
     out.push('end_of_record');
@@ -303,21 +376,31 @@ function selfTest() {
     process.argv = [argv2[0], argv2[1], '--authoritative', authInfo, out2, nodeInfo, authInfo];
     main();
     const merged = fs2.readFileSync(out2, 'utf8');
-    const expectAuth =
-      merged.includes('DA:5,0') && merged.includes('DA:9,4') && !merged.includes('DA:5,9');
+    // ★ 2026-10-24 **反转**：原来是「完全替换」（权威侧赢）。
+    //   前提「两侧行号坐标系不同」**实测已推翻**（node 的 type-stripping
+    //   按原位抹掉类型 → 行位置完整保留 → 行号是准的）→ 两侧指的是同一行
+    //   → 取 max 才是「更全的真相」。
+    //   node: 第 5 行命中(9)、第 9 行没命中(0)
+    //   auth: 第 5 行没命中(0)、第 9 行命中(4)
+    //   并集  → 第 5 行 = max(0,9)=9，第 9 行 = max(4,0)=4（两边的真值都保住）
+    const expectUnion =
+      merged.includes('DA:5,9') && merged.includes('DA:9,4') && !merged.includes('DA:5,0');
     fs2.rmSync(tmp2, { recursive: true, force: true });
     expect(
-      '权威输入：同名文件被**完全替换**（不是取 max）',
-      expectAuth,
+      '权威输入：同名文件跨侧**行级并集**（两侧真值都保住，不是整文件替换）',
+      expectUnion,
       `合并结果不对：\n${merged}`,
     );
 
-    // ── 权威文件：**函数级跨侧并集**（行仍然只用权威侧）────────────
+    // ── 权威文件：**行 / 分支 / 函数全部跨侧并集** ───────────────────
     //
-    // 行号会平移（node 侧独有文件的命中行有 29.7% 落在注释/空行上）→ 行不能混。
-    // 但**函数名是源码标识符**、跨转换器稳定 → FNDA 可以跨侧取 max：
-    // 「这个函数跑没跑过」的真相是两条管线的并集，整文件替换会把它丢掉
-    // （实测丢了 22 个真跑过的函数 → 门禁对它们误判「从未执行」→ 假红）。
+    // 2026-10-24 **改**：原来行/分支是「权威侧整文件替换」。
+    // 前提「两侧行号坐标系不同」**实测已推翻**（node 的 type-stripping
+    // 按原位抹掉类型 → 行位置完整保留 → 行号是准的；ts-node / coverage-v8 /
+    // 浏览器侧本来就有 source map）→ 两侧指的是同一行 → 取 max 才是真相。
+    //
+    // 函数名是**源码标识符**、跨转换器稳定 → FNDA 跨侧取 max 一直是对的
+    // （实测丢了 22 个真跑过的函数 → 门禁误判「从未执行」→ 假红）。
     {
       const fs4 = require('node:fs');
       const os4 = require('node:os');
@@ -326,7 +409,7 @@ function selfTest() {
       const nodeInfo4 = p4.join(tmp4, 'node.info');
       const authInfo4 = p4.join(tmp4, 'auth.info');
       const out4 = p4.join(tmp4, 'out.info');
-      // node 侧（行错位）：第 5 行命中；函数 g 跑过（2 次）
+      // node 侧：第 5 行命中；函数 g 跑过（2 次）
       fs4.writeFileSync(
         nodeInfo4,
         [
@@ -335,6 +418,9 @@ function selfTest() {
           'FNF:1',
           'FNH:1',
           'FNDA:2,g',
+          'BRF:1',
+          'BRH:1',
+          'BRDA:5,0,0,7',
           'DA:5,9',
           'end_of_record',
           '',
@@ -349,6 +435,9 @@ function selfTest() {
           'FNF:1',
           'FNH:0',
           'FNDA:0,g',
+          'BRF:1',
+          'BRH:0',
+          'BRDA:9,0,0,0',
           'DA:9,4',
           'end_of_record',
           '',
@@ -364,10 +453,81 @@ function selfTest() {
         /FNDA:2,g/.test(merged4),
         `函数并集没生效：\n${merged4}`,
       );
+      // ★ 2026-10-24 **反转**：原来是「行仍然只用权威侧」。
+      //   实测两侧行号同坐标系 → 行也要并集（node 侧那行是真跑过的）。
       expect(
-        '权威文件：行仍然只用权威侧（node 侧的错位行不混进来）',
-        merged4.includes('DA:9,4') && !merged4.includes('DA:5,9'),
-        `行不该跨侧混合：\n${merged4}`,
+        '权威文件：行级跨侧并集（node 侧命中的行不丢）',
+        merged4.includes('DA:5,9') && merged4.includes('DA:9,4'),
+        `行并集没生效：\n${merged4}`,
+      );
+      expect(
+        '权威文件：分支级跨侧并集（node 侧命中的分支不丢）',
+        merged4.includes('BRDA:5,0,0,7') && merged4.includes('BRDA:9,0,0,0'),
+        `分支并集没生效：\n${merged4}`,
+      );
+    }
+
+    // ── 行覆盖分母只算**真实代码行**（剔除注释 / 空行）──────────────
+    //
+    // 为什么：node 侧的 v8 覆盖是**区间**（block range）→ 一段区间会把中间的
+    // 注释 / 空行一起算成「命中」（实测 node 侧独有文件的命中行有 29.7% 落在
+    // 注释/空行上）→ 分母被注释撑大、分子被虚高 → 百分比失真。
+    //
+    // ⚠️ 这个用例需要**真实存在的源文件**（过滤靠读源文件判断哪行是注释）。
+    //    用**绝对路径**当 SF: → realCodeLines() 能读到它。
+    {
+      const fs6 = require('node:fs');
+      const os6 = require('node:os');
+      const p6 = require('node:path');
+      const tmp6 = fs6.mkdtempSync(p6.join(os6.tmpdir(), 'maestro-merge-realcode-'));
+      const srcFile = p6.join(tmp6, 'a.ts');
+      const nodeInfo6 = p6.join(tmp6, 'node.info');
+      const out6 = p6.join(tmp6, 'out.info');
+      // 源文件：1=行注释 2=代码 3=空行 4-6=块注释 7-9=代码
+      fs6.writeFileSync(
+        srcFile,
+        [
+          '// 这是一行注释',
+          'const a = 1;',
+          '',
+          '/**',
+          ' * 块注释',
+          ' */',
+          'function f() {',
+          '  return a;',
+          '}',
+          '',
+        ].join('\n'),
+      );
+      // lcov：9 行**全部**有命中（模拟 node 侧 block range 把注释/空行也算进来）
+      fs6.writeFileSync(
+        nodeInfo6,
+        [
+          `SF:${srcFile}`,
+          ...Array.from({ length: 9 }, (_, i) => `DA:${i + 1},5`),
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+      const argv6 = process.argv.slice(2);
+      process.argv = [argv6[0], argv6[1], out6, nodeInfo6];
+      main();
+      const merged6 = fs6.readFileSync(out6, 'utf8');
+      fs6.rmSync(tmp6, { recursive: true, force: true });
+      expect(
+        '行覆盖分母只算真实代码行：LF 应为 4（2,7,8,9），不是 9',
+        /LF:4/.test(merged6),
+        `LF 不是 4：\n${merged6}`,
+      );
+      expect(
+        '行覆盖分母只算真实代码行：注释/空行的 DA 条目被剔除',
+        !merged6.includes('DA:1,5') && !merged6.includes('DA:3,5'),
+        `注释/空行没被剔除：\n${merged6}`,
+      );
+      expect(
+        '行覆盖分母只算真实代码行：真实代码行的 DA 保留',
+        merged6.includes('DA:2,5') && merged6.includes('DA:9,5'),
+        `真实代码行被误删：\n${merged6}`,
       );
     }
 
@@ -510,15 +670,13 @@ function main() {
 
   // 权威来源**先**处理 → 记录它覆盖了哪些文件
   //
-  // ⚠️ **只有权威侧有「实质覆盖」的文件才替换**（>0 的行/函数命中）。
+  // ⚠️ **只有权威侧有「实质覆盖」的文件才进 `authoritativeFiles`**（>0 的行/函数命中）。
   //
-  // 原因：有些文件**只被 `.test.mjs` 覆盖**（node 侧，有 16 个真实用例，但
-  // 行号错位）。权威侧（coverage-v8）里它不存在 → 如果无条件替换，它会
-  // 变成「0% 覆盖」—— 比实际更差（实际是被测过的）。
+  // 原因：有些文件**只被 `.test.mjs` 覆盖**（node 侧，有真实用例）。权威侧
+  // （coverage-v8）里它不存在 → 如果无条件接管，它会变成「0% 覆盖」——
+  // 比实际更差（实际是被测过的）。
   //
-  // 所以：权威侧 hits 全 0 → 保留另一侧的数据（并在报告里标注该文件
-  // 的行覆盖**不可信**）；权威侧有实质命中 → 完全替换（它的行号是对的，
-  // 另一侧的随机行号必须丢弃，否则是污染）。
+  // 所以：权威侧 hits 全 0 → 整个文件**交给非权威侧**处理。
   if (authoritative) {
     if (fs.existsSync(authoritative)) {
       const parsed = parseLcov(fs.readFileSync(authoritative, 'utf8'));
@@ -550,24 +708,22 @@ function main() {
     }
     const parsed = parseLcov(fs.readFileSync(input, 'utf8'));
     for (const [file, data] of parsed) {
-      // 权威来源已经给了这个文件 → **行/分支完全替换**，不取 max
-      // （两份的行号坐标系不同，取 max = 污染）
+      // 权威来源已经给了这个文件 → **行 / 分支 / 函数全部跨侧取并集**
+      //
+      // ⚠️ 2026-10-24 **改**：原来这里是「行/分支完全替换」（权威侧赢）。
+      //    那个规则的前提是「两侧行号坐标系不同」—— **实测已推翻**：
+      //    node 的 type-stripping **按原位抹掉类型**（行数不变）→ 行号是准的；
+      //    ts-node / coverage-v8 / 浏览器侧本来就有 source map → 行号也是准的。
+      //    ⇒ 两侧的第 N 行指的是**同一行** → 取 max 是「更全的真相」。
+      //
+      //    旧规则的实际后果（实测 24 个文件重叠、**568 条行命中被丢**）：
+      //    `spotify-wps.ts` 真实 91%（488/534）被写成 25.8%（138/534）；
+      //    `backup-crypto.ts` 真实 99.5%（406/408）被写成 76.7%（313/408）。
+      //    → 覆盖率被**低估**；且 diff 门禁会把「`.test.mjs` 确实测过的老代码」
+      //    判成「未覆盖」→ **误拦**。
+      //
+      //    分支同理：BRDA 的 key 是 `行,块,分支` → 同一坐标系 → 并集。
       if (authoritativeFiles.has(file)) {
-        // ⚠️ **但函数级（FNDA）可以跨侧并集** ——
-        //
-        // 行号会平移（node 的类型剥离会删掉纯类型行 → 命中行整体偏移，
-        // 实测 node 独有文件的命中行有 **29.7% 落在注释/空行上**），
-        // 所以行数据不能跨侧混合。
-        //
-        // 但**函数名是源码标识符**、不随转换器变 → FNDA 可以跨侧取 max：
-        // 同一个源文件被两条管线覆盖时，「这个函数跑没跑过」的真相是
-        // **两条管线的并集**。整文件替换会把这个真相丢掉 ——
-        // 实测丢了 **22 个函数**（backup-crypto 的 5 个加解密函数、
-        // spotify-wps 的 4 个、降级链的 pickFallbackSource/pickUpgradeSource…），
-        // 它们**确实被 .test.mjs 测过**，却因为权威侧（vitest 那条管线）
-        // 没跑到而显示 0 覆盖 → diff 门禁会把「改了这些函数」误判成
-        // 「新增的函数从没被执行过」→ **假红**。
-        //
         // ⚠️ **只从「对该文件有真实覆盖」的一侧并集**：c8 的 `--all` 会给
         //    **从没被执行过**的文件也列一份 0 命中的函数清单，而那些名字是
         //    c8 自己猜的（跟权威侧不一致）→ 混进来会**污染函数分母**
@@ -576,6 +732,19 @@ function main() {
         const sideHasRealCoverage =
           [...data.da.values()].some((v) => v > 0) || [...data.fnda.values()].some((v) => v > 0);
         if (sideHasRealCoverage) {
+          // ★ 行级并集：两侧行号同坐标系 → 取 max（详见上面的注释）
+          for (const [ln, hits] of data.da) {
+            const cur = target.da.get(ln) ?? 0;
+            if (hits > cur) target.da.set(ln, hits);
+          }
+          // ★ 分支级并集：BRDA 的 key 是 `行,块,分支` → 同坐标系 → 并集
+          for (const [key, taken] of data.brda) {
+            const cur = target.brda.get(key);
+            if (cur === undefined) target.brda.set(key, taken);
+            else if (cur === -1) target.brda.set(key, taken);
+            else if (taken !== -1) target.brda.set(key, Math.max(cur, taken));
+          }
+          // 函数级并集（函数名是源码标识符，跨转换器稳定）
           for (const [name, hits] of data.fnda) {
             const cur = target.fnda.get(name) ?? 0;
             if (hits > cur) target.fnda.set(name, hits);
@@ -603,14 +772,19 @@ function main() {
   }
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, writeLcov(merged));
+  const written = writeLcov(merged);
+  fs.writeFileSync(outPath, written);
 
-  // 汇总打印（给人看的）
+  // 汇总打印（给人看的）—— **与写出的文件口径一致**（分母只算真实代码行）
   let lf = 0;
   let lh = 0;
-  for (const data of merged.values()) {
-    lf += data.da.size;
-    lh += [...data.da.values()].filter((h) => h > 0).length;
+  for (const [file, data] of merged) {
+    const real = realCodeLines(file);
+    for (const [ln, hits] of data.da) {
+      if (real && ln <= real.total && !real.set.has(ln)) continue;
+      lf += 1;
+      if (hits > 0) lh += 1;
+    }
   }
   const pct = lf === 0 ? 0 : Math.round((lh / lf) * 10000) / 100;
   console.error(
