@@ -91,72 +91,62 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+// lcov 解析 + 「行级可信」判定的**唯一真源**（merge-lcov / lcov-summary /
+// coverage-diff-gate 三个脚本共用）—— 2026-10-24 之前它们各写一份，行为还不一样。
+const { parseLcov } = require('./lib/lcov.js');
 
-/** 解析一份 lcov.info → 按文件路径聚合的结构。 */
-function parseLcov(text) {
-  /** @type {Map<string, {da: Map<number, number>, brda: Map<string, number>, fnda: Map<string, number>, fn: Map<string, number>}>} */
-  const files = new Map();
+/**
+ * 把一份来源的数据并进 target。
+ *
+ * ⚠️ **行（DA）无条件并集**；**函数 / 分支只从「有实质命中」的一侧并**。
+ *
+ * 为什么分开：
+ * - **行**：c8 的 `--all` 会把**从没被加载过**的文件也列进来（DA 条目 =
+ *   1..N 连续的**真实源文件行**，实测行号是准的）→ 它们是 0% 覆盖，必须进
+ *   分母。否则「新增一个从没被测过的文件」**完全不影响总数** → 覆盖率在骗人。
+ * - **函数 / 分支**：c8 给 0 命中的文件列的函数清单，**函数名是 c8 自己猜的**
+ *   （跟权威侧不一致）→ 混进来会把同一个函数算成两个 → **污染函数分母**
+ *   （实测全局 % Funcs 从 88.6% 掉到 87.1%）。
+ */
+function mergeInto(target, data) {
+  for (const [k, v] of data.da) target.da.set(k, Math.max(target.da.get(k) ?? 0, v));
 
-  const ensure = (file) => {
-    let f = files.get(file);
-    if (!f) {
-      f = {
-        da: new Map(),
-        brda: new Map(),
-        fnda: new Map(),
-        fn: new Map(),
-      };
-      files.set(file, f);
-    }
-    return f;
-  };
+  const hasRealCoverage =
+    [...data.da.values()].some((v) => v > 0) || [...data.fnda.values()].some((v) => v > 0);
+  if (!hasRealCoverage) return;
 
-  for (const block of text.split('end_of_record')) {
-    const lines = block.split('\n');
-    let file = null;
-    for (const line of lines) {
-      if (line.startsWith('SF:')) {
-        file = line.slice(3).trim();
-        ensure(file);
-      } else if (line.startsWith('DA:')) {
-        // DA:<line>,<hits>[,<checksum>]
-        const [ln, hits] = line.slice(3).split(',');
-        const n = Number(ln);
-        const h = Number(hits);
-        if (!Number.isFinite(n)) continue;
-        const f = ensure(file);
-        f.da.set(n, Math.max(f.da.get(n) ?? 0, h));
-      } else if (line.startsWith('BRDA:')) {
-        // BRDA:<line>,<block>,<branch>,<taken>
-        const parts = line.slice(5).split(',');
-        if (parts.length < 4) continue;
-        const key = `${parts[0]},${parts[1]},${parts[2]}`;
-        const taken = parts[3] === '-' ? 0 : Number(parts[3]);
-        const f = ensure(file);
-        f.brda.set(key, Math.max(f.brda.get(key) ?? 0, Number.isFinite(taken) ? taken : 0));
-      } else if (line.startsWith('FNDA:')) {
-        // FNDA:<hits>,<name>  —— name 里可能带逗号，所以只在**剥掉前缀后**
-        // 找第一个逗号。
-        const rest = line.slice(5);
-        const idx = rest.indexOf(',');
-        if (idx < 0) continue;
-        const hits = Number(rest.slice(0, idx));
-        const name = rest.slice(idx + 1);
-        const f = ensure(file);
-        f.fnda.set(name, Math.max(f.fnda.get(name) ?? 0, Number.isFinite(hits) ? hits : 0));
-      } else if (line.startsWith('FN:')) {
-        // FN:<line>,<name>
-        const rest = line.slice(3);
-        const idx = rest.indexOf(',');
-        if (idx < 0) continue;
-        const ln = Number(rest.slice(0, idx));
-        const name = rest.slice(idx + 1);
-        const f = ensure(file);
-        f.fn.set(name, Math.max(f.fn.get(name) ?? 0, Number.isFinite(ln) ? ln : 0));
-      }
-    }
+  for (const [k, v] of data.brda) {
+    // taken = -1（不可达）是特殊值，不参与 max：只要有一边说"可达"，
+    // 那就是可达。
+    const cur = target.brda.get(k);
+    if (cur === undefined) target.brda.set(k, v);
+    else if (cur === -1) target.brda.set(k, v);
+    else if (v !== -1) target.brda.set(k, Math.max(cur, v));
   }
-  return files;
+  for (const [k, v] of data.fnda) target.fnda.set(k, Math.max(target.fnda.get(k) ?? 0, v));
+  for (const [k, v] of data.fn) target.fn.set(k, Math.max(target.fn.get(k) ?? 0, v));
+}
+
+/**
+ * 把多份来源合并成一份（**并集**）。
+ *
+ * ⚠️ **main() 和自测共用这一个** —— 自测里另写一份副本的话，合并逻辑改坏了
+ *    自测测不出来（仓库里踩过好几次同款坑：判据改了但自测是绿的）。
+ *
+ * @param {Array<{file: string, data: object}>} entries
+ * @returns {Map<string, object>}
+ */
+function mergeSources(entries) {
+  const merged = new Map();
+  for (const { file, data } of entries) {
+    let target = merged.get(file);
+    if (!target) {
+      target = { da: new Map(), brda: new Map(), fnda: new Map(), fn: new Map() };
+      merged.set(file, target);
+    }
+    mergeInto(target, data);
+  }
+  return merged;
 }
 
 /**
@@ -316,26 +306,14 @@ function selfTest() {
     ].join('\n'),
   );
 
-  const merged = new Map();
-  for (const input of [a, b]) {
-    const parsed = parseLcov(fs.readFileSync(input, 'utf8'));
-    for (const [file, data] of parsed) {
-      let target = merged.get(file);
-      if (!target) {
-        target = { da: new Map(), brda: new Map(), fnda: new Map(), fn: new Map() };
-        merged.set(file, target);
-      }
-      for (const [k, v] of data.da) target.da.set(k, Math.max(target.da.get(k) ?? 0, v));
-      for (const [k, v] of data.brda) {
-        const cur = target.brda.get(k);
-        if (cur === undefined) target.brda.set(k, v);
-        else if (cur === -1) target.brda.set(k, v);
-        else if (v !== -1) target.brda.set(k, Math.max(cur, v));
-      }
-      for (const [k, v] of data.fnda) target.fnda.set(k, Math.max(target.fnda.get(k) ?? 0, v));
-      for (const [k, v] of data.fn) target.fn.set(k, Math.max(target.fn.get(k) ?? 0, v));
-    }
-  }
+  // ⚠️ 自测**调真身**（mergeSources）—— 不在这里另写一份合并逻辑的副本。
+  //    另写副本的话，合并逻辑改坏了自测测不出来（仓库里踩过同款坑）。
+  const merged = mergeSources(
+    [a, b].flatMap((input) => {
+      const { files } = parseLcov(fs.readFileSync(input, 'utf8'));
+      return [...files].map(([file, data]) => ({ file, data }));
+    }),
+  );
   fs.writeFileSync(out, writeLcov(merged));
 
   const text = fs.readFileSync(out, 'utf8');
@@ -539,6 +517,64 @@ function selfTest() {
       );
     }
 
+    // ── 权威侧「存在但一行都没命中」的文件**不能被丢** ─────────────
+    //
+    // 2026-10-24 修的 bug：原来 `if (!hasRealCoverage) continue;` 让这类文件
+    // 既不进 merged，又因为 `if (input === authoritative) continue;` 把权威
+    // 输入整个跳过 → **两头落空 → 该文件从合并结果里消失**。
+    // 实测：`packages/renderer/src/desktop-lyrics/main.tsx` 就是这样丢的
+    // （auth 侧 71 个文件里有它、0 命中；合并后 137 个文件里没有它）。
+    //
+    // ⚠️ 它代表「这个文件**从没被任何测试加载过**」→ 0% 覆盖是**真相**
+    //    → 必须留在 lcov 里（否则「新增一个没被测过的文件」不影响总数）。
+    {
+      const fs7 = require('node:fs');
+      const os7 = require('node:os');
+      const p7 = require('node:path');
+      const tmp7 = fs7.mkdtempSync(p7.join(os7.tmpdir(), 'maestro-merge-keepzero-'));
+      const authInfo7 = p7.join(tmp7, 'auth.info');
+      const nodeInfo7 = p7.join(tmp7, 'node.info');
+      const out7 = p7.join(tmp7, 'out.info');
+      // 权威侧：一个**有命中**的文件 + 一个**一行都没命中**的文件
+      fs7.writeFileSync(
+        authInfo7,
+        [
+          'SF:packages/x/src/covered.ts',
+          'DA:1,3',
+          'end_of_record',
+          'SF:packages/x/src/never-loaded.ts',
+          'DA:1,0',
+          'DA:2,0',
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+      // node 侧：只有 covered.ts（never-loaded.ts 在 node 侧根本不存在）
+      fs7.writeFileSync(
+        nodeInfo7,
+        ['SF:packages/x/src/covered.ts', 'DA:1,9', 'end_of_record', ''].join('\n'),
+      );
+      const argv7 = process.argv.slice(2);
+      process.argv = [argv7[0], argv7[1], '--authoritative', authInfo7, out7, nodeInfo7, authInfo7];
+      main();
+      const merged7 = fs7.readFileSync(out7, 'utf8');
+      fs7.rmSync(tmp7, { recursive: true, force: true });
+      expect(
+        '权威侧 0 命中的文件**不能被丢**（它代表「从没被加载」→ 0% 是真相）',
+        merged7.includes('SF:packages/x/src/never-loaded.ts'),
+        `0 命中的文件被丢了：\n${merged7}`,
+      );
+      const block7 =
+        merged7
+          .split('end_of_record')
+          .find((b) => b.includes('SF:packages/x/src/never-loaded.ts')) || '';
+      expect(
+        '权威侧 0 命中的文件：DA 条目保留（LF:2 / LH:0 → 计入分母、分子为 0）',
+        /LF:2/.test(block7) && /LH:0/.test(block7),
+        `0 命中的文件的 DA 不对：\n${merged7}`,
+      );
+    }
+
     // ── 只有「对该文件有真实覆盖」的一侧才参与函数并集 ─────────────
     //
     // c8 的 `--all` 会给**从没被执行过**的文件也列一份 0 命中的函数清单，
@@ -648,7 +684,7 @@ function main() {
     console.error('       node scripts/merge-lcov.js --self-test');
     process.exit(2);
   }
-  // --authoritative <file>：该文件是**权威**的，它覆盖的文件完全替换其它来源
+  // --authoritative <file>：该文件是**优先来源**（先并进来）
   let authoritative = null;
   let argv = args;
   const ai = args.indexOf('--authoritative');
@@ -658,48 +694,30 @@ function main() {
   }
   const [outPath, ...inputs] = argv;
 
-  const merged = new Map();
-  /** 权威来源覆盖的文件 → 其它来源对这些文件的贡献要丢弃 */
-  const authoritativeFiles = new Set();
+  /** @type {Array<{file: string, data: object}>} */
+  const entries = [];
 
-  const mergeInto = (target, data) => {
-    for (const [k, v] of data.da) target.da.set(k, Math.max(target.da.get(k) ?? 0, v));
-    for (const [k, v] of data.brda) {
-      // taken = -1（不可达）是特殊值，不参与 max：只要有一边说"可达"，
-      // 那就是可达。
-      const cur = target.brda.get(k);
-      if (cur === undefined) target.brda.set(k, v);
-      else if (cur === -1) target.brda.set(k, v);
-      else if (v !== -1) target.brda.set(k, Math.max(cur, v));
-    }
-    for (const [k, v] of data.fnda) target.fnda.set(k, Math.max(target.fnda.get(k) ?? 0, v));
-    for (const [k, v] of data.fn) target.fn.set(k, Math.max(target.fn.get(k) ?? 0, v));
-  };
-
-  // 权威来源**先**处理 → 记录它覆盖了哪些文件
+  // 权威来源**先**处理
   //
-  // ⚠️ **只有权威侧有「实质覆盖」的文件才进 `authoritativeFiles`**（>0 的行/函数命中）。
+  // ⚠️ 2026-10-24 **修了一个丢文件的 bug**：原来这里是
+  //    `if (!hasRealCoverage) continue;` —— 权威侧「**存在但一行都没命中**」的
+  //    文件既不进 `merged`，又因为下面 `if (input === authoritative) continue;`
+  //    把权威输入整个跳过 → **两头落空 → 该文件从合并结果里消失**。
+  //    实测：`packages/renderer/src/desktop-lyrics/main.tsx` 在 auth 侧（71 个
+  //    文件里）存在、0 命中，合并后 137 个文件里**没有它**。
+  //    ⇒ 权威侧的文件**一个都不能丢**：0 命中的文件也要进来
+  //    （它代表「这个文件从没被加载过」→ 0% 覆盖是真相）。
   //
-  // 原因：有些文件**只被 `.test.mjs` 覆盖**（node 侧，有真实用例）。权威侧
-  // （coverage-v8）里它不存在 → 如果无条件接管，它会变成「0% 覆盖」——
-  // 比实际更差（实际是被测过的）。
-  //
-  // 所以：权威侧 hits 全 0 → 整个文件**交给非权威侧**处理。
+  // ⚠️ `--authoritative` 现在的语义 = **优先来源**（先并进来）。
+  //    H16 之后两侧的**行号已是同一坐标系**（node 的 type-stripping 按原位
+  //    抹掉类型 → 行位置完整保留）→ 并集是幂等的 → 这个参数**不再改变合并
+  //    结果**，只影响处理顺序。保留它是为了兼容调用方（scripts/test.sh），
+  //    以及将来若真的出现坐标系不同的来源。
   if (authoritative) {
     if (fs.existsSync(authoritative)) {
-      const parsed = parseLcov(fs.readFileSync(authoritative, 'utf8'));
-      for (const [file, data] of parsed) {
-        const hasRealCoverage =
-          [...data.da.values()].some((v) => v > 0) || [...data.fnda.values()].some((v) => v > 0);
-        if (!hasRealCoverage) continue; // 权威侧无实质覆盖 → 交给非权威侧
-        const target = {
-          da: new Map(data.da),
-          brda: new Map(data.brda),
-          fnda: new Map(data.fnda),
-          fn: new Map(data.fn),
-        };
-        merged.set(file, target);
-        authoritativeFiles.add(file);
+      const { files } = parseLcov(fs.readFileSync(authoritative, 'utf8'));
+      for (const [file, data] of files) {
+        entries.push({ file, data });
       }
     } else {
       console.error(`── 跳过缺失的权威覆盖率文件：${authoritative}`);
@@ -714,70 +732,25 @@ function main() {
       console.error(`── 跳过缺失的覆盖率文件：${input}`);
       continue;
     }
-    const parsed = parseLcov(fs.readFileSync(input, 'utf8'));
-    for (const [file, data] of parsed) {
-      // 权威来源已经给了这个文件 → **行 / 分支 / 函数全部跨侧取并集**
-      //
-      // ⚠️ 2026-10-24 **改**：原来这里是「行/分支完全替换」（权威侧赢）。
-      //    那个规则的前提是「两侧行号坐标系不同」—— **实测已推翻**：
-      //    node 的 type-stripping **按原位抹掉类型**（行数不变）→ 行号是准的；
-      //    ts-node / coverage-v8 / 浏览器侧本来就有 source map → 行号也是准的。
-      //    ⇒ 两侧的第 N 行指的是**同一行** → 取 max 是「更全的真相」。
-      //
-      //    旧规则的实际后果（实测 24 个文件重叠、**568 条行命中被丢**）：
-      //    `spotify-wps.ts` 真实 91%（488/534）被写成 25.8%（138/534）；
-      //    `backup-crypto.ts` 真实 99.5%（406/408）被写成 76.7%（313/408）。
-      //    → 覆盖率被**低估**；且 diff 门禁会把「`.test.mjs` 确实测过的老代码」
-      //    判成「未覆盖」→ **误拦**。
-      //
-      //    分支同理：BRDA 的 key 是 `行,块,分支` → 同一坐标系 → 并集。
-      if (authoritativeFiles.has(file)) {
-        // ⚠️ **只从「对该文件有真实覆盖」的一侧并集**：c8 的 `--all` 会给
-        //    **从没被执行过**的文件也列一份 0 命中的函数清单，而那些名字是
-        //    c8 自己猜的（跟权威侧不一致）→ 混进来会**污染函数分母**
-        //    （实测全局 % Funcs 从 88.6% 掉到 87.1%）。
-        const target = merged.get(file);
-        const sideHasRealCoverage =
-          [...data.da.values()].some((v) => v > 0) || [...data.fnda.values()].some((v) => v > 0);
-        if (sideHasRealCoverage) {
-          // ★ 行级并集：两侧行号同坐标系 → 取 max（详见上面的注释）
-          for (const [ln, hits] of data.da) {
-            const cur = target.da.get(ln) ?? 0;
-            if (hits > cur) target.da.set(ln, hits);
-          }
-          // ★ 分支级并集：BRDA 的 key 是 `行,块,分支` → 同坐标系 → 并集
-          for (const [key, taken] of data.brda) {
-            const cur = target.brda.get(key);
-            if (cur === undefined) target.brda.set(key, taken);
-            else if (cur === -1) target.brda.set(key, taken);
-            else if (taken !== -1) target.brda.set(key, Math.max(cur, taken));
-          }
-          // 函数级并集（函数名是源码标识符，跨转换器稳定）
-          for (const [name, hits] of data.fnda) {
-            const cur = target.fnda.get(name) ?? 0;
-            if (hits > cur) target.fnda.set(name, hits);
-            // 权威侧没有这个函数（只被 .test.mjs 那条管线看到）→ 把 FN 补上，
-            // 否则会写出一条没有对应 FN 的 FNDA（lcov 格式不完整）。
-            if (!target.fn.has(name) && data.fn.has(name)) {
-              target.fn.set(name, data.fn.get(name));
-            }
-          }
-        }
-        continue;
-      }
-      let target = merged.get(file);
-      if (!target) {
-        target = {
-          da: new Map(),
-          brda: new Map(),
-          fnda: new Map(),
-          fn: new Map(),
-        };
-        merged.set(file, target);
-      }
-      mergeInto(target, data);
+    const { files } = parseLcov(fs.readFileSync(input, 'utf8'));
+    for (const [file, data] of files) {
+      entries.push({ file, data });
     }
   }
+
+  // ⚠️ 2026-10-24 **统一成一条路径**：原来「权威侧覆盖过的文件」走
+  //    「行/分支/函数跨侧并集」、其它文件走 mergeInto —— 现在两者**等价**
+  //    （都是 max 并集），因为 H16 之后两侧的行号已是**同一坐标系**
+  //    （node 的 type-stripping 按原位抹掉类型 → 行位置完整保留）。
+  //
+  //    旧规则的实际后果（实测 24 个文件重叠、**568 条行命中被丢**）：
+  //    `spotify-wps.ts` 真实 91%（488/534）被写成 25.8%（138/534）；
+  //    `backup-crypto.ts` 真实 99.5%（406/408）被写成 76.7%（313/408）。
+  //    → 覆盖率被**低估**；且 diff 门禁会把「`.test.mjs` 确实测过的老代码」
+  //    判成「未覆盖」→ **误拦**。
+  //
+  //    分支同理：BRDA 的 key 是 `行,块,分支` → 同一坐标系 → 并集。
+  const merged = mergeSources(entries);
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   const written = writeLcov(merged);
