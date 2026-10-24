@@ -75,6 +75,20 @@
     **0 valid identities**（只有腾讯 IOA MDM 的、不受信）→ electron-builder 打包时
     直接跳过 codesigning（"skipped macOS application code signing"）。
     ⇒ **没有 Developer ID 证书 → 不签名 / 不 notarize 的 dmg 会被 Gatekeeper 拦。**
+  - **拿「Developer ID Application」证书**（notarize 必需；注意**不是**「Apple
+    Development」——那只是开发签名，Apple 不会给它 notarize）：
+    - **路线 A（推荐，省事）**：Xcode → Settings → Accounts → 登录你的 Apple ID →
+      Manage Certificates → 左下 `+` → **Developer ID Application** → Done。
+      **私钥自动生成在本机登录钥匙串** → electron-builder 直接能发现，不用导 .p12。
+    - **路线 B（无 Xcode）**：developer.apple.com → Certificates, Identifiers &
+      Profiles → Certificates → `+` → **Developer ID Application** → **Generate CSR**
+      （用「钥匙串访问 → 证书助理 → 证书颁发机构」生成 .csr）→ 上传 → 下载 `.cer`
+      → 双击导入钥匙串。
+      ⚠️ **证书本身不含私钥**——只导 `.cer` 等于没签上，必须同时有私钥在钥匙串里。
+    - 落地后自检（应看到 1 条 `Developer ID Application` 身份）：
+      ```bash
+      security find-identity -v -p codesigning
+      ```
 - [x] 42. `pip install --upgrade castlabs-evs`
   - ✅ **2026-10-24 实测：已经装好了** —— `~/.castlabs-evs-venv/bin/` 下
     `evs-vmp` 和 `evs-account` 都在，`evs-vmp sign-pkg --help` 正常。
@@ -94,7 +108,61 @@ sign-pkg` 不存在（见 #43）→ 用
   - ⚠️ 前提：`npm run pack` 得先跑通（**已通**，见 `specs/stability/tasks.md` A2）
 - [ ] 45. `afterPack-vmp.cjs` 钩子**生产模式**（无 `SKIP_VMP=1`）跑通：sign → codesign → notarize → dmg
   - 依赖 #41（Developer ID 证书）+ #43（EVS 凭据）
-  - ⚠️ notarize 还需要 **Apple 专用密码**（不是登录密码）+ 在 `electron-builder`
-    配置里配 `appleId` / `appleIdPassword` / `teamId`。
+  - ✅ **配置前置已补上**：`packages/electron/package.json` 的 `build.mac` 里加了
+    `"notarize": true`。⚠️ **不加会崩**：2026-10-24 实测 electron-builder 24.13.3
+    `generateNotarizeOptions` 在 `mac.notarize` **完全没设**时，走「Apple ID + 专用
+    密码」路线会在 `const { appBundleId, ascProvider } = options` 处对 `undefined`
+    解构 → `TypeError: Cannot destructure property 'appBundleId' of 'options'`。
+    实测三种配置 × 三条路线：
+    | `mac.notarize` | 路线 B（Apple ID+密码） | 路线 A（钥匙串） | 路线 C（API key） |
+    | -------------- | ----------------------- | ---------------- | ----------------- |
+    | 不设           | ❌ **TypeError 崩**     | ✅               | ✅                |
+    | `true`         | ✅                      | ✅               | ✅                |
+    | `{ teamId }`   | ✅（转 notarytool）     | ✅（带 teamId）  | ✅（带 teamId）   |
+  - **notarize 凭据一律走环境变量，不要写进 package.json**（2026-10-24 实测
+    electron-builder 24.13.3 `macPackager.js:getNotarizeOptions` 只认这 3 组 env）：
+
+    | 路线                          | 环境变量                                                  | 说明                                      |
+    | ----------------------------- | --------------------------------------------------------- | ----------------------------------------- |
+    | **A. 钥匙串 profile（推荐）** | `APPLE_KEYCHAIN_PROFILE`（可选 `APPLE_KEYCHAIN`）         | 密码存进 login 钥匙串，磁盘上没有明文     |
+    | B. Apple ID + 专用密码        | `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD`                | 走旧的 legacy notarize 工具               |
+    | C. ASC API key                | `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` | electron-builder 官方最推荐（issue 7859） |
+
+  - **Apple 专用密码怎么拿**：account.apple.com → 登录 → 「Sign-in and Security」
+    → 滚到「App-specific passwords」→ `+` 生成 → **只显示一次**，当场存进密码管理器。
+    前提：该 Apple ID 已开**双因素认证**。⚠️ 这**不是登录密码**，填错 Apple 会直接拒收。
+  - **路线 A 的落地命令**：
+    ```bash
+    xcrun notarytool store-credentials "maestro-notary" \
+      --apple-id "you@example.com" \
+      --team-id "XXXXXXXXXX" \
+      --password "xxxx-xxxx-xxxx-xxxx"
+    # 之后打包时：
+    export APPLE_KEYCHAIN_PROFILE=maestro-notary
+    ```
+    teamId 在 developer.apple.com → Membership 页面可见（10 位大写字母数字）。
+  - ⚠️ **两级「静默跳过」，都要自己查日志**（2026-10-24 实测源码路径 + 实跑日志）：
+
+    | 日志里的信号                                     | 含义                                                                                                                                               |
+    | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `skipped macOS application code signing`         | **没证书** → `doSign` 在 `identity == null` 处直接 `return false`（`macPackager.js:195`）→ **notarize 阶段压根没被调用**，日志里连 warn 都不会出现 |
+    | 有签名日志、但**没有** `notarization successful` | 3 组 env 一个都没设 → `getNotarizeOptions` 返回 `undefined` → `notarizeIfProvided` 只 `log.warn('skipped macOS notarization')` 后继续出包          |
+    | `notarization successful`                        | ✅ 真的过了一遍                                                                                                                                    |
+
+    ⇒ **别只看「打包成功 / dmg 出来了」**——2026-10-24 实跑 `SKIP_VMP=1 npm run pack`
+    就是 `PACK_EXIT=0`、dmg 146MB、`pack:verify` 全绿，但**日志里一条 notarize 行都没有**
+    （因为本机没证书，签名整步被跳过）。
+    验收：`spctl -a -vvv -t install release/Maestro-1.0.0-arm64.dmg`
+    （应显示 `accepted` + `source=Notarized Developer ID`）。
+
+  - ✅ **不用自己写 entitlements**：electron-builder 24 的 `hardenedRuntime` 默认
+    **true**（`scheme.json` → `MacConfiguration.properties.hardenedRuntime.default=true`），
+    默认 entitlements 模板 `app-builder-lib/templates/entitlements.mac.plist` 已带齐
+    notarize 必需的三条（`allow-jit` / `allow-unsigned-executable-memory` /
+    `disable-library-validation`）。⇒ 证书到位后 notarize 前提自动满足。
+  - ✅ **签名时序已经是对的**（2026-10-24 读 electron-builder 24.13.3 源码确认顺序）：
+    `afterPack`（VMP 签名，行 125）→ `doSign`（行 ~260）→ `notarizeIfProvided`（行 275）
+    → dmg。⇒ VMP 签名在 codesign **之前**，符合 castLabs 要求，
+    `afterPack-vmp.cjs` 的设计不用改。
 - [ ] 46. 装 EVS-signed dmg → 登录 Premium → 播整曲 / Spotify 桌面端可见 "maestro-xxxx" 设备 / transport / token 1h 重连不掉播
 - [ ] 47. CI 化（可选）：EVS 凭据进 GitHub Actions secret，`EVS_NO_ASK=1` 跑 release tag 自动出 prod-signed dmg

@@ -704,6 +704,50 @@ typescript` 还在不在，被剪就**立刻失败**并说清怎么恢复。
   且 `~/.castlabs-evs/` 凭据目录不存在（**EVS 账号从没注册过**）——
   这两步都得本人来，详见 `specs/stability/tasks.md` A1。
 
+- **notarize 缺一个配置前置 —— 走「Apple ID + 专用密码」路线会直接 TypeError 崩**（2026-10-24）
+
+  A1（`specs/spotify/tasks.md` #41–#45）剩下的全是外部动作（买 Apple Developer
+  账号、注册 EVS 账号、拿专用密码），但**代码侧其实还差一个前置**：electron-builder
+  的 `build.mac` 里**没有 `notarize` 字段**。
+
+  实测 electron-builder 24.13.3 `macPackager.js:generateNotarizeOptions`，`mac.notarize`
+  **完全没设**时走「Apple ID + 专用密码」路线，会在
+  `const { appBundleId, ascProvider } = options` 处对 `undefined` 解构 →
+  `TypeError: Cannot destructure property 'appBundleId' of 'options'` →
+  **打包直接崩**（不是警告）。三种配置 × 三条凭据路线实测：
+
+  | `mac.notarize` | 路线 B（Apple ID+专用密码） | 路线 A（钥匙串 profile） | 路线 C（ASC API key） |
+  | -------------- | --------------------------- | ------------------------ | --------------------- |
+  | 不设           | ❌ **TypeError 崩**         | ✅                       | ✅                    |
+  | `true`         | ✅                          | ✅                       | ✅                    |
+  | `{ teamId }`   | ✅（转 notarytool）         | ✅（带 teamId）          | ✅（带 teamId）       |
+
+  修法：build 配置加 `"notarize": true`（凭据仍走环境变量，不进 package.json）。
+  无凭据时只是 `log.warn('skipped macOS notarization')` → 不影响现有打包。
+
+  **顺带留档两个「静默跳过」信号**（都实测过，避免「以为 notarize 了」）：
+  - **没证书** → `doSign` 在 `identity == null` 处直接 `return false`
+    （`macPackager.js:195`）→ **notarize 阶段压根没被调用**，日志里连 warn 都没有。
+    2026-10-24 实跑 `SKIP_VMP=1 npm run pack`：`PACK_EXIT=0`、dmg 146MB、
+    `pack:verify` 全绿，但**日志里一条 notarize 行都没有**。
+  - **有证书但 3 组 env 一个都没设** → `getNotarizeOptions` 返回 `undefined` →
+    `notarizeIfProvided` 只 warn 一句就继续出包。
+    ⇒ **验收信号只有一个：日志里出现 `notarization successful`**，
+    再加 `spctl -a -vvv -t install release/Maestro-1.0.0-arm64.dmg`
+    显示 `accepted` + `source=Notarized Developer ID`。
+
+  另两点（读源码 + 实跑确认，省掉后续摸索）：
+  - `hardenedRuntime` 在 electron-builder 24 里**默认 true**，默认 entitlements 模板
+    `app-builder-lib/templates/entitlements.mac.plist` 已带齐 notarize 必需的三条
+    （`allow-jit` / `allow-unsigned-executable-memory` / `disable-library-validation`）
+    → **不用自己写 entitlements 文件**。
+  - 签名时序天然正确：`afterPack`（VMP，行 125）→ `doSign`（~260）→
+    `notarizeIfProvided`（275）→ dmg —— VMP 签名在 codesign **之前**，
+    `afterPack-vmp.cjs` 的设计不用改。
+
+  同批把 Developer ID 证书申请入口、Apple 专用密码的获取路径、三条凭据路线
+  写成可直接执行的 runbook，落 `specs/spotify/tasks.md` #41 / #45。
+
 - **搜索路径上的两个 POST 端点没有错误隔离 —— 一次内部抖动就变成 500**（2026-10-23）
 
   用户报「搜索歌曲时偶尔出现 POST 500」。查下来**不是**搜索路径坏了（大修期间
