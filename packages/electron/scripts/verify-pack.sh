@@ -25,6 +25,34 @@ echo "app.asar 大小："
 ls -lh "$APP/Contents/Resources/app.asar" 2>/dev/null | awk '{print "  " $5}' || echo "  ❌ 没有 app.asar"
 
 echo
+echo "── 产物新鲜度（防「打进旧版本」）──────────────────"
+# ⚠️ 为什么查这个：打包真正带走的是 Resources/server（server/dist）和
+# Resources/renderer（renderer/dist）—— 曾经**没有**在打包前重建它们 →
+# 打进去的是上一次构建的产物（实测 server/dist 比源码旧一天）→
+# 「打包成功」是**假象**，发出去的是旧代码。
+#
+# 判据：包里的产物 mtime 必须**不早于**当前源码的最新 mtime。
+# （包里的文件 mtime = 构建时刻，electron-builder 拷贝不重写 → 可比）
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+SRC_NEWEST=$(find "$REPO_ROOT/packages/server/src" "$REPO_ROOT/packages/renderer/src" \
+  -type f \( -name '*.ts' -o -name '*.tsx' \) -exec stat -f '%m %N' {} \; 2>/dev/null \
+  | sort -rn | head -1 | cut -d' ' -f1)
+STALE=0
+for rel in "server/main.js" "renderer/index.html"; do
+  f="$APP/Contents/Resources/$rel"
+  [ -f "$f" ] || continue
+  mt=$(stat -f '%m' "$f")
+  if [ -n "$SRC_NEWEST" ] && [ "$mt" -lt "$SRC_NEWEST" ]; then
+    echo "❌ $rel 比源码还旧（产物 $(date -r "$mt" '+%m-%d %H:%M') < 源码 $(date -r "$SRC_NEWEST" '+%m-%d %H:%M')）"
+    echo "   → 打包前没重新构建 → 打进去的是**旧代码**。跑 npm run pack（它会自己构建全部产物）。"
+    STALE=1
+  else
+    echo "✅ $rel 不比源码旧（$(date -r "$mt" '+%m-%d %H:%M')）"
+  fi
+done
+[ "$STALE" -eq 0 ] || echo "❌ 产物陈旧 —— 这个包不能发。"
+
+echo
 echo "── sidecar server ───────────────────────────────"
 SERVER="$APP/Contents/Resources/server"
 if [ ! -f "$SERVER/main.js" ]; then

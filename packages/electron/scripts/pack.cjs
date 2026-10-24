@@ -67,6 +67,54 @@ const path = require('node:path');
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 
+// ── 自测：防止「打包前不构建」这个 bug 回来 ──────────────────────────
+//
+// ## 为什么需要自测
+//
+// 这个脚本的**主体**是「跑 electron-builder」—— 自测跑不动它（真打包要几分钟、
+// 要装依赖、要下 electron）。但「**打包前有没有构建**」这个不变式，是可以用
+// **结构检查**钉住的：
+//
+//   1. 「构建全部产物」这一步必须存在；
+//   2. 而且必须排在 electron-builder **之前**（否则打进去的还是旧产物）；
+//   3. 必备产物清单里必须有 **server** 和 **renderer** 的产物 —— 那两个才是
+//      extraResources 真正带走的（只构建 electron 自己的 dist/main.js 是不够的）。
+//
+// 这不是「测实现细节」：这个 bug 的本质就是「顺序/清单错了，而主流程跑起来
+// 完全正常」→ 只有结构检查能抓住。
+/* SELF-TEST-BEGIN */
+if (process.argv.includes('--self-test')) {
+  const failures = [];
+  // ⚠️ **必须先把自测块自己剥掉**再找那些字符串 —— 否则自测里写的
+  //    `['run', 'build']` 会**先被命中**（它就在自测块里）→ 永远判定为
+  //    「构建步骤存在且在前面」→ 变异测试时自测不会红。
+  //    （这坑我踩过一次：变异 1「删掉构建步骤」，自测照样绿。）
+  const src = fs
+    .readFileSync(__filename, 'utf8')
+    .replace(/\/\* SELF-TEST-BEGIN \*\/[\s\S]*?\/\* SELF-TEST-END \*\//, '');
+  const buildIdx = src.indexOf("['run', 'build']");
+  const builderIdx = src.indexOf('electron-builder/out/cli/cli.js');
+
+  if (buildIdx < 0) failures.push('脚本里找不到「构建全部产物」这一步');
+  if (builderIdx < 0) failures.push('找不到 electron-builder 的调用');
+  if (buildIdx >= 0 && builderIdx >= 0 && buildIdx > builderIdx) {
+    failures.push('构建步骤排在 electron-builder **之后** → 打进去的还是旧产物');
+  }
+  for (const must of ['packages/server/dist/main.js', 'packages/renderer/dist/index.html']) {
+    if (!src.includes(must)) {
+      failures.push(`必备产物清单里少了 ${must}（它是 extraResources 真正带走的）`);
+    }
+  }
+  if (failures.length > 0) {
+    console.error(`❌ pack 自测失败（${failures.length} 项）:`);
+    for (const f of failures) console.error(`   ✗ ${f}`);
+    process.exit(1);
+  }
+  console.log('✅ pack 自测通过（打包前构建全部产物，且 server/renderer 都在清单里）');
+  process.exit(0);
+}
+/* SELF-TEST-END */
+
 function fail(msg) {
   console.error(`\n❌ [pack] ${msg}\n`);
   process.exit(1);
@@ -139,30 +187,53 @@ if (!fs.existsSync(path.join(electronDist, 'Electron.app'))) {
   );
 }
 
-// ── 4. electron 的 dist 必须是新的（打包的入口文件在 dist/main.js）─────────
+// ── 4. **所有**产物都必须是这一轮源码构建出来的 ───────────────────────
 //
-// `pack` 脚本**不含** build（build 是独立脚本）→ 缺 `dist/main.js` 时
-// electron-builder 会报：
-//   Application entry file "dist/main.js" … does not exist
+// ⚠️ **2026-10-24 修的真 bug**：这一步以前**只** tsc 了 electron 自己的
+// `dist/main.js` —— 但打包真正带走的是 **server/dist** 和 **renderer/dist**
+// （extraResources 里 `from: ../server/dist` / `../renderer/dist`）！
+// 那两个**没有重建** → **打进去的是上一次构建的产物** →
+// 「打包成功」是个**假象**，发出去的是旧代码。
 //
-// 这里**直接跑一次 tsc**（几秒）→ 保证打出来的包跟当前源码一致，
-// 免得「忘了先 build → 打进一个旧版本」。
-console.log('[pack] 编译 electron（tsc）…');
+// 实测（修之前）：`packages/server/dist` 的最新文件比
+// `packages/server/src/**` 的最新改动**旧一天** —— 也就是当天合入的
+// 所有 server 侧改动（错误隔离 / 原子写 / NL 检索 / 覆盖率合并器…）
+// **一个都没进包**。
+//
+// 同一个 PR 里我们给 **electron 版本**做了三方漂移检测（package.json 声明的
+// commit SHA ↔ lockfile ↔ 实际安装产物），理由原话是「那属于**静默发错货**」
+// —— 这里也该有同样的待遇：**打进包的每个产物，都必须是这一轮源码构建出来的**。
+//
+// 构建顺序 = 依赖顺序：common → server → renderer → electron
+//   （server 的 tsc 依赖 common 的 dist；renderer 的 tsc -b 也依赖它）
+// 根 package.json 的 `build` 脚本已经是这个顺序，直接用它。
+console.log('[pack] 构建全部产物（common → server → renderer → electron）…');
 try {
-  execFileSync(process.execPath, [require.resolve('typescript/bin/tsc')], {
-    stdio: 'inherit',
-    cwd: PKG_DIR,
-  });
+  execFileSync('npm', ['run', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' });
 } catch (err) {
   console.error(
-    `\n❌ [pack] tsc 编译失败（exit ${err?.status ?? '?'}）。\n` +
-      '   → 先修类型错误，或手动跑 `npm run build:electron`。\n',
+    `\n❌ [pack] 构建失败（exit ${err?.status ?? '?'}）。\n` +
+      '   → 先修构建错误再打包（**别拿旧产物凑** —— 那正是本步要防的事）。\n',
   );
   process.exit(err?.status ?? 1);
 }
-if (!fs.existsSync(path.join(PKG_DIR, 'dist', 'main.js'))) {
-  console.error('\n❌ [pack] 编译后仍没有 dist/main.js —— electron 入口没产出。\n');
-  process.exit(1);
+
+// 构建跑完了 ≠ 产物真的在（构建脚本被改名/删掉时会静默打出一个空包）
+const REQUIRED_ARTIFACTS = [
+  ['packages/common/dist/index.js', 'common 的产物'],
+  ['packages/server/dist/main.js', 'server 的产物（会被打进 Resources/server）'],
+  ['packages/renderer/dist/index.html', 'renderer 的产物（会被打进 Resources/renderer）'],
+  ['packages/electron/dist/main.js', 'electron 的入口（app.asar 里）'],
+];
+const missing = REQUIRED_ARTIFACTS.filter(
+  ([rel]) => !fs.existsSync(path.join(REPO_ROOT, rel)),
+);
+if (missing.length > 0) {
+  fail(
+    '构建跑完了，但产物不在：\n' +
+      missing.map(([rel, what]) => `   · ${rel}（${what}）`).join('\n') +
+      '\n   → 构建脚本被改名/删掉了？先修构建，再打包。',
+  );
 }
 
 // ── 5. 7za 的执行位（npm 不会给没有 bin 字段的包加执行位）────────────────────
