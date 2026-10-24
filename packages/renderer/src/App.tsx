@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
 import { useVolume } from './hooks/useVolume';
+import { useMediaSession } from './hooks/useMediaSession';
 import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
 import { useLyrics } from './hooks/useLyrics';
 import { useDesktopLyrics } from './hooks/useDesktopLyrics';
@@ -101,6 +102,30 @@ export default function App() {
   // 音量（2026-10-20 接上）：此前 useVolume 从没被调用过 → 音量偏好从不推给
   // 任何 <audio>，界面上也没有控件。slots 而非单个元素：crossfade 有两个槽位。
   const volume = useVolume(player.slots, player.track);
+  // 系统媒体控件 / 耳机媒体键 / macOS「正在播放」（specs/desktop-integration）。
+  // 一套 mediaSession 顶三件事：Chromium 在 macOS 上把它接到了
+  // MPNowPlayingInfoCenter，所以设一次 metadata，系统控件 / 媒体键 / 正在播放
+  // 一起点亮。
+  //
+  // ⚠️ 媒体键**只走这一条路**：Electron 在 macOS 上把媒体键实现成
+  // globalShortcut 时会占住通道并**关掉 Chromium 自己的处理** → 所以
+  // `global-shortcuts.ts` 只注册非媒体键。
+  useMediaSession(player.track, player.playing, player.currentTime, player.duration, {
+    // mediaSession 分 play / pause 两个动作，而 usePlayer 只有一个 toggle
+    // → 用当前状态决定要不要 toggle（少一次无谓的状态翻转）。
+    play: () => {
+      if (!player.playing) player.handlePlayPause();
+    },
+    pause: () => {
+      if (player.playing) player.handlePlayPause();
+    },
+    prev: () => player.handlePrev(),
+    next: () => player.handleSkip(),
+    seek: (seconds: number) => player.seek(seconds),
+    stop: () => {
+      if (player.playing) player.handlePlayPause();
+    },
+  });
   spotifyTierRef.current = auth.auth.tier ?? undefined;
   // auth 就绪后把回调写进 ref，usePlayer 的 onError 兜底会用它。
   onAuthExpiredRef.current = (p: MusicProvider) => auth.markExpired(p);
@@ -384,20 +409,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.track?.id, player.track?.liked]);
 
-  // Tray transport controls (Electron): map tray commands onto the player and
-  // report state back so the tray label/tooltip stay in sync. usePlayer stays
-  // the single source of truth — no duplicate playback logic in main. We route
-  // through a ref so the IPC listener is registered once (not re-subscribed on
-  // every currentTime tick).
+  // Playback commands from the main process (Electron): the macOS tray menu
+  // **and** the global hotkeys share one channel ('tray:command'). We map them
+  // onto the player and report state back so the tray label/tooltip stay in
+  // sync. usePlayer stays the single source of truth — no duplicate playback
+  // logic in main. We route through a ref so the IPC listener is registered
+  // once (not re-subscribed on every currentTime tick).
+  //
+  // 音量 ±（'volumeup' / 'volumedown'）是 2026-10-24 随全局热键加的：
+  // 主进程只发命令，**音量怎么算在 renderer**（useVolume 是音量的唯一事实来源）。
+  const VOLUME_STEP = 0.05;
   const trayHandlersRef = useRef({
     playpause: player.handlePlayPause,
     next: player.handleSkip,
     prev: player.handlePrev,
+    volumeup: () => volume.changeVolume(Math.min(1, volume.volume + VOLUME_STEP)),
+    volumedown: () => volume.changeVolume(Math.max(0, volume.volume - VOLUME_STEP)),
   });
   trayHandlersRef.current = {
     playpause: player.handlePlayPause,
     next: player.handleSkip,
     prev: player.handlePrev,
+    volumeup: () => volume.changeVolume(Math.min(1, volume.volume + VOLUME_STEP)),
+    volumedown: () => volume.changeVolume(Math.max(0, volume.volume - VOLUME_STEP)),
   };
   // 启动时查一次 main 端 Widevine CDM 状态。Spotify WPS 初始化失败时
   // （"No supported keysystem was found"）这里能看到 castLabs components
