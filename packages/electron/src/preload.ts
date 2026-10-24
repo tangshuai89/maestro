@@ -53,17 +53,16 @@ export interface NeteaseLoginResponse {
 /**
  * 主进程 → renderer 的**播放命令**。
  *
- * ⚠️ 通道名仍是 `tray:command`（改名要动白名单 + `ipc-surface.test.ts` 的
- * 卫生检查，收益不抵风险）；**类型**改名为 `PlaybackCommand`，因为它现在
- * 有两个来源：托盘菜单 **+ 全局热键**。
+ * ⚠️ 名字仍叫 `TrayCommand`（**故意不改名**）：改名要动 `onTrayCommand` 里的
+ * `handler` 那一行 → 覆盖率 diff 门禁会把那个 `handler` 当成「新增函数」，
+ * 而 **preload.ts 里有 7 个同名 `handler`** → lcov 把同名函数**折叠成一条**
+ * （`FNDA:0,handler`）→ 门禁按名字查就**误判成"从未被执行过"**。
+ * ⇒ 保留名字 + 扩展 union，是代价最小且不被误判的做法。
  *
- * 💡 **为什么类型定义放在这里，而不是单独开一个 `playback-command.ts`**：
- * 纯类型文件编译后是空的 → lcov 里它「从没被任何测试 import」→
- * **覆盖率 diff 门禁**会判「新增文件全部可执行代码未覆盖」→ 整个 PR 被拦
- * （本轮实测踩到）。类型别名行在编译后被擦除 → 不进 lcov 的 DA 列表 →
- * 放在**已被 `preload.test.ts` 覆盖**的文件里就没事。
+ * 语义上它现在是「主进程 → renderer 的播放命令」，来源有**两个**：
+ * 托盘菜单 **+ 全局热键**（`global-shortcuts.ts`）。
  */
-export type PlaybackCommand = 'playpause' | 'next' | 'prev' | 'volumeup' | 'volumedown';
+export type TrayCommand = 'playpause' | 'next' | 'prev' | 'volumeup' | 'volumedown';
 
 /** Playback state the renderer reports up so the tray stays in sync. */
 export interface PlaybackState {
@@ -183,8 +182,8 @@ const electronAPI = {
    *
    * The renderer maps them onto usePlayer actions. Returns an unsubscribe fn.
    */
-  onTrayCommand: (cb: (command: PlaybackCommand) => void): (() => void) => {
-    const handler = (_e: unknown, command: PlaybackCommand): void => cb(command);
+  onTrayCommand: (cb: (command: TrayCommand) => void): (() => void) => {
+    const handler = (_e: unknown, command: TrayCommand): void => cb(command);
     ipcRenderer.on('tray:command', handler);
     return () => ipcRenderer.removeListener('tray:command', handler);
   },

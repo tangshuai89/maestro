@@ -1,4 +1,4 @@
-import type { PlaybackCommand } from './preload';
+import type { TrayCommand } from './preload';
 
 /**
  * 全局热键（App **不在前台**也能控制播放）。
@@ -38,7 +38,7 @@ export interface GlobalShortcutDeps {
   /** electron 的 `globalShortcut` */
   globalShortcut: GlobalShortcutApi;
   /** 发播放命令给 renderer —— 复用托盘那条 `tray:command` 通道 */
-  sendCommand: (command: PlaybackCommand) => void;
+  sendCommand: (command: TrayCommand) => void;
   /**
    * 桌面歌词浮窗开关。**主进程拥有这个窗口**（`DesktopLyricsController`），
    * 所以这里直接调 controller，不绕 renderer；切换后 main 会把新状态

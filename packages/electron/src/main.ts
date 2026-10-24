@@ -26,7 +26,7 @@ import {
 } from './desktop-lyrics/desktop-lyrics-controller';
 import { oauthBuffer } from './auth/oauth-buffer';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts';
-import type { PlaybackCommand } from './preload';
+import type { TrayCommand } from './preload';
 import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
@@ -221,7 +221,7 @@ function showMainWindow(): void {
  * 检查都钉着它）—— 但**来源有两个**：托盘菜单 和 全局热键
  * （`global-shortcuts.ts`）。命令集见 `playback-command.ts`。
  */
-function sendTrayCommand(command: PlaybackCommand): void {
+function sendTrayCommand(command: TrayCommand): void {
   // T9 (consistency-fixes F4)：mainWindow 在 quit/close 期间可能已 destroyed，
   // 直接 send 会抛 `Object has been destroyed`。isDestroyed 检查后静默
   // 丢弃——tray click 在 app 退出时本就没意义。
