@@ -799,6 +799,43 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **`npm run pack` 不重建 server / renderer → 打进去的是上一次的产物（静默发旧货）**（2026-10-24）
+
+  打包真正带走的是 `Resources/server`（来自 `server/dist`）和 `Resources/renderer`
+  （来自 `renderer/dist`）—— 两者都是 `extraResources`。而 `scripts/pack.cjs`
+  在打包前**只** tsc 了 electron 自己的 `dist/main.js`，**那两个产物一次都没重建**。
+
+  实测（修之前）：`packages/server/dist` 的最新文件比 `packages/server/src/**`
+  的最新改动**旧一天** —— 也就是当天合入的所有 server 侧改动（错误隔离 / 原子写 /
+  NL 检索 / 覆盖率合并器…）**一个都没进包**。「打包成功」是个假象。
+
+  讽刺的是：同一个 PR 里我们给 **electron 版本**做了三方漂移检测
+  （package.json 声明的 commit SHA ↔ lockfile ↔ 实际安装产物），理由原话是
+  「那属于**静默发错货**」—— 但 server / renderer 的产物没做同样处理。
+
+  修法（两处）：
+  - `pack.cjs` 第 4 步从「只编译 electron」改成**构建全部四个产物**
+    （common → server → renderer → electron，根 `npm run build` 已经是这个依赖
+    顺序），并断言四个产物**真的在**（构建脚本被改名/删掉时不能静默打空包）。
+  - `verify-pack.sh` 加一条**新鲜度断言**：包里的产物 mtime 必须不早于当前源码
+    的最新 mtime（抓「打包前没重新构建」）。
+
+  回归防护：`packages/electron/scripts/pack.cjs --self-test`（已挂进 `test:ci`）
+  —— 它做**结构检查**（主流程是「跑 electron-builder」，自测跑不动它）：
+  ① 「构建全部产物」这一步存在；② 它排在 electron-builder **之前**；
+  ③ 必备产物清单里有 server 和 renderer 的产物。
+
+  ⚠️ 写这个自测时踩了一个**自己踩自己**的坑：第一版直接 grep 源码里的
+  `['run', 'build']` → 那个字符串**就在自测代码里** → 永远命中自己 →
+  「删掉构建步骤」这个变异**自测照样绿**。修法：先把自测块自己剥掉再搜
+  （`/* SELF-TEST-BEGIN */ … /* SELF-TEST-END */`）。
+  三个变异点实测全部被抓：删构建步骤 / 构建排到 electron-builder 之后 /
+  产物清单里去掉 renderer。
+
+  实测（修之后）：`SKIP_VMP=1 npm run pack` → dmg 145M，包里的
+  `Resources/server/music/music.service.js` **含**当天合入的新代码 ✓。
+
+
 - **打包管线：`npm run pack` 端到端出 dmg —— 路上修了 4 个真 bug，其中 2 个是
   「把开发环境拆了」和「打出来的 app 启动即崩」**（2026-10-24）
 
