@@ -14,7 +14,6 @@
  *  - GET  /music/lyrics            → 200 {lyrics:null}（无 provider 登录）
  *  - GET  /music/lyrics/availability → 200 {available:false}
  *  - GET  /music/deezer/editorials → 200 {items:[...]}
- *  - PUT  /music/deezer/preset     → 非法 preset → 400；合法 → 200
  *  - GET  /music/cover-proxy       → 缺 url → 400；非法 url → 400；
  *                                      非白名单 host → 403
  *
@@ -390,93 +389,61 @@ async function main() {
       );
     }
 
-    // ── 18. PUT /music/deezer/preset 非法 preset → 400 ───────────
-    {
-      const r = await call('PUT', '/music/deezer/preset', { preset: 'bogus-genre' });
-      expect('18. PUT /music/deezer/preset 非法 → 400', r.status === 400, `实际 ${r.status}`);
-    }
-
-    // ── 19. PUT /music/deezer/preset 缺 preset → 400 ─────────────
-    {
-      const r = await call('PUT', '/music/deezer/preset', {});
-      expect('19. PUT /music/deezer/preset 缺 preset → 400', r.status === 400, `实际 ${r.status}`);
-    }
-
-    // ── 20. PUT /music/deezer/preset 合法 → 200 ──────────────────
-    //   先拿一个合法 preset 名
-    {
-      const ed = await call('GET', '/music/deezer/editorials');
-      const edJson = ed.json as { items?: Array<{ id?: string; name?: string }> };
-      const items = edJson.items;
-      if (items && items.length > 0) {
-        // Deezer preset 用小写 name，取第一个 editorial 的 id 并小写化
-        const presetName = (items[0].id || items[0].name || '').toLowerCase();
-        if (presetName) {
-          const r = await call('PUT', '/music/deezer/preset', { preset: presetName });
-          expect(
-            `20. PUT /music/deezer/preset 合法(${presetName}) → 200`,
-            r.status === 200,
-            `实际 ${r.status}: ${r.text.slice(0, 100)}`,
-          );
-        }
-      }
-    }
-
-    // ── 21. GET /music/cover-proxy 缺 url → 400 ──────────────────
+    // ── 18. GET /music/cover-proxy 缺 url → 400 ──────────────────
     {
       const r = await call('GET', '/music/cover-proxy');
-      expect('21. GET /music/cover-proxy 缺 url → 400', r.status === 400, `实际 ${r.status}`);
+      expect('18. GET /music/cover-proxy 缺 url → 400', r.status === 400, `实际 ${r.status}`);
     }
 
-    // ── 22. GET /music/cover-proxy 非法 url → 400 ────────────────
+    // ── 19. GET /music/cover-proxy 非法 url → 400 ────────────────
     {
       const r = await call('GET', '/music/cover-proxy?url=not-a-url');
-      expect('22. GET /music/cover-proxy 非法 url → 400', r.status === 400, `实际 ${r.status}`);
+      expect('19. GET /music/cover-proxy 非法 url → 400', r.status === 400, `实际 ${r.status}`);
     }
 
-    // ── 23. GET /music/cover-proxy 非白名单 host → 403 ───────────
+    // ── 20. GET /music/cover-proxy 非白名单 host → 403 ───────────
     {
       const r = await call('GET', '/music/cover-proxy?url=https://evil.com/img.jpg');
       expect(
-        '23. GET /music/cover-proxy 非白名单 host → 403',
+        '20. GET /music/cover-proxy 非白名单 host → 403',
         r.status === 403,
         `实际 ${r.status}`,
       );
     }
 
-    // ── 24. GET /music/cover-proxy 非 http 协议 → 400 ────────────
+    // ── 21. GET /music/cover-proxy 非 http 协议 → 400 ────────────
     {
       const r = await call('GET', '/music/cover-proxy?url=ftp://y.gtimg.cn/img.jpg');
-      expect('24. GET /music/cover-proxy ftp 协议 → 400', r.status === 400, `实际 ${r.status}`);
+      expect('21. GET /music/cover-proxy ftp 协议 → 400', r.status === 400, `实际 ${r.status}`);
     }
 
-    // ── 25. GET /music/liked?provider=qq → 200 ───────────────────
+    // ── 22. GET /music/liked?provider=qq → 200 ───────────────────
     {
       const r = await call('GET', '/music/liked?provider=qq');
       expect(
-        `25. GET /music/liked?provider=qq → 200（实际 ${r.status}）`,
+        `22. GET /music/liked?provider=qq → 200（实际 ${r.status}）`,
         r.status === 200,
         `实际 ${r.status}: ${r.text.slice(0, 100)}`,
       );
     }
 
-    // ── 26. GET /music/lyrics/search?title=x&artist=y → 200 ──────
+    // ── 23. GET /music/lyrics/search?title=x&artist=y → 200 ──────
     {
       const r = await call('GET', '/music/lyrics/search?title=test&artist=test');
       expect(
-        `26. GET /music/lyrics/search → 200（实际 ${r.status}）`,
+        `23. GET /music/lyrics/search → 200（实际 ${r.status}）`,
         r.status === 200,
         `实际 ${r.status}: ${r.text.slice(0, 100)}`,
       );
     }
 
-    // ── 27. POST /music/library/import → 200/4xx ─────────────────
+    // ── 24. POST /music/library/import → 200/4xx ─────────────────
     //   无登录态 → importLiked 会尝试拉各平台，无平台登录时返回空结果
     {
       const r = await call('POST', '/music/library/import', {});
       // 可能 200（空导入）或 4xx（无登录），都算「路由可达」
       expect(
-        `27. POST /music/library/import → 2xx/4xx（实际 ${r.status}）`,
+        `24. POST /music/library/import → 2xx/4xx（实际 ${r.status}）`,
         r.status >= 200 && r.status < 500,
         `实际 ${r.status}: ${r.text.slice(0, 100)}`,
       );
@@ -491,7 +458,7 @@ async function main() {
       console.error('   记录: ' + JSON.stringify(networkTargets));
       failed++;
     } else {
-      console.log('✅ 28. 零真实网络请求（网络陷阱没被触发）');
+      console.log('✅ 25. 零真实网络请求（网络陷阱没被触发）');
       passed++;
     }
   }

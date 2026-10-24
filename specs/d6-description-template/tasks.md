@@ -1,5 +1,23 @@
 # D6 — Tasks
 
+> ⛔ **2026-10-24 归档本 spec 的待做项（Phase B / C 共 7 条）**
+>
+> **为什么归档**：这 7 条**全是 Figma 文件里的写操作**（给 v4-ABC 14 个组件补
+> `description` 里的 AI_CONTRACT 段、跑 audit 脚本、往 PR 模板加 checkbox）——
+> **它们不产生任何 app 功能**，产出物是「设计稿自己会说话」。
+>
+> **为什么现在做**：盘点时发现 32 条同类待办散在 3 个 spec 里（d5-code-connect 9 +
+> d6-description-template 7 + figma-legacy-retrofit 16），
+> **清单长度本身在稀释真待办的可见度**。
+>
+> **阻塞状态（如需复活再核）**：需要 Figma **写**权限（云端 MCP 的
+> `use_figma` / `upload_assets` 在 Starter 团队有 20 次/月限额，2026-10-23 实测）；
+> 本仓没有 FIGMA_TOKEN（需用户自带）。
+>
+> **怎么复活**：把下面的 `[~]` 改回 `[ ]`。仓库内工具链**都还在**：
+> `scripts/figma-aether-v4-audit-d6.mjs`（`npm run test:description`，已接进 `test:ci`，
+> 支持 REST + fixture 双模式）、`scripts/figma-v4-command.md` 的 description 强制段。
+
 ## Phase A — 仓库内（已完成）
 
 - [x] **A1** `specs/d6-description-template/spec.md` — 范围 + 验收 + audit 检查项
@@ -12,16 +30,16 @@
 
 ## Phase B — 用户跑（待 D1 真跑完后）
 
-- [ ] **B1** 用户在 Claude Code 跑完 D1 + 验证 D1 6 屏 description 已写 AI_CONTRACT
-- [ ] **B2** 跑 `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit-d6.mjs` 检查 v4-ABC 14 个组件 description
-- [ ] **B3** 如 FAIL，按报告补 description 模板段（手动或 use_figma 跑补丁段）
-- [ ] **B4** 跑 `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit.mjs` 回归
+- [~] **B1** 用户在 Claude Code 跑完 D1 + 验证 D1 6 屏 description 已写 AI_CONTRACT
+- [~] **B2** 跑 `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit-d6.mjs` 检查 v4-ABC 14 个组件 description
+- [~] **B3** 如 FAIL，按报告补 description 模板段（手动或 use_figma 跑补丁段）
+- [~] **B4** 跑 `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit.mjs` 回归
 
 ## Phase C — 持续
 
-- [ ] **C1** Figma 端给 v4-ABC 14 个组件补 description（v4-command.md 模板）—— use_figma 段脚本
-- [ ] **C2** 任何新建组件的 PR 必含 description 模板审计（PR template 加 checkbox）
-- [ ] **C3** D5_NEW 10 个组件建好后也跑 audit-d6 确认合规
+- [~] **C1** Figma 端给 v4-ABC 14 个组件补 description（v4-command.md 模板）—— use_figma 段脚本
+- [~] **C2** 任何新建组件的 PR 必含 description 模板审计（PR template 加 checkbox）
+- [~] **C3** D5_NEW 10 个组件建好后也跑 audit-d6 确认合规
 
 ## Phase B 执行记录（2026-09-20）—— audit-d6 目前是**假警报**
 

@@ -520,8 +520,9 @@ export class MusicService {
       batch = await this.netease.fetchRadioBatch(ps);
     } else {
       // Deezer / future anonymous providers. Honour the user's preset
-      // (set via /music/deezer/preset) and default to 'all' = international
-      // pop. Storing it in the session keeps the picker persistent.
+      // (set via `GET /music/next?provider=deezer&preset=xxx`, which the
+      // controller writes into session.prefs) and default to 'all' =
+      // international pop. Storing it in the session keeps the picker persistent.
       const preset = session.prefs?.deezerPreset ?? 'all';
       batch = await this.deezer.fetchRadioBatch(ps as ProviderSession, preset);
     }

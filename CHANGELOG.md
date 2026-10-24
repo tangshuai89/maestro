@@ -2251,6 +2251,90 @@ evs-vmp` → `~/.local/bin` → brew），找不到时抛带安装命令的可�
   `.th-reco-running` 移除。
 - **`ISSUES.md` 归档与跨引用修复**（`a8bb7d6`）：7 份过时文档归档。
 
+### Removed
+
+- **`PUT /music/deezer/preset` 端点删了** —— 它是同一份状态的**第二条写路径，
+  而 renderer 从不调它**（2026-10-24）
+
+  切 Deezer 流派实际走的是 `GET /music/next?provider=deezer&preset=xxx`，
+  那个路由在调 service 之前顺手把 preset 落到 `session.prefs`。死端点留着 =
+  一份没人调的 API + 一份测死路径的测试文件 + **两套校验语义**
+  （死端点会 400 拒非法 preset，活路径不校验 —— 未知 preset 在
+  `fetchRadioBatch` 里回退到 132 国际流行榜，不算错）。
+
+  连带删掉：
+
+  - `packages/server/src/music/deezer-preset.test.ts`（7 个用例全测死路径；
+    它后半段的 `setPref` 持久化断言在
+    `common/session.persist-spotify.test.ts` 里已重复覆盖）
+  - `DeezerMusicProvider.getPresetNames()` / `isValidPreset()` 两个 static 方法
+    （只被那个端点用；preset 列表现在由 `getEditorials()` 暴露给 UI）
+  - `music.controller.e2e.test.ts` 的用例 18/19/20（剩下的重编号为 18–25）
+
+  **替代覆盖**：`packages/server/src/music/deezer-preset-live.test.ts`（4 用例）
+  测**活路径**，含「强杀后重启 preset 仍在」。
+
+- **Figma 侧 32 条待办归档**（`[~]`，2026-10-24）—— `specs/d5-code-connect`（9）+
+  `specs/d6-description-template`（7）+ `specs/figma-legacy-retrofit`（16）
+
+  这 32 条**全是 Figma 文件里的写操作**（跑 `use_figma` 段、建 component set、
+  补 description 里的 AI_CONTRACT、把旧稿提升成组件）—— **不产生任何 app 功能**，
+  产出物是「设计稿与代码对齐」。归档理由是**待办清单本身在稀释真待办的可见度**：
+  清单里 60+ 条有 32 条是这一类，真待办被埋在设计债里。
+
+  仓库内的工具链**全部保留且是好的**（`figma-code-connect-validate.mjs` /
+  `figma-aether-v4-audit-d6.mjs` / `figma-retrofit-*.mjs`，都已接进 `test:ci`），
+  缺的只是「有写权限的 Figma 账号」。复活方式：把 `[~]` 改回 `[ ]`。
+
+### Fixed
+
+- **Deezer 流派选择的持久化：活的那条路径从来没排过写入**（2026-10-24）
+
+  删死端点时顺手查出来的**真 bug**。当年给死端点修过这个问题
+  （`specs/consistency-fixes` G2：「直接改 `session.prefs` 不调 `persist()`
+  → 重启丢 preset」→ 改走 `setPref`），**但活的那条路径当时漏了** ——
+  `GET /music/next?provider=deezer&preset=xxx` 至今仍是直接改 `session.prefs`。
+
+  **症状**：选完流派 → **App 被强杀**（sidecar 是 SIGKILL，Nest 的
+  `onModuleDestroy` 不会跑 → 不会补一次 flush）→ 重启 → 流派回到默认。
+  正常退出不丢（`onModuleDestroy` 会把整个 blob 写出去）—— 正是这种
+  "有时候丢有时候不丢"让它一直没人发现。
+
+  修法：改走 `this.sessionService.setPref(session, 'deezerPreset', preset)`。
+  新测试 `deezer-preset-live.test.ts` 模拟「进程被强杀」（不调 `flushSync`，
+  只等 200ms 写盘 debounce 过去，再从磁盘重新读）→ 改坏了**必须红**。
+  **变异验证**：把 `setPref` 还原成直接改 `session.prefs` → 测试红
+  （`actual: undefined, expected: 'rock'`）→ 还原修复 → 复绿。
+
+- **`NEXT-ITERATION.md` §7.4 说的是反的**（2026-10-24）
+
+  文档写着「🔴 音量功能整条是死代码」，**但代码里早就接好了** ——
+  `App.tsx:103` 调 `useVolume(player.slots, player.track)`、
+  `SettingsModal.tsx:64` 有音量滑块 + 静音开关、`useVolume.ts:31-33` 把音量
+  **推给 A/B 两个槽位**（只推活跃那个的话，crossfade 淡出时会音量突变）。
+
+  断线发生在 2026-10-20 当天，修完之后**文档没跟着改** → 照着它排期会
+  做重复劳动。教训：**文档声称的状态要以代码为准**。
+  §7.4 已改写为「已接好 + 实际接线点 + 验收状态」。
+
+- **Tailwind / shadcn 的 Phase 2 冻结**（`specs/shadcn-migration`，2026-10-24）
+
+  实测采用率：**33 个 SCSS 文件** vs **2 个用了 tailwind 工具类的 tsx**，
+  而这 2 个里**还有一个是测试沙盒**（`components/__sandbox/ButtonSmoke.tsx`）
+  → **真实业务组件里只有 1 个**（`modals/NLPlaylistModal.tsx`）用了 tailwind。
+  `components/ui/` 的 5 个 shadcn 组件总共被引用 9 处。
+
+  样式**两套并存**，改一处要同时想 CSS 和 class，而收益只覆盖 9 处调用。
+  关键：**AETHER 令牌体系（SCSS + CSS 变量 + Figma dump 同步）本身是健康的**
+  （token 漂移门禁绿、硬编码棘轮绿、D11 视觉回归零漂移）—— 要搬的是 SCSS
+  **写法**，而视觉语言已经稳定，搬进 Tailwind 是**为了工具而工具**。
+
+  **是冻结不是归档**：Phase 1 的底座（`tailwind.config.js` / `postcss.config.js` /
+  `components.json` / `tokens-bridge.scss` / 5 个 `ui/` 组件）**全部保留**。
+  文档里写了三条**解冻条件**。⚠️ Phase 2 批 1 原本要做的
+  「`_liked-modal.scss` 硬编码色 → 令牌」**不是 Tailwind 迁移**（是令牌化），
+  已由 `specs/token-adoption` S3-11 / S3-12 接手，不受本冻结影响。
+
 ## [2026-09-03] - Pre-CHANGELOG baseline
 
 Phase 0–5 + 前端架构重构（PR #13）+ Spotify v2 全曲播放 + ❤ 写回（PR #34–#39）+

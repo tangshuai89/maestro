@@ -89,10 +89,18 @@
 
 ## D. Controller 路由补强（小工作量，快速清）
 
-- [x] **D4** `/music/deezer/preset` 切换持久化 + 不存在 preset → 400
-  - 新增 `PUT /music/deezer/preset` 端点（校验 + 持久化到 session.prefs）
-  - DeezerMusicProvider 加 `isValidPreset` / `getPresetNames` static 方法
-  - 测试：`packages/server/src/music/deezer-preset.test.ts`（7 用例全绿）
+- [~] **D4** `/music/deezer/preset` 切换持久化 + 不存在 preset → 400 — **2026-10-24 归档（端点已删）**
+  - **当时做的**：新增 `PUT /music/deezer/preset` 端点（校验 + 持久化到 session.prefs）
+    - `DeezerMusicProvider.isValidPreset` / `getPresetNames` static 方法
+    - 测试 `packages/server/src/music/deezer-preset.test.ts`（7 用例全绿）
+  - **为什么归档**：这个端点是同一份状态的**第二条写路径，而 renderer 从不调它** ——
+    切 Deezer 流派实际走 `GET /music/next?provider=deezer&preset=xxx`。
+    留着 = 一份没人调的 API + 一份测死路径的测试 + 两套校验语义。
+  - **删掉时顺带发现真 bug**：活的那条写路径（`next()` 路由）当年修过同一个问题
+    （consistency-fixes G2）却**漏了** —— 它直接改 `session.prefs` 而不调 `setPref`
+    → **不排写入** → 「选完流派、App 被强杀 → 重启流派回默认」。
+    已修（改走 `setPref`）并补了测活路径的
+    `packages/server/src/music/deezer-preset-live.test.ts`（4 用例，含强杀重启场景）。
 
 - [x] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验
   - **修复生产 bug**：`config.ts` 读 `MASTERO_INTERNAL_TOKEN`（多了 R）→ guard 永远失效
@@ -1128,9 +1136,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                            → GET /music/stream/:provider/:trackId
-                                                                                              → musicService.getStreamUrl() 拿上游 URL
-                                                                                                → proxyAudio() 转发到上游 CDN
+                                                                                                → GET /music/stream/:provider/:trackId
+                                                                                                  → musicService.getStreamUrl() 拿上游 URL
+                                                                                                    → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

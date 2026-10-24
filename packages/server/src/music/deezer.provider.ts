@@ -177,15 +177,11 @@ export class DeezerMusicProvider {
     }));
   }
 
-  /** Valid preset names (keys of DEEZER_EDITORIALS_PRESET). */
-  static getPresetNames(): string[] {
-    return Object.keys(DEEZER_EDITORIALS_PRESET);
-  }
-
-  /** Check if a preset name is valid. */
-  static isValidPreset(preset: string): boolean {
-    return preset in DEEZER_EDITORIALS_PRESET;
-  }
+  // ⚠️ 这里**曾经**有过 `getPresetNames()` / `isValidPreset()` —— 已删
+  //   （2026-10-24，随死端点 `PUT /deezer/preset` 一起）。
+  //   它们只被那个端点用；preset 列表现在由 `getEditorials()`（活路由
+  //   `GET /deezer/editorials`）暴露给 UI，非法 preset 由
+  //   `fetchRadioBatch` 内部回退到 132，不需要额外校验入口。
 
   /**
    * 取一批电台歌曲。默认走国际流行榜（editorial 132），可用 source 切
