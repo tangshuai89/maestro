@@ -18,66 +18,32 @@
 //   - 「收藏真的落库了」（刷新后还在）而不是「按钮变红了」
 //
 // ⚠️ **会话 cookie 必须同站**（实测踩到，症状极隐蔽）：
-//   页面在 `http://127.0.0.1:4173`、server 在 `http://localhost:3200` →
+//   页面在 `http://127.0.0.1:4173`、server 在 `http://127.0.0.1:3210` →
 //   **跨站** → server 发的是 `SameSite=Lax` 的会话 cookie → 浏览器**不发送**
 //   → 每个请求都被 server 当成新 session → 收藏写进了用完即弃的 session
 //   → 「刷新后红心还在」这条断言永远失败，而且**看起来像产品的 bug**。
 //   修法：注入 `window.electronAPI.apiBase`（**生产环境本来就靠它**把 sidecar
 //   的 origin 推给 renderer，见 api.ts 的 resolveApiOrigin）指向
-//   `http://127.0.0.1:3200` → 页面与 API 同站 → cookie 正常带上。
+//   `http://127.0.0.1:3210` → 页面与 API 同站 → cookie 正常带上。
+// ⚠️ **E2E server 用专用端口 3210**（不是 3200）：3200 是 Electron sidecar 的
+//   端口 → 用户开着 app 时它一直在监听 → 端口冲突 + Playwright 静默复用**真**
+//   server → 测错对象，还会把红心写进用户真实账号。
 // ─────────────────────────────────────────────────────────────
 import { test, expect } from '@playwright/test';
+import { installElectronStub, seedProvider as seedProviderLocal } from './electronStub.mjs';
 
-const API_ORIGIN = 'http://127.0.0.1:3200';
+const API_ORIGIN = 'http://127.0.0.1:3210';
 
 /**
- * 让 App 跳过 SourceSelect 直接进剧场（与 App 自带 `?demo=` 同一个 localStorage 键），
- * 并把 API origin 指到**同站**地址（见文件头的 cookie 说明）。
+/**
+ * 让 App 跳过 SourceSelect 直接进剧场 + 把 API origin 指到**同站**的 E2E server。
  *
- * ⚠️ `window.electronAPI` 必须是**完整**的替身，不能只给 `apiBase`：
- * App 里有 `window.electronAPI?.reportPlayerMode(mode)` 这种写法 ——
- * `?.` 只保护「对象为 null」，**不保护「方法不存在」** → 少一个方法就是
- * `TypeError: reportPlayerMode is not a function` → effect 抛错 → **整个 App
- * 空白**（实测：`.th-canvas` 根本不存在，症状极难定位）。
- *
- * `isElectron: false` = 让 App 走**浏览器**分支（E2E 不需要登录窗口，
- * 登录态是 server 侧假出来的；走 Electron 分支会去调 IPC 登录）。
+ * 替身的**完整性**要求、以及为什么必须用**专用端口**（3210，不是 app sidecar 的
+ * 3200），见 tests/e2e/electronStub.mjs 的文件头。
  */
 async function seedProvider(page, provider = 'qq') {
-  await page.addInitScript(
-    ({ p, api }) => {
-      try {
-        localStorage.setItem('music-provider', p);
-      } catch {
-        /* private mode：交给 SourceSelect 分支，断言会明确失败 */
-      }
-      // 生产环境由 preload 推 sidecar origin（api.ts 的 resolveApiOrigin）
-      window.electronAPI = {
-        apiBase: api,
-        isElectron: false,
-        internalToken: '',
-        reportPlayerMode: () => {},
-        reportPlaybackState: () => {},
-        setWindowButtonsVisible: () => {},
-        getWidevineStatus: async () => ({ ready: false, status: 'e2e' }),
-        onTrayCommand: () => () => {},
-        consumeOAuthCallback: async () => null,
-        qqLogin: async () => ({ success: false, error: 'e2e' }),
-        neteaseLogin: async () => ({ success: false, error: 'e2e' }),
-        openExternal: () => {},
-        // ⚠️ desktopLyrics 的方法面要**完整**（preload 的那一组）：
-        // useDesktopLyrics 会无保护地调 `api.getStatus()` / `api.onChanged(cb)`
-        // → 少一个就是 TypeError → React 崩 → 整个页面空白。
-        desktopLyrics: {
-          pushState: () => {},
-          setEnabled: () => {},
-          getStatus: async () => ({ enabled: false }),
-          onChanged: () => () => {},
-        },
-      };
-    },
-    { p: provider, api: API_ORIGIN },
-  );
+  await seedProviderLocal(page, provider);
+  await installElectronStub(page, API_ORIGIN);
 }
 
 /** 收集真实发生的跨包请求（用来断言「链路真的穿过去了」）。 */
@@ -161,6 +127,63 @@ test.describe('跨包全链路', () => {
     await expect(page.locator('.th-like')).toHaveAttribute('aria-pressed', 'true', {
       timeout: 20_000,
     });
+  });
+
+  test('一个平台的流取不到 → 自动降级到另一个平台（跨包降级链）', async ({ page }) => {
+    // 这条链**单测碰不到**：server 的音频代理真的返 502 → renderer 的
+    // onError → 跨平台兜底 → 换源 → UI 跟着换。
+    //
+    // 假 provider 里第二首歌「QQ 源取不到流、网易云源是好的」→ 点它。
+    await seedProvider(page);
+    const calls = trackApiCalls(page);
+    await page.goto('/');
+    await expect(page.locator('.th-canvas')).toBeVisible({ timeout: 30_000 });
+
+    await page.locator('.titlebar-btn.search-btn').click();
+    await page.locator('.sp-search-input').fill('E2E');
+    await expect(page.locator('.sp-result-count')).toContainText('2 MATCHES', { timeout: 20_000 });
+
+    // 第二首歌：它的 QQ 源是坏的
+    await page.locator('.sp-item .sp-row').nth(1).click();
+
+    // 音频元素最终换到了**网易云**的流（而不是一直卡在 QQ）
+    await expect
+      .poll(async () => await page.locator('audio').first().getAttribute('src'), {
+        timeout: 30_000,
+      })
+      .toContain('/music/stream/netease/');
+
+    // 而且真的打过 QQ 的流（先失败再换源，不是压根没试）
+    //
+    // ⚠️ **这里必须用 poll，不能用裸断言**（2026-10-24 实测踩到）：
+    // 上面那个 poll 等的是 `<audio src>` **属性**，而 src 是渲染层**同步**设的、
+    // 浏览器发请求是**异步**的 → 断言可能跑在请求之前。
+    // 实测：CI 上这条连续两次都输掉这个竞态（本地加 1.5s 等待就 5/5 全过），
+    // 而降级链**本身是好的**（netease 的流真的返 200、音频真的在放）。
+    await expect
+      .poll(() => calls.some((c) => c.url.includes('/music/stream/qq/')), { timeout: 30_000 })
+      .toBe(true);
+    await expect
+      .poll(() => calls.some((c) => c.url.includes('/music/stream/netease/')), { timeout: 30_000 })
+      .toBe(true);
+
+    // 换源**不是**终点：得真的在放（用户可见的症状是「有声音」，不是「src 变了」）
+    await expect
+      .poll(
+        async () =>
+          await page
+            .locator('audio')
+            .first()
+            .evaluate((el) => ({ t: el.currentTime, err: el.error && el.error.code })),
+        { timeout: 30_000 },
+      )
+      .toMatchObject({ err: null });
+    await expect
+      .poll(
+        async () => await page.locator('audio').first().evaluate((el) => el.currentTime),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
   });
 
   test('搜索无结果 → 明确空态，不崩', async ({ page }) => {

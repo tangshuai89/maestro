@@ -148,7 +148,17 @@ export class OAuthCallbackBuffer {
   peek(): BufferedOAuthEntry | null {
     if (!this.pending) return null;
     if (Date.now() - this.pending.receivedAt > TTL_MS) {
-      this.pending = null;
+      // ⚠️ **这里不能清 pending**：peek 的语义是「看一眼，**不消费**」。
+      //
+      //   之前这里写的是 `this.pending = null` → main 的
+      //   'consume-oauth-callback' handler 是「先 peek() 打诊断日志，再
+      //   consume()」→ peek 把**过期**条目清掉 → consume() 看到 pending 为空
+      //   → **注册一个 waiter 永久等待**（TTL 10 分钟且 timer 是 unref 的）
+      //   → renderer 的「等授权回来」永远转圈，直到 TTL 超时才放弃。
+      //   日志里只有 `hasPending=false, no pending`，看不出发生了什么。
+      //
+      //   清理交给 consume()：它自己也有 TTL 判断 → 过期时清掉并返回 null
+      //   （上层据此报错「授权已过期」，而不是干等）。
       return null;
     }
     return this.pending;

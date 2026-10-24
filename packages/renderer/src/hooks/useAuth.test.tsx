@@ -45,6 +45,13 @@
  *   F5 redeem 失败 → AUTH_INVALID
  *   F6 OAuth 回调 2s 超时 → 转 IPC listener + 3s poll 兜底
  *   F7 浏览器兜底轮询 90s 仍未登录 → AUTH_TIMEOUT
+ *   F8 poll 兜底从 buffer 捞到 code+state → 兑换成功
+ *   F9 poll 捞到 buffer 里的 error → AUTH_CANCELLED（不是「登录失败」）
+ *   F10 IPC 推来 error → AUTH_CANCELLED（与 buffer 路径同一个错误码）
+ *   F11 poll 自己抛错 → 只记警告，下一个 tick 继续捞
+ *   F12 poll 一直拿不到东西 → 保持等待，不误报失败
+ *   F13 拒绝授权后不留永久轮询 —— timer 和 IPC listener 都被清掉
+ *   F14 IPC 和 poll 同时到达 → 只结算一次（迟到的结果被守卫丢弃）
  *
  *  G. 定时器
  *   G1 登录尝试 120s 未完成 → 取消（timeout）+ 上报 cancel
@@ -152,6 +159,31 @@ function mountSwitchable(initial: MusicProvider | null) {
 async function settle(): Promise<void> {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
+/**
+ * 按「调用序数」给 consumeOAuthCallback 排期。
+ *
+ * 坑：**序号 0 不是登录流程的首次调用**。挂载时的一次性排空（K1，
+ * 见 useAuth.ts 的 OAuth callback drain effect）用的是同一个 mock，
+ * 所以调用序是：
+ *   #0 挂载排空 → #1 登录流程的首次 race → #2 起才是 3s poll 的 tick。
+ *
+ * 排期用尽后**一直复用最后一个值**，方便断言「只该被调用 N 次」
+ * （多出来的调用说明 timer 没被清掉 → 泄漏）。
+ */
+function scheduleConsume(
+  ...values: Array<
+    null | { code?: string; state?: string; error?: string; receivedAt?: number } | Error
+  >
+): void {
+  let i = 0;
+  ipcMocks.consumeOAuthCallback.mockImplementation(async () => {
+    const v = values[Math.min(i, values.length - 1)];
+    i += 1;
+    if (v instanceof Error) throw v;
+    return v as never;
   });
 }
 
@@ -688,8 +720,306 @@ describe('useAuth', () => {
     }
   });
 
-  // ── G. 定时器 ────────────────────────────────────────────────────────
+  // ── F8–F14. Spotify OAuth 兜底（IPC listener + 3s poll）─────────────────
+  //
+  // 这一段是 stability-bug1-spotify-120s-timeout 的**修复本体**：
+  //   首次 consumeOAuthCallback 拿不到回调 → 注册 IPC listener（快路径）
+  //   + 3s poll（捞 buffer，慢路径兜底）→ 任一先到就继续。
+  //
+  // 两个必须守住的行为：
+  //   ① 两条路径的「用户拒绝」都必须是 AUTH_CANCELLED（面板显示「登录已取消」
+  //      / INFO），不能落到 AUTH_UNKNOWN（红色 FATAL 的「登录失败」）。
+  //   ② Promise settle（成功**或拒绝**）后必须停掉 IPC listener + poll timer，
+  //      否则用户拒绝一次 → renderer 里永久留一个 3s 轮询。
 
+  it('F8 poll 兜底从 buffer 捞到 code+state → 兑换成功', async () => {
+    // main 端没主动发 IPC 的老版本兼容路径：3s poll 自己把回调捞出来
+    vi.useFakeTimers();
+    try {
+      scheduleConsume(
+        null, // #0 挂载时的一次性排空
+        null, // #1 首次 race 拿不到 → 进兜底分支
+        { code: 'code-poll', state: 'state-poll', receivedAt: 1 }, // #2 poll tick
+      );
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      let flow: Promise<void> = Promise.resolve();
+      act(() => {
+        flow = result.current.handleSpotifyLogin();
+      });
+      // 首次 race 落地 → 进兜底分支（注册 IPC listener + 3s interval）
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(ipcMocks.onIpc).toHaveBeenCalledWith('spotify:oauth-protocol', expect.any(Function));
+
+      // 推进 3s → poll tick → 从 buffer 捞到 code+state
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      await act(async () => {
+        await flow;
+      });
+
+      expect(apiMocks.redeemSpotifyCode).toHaveBeenCalledWith('code-poll', 'state-poll');
+      expect(result.current.auth.loggedIn).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F9 poll 兜底捞到 buffer 里的 error → AUTH_CANCELLED（不是「登录失败」）', async () => {
+    vi.useFakeTimers();
+    try {
+      scheduleConsume(null, null, { error: 'access_denied', state: 'state-1', receivedAt: 1 });
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      let flow: Promise<void> = Promise.resolve();
+      act(() => {
+        flow = result.current.handleSpotifyLogin();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      await act(async () => {
+        await flow;
+      });
+
+      expect(result.current.authError?.code).toBe('AUTH_CANCELLED');
+      expect(result.current.authError?.message).toContain('Spotify 登录被拒绝');
+      expect(apiMocks.redeemSpotifyCode).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F10 IPC 推来 error → AUTH_CANCELLED（与 buffer 路径同一个错误码）', async () => {
+    vi.useFakeTimers();
+    try {
+      scheduleConsume(null, null);
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      let flow: Promise<void> = Promise.resolve();
+      act(() => {
+        flow = result.current.handleSpotifyLogin();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      const onIpcCb = ipcMocks.onIpc.mock.calls.find(
+        (c) => c[0] === 'spotify:oauth-protocol',
+      )?.[1] as (data: unknown) => void;
+      expect(onIpcCb).toBeTypeOf('function');
+      await act(async () => {
+        onIpcCb({ error: 'access_denied' });
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      await act(async () => {
+        await flow;
+      });
+
+      expect(result.current.authError?.code).toBe('AUTH_CANCELLED');
+      expect(result.current.authError?.message).toContain('Spotify 登录被拒绝');
+      expect(apiMocks.redeemSpotifyCode).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F11 poll 自己抛错 → 只记警告，下一个 tick 继续捞（不打断登录）', async () => {
+    vi.useFakeTimers();
+    try {
+      scheduleConsume(null, null, new Error('IPC 通道断了'), {
+        code: 'code-later',
+        state: 'state-later',
+        receivedAt: 1,
+      });
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      let flow: Promise<void> = Promise.resolve();
+      act(() => {
+        flow = result.current.handleSpotifyLogin();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      // 第一个 poll tick：consumeOAuthCallback 抛错 → 被 poll 自己的 catch 吞掉
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      expect(result.current.authError).toBeNull();
+      expect(apiMocks.redeemSpotifyCode).not.toHaveBeenCalled();
+
+      // 第二个 poll tick：捞到 code+state → 正常兑换
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      await act(async () => {
+        await flow;
+      });
+
+      expect(apiMocks.redeemSpotifyCode).toHaveBeenCalledWith('code-later', 'state-later');
+      expect(result.current.auth.loggedIn).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F12 poll 一直拿不到东西 → 保持等待，不误报失败', async () => {
+    vi.useFakeTimers();
+    try {
+      scheduleConsume(null);
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      act(() => {
+        void result.current.handleSpotifyLogin();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9_300); // 3 个 poll tick
+      });
+
+      expect(result.current.authError).toBeNull();
+      expect(result.current.auth.loggedIn).toBe(false);
+      expect(apiMocks.redeemSpotifyCode).not.toHaveBeenCalled();
+      // 挂载排空 + 首次 race 之外的调用只能来自 poll tick → 证明 poll 真在跑
+      expect(ipcMocks.consumeOAuthCallback.mock.calls.length).toBeGreaterThan(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F13 拒绝授权后不留永久轮询 —— timer 和 IPC listener 都被清掉', async () => {
+    vi.useFakeTimers();
+    try {
+      const unsub = vi.fn();
+      ipcMocks.onIpc.mockReturnValue(unsub);
+      scheduleConsume(null, null, { error: 'access_denied', state: 'state-1', receivedAt: 1 });
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      let flow: Promise<void> = Promise.resolve();
+      act(() => {
+        flow = result.current.handleSpotifyLogin();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+      });
+      await act(async () => {
+        await flow;
+      });
+
+      expect(result.current.authError?.code).toBe('AUTH_CANCELLED');
+      expect(unsub).toHaveBeenCalled(); // IPC listener 已退订
+
+      // 再等 30s：调用次数不能涨 —— 说明 3s interval 被 clearInterval 掉了。
+      // （修复前：拒绝路径会跳过清理 → renderer 里永远跑着一个 3s 轮询）
+      const callsAfterReject = ipcMocks.consumeOAuthCallback.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(ipcMocks.consumeOAuthCallback.mock.calls.length).toBe(callsAfterReject);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('F14 IPC 和 poll 同时到达 → 只结算一次（迟到的结果被守卫丢弃）', async () => {
+    // 真实竞态：poll 的 IPC 调用**在途**时，IPC listener 先把回调送到了。
+    // poll 随后返回的 buffer entry 必须被丢弃 —— 不能二次 resolve、
+    // 不能二次清理（重复退订 / 重复 clearInterval）。
+    vi.useFakeTimers();
+    try {
+      const unsub = vi.fn();
+      ipcMocks.onIpc.mockReturnValue(unsub);
+
+      let calls = 0;
+      let resolvePollEntry: ((v: unknown) => void) | null = null;
+      ipcMocks.consumeOAuthCallback.mockImplementation(async () => {
+        calls += 1;
+        if (calls <= 2) return null; // #0 挂载排空、#1 首次 race
+        // #3 起（poll 的调用）挂住，等我们手动 resolve
+        return new Promise((resolve) => {
+          resolvePollEntry = resolve;
+        });
+      });
+
+      const { result } = mount('spotify');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      let flow: Promise<void> = Promise.resolve();
+      act(() => {
+        flow = result.current.handleSpotifyLogin();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      // 推进到 poll tick（在途的 consumeOAuthCallback 挂住）
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_100);
+      });
+      expect(resolvePollEntry).toBeTypeOf('function');
+
+      const onIpcCb = ipcMocks.onIpc.mock.calls.find(
+        (c) => c[0] === 'spotify:oauth-protocol',
+      )?.[1] as (data: unknown) => void;
+
+      // IPC 先到 → 结算
+      await act(async () => {
+        onIpcCb({ code: 'code-ipc', state: 'state-ipc' });
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      await act(async () => {
+        await flow;
+      });
+      expect(apiMocks.redeemSpotifyCode).toHaveBeenCalledTimes(1);
+
+      // poll 这时才返回（迟到）→ 必须被丢弃
+      await act(async () => {
+        resolvePollEntry?.({ code: 'code-poll', state: 'state-poll', receivedAt: 1 });
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(apiMocks.redeemSpotifyCode).toHaveBeenCalledTimes(1);
+      expect(apiMocks.redeemSpotifyCode).toHaveBeenCalledWith('code-ipc', 'state-ipc');
+      expect(unsub).toHaveBeenCalledTimes(1); // 清理只做了一次
+      expect(result.current.auth.loggedIn).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // ── G. 定时器 ────────────────────────────────────────────────────────
   it('G1 登录尝试 120s 未完成 → 取消（timeout）+ 上报 cancel', async () => {
     vi.useFakeTimers();
     try {

@@ -32,13 +32,17 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { installElectronStub, seedProvider } from '../tests/e2e/electronStub.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(__dirname, '..');
 const require_ = createRequire(import.meta.url);
 
 const DEV_PORT = Number(process.env.RENDERER_PORT ?? 5174);
-const API_PORT = Number(process.env.E2E_PORT ?? 3200);
+// ⚠️ **专用端口**（不是 3200）：3200 是 Electron sidecar 的端口 → 端口冲突 +
+//   静默复用用户的真 server → 采集到的不是假 provider 的链路，还可能往用户
+//   真实账号写红心（实测踩到）。
+const API_PORT = Number(process.env.E2E_PORT ?? 3210);
 const OUT = (() => {
   const i = process.argv.indexOf('--out');
   return i >= 0
@@ -99,6 +103,21 @@ function startProc(cmd, args, opts, readyMatcher) {
   });
   proc.stderr.on('data', (d) => process.stderr.write(`[${opts.tag}] ${d}`));
   return proc;
+}
+
+/** 端口有没有被占用（起一个 socket 试连）。 */
+async function isPortBusy(port) {
+  const net = require_('node:net');
+  return new Promise((resolve) => {
+    const sock = net.connect({ port, host: '127.0.0.1' });
+    const done = (busy) => {
+      sock.destroy();
+      resolve(busy);
+    };
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+    sock.setTimeout(1500, () => done(false));
+  });
 }
 
 function waitForHttp(url, timeoutMs = 60_000) {
@@ -216,6 +235,24 @@ async function main() {
   }
   mkdirSync(dirname(OUT), { recursive: true });
 
+  // ── 0. 起飞前检查：端口必须**空闲** ─────────────────────────────
+  // ⚠️ 端口被占 → 我们的 server 起不来 → 但 `waitForHttp` 会**打到别人的
+  //   server** 上 → 采集到的是**别人的数据**（实测：E2E 的 server 还没退干净
+  //   就起下一次采集 → 页面打到一个正在关停的 server → 整条链路失败）。
+  //   → 占着就直接失败，别默默用别人的。
+  for (const [port, what] of [
+    [API_PORT, 'E2E server'],
+    [DEV_PORT, 'vite dev server'],
+  ]) {
+    if (await isPortBusy(port)) {
+      console.error(
+        `[browser-cov] 端口 ${port}（${what}）已被占用 → 放弃采集。\n` +
+          '   → 可能是上一次采集没清理干净，或另一个 E2E / dev server 正在跑。',
+      );
+      process.exit(3);
+    }
+  }
+
   // ── 1. E2E server（真 NestJS + 假 provider）────────────────────
   console.log(`[browser-cov] 起 E2E server :${API_PORT}`);
   const apiProc = spawn('npx', ['ts-node', 'src/e2e/e2e-server.ts'], {
@@ -274,16 +311,16 @@ async function main() {
     const { chromium } = require_('@playwright/test');
     const browser = await chromium.launch();
     const page = await browser.newPage();
-    // provider 已选 → App 直接进剧场。⚠️ **不注入 electronAPI.apiBase**：
-    // dev 模式下 app 会用相对 URL（vite 代理到 :3200）→ **同源** → 会话 cookie
-    // 正常带上（跨站时 SameSite=Lax 的 cookie 根本不发送 —— 那是 E2E 踩过的坑）。
-    await page.addInitScript(() => {
-      try {
-        localStorage.setItem('music-provider', 'qq');
-      } catch {
-        /* ignore */
-      }
-    });
+    // provider 已选 → App 直接进剧场。
+    //
+    // ⚠️ **注入 apiBase 指向 E2E 自己的 server**（而不是走 vite 的代理）：
+    //   vite 的代理目标是写死的 `127.0.0.1:3200` → 那正是 app sidecar 的端口
+    //   → 链路会打到**用户的真 server**上（不是假 provider），而且收藏会写进
+    //   用户真实账号。指到 3210 才是确定性的。
+    //   同站（127.0.0.1）→ 会话 cookie 正常带上（跨站时 SameSite=Lax 的 cookie
+    //   根本不发送 —— 那是 E2E 踩过的坑）。
+    await seedProvider(page);
+    await installElectronStub(page, `http://127.0.0.1:${API_PORT}`);
     await page.coverage.startJSCoverage({ resetOnNavigation: false });
     await page.goto(`http://127.0.0.1:${DEV_PORT}/`);
     await page.locator('.th-canvas').waitFor({ state: 'visible', timeout: 30_000 });
