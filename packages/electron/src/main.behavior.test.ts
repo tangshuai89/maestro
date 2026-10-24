@@ -55,6 +55,8 @@ const reg = {
   menuTemplate: [] as Array<Record<string, unknown>>,
   cookies: [] as Cookie[],
   removedCookies: [] as Array<{ url: string; name: string }>,
+  /** 已注册的全局热键 accelerator（§7.3）。 */
+  globalShortcuts: [] as string[],
   spawned: [] as Array<{ args: unknown[]; env?: Record<string, string> }>,
   killed: [] as string[],
   openExternalCalls: [] as string[],
@@ -249,6 +251,21 @@ const fakeElectron = {
       return undefined;
     },
     status: () => ({ ready: true }),
+  },
+  // 全局热键（§7.3）：main 启动时会注册一组 accelerator。假实现记录注册表，
+  // 让测试能断言"注册了什么 / 有没有误注册媒体键"。
+  globalShortcut: {
+    register: (accelerator: string, _cb: () => void): boolean => {
+      reg.globalShortcuts.push(accelerator);
+      return true;
+    },
+    unregister: (accelerator: string): void => {
+      reg.globalShortcuts = reg.globalShortcuts.filter((a) => a !== accelerator);
+    },
+    unregisterAll: (): void => {
+      reg.globalShortcuts = [];
+    },
+    isRegistered: (accelerator: string): boolean => reg.globalShortcuts.includes(accelerator),
   },
   BrowserWindow: class {
     /** 底层假窗口；所有方法都转发到它（箭头函数字段，this 固定是这个实例）。 */
@@ -638,6 +655,41 @@ async function main(): Promise<void> {
     const before = reg.killed.length;
     appHandlerOf('window-all-closed')();
     assert.ok(reg.killed.length > before, 'window-all-closed 没收 sidecar');
+  });
+
+  // ── 7.5 全局热键（§7.3）：main 真的注册了，且**没有**误注册媒体键 ──
+  //
+  // 「媒体键注册成 globalShortcut 会关掉 Chromium 自己的媒体键处理」→
+  // 媒体键必须只走 renderer 的 navigator.mediaSession。
+  // 这条断言在**主进程这一层**再守一次（`global-shortcuts.test.ts` 守的是
+  // 模块层）：万一以后有人绕过模块直接在 main.ts 里注册媒体键，这里会红。
+  await check('19b. 全局热键已注册，且一个媒体键都没有', () => {
+    assert.ok(reg.globalShortcuts.length > 0, '全局热键一条都没注册');
+    const mediaKeys = [
+      'MediaPlayPause',
+      'MediaNextTrack',
+      'MediaPreviousTrack',
+      'MediaStop',
+      'MediaRewind',
+      'MediaFastForward',
+    ];
+    for (const accel of reg.globalShortcuts) {
+      assert.ok(
+        !mediaKeys.includes(accel),
+        `主进程注册了媒体键 ${accel} —— 会关掉 Chromium 自己的媒体键处理`,
+      );
+    }
+  });
+
+  await check('19c. before-quit → 全局热键全部注销', () => {
+    const before = reg.globalShortcuts.length;
+    assert.ok(before > 0, '前置状态不对：没有已注册的全局热键');
+    appHandlerOf('before-quit')();
+    assert.strictEqual(
+      reg.globalShortcuts.length,
+      0,
+      `退出后应全部注销，还剩 ${reg.globalShortcuts.join(',')}`,
+    );
   });
 
   // ── 8. 桌面歌词浮窗：main.ts ↔ 控制器 的接线 ──────────────────

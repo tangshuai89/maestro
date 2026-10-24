@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { PlaybackCommand } from './playback-command';
 
 /**
  * Renderer ↔ main bridge. Only methods that *must* run in the main process
@@ -50,8 +51,14 @@ export interface NeteaseLoginResponse {
   error?: string;
 }
 
-/** Transport commands emitted by the macOS tray menu. */
-export type TrayCommand = 'playpause' | 'next' | 'prev';
+/**
+ * 主进程 → renderer 的播放命令。
+ *
+ * ⚠️ 通道名仍是 `tray:command`（改名要动白名单 + `ipc-surface.test.ts` 的
+ * 卫生检查，收益不抵风险）；**类型**改名为 `PlaybackCommand`，因为它现在
+ * 有两个来源：托盘菜单 **+ 全局热键**。
+ */
+export type { PlaybackCommand } from './playback-command';
 
 /** Playback state the renderer reports up so the tray stays in sync. */
 export interface PlaybackState {
@@ -163,11 +170,16 @@ const electronAPI = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-external', url),
 
   /**
-   * Subscribe to tray transport commands ('playpause' | 'next' | 'prev').
+   * Subscribe to playback commands.
+   *
+   * 两个来源共用这一条通道：**托盘菜单** + **全局热键**
+   * （`global-shortcuts.ts`）。命令集：
+   * 'playpause' | 'next' | 'prev' | 'volumeup' | 'volumedown'
+   *
    * The renderer maps them onto usePlayer actions. Returns an unsubscribe fn.
    */
-  onTrayCommand: (cb: (command: TrayCommand) => void): (() => void) => {
-    const handler = (_e: unknown, command: TrayCommand): void => cb(command);
+  onTrayCommand: (cb: (command: PlaybackCommand) => void): (() => void) => {
+    const handler = (_e: unknown, command: PlaybackCommand): void => cb(command);
     ipcRenderer.on('tray:command', handler);
     return () => ipcRenderer.removeListener('tray:command', handler);
   },
