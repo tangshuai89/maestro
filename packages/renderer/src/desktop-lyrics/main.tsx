@@ -29,7 +29,15 @@ const DEFAULT_PREFS: DesktopLyricsPrefsPayload = {
   palette: 'light',
 };
 
-function DesktopLyricsApp() {
+/**
+ * 桌面歌词浮窗的根组件。
+ *
+ * ⚠️ **导出**是为了能测：入口文件以前整个是 0% 覆盖（它是第二个 HTML 入口
+ * lyrics.html 的挂载点，**从没被任何测试跑到过**）。不导出就只能靠
+ * "import 副作用 + 造 DOM" 那种间接测法，断言很脆。
+ * 导出不影响运行时行为（入口那段仍然在文件末尾按原样接线）。
+ */
+export function DesktopLyricsApp() {
   const [state, setState] = useState<DesktopLyricsState>(EMPTY_STATE);
   const [prefs, setPrefs] = useState<DesktopLyricsPrefsPayload>(DEFAULT_PREFS);
   const api = window.electronAPI?.desktopLyrics;

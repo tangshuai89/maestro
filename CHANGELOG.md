@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **桌面歌词浮窗的**入口**补测 —— 它整个是 0% 覆盖**（2026-10-24）
+
+  覆盖率报告里 `main.tsx | 0 | 0 | 0 | 0 | 1-16…102` —— 浮窗的**挂载点**
+  （第二个 HTML 入口 `lyrics.html` + 第二个 BrowserWindow）
+  **从没被任何测试跑到过**。组件本身（`DesktopLyricsOverlay.test.tsx`）测了，
+  入口这段没人管。
+
+  入口测的东西不轻：浮窗是**只读镜像**（播放快照由主窗口推给 main、
+  main 再转发过来）—— 订阅/退订/锁定态 hover 回报写错的话，症状是
+  「浮窗关不掉」「鼠标移进去点不动」「关掉后穿透还开着」，
+  都是**用户看得见、但很难定位**的问题。
+
+  - 新增 `packages/renderer/src/desktop-lyrics/main.test.tsx`
+    （vitest + happy-dom）：把 `DesktopLyricsApp` **导出**（入口文件以前
+    不导出 → 测不了；导出不影响运行时行为），用**假 preload API** 顶掉
+    `window.electronAPI.desktopLyrics`，并**捕获订阅回调**好主动推数据
+    （模拟 main 推数据的样子）。
+  - 覆盖 7 条契约：没装 preload → 兜空态别白屏 / 订阅快照 + 偏好 /
+    **卸载退订** / 锁定态 hover 回报 / 锁定态卸载收尾 `hover(false)` /
+    没锁定不注册 hover 监听 / `#root` 存在就挂载（入口接线本身）。
+  - 效果：`desktop-lyrics/main.tsx` **0% → 100% 行覆盖 / 100% 分支覆盖**。
+
 - **refactor(tokens): D4-C5「让 token 真正被用起来」批 2 —— 38 处硬编码色值换成真实
   令牌消费**（spec: `specs/token-adoption` S3-10，2026-10-20）
 
