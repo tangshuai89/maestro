@@ -52,8 +52,11 @@ const STATE_WITH_LYRICS: DesktopLyricsState = {
 function makeFakeApi() {
   const offState = vi.fn();
   const offPrefs = vi.fn();
-  const onState = vi.fn((_cb: (s: DesktopLyricsState) => void) => offState);
-  const onPrefs = vi.fn((_cb: (p: DesktopLyricsPrefsPayload) => void) => offPrefs);
+  // ⚠️ 这里**不要**写占位实现（如 `vi.fn((_cb) => offState)`）：
+  //   占位实现的形参用不上 → eslint `no-unused-vars` 报 error（CI 会红）；
+  //   而且占位实现会被下面的 `mockImplementation` 立刻覆盖，纯多余。
+  const onState = vi.fn();
+  const onPrefs = vi.fn();
   const hover = vi.fn();
   const control = vi.fn();
   let pushState: ((s: DesktopLyricsState) => void) | null = null;
