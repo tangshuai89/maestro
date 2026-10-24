@@ -139,7 +139,33 @@ if (!fs.existsSync(path.join(electronDist, 'Electron.app'))) {
   );
 }
 
-// ── 4. 7za 的执行位（npm 不会给没有 bin 字段的包加执行位）────────────────────
+// ── 4. electron 的 dist 必须是新的（打包的入口文件在 dist/main.js）─────────
+//
+// `pack` 脚本**不含** build（build 是独立脚本）→ 缺 `dist/main.js` 时
+// electron-builder 会报：
+//   Application entry file "dist/main.js" … does not exist
+//
+// 这里**直接跑一次 tsc**（几秒）→ 保证打出来的包跟当前源码一致，
+// 免得「忘了先 build → 打进一个旧版本」。
+console.log('[pack] 编译 electron（tsc）…');
+try {
+  execFileSync(process.execPath, [require.resolve('typescript/bin/tsc')], {
+    stdio: 'inherit',
+    cwd: PKG_DIR,
+  });
+} catch (err) {
+  console.error(
+    `\n❌ [pack] tsc 编译失败（exit ${err?.status ?? '?'}）。\n` +
+      '   → 先修类型错误，或手动跑 `npm run build:electron`。\n',
+  );
+  process.exit(err?.status ?? 1);
+}
+if (!fs.existsSync(path.join(PKG_DIR, 'dist', 'main.js'))) {
+  console.error('\n❌ [pack] 编译后仍没有 dist/main.js —— electron 入口没产出。\n');
+  process.exit(1);
+}
+
+// ── 5. 7za 的执行位（npm 不会给没有 bin 字段的包加执行位）────────────────────
 function ensureExecutable(binPath) {
   if (!binPath || !fs.existsSync(binPath)) return null;
   const mode = fs.statSync(binPath).mode & 0o777;
@@ -159,7 +185,7 @@ try {
   /* 7zip-bin 缺失不致命 —— 到造 dmg 那步再报错更有信息量 */
 }
 
-// ── 4b. 「仓库的 devDependencies 还在吗」守卫 ───────────────────────────────
+// ── 6. 「仓库的 devDependencies 还在吗」守卫 ───────────────────────────────
 //
 // 下面第 5 步和第 6 步都会跑 npm / electron-builder，它们**有可能**在 workspace
 // 里触发 `npm install --production` → 把整棵树的 devDeps 剪掉（实测连 electron
@@ -180,7 +206,7 @@ function assertWorkspaceIntact(where) {
   process.exit(1);
 }
 
-// ── 5. server sidecar 的运行时依赖 ─────────────────────────────────────────
+// ── 7. server sidecar 的运行时依赖 ─────────────────────────────────────────
 //
 // 打包产物里 server 在 `Resources/server/`（**不在 asar 里**），而它的 154 个
 // 运行时依赖不在那儿 → sidecar 起来就 require 失败 → **app 启动即崩**。
@@ -194,7 +220,7 @@ try {
 }
 assertWorkspaceIntact('组装 server 依赖');
 
-// ── 6. 跑 electron-builder ──────────────────────────────────────────────────
+// ── 8. 跑 electron-builder ──────────────────────────────────────────────────
 const checkOnly = process.argv.includes('--check');
 const passthrough = process.argv.slice(2).filter((a) => a !== '--check');
 
@@ -229,7 +255,7 @@ try {
   process.exit(err?.status ?? 1);
 }
 
-// ── 7. 后置守卫：打包**不许**把开发环境弄坏 ─────────────────────────────────
+// ── 9. 后置守卫：打包**不许**把开发环境弄坏 ─────────────────────────────────
 //
 // 那个「npm install --production 剪掉整棵树的 devDeps」的坑，光靠
 // `npmRebuild: false` 挡住的是**当前**这一版配置。哪天有人为了加原生依赖
