@@ -2,6 +2,41 @@
 
 > **状态**：✅ Phase 1 已完成并合入（组件库底座就位：`components/ui/{Button,Dialog,Tooltip,textarea}` +
 > `tokens-bridge.scss` + `tailwind.config.js`）。Phase 2/3 明确不在本轮，保留本文档作依据。
+>
+> 🧊 **2026-10-24：Phase 2 冻结**（**不是归档** —— 条件变了可以回来，见下「解冻条件」）。
+>
+> **实测的采用率**（2026-10-24 在 `master 8ded104` 上量的）：
+>
+> | 事实                                                                                              | 数字                                                           |
+> | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+> | `src/styles/` 下的 SCSS 文件                                                                      | **33** 个                                                      |
+> | 用 tailwind 工具类（`flex` / `items-center` / `rounded-lg` …）的 `.tsx`                           | **2** 个                                                       |
+> | └ 其中是**测试沙盒**（`components/__sandbox/ButtonSmoke.tsx`，spec 明写"不进任何 baseline 页面"） | 1 个                                                           |
+> | └ **真实业务组件**里用了 tailwind 的                                                              | **只有 1 个**（`modals/NLPlaylistModal.tsx`）                  |
+> | `components/ui/` 里的 shadcn 组件                                                                 | 5 个（`Button` / `Dialog` / `Tooltip` / `textarea` / `Input`） |
+> | └ 每个被引用的地方                                                                                | Button 3 · Dialog 3 · Tooltip 1 · textarea 1 · Input 1         |
+>
+> **冻结理由**：样式**两套并存**（33 个 SCSS vs 1 个业务组件用 tailwind class）——
+> 改一处样式要同时想 CSS 和 class，而收益只覆盖 5 个组件的 9 处调用。
+> 关键点：**AETHER 令牌体系（SCSS + CSS 变量 + Figma dump 同步）本身是健康的**
+> （`check-token-drift.mjs` 绿、硬编码棘轮门禁绿、D11 视觉回归零漂移）——
+> 需要被"迁移"的是 SCSS **写法**，而 AETHER 的视觉语言已经稳定，
+> 把它搬进 Tailwind 是**为了工具而工具**。
+>
+> **留下的**：Phase 1 的底座**全部保留且不删** —— `tailwind.config.js` /
+> `postcss.config.js` / `components.json` / `tokens-bridge.scss` / 5 个 `ui/` 组件
+> 继续可用（Button / Dialog 已被真实用到），`_base.scss` 里的
+> `@tailwind components` + `@tailwind utilities` 两层留着，**不影响**现有产物。
+>
+> **解冻条件**（满足任一即可重新评估）：
+>
+> 1. 新功能**主要**由 tailwind class 写（而不是既有 SCSS 体系）
+> 2. 团队/协作者对 Tailwind 有强制约定
+> 3. AETHER 令牌体系出现**结构性**问题（而不是"写法不统一"）
+>
+> **注意**：Phase 2 批 1 原本要做的「`_liked-modal.scss` 36 处硬编码颜色 → 令牌」
+> **不是** Tailwind 迁移，而是**令牌化**（AETHER 体系内），已经由
+> `specs/token-adoption` S3-11 / S3-12 接手，**不受本冻结影响**。
 
 ## 做什么
 
@@ -32,16 +67,20 @@
 - [x] `npm run typecheck` ✅ + `npm run lint` ✅ + `npm test` ✅
 - [x] `scripts/check-token-drift.mjs` ✅（不引入新漂移）+ `scripts/scan-hardcoded-colors.mjs --gate` ✅（不引入新硬编码）
 
-### Phase 2：组件迁移（按模块分批，本 PR 仅批 1）
+### Phase 2：组件迁移（按模块分批）— 🧊 **2026-10-24 冻结**
 
-- [ ] 批 1：迁移 `_liked-modal.scss` 的 45 处硬编码颜色到 shadcn theme（如 Liked / Search / SettingsModal 各保留原风格）
-- [ ] 每批一个 commit，D11 视觉回归 baseline 兜底
-- [ ] 每批下调 `scripts/token-adoption-budget.json` 对应数字
+- [~] 批 1：迁移 `_liked-modal.scss` 的 45 处硬编码颜色到 shadcn theme（如 Liked / Search / SettingsModal 各保留原风格）
+  - ⚠️ **注意**：这条的**真实内容是"硬编码 → AETHER 令牌"**（不是 Tailwind），
+    已由 `specs/token-adoption` S3-11 / S3-12 接手，**别在这里重复做**。
+- [~] 每批一个 commit，D11 视觉回归 baseline 兜底
+- [~] 每批下调 `scripts/token-adoption-budget.json` 对应数字
 
-### Phase 3：桥接清理（远期）
+> 🧊 冻结说明见本文档顶部「2026-10-24：Phase 2 冻结」。
 
-- [ ] SCSS 全面迁移后，移除 `tokens-bridge.scss` 间接层
-- [ ] shadcn 主题切换（dark/light）原生支持（AETHER 本身已 dark，v2 暂不切）
+### Phase 3：桥接清理（远期）— 🧊 随 Phase 2 一起冻结
+
+- [~] SCSS 全面迁移后，移除 `tokens-bridge.scss` 间接层
+- [~] shadcn 主题切换（dark/light）原生支持（AETHER 本身已 dark，v2 暂不切）
 
 ## 数据模型
 
