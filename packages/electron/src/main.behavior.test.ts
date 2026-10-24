@@ -57,6 +57,8 @@ const reg = {
   removedCookies: [] as Array<{ url: string; name: string }>,
   /** 已注册的全局热键 accelerator（§7.3）。 */
   globalShortcuts: [] as string[],
+  /** 全局热键的回调（用来真的"按"一下快捷键）。 */
+  globalShortcutCallbacks: new Map<string, () => void>(),
   spawned: [] as Array<{ args: unknown[]; env?: Record<string, string> }>,
   killed: [] as string[],
   openExternalCalls: [] as string[],
@@ -255,15 +257,18 @@ const fakeElectron = {
   // 全局热键（§7.3）：main 启动时会注册一组 accelerator。假实现记录注册表，
   // 让测试能断言"注册了什么 / 有没有误注册媒体键"。
   globalShortcut: {
-    register: (accelerator: string, _cb: () => void): boolean => {
+    register: (accelerator: string, cb: () => void): boolean => {
       reg.globalShortcuts.push(accelerator);
+      reg.globalShortcutCallbacks.set(accelerator, cb);
       return true;
     },
     unregister: (accelerator: string): void => {
       reg.globalShortcuts = reg.globalShortcuts.filter((a) => a !== accelerator);
+      reg.globalShortcutCallbacks.delete(accelerator);
     },
     unregisterAll: (): void => {
       reg.globalShortcuts = [];
+      reg.globalShortcutCallbacks.clear();
     },
     isRegistered: (accelerator: string): boolean => reg.globalShortcuts.includes(accelerator),
   },
@@ -771,6 +776,45 @@ async function main(): Promise<void> {
     } finally {
       reg.widevineFails = false;
     }
+  });
+
+  // 真的"按"一下全局热键 → 主进程这一侧的接线要真的通。
+  // （只断言"注册了"不够 —— 回调体里接错线也看不出来。）
+  //
+  // ⚠️ **必须放在最后**：这个用例会真的 toggle 桌面歌词，而那个状态是
+  // **持久化到磁盘**的（prefs.enabled）→ 放在中间会把后面那些"点托盘开浮窗"
+  // 的用例变成"点托盘关浮窗"→ 连锁失败。
+  await check('26. 按下 ⌃⌥D → 桌面歌词浮窗真的被切换', async () => {
+    // 前置：把持久化的浮窗状态重置成「关」——
+    //   前面的用例（20）把浮窗**开过并落盘**了 → 直接 toggle 会变成"关闭"，
+    //   于是看不到新窗口。状态是**进程启动时**读进来的 → 必须写在 loadMain 之前。
+    try {
+      writeFileSync(
+        '/tmp/maestro-test-userdata/desktop-lyrics.json',
+        JSON.stringify({
+          enabled: false,
+          locked: false,
+          bounds: { x: 5000, y: 200, width: 860, height: 160 },
+        }),
+        'utf-8',
+      );
+    } catch {
+      /* 写不了就跳过 */
+    }
+    // 换进程 = 上一个进程的全局快捷键被系统释放了 → fake 里对应清空。
+    // 不清的话新实例会认为这些组合键「已被占用」→ 一条都注册不上。
+    reg.globalShortcuts = [];
+    reg.globalShortcutCallbacks.clear();
+    loadMain();
+    await flushReady();
+    const cb = reg.globalShortcutCallbacks.get('Control+Option+D');
+    assert.ok(cb, '⌃⌥D 没注册上');
+    const before = reg.windows.length;
+    cb!();
+    assert.ok(
+      reg.windows.length > before,
+      '按 ⌃⌥D 之后没有新的浮窗 → 快捷键没接到 controller.toggle()',
+    );
   });
 
   globalThis.fetch = origFetch;

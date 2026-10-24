@@ -265,4 +265,33 @@ describe('useMediaSession · 降级', () => {
       renderHook(() => useMediaSession(TRACK, true, 10, TRACK.duration, cmds)),
     ).not.toThrow();
   });
+
+  it('setActionHandler 抛错（该平台不支持这个 action）→ 跳过，不炸', () => {
+    const cmds = makeCommands();
+    fake.setActionHandler.mockImplementation(() => {
+      throw new Error('unsupported action');
+    });
+    expect(() =>
+      renderHook(() => useMediaSession(TRACK, true, 10, TRACK.duration, cmds)),
+    ).not.toThrow();
+  });
+
+  it('卸载时 setActionHandler 抛错 → 吞掉（不能因为清理失败而崩）', () => {
+    const cmds = makeCommands();
+    const { unmount } = renderHook(() => useMediaSession(TRACK, true, 10, TRACK.duration, cmds));
+    fake.setActionHandler.mockImplementation(() => {
+      throw new Error('cleanup boom');
+    });
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('setPositionState 抛错（duration 未就绪）→ 忽略，不炸', () => {
+    const cmds = makeCommands();
+    fake.setPositionState.mockImplementation(() => {
+      throw new Error('position boom');
+    });
+    expect(() =>
+      renderHook(() => useMediaSession(TRACK, true, 10, TRACK.duration, cmds)),
+    ).not.toThrow();
+  });
 });

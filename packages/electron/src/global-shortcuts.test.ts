@@ -173,7 +173,33 @@ function main() {
     console.log('✅ 6. 已被占用的快捷键被跳过并告警');
   }
 
-  console.log('\n🎉 global-shortcuts.test 全部 6 项通过');
+  // ── 7. 注册**失败**（register 返回 false）→ 跳过 + 告警 ─────────
+  {
+    const { deps, globalShortcut, warnings } = makeDeps();
+    globalShortcut.register = (): boolean => false; // 模拟注册失败
+    const registered = registerGlobalShortcuts(deps);
+    assert.strictEqual(registered.length, 0, '注册失败的快捷键不该算成功');
+    assert.strictEqual(globalShortcut.registered.size, 0, '注册表应为空');
+    assert.ok(
+      warnings.some((w: string) => w.includes('注册失败')),
+      '应该提示「注册失败」',
+    );
+    console.log('✅ 7. 注册失败 → 跳过并告警');
+  }
+
+  // ── 8. 注销时抛错 → 吞掉（退出期注销失败无所谓）─────────────────
+  {
+    const { deps, globalShortcut } = makeDeps();
+    const registered = registerGlobalShortcuts(deps);
+    globalShortcut.unregister = (): void => {
+      throw new Error('boom');
+    };
+    // 不该抛出去 —— 退出路径不能因为注销失败而崩
+    unregisterGlobalShortcuts(deps, registered);
+    console.log('✅ 8. 注销抛错被吞掉（退出路径不崩）');
+  }
+
+  console.log('\n🎉 global-shortcuts.test 全部 8 项通过');
 }
 
 main();

@@ -26,7 +26,7 @@ import {
 } from './desktop-lyrics/desktop-lyrics-controller';
 import { oauthBuffer } from './auth/oauth-buffer';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts';
-import type { PlaybackCommand } from './playback-command';
+import type { PlaybackCommand } from './preload';
 import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in

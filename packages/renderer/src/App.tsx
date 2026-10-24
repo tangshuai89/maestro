@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from './hooks/usePlayer';
 import { useVolume } from './hooks/useVolume';
 import { useMediaSession } from './hooks/useMediaSession';
+import { buildMediaSessionCommands } from './lib/media-session-commands';
 import { useSpotifyWpsPlayer } from './hooks/useSpotifyWpsPlayer';
 import { useLyrics } from './hooks/useLyrics';
 import { useDesktopLyrics } from './hooks/useDesktopLyrics';
@@ -110,22 +111,21 @@ export default function App() {
   // ⚠️ 媒体键**只走这一条路**：Electron 在 macOS 上把媒体键实现成
   // globalShortcut 时会占住通道并**关掉 Chromium 自己的处理** → 所以
   // `global-shortcuts.ts` 只注册非媒体键。
-  useMediaSession(player.track, player.playing, player.currentTime, player.duration, {
-    // mediaSession 分 play / pause 两个动作，而 usePlayer 只有一个 toggle
-    // → 用当前状态决定要不要 toggle（少一次无谓的状态翻转）。
-    play: () => {
-      if (!player.playing) player.handlePlayPause();
-    },
-    pause: () => {
-      if (player.playing) player.handlePlayPause();
-    },
-    prev: () => player.handlePrev(),
-    next: () => player.handleSkip(),
-    seek: (seconds: number) => player.seek(seconds),
-    stop: () => {
-      if (player.playing) player.handlePlayPause();
-    },
-  });
+  useMediaSession(
+    player.track,
+    player.playing,
+    player.currentTime,
+    player.duration,
+    // 逻辑在 lib/media-session-commands.ts（可单测）—— App.tsx 是接线层，
+    // 逻辑写在这里的话，闭包体只在用户按媒体键时才执行 → 覆盖率 diff 门禁会拦。
+    buildMediaSessionCommands({
+      playing: player.playing,
+      handlePlayPause: player.handlePlayPause,
+      handlePrev: player.handlePrev,
+      handleSkip: player.handleSkip,
+      seek: player.seek,
+    }),
+  );
   spotifyTierRef.current = auth.auth.tier ?? undefined;
   // auth 就绪后把回调写进 ref，usePlayer 的 onError 兜底会用它。
   onAuthExpiredRef.current = (p: MusicProvider) => auth.markExpired(p);

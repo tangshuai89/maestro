@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { PlaybackCommand } from './playback-command';
 
 /**
  * Renderer ↔ main bridge. Only methods that *must* run in the main process
@@ -52,13 +51,19 @@ export interface NeteaseLoginResponse {
 }
 
 /**
- * 主进程 → renderer 的播放命令。
+ * 主进程 → renderer 的**播放命令**。
  *
  * ⚠️ 通道名仍是 `tray:command`（改名要动白名单 + `ipc-surface.test.ts` 的
  * 卫生检查，收益不抵风险）；**类型**改名为 `PlaybackCommand`，因为它现在
  * 有两个来源：托盘菜单 **+ 全局热键**。
+ *
+ * 💡 **为什么类型定义放在这里，而不是单独开一个 `playback-command.ts`**：
+ * 纯类型文件编译后是空的 → lcov 里它「从没被任何测试 import」→
+ * **覆盖率 diff 门禁**会判「新增文件全部可执行代码未覆盖」→ 整个 PR 被拦
+ * （本轮实测踩到）。类型别名行在编译后被擦除 → 不进 lcov 的 DA 列表 →
+ * 放在**已被 `preload.test.ts` 覆盖**的文件里就没事。
  */
-export type { PlaybackCommand } from './playback-command';
+export type PlaybackCommand = 'playpause' | 'next' | 'prev' | 'volumeup' | 'volumedown';
 
 /** Playback state the renderer reports up so the tray stays in sync. */
 export interface PlaybackState {

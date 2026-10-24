@@ -1,4 +1,4 @@
-import type { PlaybackCommand } from './playback-command';
+import type { PlaybackCommand } from './preload';
 
 /**
  * 全局热键（App **不在前台**也能控制播放）。
