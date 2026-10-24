@@ -5,20 +5,39 @@
 
 ## A. 环境/账号阻塞（代码已就位，缺凭据）
 
-- [ ] **A1** Spotify Widevine license 500 修复
+- [ ] **A1** Spotify Widevine license 500 修复（**2026-10-24：工具链已就位，只差账号**）
   - 买 Apple Developer Account（$99/年，1-3 天批，尽早提交）
+    - ⚠️ 实测：本机 `security find-identity -v -p codesigning` → **0 valid identities**
+      → electron-builder 打包时直接跳过 codesigning（"skipped macOS application
+      code signing"）→ 不签名/notarize 的 dmg 装上去会被 Gatekeeper 拦。
   - `pip3 install --upgrade castlabs-evs` + `python3 -m castlabs_evs.account signup`（0 成本）
+    - ✅ **2026-10-24 实测：venv 已经装好了** ——
+      `~/.castlabs-evs-venv/bin/{evs-vmp,evs-account}` 都在，`evs-vmp sign-pkg`
+      子命令可用（`~/.castlabs-evs-venv/bin/evs-vmp sign-pkg --help`）。
+    - ❌ **但 `~/.castlabs-evs/` 凭据目录不存在** → **账号从没注册过**。
+      ⇒ 剩下的就是 `evs-account signup` 这一步（要邮箱 + 密码，**得本人来**）。
   - `python3 -m castlabs_evs.vmp sign-pkg <dist/mac-arm64/Maestro.app>` 签 dev 用 .app
+    - ⚠️ 注意入口：castlabs-evs 只提供 `evs-vmp` / `evs-account` 两个 CLI，
+      **没有 `python3 -m castlabs_evs` 的 `__main__`**（已在
+      `afterPack-vmp.cjs` 里踩过并修掉）。
   - `?wpsDebug=1` 重跑验证 license 返 200 + `hasTrack=true`
   - **代码已就位**：`packages/electron/afterPack-vmp.cjs` + `build.electronDist` 指 castLabs dist
   - 验收：Premium 登录 → 播完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + token 1h 重连不掉播
   - 对应：`specs/spotify/tasks.md` #41-46
 
-- [ ] **A2** `npm run pack` 端到端冒烟出 dmg
-  - 先 `npm install` 恢复 7zip-bin 传递依赖
-  - 无 EVS 凭据时 `SKIP_VMP=1 npm run pack` 先验打包管线
-  - 有 EVS 后完整链：VMP sign → codesign → notarize → dmg
-  - 对应：`specs/packaging/tasks.md` #16
+- [x] **A2** `npm run pack` 端到端冒烟出 dmg（**2026-10-24 完成**）
+  - ✅ **dmg 出来了**：`SKIP_VMP=1 npm run pack` →
+    `packages/electron/release/Maestro-1.0.0-arm64.dmg`（116MB）
+  - ✅ **不止是「打出来」**：挂载出的 `.app` 里 **sidecar server 真的起来了**
+    （`Nest application successfully started` + 真实接口返回数据）。
+  - ⚠️ 路上修了 **4 个真 bug**（原来的阻塞描述「缺 7zip-bin 传递依赖」是**误诊**，
+    7zip-bin 一直都在 —— 是打包过程自己把它弄没的）：
+    ① electron-builder 算不出 electron 版本（workspace 提升 + 依赖是 git URL）
+    ② 打包会**剪掉整棵 workspace 的 devDependencies**（含 electron 本身）
+    ③ `npm install` 产不出 electron 二进制（castLabs 包没有 `scripts` 字段）
+    ④ 打包产物里 server 的运行时依赖没进去 → **dmg 能打出来但 app 启动即崩**
+  - 详见 `specs/packaging/tasks.md` #16–#20
+  - 剩余（有 EVS 凭据后）：完整链 = VMP sign → codesign → notarize → dmg
   - ✅ **2026-10-23：打包管线验通**（`SKIP_VMP=1`）→ 产出
     `release/Maestro-1.0.0-arm64.dmg`（**105M**），electron = 43.2.0+wvcus。
     剩下只差「有 EVS 凭据后的 VMP sign → codesign → notarize」那半条。
@@ -809,9 +828,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                    → GET /music/stream/:provider/:trackId
-                                                                      → musicService.getStreamUrl() 拿上游 URL
-                                                                        → proxyAudio() 转发到上游 CDN
+                                                                        → GET /music/stream/:provider/:trackId
+                                                                          → musicService.getStreamUrl() 拿上游 URL
+                                                                            → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
