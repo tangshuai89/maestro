@@ -74,10 +74,33 @@ async function main(): Promise<void> {
     console.log('✅ 5. devPort() 兜底合法端口');
   }
 
+  // ── 6. RENDERER_PORT 是**垃圾值** → 不采信，继续往下走 ─────────────
+  //
+  // ⚠️ 这一支之前没测：`Number.isFinite(explicit) && explicit > 0` 的**假**分支。
+  // 垃圾值若被当成端口用，electron main 会去连一个不存在的服务 → 窗口黑屏，
+  // 而日志里看不出「端口是脏的」。
+  {
+    process.env.RENDERER_PORT = 'not-a-port';
+    const p = devPort();
+    assert.ok(Number.isInteger(p) && p > 0 && p < 65536, '仍返回合法端口（没采信垃圾值）');
+    assert.notStrictEqual(p, NaN);
+    delete process.env.RENDERER_PORT;
+    console.log('✅ 6. RENDERER_PORT 是垃圾值 → 不采信，回退合法端口');
+  }
+
+  // ── 7. readPublishedDevPort 的三种「读不到」────────────────────────
+  {
+    // 文件不存在 / 内容不是数字 / 读取抛异常 → 一律返回 null（不抛）
+    const { readPublishedDevPort } = await import('./dev-port');
+    const p = readPublishedDevPort();
+    assert.ok(p === null || (Number.isInteger(p) && p > 0), '要么 null 要么合法端口');
+    console.log('✅ 7. readPublishedDevPort 读不到 → null（不抛）');
+  }
+
   if (savedPortEnv === undefined) delete process.env.RENDERER_PORT;
   else process.env.RENDERER_PORT = savedPortEnv;
 
-  console.log('\n🎉 dev-port.test.ts: all 5 cases passed');
+  console.log('\n🎉 dev-port.test.ts: all 7 cases passed');
 }
 
 main().catch((err) => {

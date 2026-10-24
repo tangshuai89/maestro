@@ -416,6 +416,48 @@
   - **假 provider 的 `probeSession` 必须返回 `{alive:true,...}`**：少 `alive`
     → server 判「登录已过期」→ renderer 弹**登录错误面板**（`.aep-root`
     fixed inset 0 + z-index 200）→ 整个界面被盖住、点不动。
+  - 🐛 **权威侧不再整文件替换 —— 函数级改成跨管线并集**（2026-10-23）：
+    行级必须完全替换（node 侧行号会平移：实测 29.7% 的命中行落在注释/空行上），
+    但**函数名是源码标识符、跨转换器稳定** → 函数级应该跨侧取 max。
+    原来的整文件替换把真相丢了：**22 个真跑过的函数**（backup-crypto 的 5 个加解密
+    函数、spotify-wps 的 4 个、降级链的 pickFallbackSource/pickUpgradeSource…）
+    显示成 0 覆盖 → diff 门禁会对它们**假红**。
+    ⚠️ 只从「**对该文件有真实覆盖**」的一侧并集 —— c8 的 `--all` 会给从没跑过的
+    文件也列一份 0 命中的函数清单（名字是 c8 自己猜的）→ 混进来污染分母
+    （实测全局 % Funcs 从 88.6% 掉到 87.1%）。两条都加了自测。
+    复测：全局函数覆盖 **88.60% → 90.41%**（43 个函数救回、0 个反而丢掉）。
+  - ✅ **electron：main.ts 里 5 个「从未被执行」的接线回调**（2026-10-23）：
+    `main.ts` 把 `loadTarget` / `clampToVisibleDisplay` / `log` / `fromOverlay` /
+    `safeStr` 传给 `DesktopLyricsController` —— 它们只在控制器**真的建浮窗**、
+    **真的收到浮窗消息**、**真的出错**时才被调用 → 之前全是 0 覆盖。
+    借 `main.behavior.test.ts` 的假 electron harness 驱动「托盘 → 桌面歌词 →
+    浮窗 → 浮窗 IPC 只认自己」这条真实路径（+6 条用例）：
+    ① 托盘勾选 → 浮窗真的建出来（加载完之前不显示）；② **别的 renderer 不能
+    锁死用户浮窗**（preload 是主窗口和浮窗共用的桥）；③ 历史坐标在屏外 →
+    丢弃 x/y、**保留尺寸**；④ 穿透设置出错 → 只告警不崩；⑤ widevine 探测失败
+    → 不阻塞启动。
+  - ✅ **跨包 E2E 补上「跨平台降级链」**（2026-10-23）：之前只覆盖顺利路径
+    （搜索 → 播放 → 收藏 → 刷新后仍在）。产品最核心的卖点之一是**跨平台降级**
+    （QQ 挂了自动换网易云/Deezer），而这条链**单测碰不到** —— 它要 server 的
+    音频代理真的返 502 → renderer 的 onError → 跨平台兜底 → 换源 → UI 跟着换。
+    新用例：假 provider 里第二首歌「QQ 源取不到流、网易云源是好的」→ 断言
+    `<audio>` 的 src 最终换成 `/music/stream/netease/…`，且**真的**先打过 QQ 的流。
+    顺带修了假 provider 的两个**形状错误**（正是它们让这条链一开始跑不起来）：
+    ① `provider.search()` 必须返回 **Track[]**（`id`=平台曲目 id、`provider`），
+    早先返回 FakeSong（merged id + `platform` 字段）→ server 拼出
+    `/music/stream/undefined/qq%3Ae2e-2` → 前端 502，**看起来像「降级失败」**；
+    ② **每个平台必须返回自己那一份**（搜 netease 要返回网易云的源），否则
+    「QQ 挂了 → 自动换网易云」无从触发（等价源搜索是按平台发的）。
+  - 🐛 **E2E 端口隔离**（2026-10-23 实测）：E2E server 原来用 **3200** ——
+    那正是 **Electron sidecar 的端口** → 用户开着 app 时端口被占 → Playwright 的
+    `reuseExistingServer`（本地默认 true）**静默复用了用户那个真 server** →
+    测的不是假 provider（真 server 的 QQ 搜索返回 60 条真实结果），而且
+    **「收藏」那一步会把红心写进用户真实的账号**。
+    修法：专用端口 **3210** + 两个 webServer 都 `reuseExistingServer: false`
+    （起不来就明确失败）+ 覆盖采集器加**起飞前端口空闲检查**（占用 → 退出码 3）。
+    另把 `window.electronAPI` 替身抽成共享模块（`tests/e2e/electronStub.mjs`），
+    两处共用 —— 之前各写一份，其中一份漏方法 → App 直接崩（`?.` 只保护对象为
+    null，**不保护方法缺失**）。
   - **测试基建不进覆盖率分母**：`src/test/`（vitest setup）和 `src/e2e/`
     （E2E 基建）都是夹具不是出厂代码 → c8 / vitest 两边都加 exclude
     （与「硬编码颜色门禁不扫测试文件」同一原则）。
@@ -633,6 +675,137 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
        'rapid-skip' → **也走硬切**（连按 ⏭ 不淡变，否则双声叠加）。测 crossfade
        必须先等过这个窗口。
 
+- [x] **H14** electron 侧分支覆盖最低（72.9%）—— 补守卫分支 + 修一个真 bug
+      （2026-10-23）
+
+  electron 是四个包里**分支覆盖最低**的。逐段看下来，缺口集中在**「状态不在预期」**
+  的防御性路径（窗口没了 / 消息不完整 / 订阅者抛错）—— 失败方式是**静默**的。
+
+  - `auth/login-window-runner.ts`（登录窗口 = QQ / 网易云登录的主路径）：
+    12 处未覆盖分支 → **2 处**。补：cookie 被**删除**（用户登出）时不能去捕获、
+    cookie 没有 domain 时不匹配、markerNames 过滤、已 resolve 之后再来事件要忽略、
+    createWindow / cookies.on 抛异常要报成 LOGIN_FAILED、清理路径自己抛异常也不能
+    带崩 promise。
+  - `auth/oauth-buffer.ts`：3 处 → **0 处**。
+  - `desktop-lyrics/desktop-lyrics-controller.ts`：12 处 → 5 处。
+  - `dev-port.ts`：`RENDERER_PORT` 是**垃圾值**时不能采信（否则 electron main 会去
+    连一个不存在的服务 → 窗口黑屏，日志里看不出「端口是脏的」）。
+
+  复测：electron 分支覆盖 **72.92% → 79.75%**，行 91.82% → 92.55%。
+
+  🐛 **顺带挖出一个真 bug**（测试用例挂住才暴露的）：`OAuthCallbackBuffer.peek()`
+  在条目过期时做了 `this.pending = null`，而 `main.ts` 的
+  `'consume-oauth-callback'` handler 正是「**先 peek() 打诊断日志，再 consume()**」
+  → peek 把过期条目清掉 → consume() 看到 pending 为空 → **注册一个 waiter 永久
+  等待**（TTL 10 分钟，timer 是 unref 的）→ **Spotify 登录界面永远转圈**，
+  日志里只有 `hasPending=false, no pending`。
+  修法：`peek()` 的语义是「看一眼，**不消费**」→ 过期时**只返回 null、不清 pending**；
+  清理交给 `consume()`（它自己也有 TTL 判断 → 过期时清掉并返回 null → 上层据此
+  报错「授权已过期」，而不是干等）。
+  ⚠️ 这条 bug 的暴露方式值得记：**测试「提前结束」也是一种失败** —— 那个用例
+  永远不返回，而定时器是 unref 的 → 进程静默退出（exit 0、后面的用例根本没打印）。
+
+- [x] **H15** `useAuth.ts` 的 OAuth 兜底段（IPC listener + 3s poll）**函数级 0 覆盖**
+      —— 补测 + 修 2 个真 bug（2026-10-23）
+
+  `useAuth.ts` 的 Spotify Electron 登录兜底段（`handleSpotifyLogin` 里「首次
+  `consumeOAuthCallback` 拿不到回调 → 注册 IPC listener + 3s poll」）是
+  **stability-bug1-spotify-120s-timeout 的修复本体** —— 当初把「登录界面转圈
+  120s」改成现在这样靠的就是它。实测覆盖率：`poll` / `finishErr` **一次都没被
+  执行过**（函数覆盖 20/22 = 90.91%）。
+
+  补了 7 条用例（F8–F14），全用假定时器驱动 3s tick，不依赖墙钟。
+
+  🐛 **顺带挖出 2 个真 bug**（都在这 25 行里，症状都是「同一个事件两种结果」）：
+
+  ① **用户拒绝授权 → 红色「登录失败」，而不是灰色「登录已取消」**
+  buffer 路径（`pending.error`）抛 `makeAuthError('AUTH_CANCELLED', ...)`，
+  而 **IPC 路径和 poll 路径抛的是裸 `new Error(msg)`** → catch 里
+  `err.code ?? 'AUTH_UNKNOWN'` → 落到 `AUTH_UNKNOWN`。同一个「用户点了拒绝」，
+  取决于回调从哪条路进来，面板要么 `AUTH_CANCELLED`（「登录已取消」/ INFO）、
+  要么 `AUTH_UNKNOWN`（「登录失败」/ **FATAL 红色**）——上报口径也跟着错。
+  修法：`finishErr` 改抛 `makeAuthError('AUTH_CANCELLED', ...)`，三条路径统一。
+
+  ② **拒绝一次 → renderer 里永久留一个 3s 轮询**
+  清理（`for (const fn of cleanups) fn()`）写在 `await` **之后**，而拒绝路径
+  会直接抛出去 → **跳过清理** → IPC listener 没退订、3s `setInterval` 没清 →
+  登录早就失败了，renderer 里还在每 3 秒发一次 `consumeOAuthCallback` IPC。
+  修法：清理挪进 `settle()`，成功 / 拒绝走同一条路。
+
+  复测 `useAuth.ts`：语句 **90.43% → 94.80%**、函数 **90.91% → 100%（23/23）**、
+  分支 **76.98% → 81.21%**、行 90.43% → 94.80%。
+
+  ✅ **变异验证**（门禁必须能主动抓出坏改动）：
+  - 还原 ① → F9 / F10 / F13 三条立刻红
+  - 还原 ② → F13 红（退订 spy 没被调用）
+  - 删掉 `settle()` 的 double-settle 守卫 → F14 红（清理被做了两次）
+
+  ⚠️ 踩坑留档：`consumeOAuthCallback` 这个 mock **序号 0 不是登录流程的首次
+  调用** —— 挂载时的一次性「排空 buffer」（K1）用的是同一个 mock，所以调用序是
+  `#0 挂载排空 → #1 首次 race → #2 起才是 poll tick`。按「首次调用」排期会全部
+  错位（表现为：poll 拿到的是排空时该给的值，用例看着像产品行为变了）。
+
+- [ ] **H16** 合并器把 node 侧**正确**的行数据整份丢掉 —— 覆盖率被低估 + 门禁会误拦
+      （2026-10-23 实测，**未修**，先留档）
+
+  起因：为了回答「`backup-crypto` 的断言补实 vs `useAuth` 的 OAuth 轮询」，
+  先去量了 `backup-crypto.ts` 的真实覆盖 —— 结果发现**它的「低覆盖」是假的**：
+  `FNDA:11,encryptBundle`（加解密函数被调用了 11 次），但合并后的 lcov 里
+  `DA:34..95`（整个加解密核心）全是 0 命中。
+
+  - **真相**：node 侧（`.test.mjs`）的**行号是准的**，13 组用例把整个加解密核心
+    跑了一遍 → node 侧 `LH:406/408`，未覆盖的正好是 **135-136 行**
+    （`catch { throw new Error('备份内容损坏') }` —— 「解密后 JSON 解析失败」
+    这条分支从来没被触发过）。**语义完全对得上**。
+  - **为什么被丢了**：合并器（`scripts/merge-lcov.js`）的规则是「权威侧
+    （vitest8 ∪ browser）只要有**任一**实质命中 → **整文件替换** node 侧的行
+    数据」。而 `backup-crypto.ts` 在 vitest 侧也有命中（`generatePassphrase`
+    被某个 `.test.tsx` 调了 108 次）→ 触发替换 → node 侧那 406 条真命中被丢弃。
+  - **影响面**（实测 `coverage/.lcov-node` vs `coverage/.lcov-auth`）：
+    **24 个文件**真正重叠，合计 **568 条 node 侧行命中被丢弃**。最严重的：
+    | 文件                         | node 侧 | 合并后（= 权威侧） | 真相                                                                                                                                                      |
+    | ---------------------------- | ------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `lib/spotify-wps.ts`         | 488/534 | 138/534（25.8%）   | **91%**（`spotify-wps.test.mjs` 是 814 行的完整套件，mock SDK 后覆盖 connect/disconnect/play/seek/事件/错误分支；未覆盖的正是「404 设备未找到重试」那段） |
+    | `lib/backup-crypto.ts`       | 406/408 | 313/408（76.7%）   | **99.5%**                                                                                                                                                 |
+    | `hooks/usePlayer.helpers.ts` | 382/382 | 358/382            | 100%                                                                                                                                                      |
+    | `lib/likedCache.ts`          | 71/71   | 47/71              | 100%                                                                                                                                                      |
+  - **门禁会误拦**：`coverage-diff-gate.js` 的判定是「行级 / 函数级 / 整体 0%
+    **三者全清**才放行」，而这些文件都在「行级可信」清单里 → 行级判据生效 →
+    改一个 `.test.mjs` **确实覆盖了**的行，合并后的 lcov 说它 0 命中 → **误拦**
+    （函数级判据其实是通过的，但它是 AND 关系）。
+
+  ⚠️ **顺带推翻了一个既有前提**：`collect-line-coverage-trust.js` 和
+  `merge-lcov.js` 的注释都写着「node 侧 `.test.mjs` 的行号是**随机错位**的，
+  必须丢弃」。实测**不成立**：node 的 type-stripping 是**按原位抹掉类型**的
+  → 行位置完整保留 → 行号是准的。
+  - 证据 A：`usePlayer.ts` 的 node 命中行是 **1-131 连续一段**，而 1-131 正好是
+    「import + 类型 import + re-export 块」= **模块顶层**。`.test.mjs` 只调纯函数
+    → 顶层执行一次 → 顶层被算成命中，hook 体（200+ 行）一次没跑 → **完全正确**。
+  - 证据 B：`backup-crypto.ts` 的 node 未覆盖行 = 135-136 = 唯一那条不可达的
+    catch → **语义对得上**。
+  - 证据 C：`usePlayer.ts` 两侧重合率只有 6%（auth 2186 / node 131）—— 不是
+    「坐标系不同」，而是**两边真跑的测试不同**（`.test.tsx` 跑 hook 体，
+    `.test.mjs` 只跑纯函数）。
+
+  ⇒ 真正的问题不是「行号错位」，而是**两个不同的问题**：
+  1. **node 侧过度归因**：模块顶层区域（含注释/空行）被整段算成命中
+     （`artistAlias.ts` 的 47 行文件头注释块整段命中；它的 1-47 正好是注释）→
+     百分比被**虚高**。
+  2. **权威侧覆盖不全**：只反映 vitest 管线跑过的部分 → 对 `.test.mjs` 为主
+     的文件**低估**。
+
+  **修的方向**（本轮**没做** —— 涉及改「行覆盖分母」这个语义，风险是数字虚高
+  → 门禁漏拦，得单独跑一轮评测 + 基线 + 回归门禁）：
+  1. 合并器改成**行级并集**（两侧行号同坐标系，`DA` 取 max），不再整文件替换；
+  2. 重新定义行覆盖分母：**只算真实代码行**（剔除注释/空行）→ 顺手解决过度归因；
+  3. 门禁的「行级可信清单」语义要跟着改（现在它按「有无 source map」判，
+     而两侧其实都有可靠的行号）。
+
+  验收口径（先定死，避免又造一个「数字在骗人」的指标）：
+  - `spotify-wps.ts` 行覆盖应显示 **≈91%**（不是 25.8%）
+  - `backup-crypto.ts` 应显示 **≈99.5%**（不是 76.7%）
+  - 门禁在「改一行 `.test.mjs` 覆盖得到的老代码」时**不得**报未覆盖
+
 - [x] **H13** `usePlayer.ts` 真实未覆盖 **345 行 / 59 个连续段** —— 补测到 124 行
 
   H12 把行覆盖数据修可信之后，`usePlayer.ts`（播放链路的中枢）的**真实**未覆盖
@@ -809,9 +982,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                    → GET /music/stream/:provider/:trackId
-                                                                      → musicService.getStreamUrl() 拿上游 URL
-                                                                        → proxyAudio() 转发到上游 CDN
+                                                                                                                    → GET /music/stream/:provider/:trackId
+                                                                                                                      → musicService.getStreamUrl() 拿上游 URL
+                                                                                                                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

@@ -67,6 +67,19 @@ export interface FakeSong {
   duration: number;
   platform: MusicProvider;
   trackId: string;
+  /**
+   * 这首歌的**第二个平台源**（同一首歌在另一个平台也有）。
+   * 用来测**跨平台降级链**：第一个平台的流取不到 → server 代理返 502 →
+   * renderer 自动换到另一个平台的源。
+   */
+  alt?: { platform: MusicProvider; trackId: string };
+  /**
+   * 这个**主平台**的流故意取不到（404 → server 代理 502 → renderer 跨平台降级）。
+   * 只有显式标了这个的歌才会坏 —— 不能「有 alt 的歌都坏」，
+   * 因为角标数字（fanOut 的 fannedOutTo 长度）依赖**正常的**歌也能 fan-out 出
+   * 第二个平台。
+   */
+  brokenPrimary?: boolean;
 }
 
 /** 假 provider 需要记住的状态（收藏集合、搜索命中）。 */
@@ -75,6 +88,11 @@ export interface FakeProviderState {
   liked: Map<MusicProvider, Set<string>>;
   /** 搜索时返回的歌。 */
   songs: FakeSong[];
+  /**
+   * 这些 trackId 的流**故意取不到**（返回 404 → server 的代理返 502 →
+   * renderer 走跨平台降级链）。用来验证「一个平台挂了会自动换另一个平台」。
+   */
+  brokenTrackIds: Set<string>;
   /** 收到的调用计数（测试用来断言「真的打到了 provider」）。 */
   calls: {
     search: number;
@@ -90,6 +108,7 @@ export function createFakeState(songs: FakeSong[] = defaultSongs()): FakeProvide
   return {
     liked: new Map<MusicProvider, Set<string>>(),
     songs,
+    brokenTrackIds: new Set<string>(),
     calls: {
       search: 0,
       like: 0,
@@ -114,6 +133,8 @@ export function defaultSongs(): FakeSong[] {
       duration,
       platform: 'qq',
       trackId: 'e2e-1',
+      // 同一首歌在网易云也有 → 收藏时能 **fan-out 出 2 个平台**（角标显示 2）
+      alt: { platform: 'netease', trackId: 'e2e-1-net' },
     },
     {
       id: 'qq:e2e-2',
@@ -123,12 +144,48 @@ export function defaultSongs(): FakeSong[] {
       duration,
       platform: 'qq',
       trackId: 'e2e-2',
+      // 同一首歌在网易云也有 → QQ 源挂掉时可以自动换过去（跨平台降级链）
+      alt: { platform: 'netease', trackId: 'e2e-2-net' },
+      // ⚠️ 只有这首歌的 QQ 源是坏的（用来验降级链）；e2e-1 的流是好的
+      brokenPrimary: true,
     },
   ];
 }
 
 /** 假 provider 的方法集合（按平台分派，形状对齐真 provider）。 */
-export function createFakeProviderMethods(state: FakeProviderState) {
+/** provider 搜索结果的形状（对齐 server 侧的 Track：平台曲目 id + provider）。 */
+export interface FakeTrack {
+  id: string;
+  provider: MusicProvider;
+  title: string;
+  artist: string;
+  album: string;
+  coverUrl: string;
+  audioUrl: string;
+  duration: number;
+  liked: boolean;
+}
+
+/** 这首歌在指定平台上的那一份（该平台没有这首歌就是 null）。 */
+export function toTrackForPlatform(song: FakeSong, platform: MusicProvider): FakeTrack | null {
+  const isPrimary = song.platform === platform;
+  const isAlt = song.alt?.platform === platform;
+  if (!isPrimary && !isAlt) return null;
+  const trackId = isPrimary ? song.trackId : song.alt!.trackId;
+  return {
+    id: trackId,
+    provider: platform,
+    title: song.title,
+    artist: song.artist,
+    album: song.album,
+    coverUrl: '',
+    audioUrl: `/music/stream/${platform}/${trackId}`,
+    duration: song.duration,
+    liked: false,
+  };
+}
+
+export function createFakeProviderMethods(state: FakeProviderState, platform: MusicProvider) {
   const likedOf = (platform: MusicProvider): Set<string> => {
     let s = state.liked.get(platform);
     if (!s) {
@@ -140,13 +197,20 @@ export function createFakeProviderMethods(state: FakeProviderState) {
 
   return {
     /** 单平台搜索：命中歌名/歌手就算（够 E2E 用，不做模糊匹配）。 */
-    async search(_session: unknown, query: string): Promise<FakeSong[]> {
+    async search(_session: unknown, query: string): Promise<FakeTrack[]> {
       state.calls.search += 1;
       const q = (query ?? '').trim();
       if (!q) return [];
-      return state.songs.filter(
-        (s) => s.title.includes(q) || s.artist.includes(q) || q.includes(s.title),
-      );
+      // ⚠️ 必须返回 **Track 形状**（平台曲目 id + provider），不能直接给 FakeSong
+      //   （它的 id 是 merged id、平台字段叫 platform）→ server 的等价源搜索会
+      //   拿到 `provider: undefined, id: 'qq:e2e-2'` → 拼出的流地址是
+      //   `/music/stream/undefined/qq%3Ae2e-2` → 前端 502，链路看起来像「降级失败」。
+      // ⚠️ 而且**按平台过滤**：搜 netease 要返回网易云那一份，否则「QQ 挂了 →
+      //   自动换网易云」这条链根本无从触发（等价源搜索是按平台发的）。
+      return state.songs
+        .filter((s) => s.title.includes(q) || s.artist.includes(q) || q.includes(s.title))
+        .map((s) => toTrackForPlatform(s, platform))
+        .filter((t): t is FakeTrack => t !== null);
     },
 
     /** 跨平台搜索：把所有假歌都当成有源。 */
@@ -163,7 +227,15 @@ export function createFakeProviderMethods(state: FakeProviderState) {
       _quality?: string,
     ): Promise<string> {
       state.calls.getStreamPath += 1;
-      return `http://127.0.0.1:${process.env.E2E_PORT ?? 3200}${E2E_AUDIO_PATH}#${trackId}`;
+      const base = `http://127.0.0.1:${process.env.E2E_PORT ?? 3210}`;
+      // ⚠️ 端口默认 **3210**（不是 3200）：3200 是 Electron sidecar 的端口 →
+      // 指着它 = 拉的是**用户真 server** 的流（实测：返回 502，E2E 直接红）。
+      if (state.brokenTrackIds.has(trackId)) {
+        // 故意指一个不存在的音频 → server 的代理会返 502 → renderer 走
+        // 跨平台降级链（换到另一个平台的源）。
+        return `${base}/__e2e__/missing.wav#${trackId}`;
+      }
+      return `${base}${E2E_AUDIO_PATH}#${trackId}`;
     },
 
     async like(_session: unknown, trackId: string): Promise<boolean> {

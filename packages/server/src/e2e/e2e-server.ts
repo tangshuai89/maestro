@@ -18,7 +18,16 @@
  *    放行 3000 + 5273-5322 → 用 `RENDERER_ORIGINS` **追加**（env 是追加不是
  *    替换，见 config.ts 的注释）。
  *
- * 运行: npx ts-node src/e2e/e2e-server.ts [--port 3200]
+ * 运行: npx ts-node src/e2e/e2e-server.ts [--port 3210]
+ *
+ * ⚠️ **默认端口是 3210，不是 3200**：3200 是 **Electron sidecar 的端口** ——
+ * 用户开着 app 时它就一直在监听。之前本 E2E 用 3200 的后果（实测踩到）：
+ *   1. 端口被占 → E2E server 起不来；
+ *   2. Playwright 的 `reuseExistingServer`（本地默认 true）→ **静默复用**了
+ *      用户那个**真** server → E2E 测的根本不是假 provider（真 server ���
+ *      QQ 搜索返回 60 条真实结果，而不是假 provider 的 2 条）；
+ *   3. 更糟：E2E 的「收藏」步骤会把红心写进**用户真实的账号**。
+ * → 专用端口 + 绝不复用，两条都要。
  * 就绪后会打印 `E2E_SERVER_READY <port>`（Playwright 的 webServer 靠它判活）。
  */
 import 'dotenv/config';
@@ -60,6 +69,7 @@ const {
   createFakeState,
   defaultSongs,
   makeSilentWav,
+  toTrackForPlatform,
   E2E_AUDIO_PATH,
 } = require('./fake-provider');
 
@@ -72,6 +82,16 @@ function toUnifiedItem(song: any) {
     // 交给 server 的音频代理去拉 → 前端拿到的是**后端代理相对路径**
     url: `/music/stream/${song.platform}/${song.trackId}`,
   };
+  // 同一首歌的**第二个平台源**（跨平台降级链用）
+  const sources: any[] = [source];
+  if (song.alt) {
+    sources.push({
+      platform: song.alt.platform,
+      trackId: song.alt.trackId,
+      hasCopyright: true,
+      url: `/music/stream/${song.alt.platform}/${song.alt.trackId}`,
+    });
+  }
   return {
     id: song.id,
     title: song.title,
@@ -79,14 +99,14 @@ function toUnifiedItem(song: any) {
     album: song.album,
     coverUrl: '',
     duration: song.duration,
-    sources: [source],
+    sources,
     bestSource: song.platform,
     versionType: 'studio',
     versions: [
       {
         id: `ver-${song.trackId}`,
         duration: song.duration,
-        sources: [source],
+        sources,
         bestSource: song.platform,
       },
     ],
@@ -94,8 +114,13 @@ function toUnifiedItem(song: any) {
 }
 
 async function main(): Promise<void> {
-  const port = Number(process.env.E2E_PORT ?? 3200);
+  const port = Number(process.env.E2E_PORT ?? 3210);
   const state = createFakeState(defaultSongs());
+  // 第二首歌的 **QQ 源故意取不到流**（网易云那个源是好的）→ 用来验证
+  // 「跨平台降级链」：server 代理返 502 → renderer 自动换到网易云源。
+  for (const song of state.songs) {
+    if (song.brokenPrimary) state.brokenTrackIds.add(song.trackId);
+  }
   const fake = createFakeProviderMethods(state);
 
   const app = await NestFactory.create(AppModule, { logger: false });
@@ -206,14 +231,18 @@ async function main(): Promise<void> {
       items: items.slice((page - 1) * pageSize, page * pageSize),
     };
   };
-  music.searchTracks = async (_session: unknown, _provider: string, keyword: string) => {
+  music.searchTracks = async (_session: unknown, provider: string, keyword: string) => {
     const kw = (keyword ?? '').trim();
-    return kw
+    const hits = kw
       ? state.songs.filter((s: any) => s.title.includes(kw) || s.artist.includes(kw))
       : state.songs;
+    // ⚠️ 返回 **Track 形状**（前端把它当 Track 用：id=平台曲目 id、provider=平台名）
+    return hits
+      .map((s: any) => toTrackForPlatform(s, (provider || 'qq') as never))
+      .filter((t: any): t is NonNullable<typeof t> => t !== null);
   };
 
-  // ⚠️ 不指定 host：renderer 产物在浏览器里用的是 `http://localhost:3200`
+  // ⚠️ 不指定 host：renderer 产物在浏览器里用的是 `http://localhost:3210`
   // （生产模式的 sidecar origin），而 localhost 在部分机器上解析成 ::1 ——
   // 只绑 127.0.0.1 会出现「浏览器连不上但 curl 连得上」的幽灵故障。
   await app.listen(port);

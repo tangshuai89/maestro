@@ -447,15 +447,25 @@ export function useAuth(
           const cleanups: Array<() => void> = [];
           let spoiled = false;
           const result = await new Promise<{ code: string; state: string }>((resolve, reject) => {
-            const finish = (cb: { code: string; state: string }): void => {
+            // Promise 一旦 settle（**成功或拒绝**）就必须停掉 IPC listener 和
+            // poll timer。原实现把清理放在 await 之后，而拒绝路径会直接跳过
+            // 那行 → 用户拒绝授权后，renderer 里留下一个永久的 3s 轮询在跑
+            //（每次都发一次 consumeOAuthCallback IPC）。
+            const settle = (fn: () => void): void => {
               if (spoiled) return;
               spoiled = true;
-              resolve(cb);
+              for (const c of cleanups) c();
+              fn();
+            };
+            const finish = (cb: { code: string; state: string }): void => {
+              settle(() => resolve(cb));
             };
             const finishErr = (msg: string): void => {
-              if (spoiled) return;
-              spoiled = true;
-              reject(new Error(msg));
+              // 与上面 buffer 分支（pending.error → makeAuthError('AUTH_CANCELLED')）
+              // 保持同一个错误码：用户主动拒绝 = 已取消。抛裸 Error 会让 catch
+              // 里 `err.code ?? 'AUTH_UNKNOWN'` 落到 AUTH_UNKNOWN → 面板显示
+              // 红色 FATAL 的「登录失败」，而不是灰色 INFO 的「登录已取消」。
+              settle(() => reject(makeAuthError('AUTH_CANCELLED', msg, attempt, state.provider)));
             };
             // Bug #1 修复后：main 端 handleDeepLink 现在主动 webContents.send
             // 这条 channel（带 {code,state} 或 {error,state}），listener 立即
@@ -502,8 +512,7 @@ export function useAuth(
             const timer: ReturnType<typeof setInterval> = setInterval(() => void poll(), 3_000);
             cleanups.push(() => clearInterval(timer));
           });
-          // Promise 已 settle——停 IPC listener + poll timer（无论谁先 resolve）。
-          for (const fn of cleanups) fn();
+          // IPC listener + poll timer 已在 settle() 里停掉了（成功 / 拒绝都走）。
           authLog('OAuth callback resolved, code len=', result.code.length);
           code = result.code;
           stateVal = result.state;

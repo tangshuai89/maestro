@@ -551,4 +551,82 @@ withHarness((h) => {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// 第二轮（2026-10-23）：补**「状态不在预期」**的守卫分支。
+//
+// 之前只测了主路径。剩下的分支全是「窗口没了 / 消息不完整 / 订阅者抛错」
+// 这类**防御性**路径 —— 它们的失败方式是静默的：浮窗不显示、设置改了不生效、
+// 一个订阅者抛错把其它订阅者一起带走。
+// ═══════════════════════════════════════════════════════════════════
+
+// ── A. 重复 setEnabled(true) 但窗口已被关掉 → 重新建窗 ──────────────
+withHarness((h) => {
+  const c = h.controllers[0];
+  c.setEnabled(true);
+  assert.strictEqual(h.windows.length, 1);
+  c.setEnabled(false); // 关窗
+  assert.strictEqual(h.windows[0].destroyed, true);
+  c.setEnabled(true); // 再开
+  assert.strictEqual(h.windows.length, 2, '窗口没了要重建（不能当幂等跳过）');
+});
+
+// ── B. 重复 setEnabled(false) → 幂等（不重复 destroy / 落盘）──────
+withHarness((h) => {
+  const c = h.controllers[0];
+  c.setEnabled(false);
+  c.setEnabled(false);
+  assert.strictEqual(h.windows.length, 0, '一直关着就不建窗');
+});
+
+// ── C. handleOverlayControl('prefs') 缺 prefs → 忽略（不炸）───────
+withHarness((h) => {
+  const c = h.controllers[0];
+  c.setEnabled(true);
+  const before = JSON.stringify(c.getPrefs());
+  c.handleOverlayControl({ action: 'prefs' });
+  assert.strictEqual(JSON.stringify(c.getPrefs()), before, '缺 prefs 时不改任何东西');
+});
+
+// ── D. 浮窗没开时的 control 动作 → 不炸、不误伤 ───────────────────
+withHarness((h) => {
+  const c = h.controllers[0];
+  // 锁定：prefs.locked=true，但此时没有窗口 → applyMousePassthrough 应直接返回
+  c.handleOverlayControl({ action: 'lock', locked: true });
+  assert.strictEqual(c.locked, true, '锁定态照记');
+  assert.strictEqual(h.windows.length, 0, '没开窗就不该开窗');
+  // 改 prefs：广播时没有窗口 → 直接返回
+  c.handleOverlayControl({ action: 'prefs', prefs: { fontScale: 1.4 } });
+  assert.strictEqual(c.getPrefs().fontScale, 1.4, 'prefs 照改');
+});
+
+// ── E. did-finish-load 时窗口已被关掉 → 不再显示 ──────────────────
+withHarness((h) => {
+  const c = h.controllers[0];
+  c.setEnabled(true);
+  c.setEnabled(false); // 窗口 destroy
+  h.finishLoad(0); // 迟到的 did-finish-load
+  assert.strictEqual(h.windows[0].shownInactive, 0, '窗口没了就不该再 show');
+});
+
+// ── F. 订阅者抛错 → 不影响其它订阅者 ───────────────────────────────
+withHarness((h) => {
+  const c = h.controllers[0];
+  const seen: unknown[] = [];
+  c.onChanged(() => {
+    throw new Error('subscriber boom');
+  });
+  c.onChanged((snap) => seen.push(snap));
+  c.setEnabled(true); // 触发 emitChanged
+  assert.strictEqual(seen.length, 1, '一个订阅者抛错，其它订阅者照常收到');
+});
+
+// ── G. 窗口拖动事件在窗口已关之后才来 → 忽略（不落盘脏位置）──────
+withHarness((h) => {
+  const c = h.controllers[0];
+  c.setEnabled(true);
+  c.setEnabled(false);
+  h.moveWindow(0, { x: 999, y: 999 }); // 迟到的 moved
+  assert.notStrictEqual(c.getPrefs().bounds?.x, 999, '窗口没了就别写位置');
+});
+
 console.log('✓ desktop-lyrics/desktop-lyrics-controller.test.ts');

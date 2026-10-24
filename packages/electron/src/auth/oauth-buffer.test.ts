@@ -219,5 +219,67 @@ void (async () => {
 
   void tick;
 
-  console.log('\n🎉 oauth-buffer.test.ts: all 12 cases passed');
+  // ── 13. peek() 遇到**过期**的 pending → 清掉并返回 null ──────────────
+  //
+  // 场景：renderer 崩了/卡住，OAuth code 在 buffer 里躺过 TTL → 下一个人
+  // consume() 时不能拿到**已过期**的 code（拿去过期的 code 去 redeem 只会
+  // 得到 invalid_grant，白白让用户重登一次）。
+  await withFakeTime(async () => {
+    const b = new OAuthCallbackBuffer();
+    b.push('code-old', 'state-old');
+    assert.ok(b.peek(), '刚 push 时能 peek 到');
+    // 时间快进过 TTL
+    (Date as unknown as { now: () => number }).now = () => 1_000_000 + OAUTH_BUFFER_TTL_MS + 1;
+    const p = b.peek();
+    assert.strictEqual(p, null, '过期后 peek 返回 null');
+    // ⚠️ peek **不能**把 pending 清掉 —— 它是「看一眼」，消费是 consume() 的事。
+    //    之前 peek 清掉了 → consume() 看不到 pending → 注册 waiter 永久等待
+    //    （main 的 handler 正是「先 peek 打日志、再 consume」）→ 登录界面永远
+    //    转圈。这条断言把这个语义钉住。
+    const c = await b.consume();
+    assert.strictEqual(c, null, '过期后 consume 立即返回 null（不是永久等待）');
+    console.log('✅ 13. peek/consume 遇到过期 pending → null（peek 无副作用）');
+  });
+
+  // ── 14/15. 防御性分支：交付「空条目」/「过期条目」时不能把脏东西交出去 ──
+  //
+  // ⚠️ 这两支**当前生产流程走不到**（push/pushError 总是造新鲜的条目，
+  // receivedAt = now）—— 它们是给「未来有人改成投递缓存条目」兜底的。
+  // 用例的作用是**把契约钉住**：真有人改成投递旧条目时，这里会红。
+  {
+    const b = new OAuthCallbackBuffer();
+    const waiter = b.consume();
+    // 白盒：直接拿到内部 FIFO 队首（TS private 只是编译期约束）
+    const head = (
+      b as unknown as {
+        waiters: Array<{ resolve: (cb: unknown) => void }>;
+      }
+    ).waiters[0];
+    assert.ok(head, '确实注册了一个 waiter');
+    head.resolve(null); // 「没有条目」
+    const got = await waiter;
+    assert.strictEqual(got, null, '空条目 → resolve(null)（不是 undefined）');
+    console.log('✅ 14. 交付空条目 → resolve(null)');
+  }
+  {
+    const b = new OAuthCallbackBuffer();
+    const waiter = b.consume();
+    const head = (
+      b as unknown as {
+        waiters: Array<{ resolve: (cb: unknown) => void }>;
+      }
+    ).waiters[0];
+    assert.ok(head);
+    // 造一个「很久以前收到的」条目
+    head.resolve({
+      code: 'stale',
+      state: 'stale',
+      receivedAt: Date.now() - OAUTH_BUFFER_TTL_MS - 1,
+    });
+    const got = await waiter;
+    assert.strictEqual(got, null, '过期条目 → resolve(null)（不能把过期 code 交出去）');
+    console.log('✅ 15. 交付过期条目 → resolve(null)');
+  }
+
+  console.log('\n🎉 oauth-buffer.test.ts: all 15 cases passed');
 })();

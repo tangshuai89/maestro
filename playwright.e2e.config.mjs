@@ -24,7 +24,10 @@
 import { defineConfig } from '@playwright/test';
 
 const PREVIEW_PORT = 4173;
-const API_PORT = 3200;
+// ⚠️ **专用端口**（不是 3200）：3200 是 Electron sidecar 的端口，用户开着 app
+//   时它一直在监听 → 端口冲突 + `reuseExistingServer` 静默复用**真** server
+//   → E2E 测的不是假 provider，还会把红心写进用户真实账号（实测踩到）。
+const API_PORT = 3210;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -52,7 +55,9 @@ export default defineConfig({
       command: 'npm run e2e:server',
       // 用一个真端点判活（HEAD/GET 都行）—— /music/liked 返回 200。
       url: `http://127.0.0.1:${API_PORT}/music/liked?provider=qq`,
-      reuseExistingServer: !process.env.CI,
+      // ⚠️ **绝不复用**已有的 server：那个端口上若是用户的 app sidecar，
+      //   复用 = 测错对象 + 往用户真实账号写红心。起不来就直接失败。
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -60,7 +65,8 @@ export default defineConfig({
     {
       command: 'npm run visual:serve',
       url: `http://127.0.0.1:${PREVIEW_PORT}`,
-      reuseExistingServer: !process.env.CI,
+      // 同理：preview 也必须是**我们自己起的**那份产物（复用别人的 = 测错版本）。
+      reuseExistingServer: false,
       timeout: 120_000,
     },
   ],
