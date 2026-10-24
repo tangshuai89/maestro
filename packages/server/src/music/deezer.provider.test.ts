@@ -1,5 +1,5 @@
 /**
- * DeezerMusicProvider 单测：editorials/preset/search/fetchRadioBatch/
+ * DeezerMusicProvider 单测：editorials/search/fetchRadioBatch/
  * getStreamPath/getLyrics/toTrack 全覆盖，mock global.fetch 不打真实网络。
  * 运行: npx ts-node packages/server/src/music/deezer.provider.test.ts
  */
@@ -53,39 +53,7 @@ async function main() {
     console.log('✅ 2. getEditorials() 返回 9 项，含 id/name/region');
   }
 
-  // ── 3. getPresetNames() → 9 valid preset names ─────────────────
-  {
-    const names = DeezerMusicProvider.getPresetNames();
-    assert.strictEqual(names.length, 9, '应有 9 个 preset');
-    for (const n of names) {
-      assert.ok(typeof n === 'string' && n.length > 0, `preset 名非法: ${n}`);
-    }
-    // 关键 preset 必须在
-    assert.ok(names.includes('all'));
-    assert.ok(names.includes('rock'));
-    assert.ok(names.includes('jazz'));
-    console.log('✅ 3. getPresetNames() 返回 9 个合法 preset 名');
-  }
-
-  // ── 4. isValidPreset('rock') → true ────────────────────────────
-  {
-    assert.strictEqual(DeezerMusicProvider.isValidPreset('rock'), true);
-    console.log('✅ 4. isValidPreset("rock") → true');
-  }
-
-  // ── 5. isValidPreset('nonexistent') → false ────────────────────
-  {
-    assert.strictEqual(DeezerMusicProvider.isValidPreset('nonexistent'), false);
-    console.log('✅ 5. isValidPreset("nonexistent") → false');
-  }
-
-  // ── 6. isValidPreset('') → false ───────────────────────────────
-  {
-    assert.strictEqual(DeezerMusicProvider.isValidPreset(''), false);
-    console.log('✅ 6. isValidPreset("") → false');
-  }
-
-  // ── 7. search with results → maps to Track correctly ───────────
+  // ── 3. search with results → maps to Track correctly ───────────
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -128,10 +96,10 @@ async function main() {
     );
     assert.strictEqual(t.duration, 354, 'duration 取整');
     assert.strictEqual(t.liked, false);
-    console.log('✅ 7. search 有结果 → Track 正确映射（id/title/artist/cover/audio/duration）');
+    console.log('✅ 3. search 有结果 → Track 正确映射（id/title/artist/cover/audio/duration）');
   }
 
-  // ── 8. search with empty results → [] ──────────────────────────
+  // ── 4. search with empty results → [] ──────────────────────────
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -140,10 +108,10 @@ async function main() {
     const tracks = await prov.search({} as any, 'zzzznotfound', 20);
     restore();
     assert.strictEqual(tracks.length, 0);
-    console.log('✅ 8. search 空结果 → 返回 []');
+    console.log('✅ 4. search 空结果 → 返回 []');
   }
 
-  // ── 9. search HTTP error → throws ──────────────────────────────
+  // ── 5. search HTTP error → throws ──────────────────────────────
   {
     const restore = mockFetch(() => ({
       ok: false,
@@ -160,10 +128,10 @@ async function main() {
       restore();
     }
     assert.ok(threw, 'HTTP 错误应抛');
-    console.log('✅ 9. search HTTP 500 → 抛 deezer search failed: 500');
+    console.log('✅ 5. search HTTP 500 → 抛 deezer search failed: 500');
   }
 
-  // ── 10. fetchRadioBatch valid preset → editorial charts endpoint ─
+  // ── 6. fetchRadioBatch valid preset → editorial charts endpoint ─
   {
     let capturedUrl = '';
     const restore = mockFetch((url) => {
@@ -200,10 +168,10 @@ async function main() {
     assert.strictEqual(tracks.length, 1);
     assert.strictEqual(tracks[0].id, '777');
     assert.strictEqual(tracks[0].title, 'Stairway to Heaven');
-    console.log('✅ 10. fetchRadioBatch("rock") → 命中 editorial/152/charts 并映射 Track');
+    console.log('✅ 6. fetchRadioBatch("rock") → 命中 editorial/152/charts 并映射 Track');
   }
 
-  // ── 11. fetchRadioBatch invalid preset → falls back to editorial 132 ─
+  // ── 7. fetchRadioBatch invalid preset → falls back to editorial 132 ─
   {
     let capturedUrl = '';
     const restore = mockFetch((url) => {
@@ -235,10 +203,10 @@ async function main() {
     );
     assert.strictEqual(tracks.length, 1);
     assert.strictEqual(tracks[0].id, '888');
-    console.log('✅ 11. fetchRadioBatch 非法 preset → 回退 editorial/132');
+    console.log('✅ 7. fetchRadioBatch 非法 preset → 回退 editorial/132');
   }
 
-  // ── 12. fetchRadioBatch empty (no tracks) → throws "returned no tracks" ─
+  // ── 8. fetchRadioBatch empty (no tracks) → throws "returned no tracks" ─
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -254,10 +222,10 @@ async function main() {
       restore();
     }
     assert.ok(threw, '空 editorial 应抛 returned no tracks');
-    console.log('✅ 12. fetchRadioBatch 空响应 → 抛 "returned no tracks"');
+    console.log('✅ 8. fetchRadioBatch 空响应 → 抛 "returned no tracks"');
   }
 
-  // ── 13. getStreamPath valid track → returns preview URL ────────
+  // ── 9. getStreamPath valid track → returns preview URL ────────
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -272,10 +240,10 @@ async function main() {
     const url = await prov.getStreamPath({} as any, '555');
     restore();
     assert.strictEqual(url, 'https://preview.dzcdn.net/fresh-555.mp3');
-    console.log('✅ 13. getStreamPath 有效 track → 返回新鲜 preview URL');
+    console.log('✅ 9. getStreamPath 有效 track → 返回新鲜 preview URL');
   }
 
-  // ── 14. getStreamPath track with no preview → throws "no preview url" ─
+  // ── 10. getStreamPath track with no preview → throws "no preview url" ─
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -297,10 +265,10 @@ async function main() {
       restore();
     }
     assert.ok(threw, '无 preview 应抛 no preview url');
-    console.log('✅ 14. getStreamPath 无 preview → 抛 "no preview url"');
+    console.log('✅ 10. getStreamPath 无 preview → 抛 "no preview url"');
   }
 
-  // ── 15. getLyrics synced (syncText LRC) → parsed LyricLine[] ───
+  // ── 11. getLyrics synced (syncText LRC) → parsed LyricLine[] ───
   {
     const lrc = '[00:01.00]Hello world\n[00:03.50]Second line\n[00:06.00]Third';
     const restore = mockFetch(() => ({
@@ -322,10 +290,10 @@ async function main() {
     assert.strictEqual(lyrics![1].text, 'Second line');
     assert.strictEqual(lyrics![2].time, 6);
     assert.strictEqual(lyrics![2].text, 'Third');
-    console.log('✅ 15. getLyrics syncText LRC → 解析为 LyricLine[]（含时间戳）');
+    console.log('✅ 11. getLyrics syncText LRC → 解析为 LyricLine[]（含时间戳）');
   }
 
-  // ── 16. getLyrics unsynced (text only) → LyricLine[] time=0..n ─
+  // ── 12. getLyrics unsynced (text only) → LyricLine[] time=0..n ─
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -346,10 +314,10 @@ async function main() {
     assert.strictEqual(lyrics![1].text, 'Verse two');
     assert.strictEqual(lyrics![2].time, 2);
     assert.strictEqual(lyrics![2].text, 'Verse three');
-    console.log('✅ 16. getLyrics 纯文本 → LyricLine[]（time=0,1,2 递增）');
+    console.log('✅ 12. getLyrics 纯文本 → LyricLine[]（time=0,1,2 递增）');
   }
 
-  // ── 17. getLyrics no lyrics field → null ───────────────────────
+  // ── 13. getLyrics no lyrics field → null ───────────────────────
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -358,10 +326,10 @@ async function main() {
     const lyrics = await prov.getLyrics('333');
     restore();
     assert.strictEqual(lyrics, null, '无 lyrics 字段应返回 null');
-    console.log('✅ 17. getLyrics 无 lyrics 字段 → 返回 null');
+    console.log('✅ 13. getLyrics 无 lyrics 字段 → 返回 null');
   }
 
-  // ── 18. toTrack uses title_short when present, falls back to title ─
+  // ── 14. toTrack uses title_short when present, falls back to title ─
   {
     const restore = mockFetch(() => ({
       ok: true,
@@ -393,10 +361,10 @@ async function main() {
     restore();
     assert.strictEqual(tracks[0].title, 'Short', '有 title_short 用 short');
     assert.strictEqual(tracks[1].title, 'Only Full Title', '无 title_short 回退 title');
-    console.log('✅ 18. toTrack 优先 title_short，缺失时回退 title');
+    console.log('✅ 14. toTrack 优先 title_short，缺失时回退 title');
   }
 
-  // ── 19. 超时缺席：fetch 永不 resolve → withTimeout 5s 后返回 null ──
+  // ── 15. 超时缺席：fetch 永不 resolve → withTimeout 5s 后返回 null ──
   {
     const { withTimeout } = require('../common/timeout');
     const real = globalThis.fetch;
@@ -411,10 +379,10 @@ async function main() {
     globalThis.fetch = real;
     assert.strictEqual(r, null, '挂起的 search 应在 5s 后被 withTimeout 兜底为 null');
     assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
-    console.log(`✅ 19. 超时缺席：fetch 永不 resolve → withTimeout 5s 后 null（${elapsed}ms）`);
+    console.log(`✅ 15. 超时缺席：fetch 永不 resolve → withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  // ── 20. fetchRadioBatch 超时缺席 ──
+  // ── 16. fetchRadioBatch 超时缺席 ──
   {
     const { withTimeout } = require('../common/timeout');
     const real = globalThis.fetch;
@@ -429,10 +397,10 @@ async function main() {
     globalThis.fetch = real;
     assert.strictEqual(r, null, '挂起的 fetchRadioBatch 应在 5s 后被 withTimeout 兜底为 null');
     assert.ok(elapsed >= 4500 && elapsed < 7000, `应等待约 5s，实际 ${elapsed}ms`);
-    console.log(`✅ 20. fetchRadioBatch 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
+    console.log(`✅ 16. fetchRadioBatch 超时缺席：withTimeout 5s 后 null（${elapsed}ms）`);
   }
 
-  console.log('\n🎉 deezer.provider.test 全部 20 项通过');
+  console.log('\n🎉 deezer.provider.test 全部 16 项通过');
 }
 
 main().catch((err) => {
