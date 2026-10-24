@@ -97,9 +97,13 @@
 
 ## 6. 验收
 
-- [ ] `npm test`（新增 5 个测试文件）绿
-- [ ] `npm run typecheck` / `npm run lint` 绿
-- [ ] `node scripts/scan-hardcoded-colors.mjs --gate` 不破预算（新文件 0 处硬编码）
-- [ ] `npm run build:renderer` / `build:electron` 通过（多入口产物含 `lyrics.html`）
+- [x] `npm test`（新增 5 个测试文件）绿
+      —— 2026-10-24 补第 6 个：浮窗**入口**（`desktop-lyrics/main.tsx`）
+      原来是 **0% 覆盖**（102 行，从没被任何测试跑到过）
+- [x] `npm run typecheck` / `npm run lint` 绿
+- [x] `node scripts/scan-hardcoded-colors.mjs --gate` 不破预算（新文件 0 处硬编码）
+- [x] `npm run build:renderer` / `build:electron` 通过（多入口产物含 `lyrics.html`）
 - [ ] 手测：开启后桌面出现置顶歌词随播放逐行高亮；可拖动 + 样式可调 + 重启恢复；
       锁定后点击穿透、hover 仍能打开设置；切歌 / 无歌词 / 暂停正确；Tray 勾选同步
+      —— **仍是人肉**（要真窗口 + 真桌面环境，测不了）；
+      但它测的**行为契约**已经全部有自动化替身了（见 tasks.md D17）
