@@ -799,6 +799,125 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **打包管线：`npm run pack` 端到端出 dmg —— 路上修了 4 个真 bug，其中 2 个是
+  「把开发环境拆了」和「打出来的 app 启动即崩」**（2026-10-24）
+
+  A2（`specs/packaging/tasks.md` #16）一直卡在「`npm run pack` 出不了 dmg」。
+  原来的阻塞描述是「环境缺失的 7zip-bin 传递依赖，需先 `npm install` 恢复」——
+  **这是误诊**：7zip-bin 一直都在（`builder-util` 的传递依赖，5.2.0，hoist 到
+  仓库根）。真正的原因是下面第 ② 条 —— **是打包过程自己把它弄没的**。
+
+  - ① **electron-builder 算不出 electron 版本** → 打包直接失败
+    `⨯ Cannot compute electron version from installed node modules …`
+    根因：`getElectronVersionFromInstalled()` 只读
+    `<projectDir>/node_modules/electron/package.json`，而 **npm workspaces 把
+    electron 提升到了仓库根** → 那个路径不存在 → 回退去读 package.json 的
+    `devDependencies.electron`，那是 **castLabs 的 git URL**（不以数字开头）→ 抛错。
+    （当年是靠「electron devDep 固定为 31.7.7」绕过去的，换成 castLabs git URL 后失效。）
+    修法：新增 `packages/electron/scripts/pack.cjs` 作为打包入口，把**实际装好的**
+    版本注入（`--config.electronVersion=`）—— 版本号**只从安装产物读**（唯一真源），
+    换 castLabs commit 不用改代码；顺带做**三方漂移检测**（package.json 的 git SHA
+    ↔ lockfile 的 resolved SHA ↔ 实际安装的 version），任一对不上就**直接失败**，
+    不打「版本和依赖声明不一致」的包。
+
+  - ② **跑一次 `npm run pack`，仓库的 devDependencies 全被剪掉**（含 electron 本身）
+    根因：electron-builder 默认跑 `npm install --production`（cwd = appDir，
+    `app-builder-lib/out/util/yarn.js`）。在 **npm workspace** 里 `--production` 是
+    **整棵树**剪 devDeps → 紧接着造 dmg 时 7za 已经不存在
+    （`ENOENT: chmod '.../7zip-bin/mac/arm64/7za' failed`）→ 打包失败；而且
+    **之后的 `npm test` 全挂**（开发环境被拆了）。
+    修法：build 配置加 `"npmRebuild": false`（本项目 electron 包**零运行时依赖**——
+    `electron-is-dev` 声明了但从未被 import，已删；`main.ts` 直接用
+    `!app.isPackaged`）→ 根本不需要那次 production install；
+    并加**前后守卫**：组装依赖后 / 打包后各查一次 `electron / 7zip-bin / vitest /
+typescript` 还在不在，被剪就**立刻失败**并说清怎么恢复。
+
+  - ③ **`npm install` 产不出 electron 二进制**
+    castLabs 版 electron 的 `package.json` **没有 `scripts` 字段** → npm 不执行任何
+    install 生命周期脚本 → `node_modules/electron/dist/` 永远不会被下载 →
+    `npm run dev`（electron）和 `npm run pack` 都报「electron 没装好」。
+    修法：`scripts/ensure-electron-dist.cjs` 调 electron 包**自带的** `install.js`
+    （自带 `isInstalled()` 判定 → 幂等），挂在 `predev` / `prepack` 上 → **要才付钱**
+    （不挂根 `postinstall`，免得每次 CI 都白下载 100MB）。
+
+  - ④ **dmg 打出来了，但 app 启动即崩**（最阴的一个）
+    NestJS server 是通过 `extraResources` 放在 `Resources/server/` 的（**不在 asar 里**），
+    而它的 154 个运行时依赖（@nestjs/core / reflect-metadata / kuromoji /
+    opencc-js …）**没被打进去** →
+    `ELECTRON_RUN_AS_NODE=1 Maestro -e "require.resolve('@nestjs/core')"` →
+    `MODULE_NOT_FOUND` → sidecar 一 require 就挂。
+    修法：`scripts/server-runtime-deps.cjs` 在 `pack-server-deps/` 里做一次**隔离的
+    production install**（`@maestro/common` 用 `file:` + `--install-links` → **拷贝**
+    而不是软链），再作为 `extraResources` 打进 `Resources/server/node_modules`
+    （正好是 sidecar 的 require 解析路径）；用指纹缓存，依赖变了才重装。
+
+  **验收（真的跑起来了，不是看配置）**：
+
+  ```
+  $ SKIP_VMP=1 npm run pack
+  [pack] electron 版本：43.2.0+wvcus
+  [pack] server 运行时依赖就绪：149 个包
+  • building target=DMG arch=arm64 file=release/Maestro-1.0.0-arm64.dmg   (116MB)
+
+  $ ELECTRON_RUN_AS_NODE=1 PORT=3999 …/Maestro …/Resources/server/main.js
+  [Nest] Nest application successfully started
+  [Bootstrap] Server running on http://localhost:3999 (X-Maestro-Token guard armed)
+  $ curl -H "X-Maestro-Token: …" http://127.0.0.1:3999/storage/info
+  {"backupDir":"…","backupCount":0}
+  ```
+
+  新增 `npm run pack:verify`（`scripts/verify-pack.sh`）：看产物结构 + **实测
+  sidecar 的依赖能不能解析**（真的 `require.resolve`，不是看配置）。
+
+  ⛔ 仍未做（有外部条件）：VMP 签名 + codesign + notarize。实测本机
+  `security find-identity -v -p codesigning` → **0 valid identities**，
+  且 `~/.castlabs-evs/` 凭据目录不存在（**EVS 账号从没注册过**）——
+  这两步都得本人来，详见 `specs/stability/tasks.md` A1。
+
+- **notarize 缺一个配置前置 —— 走「Apple ID + 专用密码」路线会直接 TypeError 崩**（2026-10-24）
+
+  A1（`specs/spotify/tasks.md` #41–#45）剩下的全是外部动作（买 Apple Developer
+  账号、注册 EVS 账号、拿专用密码），但**代码侧其实还差一个前置**：electron-builder
+  的 `build.mac` 里**没有 `notarize` 字段**。
+
+  实测 electron-builder 24.13.3 `macPackager.js:generateNotarizeOptions`，`mac.notarize`
+  **完全没设**时走「Apple ID + 专用密码」路线，会在
+  `const { appBundleId, ascProvider } = options` 处对 `undefined` 解构 →
+  `TypeError: Cannot destructure property 'appBundleId' of 'options'` →
+  **打包直接崩**（不是警告）。三种配置 × 三条凭据路线实测：
+
+  | `mac.notarize` | 路线 B（Apple ID+专用密码） | 路线 A（钥匙串 profile） | 路线 C（ASC API key） |
+  | -------------- | --------------------------- | ------------------------ | --------------------- |
+  | 不设           | ❌ **TypeError 崩**         | ✅                       | ✅                    |
+  | `true`         | ✅                          | ✅                       | ✅                    |
+  | `{ teamId }`   | ✅（转 notarytool）         | ✅（带 teamId）          | ✅（带 teamId）       |
+
+  修法：build 配置加 `"notarize": true`（凭据仍走环境变量，不进 package.json）。
+  无凭据时只是 `log.warn('skipped macOS notarization')` → 不影响现有打包。
+
+  **顺带留档两个「静默跳过」信号**（都实测过，避免「以为 notarize 了」）：
+  - **没证书** → `doSign` 在 `identity == null` 处直接 `return false`
+    （`macPackager.js:195`）→ **notarize 阶段压根没被调用**，日志里连 warn 都没有。
+    2026-10-24 实跑 `SKIP_VMP=1 npm run pack`：`PACK_EXIT=0`、dmg 146MB、
+    `pack:verify` 全绿，但**日志里一条 notarize 行都没有**。
+  - **有证书但 3 组 env 一个都没设** → `getNotarizeOptions` 返回 `undefined` →
+    `notarizeIfProvided` 只 warn 一句就继续出包。
+    ⇒ **验收信号只有一个：日志里出现 `notarization successful`**，
+    再加 `spctl -a -vvv -t install release/Maestro-1.0.0-arm64.dmg`
+    显示 `accepted` + `source=Notarized Developer ID`。
+
+  另两点（读源码 + 实跑确认，省掉后续摸索）：
+  - `hardenedRuntime` 在 electron-builder 24 里**默认 true**，默认 entitlements 模板
+    `app-builder-lib/templates/entitlements.mac.plist` 已带齐 notarize 必需的三条
+    （`allow-jit` / `allow-unsigned-executable-memory` / `disable-library-validation`）
+    → **不用自己写 entitlements 文件**。
+  - 签名时序天然正确：`afterPack`（VMP，行 125）→ `doSign`（~260）→
+    `notarizeIfProvided`（275）→ dmg —— VMP 签名在 codesign **之前**，
+    `afterPack-vmp.cjs` 的设计不用改。
+
+  同批把 Developer ID 证书申请入口、Apple 专用密码的获取路径、三条凭据路线
+  写成可直接执行的 runbook，落 `specs/spotify/tasks.md` #41 / #45。
+
 - **NL 歌单在空库下必然 400 `library_empty` —— 意图检索压根不依赖个人库，这道闸设错了位置**（2026-10-23）
 
   **现象**：从没导入过 ❤ 库的用户（或库跟着 session 漂移后读不到的用户）点 NL 歌单

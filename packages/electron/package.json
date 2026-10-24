@@ -4,17 +4,18 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
+    "predev": "node scripts/ensure-electron-dist.cjs",
     "dev": "tsc && electron dist/main.js",
     "build": "tsc",
     "start": "electron dist/main.js",
     "gen-icons": "node scripts/gen-icons.cjs",
-    "pack": "electron-builder --mac",
+    "prepack": "node scripts/ensure-electron-dist.cjs",
+    "pack": "node scripts/pack.cjs",
+    "pack:verify": "bash scripts/verify-pack.sh",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
-  "dependencies": {
-    "electron-is-dev": "^2.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "electron": "https://github.com/castlabs/electron-releases#8244344c33634d9323377c0d0fd1d9b7f9b69540",
     "electron-builder": "^24.13.3",
@@ -30,6 +31,7 @@
     "productName": "Maestro",
     "afterPack": "afterPack-vmp.cjs",
     "electronDist": "../../node_modules/electron/dist",
+    "npmRebuild": false,
     "protocols": [
       {
         "name": "Spotify OAuth Callback",
@@ -41,7 +43,8 @@
     "mac": {
       "category": "public.app-category.music",
       "target": "dmg",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "notarize": true
     },
     "directories": {
       "output": "release"
@@ -52,9 +55,6 @@
       "!dist/**/*.d.ts",
       "!dist/**/*.d.ts.map"
     ],
-    "asarUnpack": [
-      "**/node_modules/kuromoji/dict/**"
-    ],
     "extraResources": [
       {
         "from": "../renderer/dist",
@@ -63,6 +63,10 @@
       {
         "from": "../server/dist",
         "to": "server"
+      },
+      {
+        "from": "pack-server-deps/node_modules",
+        "to": "server/node_modules"
       },
       {
         "from": "build",

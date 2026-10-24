@@ -5,34 +5,55 @@
 
 ## A. 环境/账号阻塞（代码已就位，缺凭据）
 
-- [ ] **A1** Spotify Widevine license 500 修复
+- [ ] **A1** Spotify Widevine license 500 修复（**2026-10-24：工具链已就位，只差账号**）
   - 买 Apple Developer Account（$99/年，1-3 天批，尽早提交）
+    - ⚠️ 实测：本机 `security find-identity -v -p codesigning` → **0 valid identities**
+      → electron-builder 打包时直接跳过 codesigning（"skipped macOS application
+      code signing"）→ 不签名/notarize 的 dmg 装上去会被 Gatekeeper 拦。
   - `pip3 install --upgrade castlabs-evs` + `python3 -m castlabs_evs.account signup`（0 成本）
+    - ✅ **2026-10-24 实测：venv 已经装好了** ——
+      `~/.castlabs-evs-venv/bin/{evs-vmp,evs-account}` 都在，`evs-vmp sign-pkg`
+      子命令可用（`~/.castlabs-evs-venv/bin/evs-vmp sign-pkg --help`）。
+    - ❌ **但 `~/.castlabs-evs/` 凭据目录不存在** → **账号从没注册过**。
+      ⇒ 剩下的就是 `evs-account signup` 这一步（要邮箱 + 密码，**得本人来**）。
   - `python3 -m castlabs_evs.vmp sign-pkg <dist/mac-arm64/Maestro.app>` 签 dev 用 .app
+    - ⚠️ 注意入口：castlabs-evs 只提供 `evs-vmp` / `evs-account` 两个 CLI，
+      **没有 `python3 -m castlabs_evs` 的 `__main__`**（已在
+      `afterPack-vmp.cjs` 里踩过并修掉）。
   - `?wpsDebug=1` 重跑验证 license 返 200 + `hasTrack=true`
   - **代码已就位**：`packages/electron/afterPack-vmp.cjs` + `build.electronDist` 指 castLabs dist
   - 验收：Premium 登录 → 播完整曲目 + Spotify 桌面端可见 "maestro-xxxx" 设备 + token 1h 重连不掉播
   - 对应：`specs/spotify/tasks.md` #41-46
 
-- [ ] **A2** `npm run pack` 端到端冒烟出 dmg
-  - 先 `npm install` 恢复 7zip-bin 传递依赖
-  - 无 EVS 凭据时 `SKIP_VMP=1 npm run pack` 先验打包管线
-  - 有 EVS 后完整链：VMP sign → codesign → notarize → dmg
-  - 对应：`specs/packaging/tasks.md` #16
-  - ✅ **2026-10-23：打包管线验通**（`SKIP_VMP=1`）→ 产出
+- [x] **A2** `npm run pack` 端到端冒烟出 dmg（**2026-10-24 完成**）
+  - ✅ **dmg 出来了**：`SKIP_VMP=1 npm run pack` →
+    `packages/electron/release/Maestro-1.0.0-arm64.dmg`（116MB）
+  - ✅ **不止是「打出来」**：挂载出的 `.app` 里 **sidecar server 真的起来了**
+    （`Nest application successfully started` + 真实接口返回数据）。
+  - ⚠️ 路上修了 **4 个真 bug**（原来的阻塞描述「缺 7zip-bin 传递依赖」是**误诊**，
+    7zip-bin 一直都在 —— 是打包过程自己把它弄没的）：
+    ① electron-builder 算不出 electron 版本（workspace 提升 + 依赖是 git URL）
+    ② 打包会**剪掉整棵 workspace 的 devDependencies**（含 electron 本身）
+    ③ `npm install` 产不出 electron 二进制（castLabs 包没有 `scripts` 字段）
+    ④ 打包产物里 server 的运行时依赖没进去 → **dmg 能打出来但 app 启动即崩**
+  - 详见 `specs/packaging/tasks.md` #16–#20
+  - 剩余（有 EVS 凭据后）：完整链 = VMP sign → codesign → notarize → dmg
+  - **历史（2026-10-23，另一次验通）**：`SKIP_VMP=1 npm run pack` → 产出
     `release/Maestro-1.0.0-arm64.dmg`（**105M**），electron = 43.2.0+wvcus。
-    剩下只差「有 EVS 凭据后的 VMP sign → codesign → notarize」那半条。
-    - **两个前置坑**（踩过）：
+    那次是把 `packages/electron/node_modules/electron` **软链**到根的那份来绕
+    版本探测 —— 软链是**临时的**（不进 git、换台机器就没了），现在改成
+    `scripts/pack.cjs` 显式注入版本，**不再依赖软链**。
+    - 当时记下的**两个前置坑**（现在都由脚本自动兜住）：
       1. `pack` 之前必须先有 `packages/electron/dist/main.js` → 跑
          `npm run build:electron`（= `tsc`）。`pack` 脚本**不含** build，
          缺了会报 `Application entry file "dist/main.js" … does not exist`。
+         → 现在 `scripts/pack.cjs` **自己跑一次 tsc**（顺带保证打的不是旧版本）。
       2. electron-builder 算版本时找的是 **appDir 下**的
          `packages/electron/node_modules/electron/package.json` —— 但本仓的
          electron 声明是 **git URL**（castlabs EVS 版），且被 npm **提升到了
          根** `node_modules` → 那个路径不存在 → 报
          `Cannot compute electron version from installed node modules`。
-         修法：把 `packages/electron/node_modules/electron` 软链到根的那份
-         （或改用 `electronVersion` 字段显式指定）。
+         → 现在由 `scripts/pack.cjs` 显式注入 `electronVersion`。
     - codesign 在本机**没有有效证书**（只有腾讯 IOA MDM 的、不受信）→
       electron-builder 跳过签名（预期行为，Apple 凭据到位后才有）。
     - 顺带验了 PR #115：打出来的 app 里 `Resources/server` **1.6M、0 个测试
@@ -1009,9 +1030,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                                                        → GET /music/stream/:provider/:trackId
-                                                                                                                          → musicService.getStreamUrl() 拿上游 URL
-                                                                                                                            → proxyAudio() 转发到上游 CDN
+                                                                                    → GET /music/stream/:provider/:trackId
+                                                                                      → musicService.getStreamUrl() 拿上游 URL
+                                                                                        → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 

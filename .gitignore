@@ -28,6 +28,9 @@ playwright-report/
 
 # figma-code-connect-inject.mjs 备份（避免污染 git status）
 figma-code-connect.json.bak
+
+# 打包用的 server 运行时依赖（由 packages/electron/scripts/server-runtime-deps.cjs 生成）
+packages/electron/pack-server-deps/
 figma-code-connect.json.bak2
 
 # dev 端口发布文件（vite 写、electron 读；每次 dev 重新生成）
