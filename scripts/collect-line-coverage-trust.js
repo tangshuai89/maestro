@@ -34,6 +34,32 @@
  * 函数名是**源码标识符**，不随转换器的字节布局变化 → 跨管线、跨 entry 都稳定。
  * 实测：从未被调用的探针函数，FNDA 精确地是 0 ✓
  *
+ * ## 2026-10-24：判据从「有无 source map」放宽为「node 侧出现过的都可信」
+ *
+ * ⚠️ 旧判据是「**行级覆盖只在有 source map 的采集里可信**」—— 它把
+ * `node` 直跑 `.test.mjs`（type-stripping，**不产出 source map**）的文件
+ * 判成「行号错位 → 不可信」。**这个前提已被实测推翻**：
+ *
+ * - node 的 type-stripping 是**按原位抹掉类型**（把类型替成空白，**行数不变**）
+ *   → 行位置完整保留 → **行号是准的**。
+ * - 证据：`backup-crypto.ts` 的 node 侧未覆盖行 = **135-136** = 唯一那条不可达的
+ *   `catch { throw new Error('备份内容损坏') }` —— 语义完全对得上。
+ * - 证据：`usePlayer.ts` 的 node 侧命中行 = **1-131 连续一段** = 正好是
+ *   「import + 类型 import + re-export」块 = **模块顶层**；`.test.mjs` 只调纯函数
+ *   → 顶层执行一次 → 顶层算命中、hook 体一次没跑 → **完全正确**。
+ *
+ * ⇒ 现在 node 侧**所有**出现在 V8 覆盖结果里的 `packages/<包>/src` 文件，
+ *   行级数据都可信 → 一并进清单。
+ *
+ * ⚠️ 之前那句「esbuild 把 `usePlayer.ts` 从 2192 行压成 1336 行 → 行号随机」
+ *   说的是**另一条路径**：c8 包 vitest 的时代（vite/esbuild 转换后的 JS 在内存里
+ *   跑，source map 是 inline data URL → node 的 source-map-cache 里没有）。
+ *   H12 已把 renderer 的 `.test.tsx` 迁到 `@vitest/coverage-v8`（自带 source map）
+ *   → **那条路径不再是行错位的来源**。
+ *
+ * ⇒ 清单从 224 → 226 个文件（实测只多 2 个：`packages/common/src/index.ts`、
+ *   `packages/common/src/titleAlias.ts`，都是只被 `.test.mjs` 覆盖的）。
+ *
  * ## 用法
  *
  *   node scripts/collect-line-coverage-trust.js <输出文件> <temp 目录>...
@@ -117,6 +143,47 @@ function selfTest() {
     }
   }
 
+  // ── node 侧 V8 覆盖里出现过的文件 → **即使没有 source map 也可信** ──
+  //
+  // 2026-10-24 新规则：node 的 type-stripping 按原位抹掉类型（行数不变）
+  // → 行位置完整保留 → 行号是准的 → 没有 source map 也可信。
+  {
+    const fs4 = require('node:fs');
+    const os4 = require('node:os');
+    const p4 = require('node:path');
+    const tmp4 = fs4.mkdtempSync(p4.join(os4.tmpdir(), 'maestro-trust-nomap-'));
+    const abs4 = (rel) => 'file://' + p4.join(process.cwd(), rel);
+    fs4.writeFileSync(
+      p4.join(tmp4, 'cov.json'),
+      JSON.stringify({
+        // 没有 source-map-cache 这一项 → 模拟「只有 type-stripping」的那批
+        result: [
+          { url: abs4('packages/common/src/no-source-map.ts'), functions: [] },
+          { url: abs4('node_modules/x/index.ts'), functions: [] },
+          { url: abs4('packages/renderer/dist/bundle.ts'), functions: [] },
+          { url: 'node:internal/per_context/primordials', functions: [] },
+        ],
+      }),
+    );
+    const out4 = p4.join(tmp4, 'out.txt');
+    const argv4 = process.argv.slice(2);
+    process.argv = [argv4[0], argv4[1], out4, tmp4];
+    main();
+    const got4 = fs4.readFileSync(out4, 'utf8').split('\n').filter(Boolean);
+    const rel4 = got4.map((p) => p.replace(process.cwd() + '/', ''));
+    const noMapOk = rel4.includes('packages/common/src/no-source-map.ts');
+    const noMapNodeMod = rel4.some((p) => p.includes('node_modules'));
+    const noMapDist = rel4.some((p) => p.includes('/dist/'));
+    fs4.rmSync(tmp4, { recursive: true, force: true });
+    if (!noMapOk || noMapNodeMod || noMapDist) {
+      console.error('❌ collect-line-coverage-trust 自测失败:');
+      if (!noMapOk) console.error('   ✗ 无 source map 但行号准的文件没被认成可信');
+      if (noMapNodeMod) console.error('   ✗ node_modules 被误认');
+      if (noMapDist) console.error('   ✗ dist 被误认');
+      process.exit(1);
+    }
+  }
+
   const ok = rel.includes('packages/server/src/ok.ts');
   const noData = rel.includes('packages/server/src/no-data.ts');
   const nodeMod = rel.some((p) => p.includes('node_modules'));
@@ -187,6 +254,27 @@ function main() {
       }
 
       const cache = json['source-map-cache'];
+      // ── node 侧 V8 覆盖里出现过的源文件 → 行级可信 ────────────────
+      //
+      // 2026-10-24：不再只认「有 source map」的。
+      //
+      // node 的 type-stripping **按原位抹掉类型**（行数不变）→ 行位置完整保留
+      // → 没有 source map 的那批（`.test.mjs` 直跑）**行号也是准的**。
+      // 证据见文件头。⇒ V8 覆盖结果里出现过的 `packages/*/src` 文件全部进清单。
+      for (const r of json.result || []) {
+        const url = r.url || '';
+        if (!url.startsWith('file://')) continue;
+        const rel = path
+          .relative(process.cwd(), url.slice('file://'.length))
+          .split(path.sep)
+          .join('/');
+        if (rel.startsWith('..')) continue;
+        if (!rel.startsWith('packages/')) continue;
+        if (rel.includes('/node_modules/')) continue;
+        if (rel.includes('/dist/')) continue;
+        if (!/\.(ts|tsx)$/.test(rel)) continue;
+        trusted.add(rel);
+      }
       if (!cache) continue;
       for (const fileUrl of Object.keys(cache)) {
         const entry = cache[fileUrl];
@@ -221,9 +309,7 @@ function main() {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, out ? out + '\n' : '');
 
-  console.error(
-    `── 行覆盖可信的源文件：${trusted.size} 个（清单：${outPath}）`,
-  );
+  console.error(`── 行覆盖可信的源文件：${trusted.size} 个（清单：${outPath}）`);
 }
 
 main();
