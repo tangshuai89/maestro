@@ -52,28 +52,49 @@ const STAMP_FILE = path.join(STAGING_DIR, '.fingerprint');
 /**
  * 指纹：server 的依赖声明 + `@maestro/common` 的内容状态。
  * 任何一个变了都要重装（否则打出来的包带的是旧依赖）。
+ *
+ * ⚠️ **必须按内容算，不能按 mtime**：npm 装 `file:` 依赖时会跑它的
+ * `prepare` 脚本（`@maestro/common` 的 `prepare: tsc`）→ **每次安装都会重建**
+ * `packages/common/dist` → mtime 全变 → 按 mtime 算的指纹**每次都不一样**
+ * → 缓存永远不命中（实测每次都重装一遍）。
+ * 按**内容**算就稳定了：重编译出来的 dist 内容一样 → 指纹一样 → 命中复用；
+ * 而 src 或 dist 的内容真变了 → 指纹变 → 重装 ✓。
  */
 function fingerprint() {
   const h = crypto.createHash('sha256');
   h.update(fs.readFileSync(path.join(SERVER_DIR, 'package.json')));
   h.update(fs.readFileSync(path.join(COMMON_DIR, 'package.json')));
 
-  // common 是 file: 依赖 → 会被整体拷进去 → 它的 build 产物变了也得重装
-  const distDir = path.join(COMMON_DIR, 'dist');
-  let entries;
-  try {
-    entries = fs
-      .readdirSync(distDir)
-      .map((f) => {
-        const st = fs.statSync(path.join(distDir, f));
-        return `${f}:${st.size}:${Math.floor(st.mtimeMs)}`;
-      })
-      .sort();
-  } catch {
-    entries = ['<no dist>'];
+  // common 是 file: 依赖 → 会被整体拷进去 → 它的 src 和 dist 变了都得重装
+  for (const sub of ['src', 'dist']) {
+    h.update(hashTree(path.join(COMMON_DIR, sub)));
   }
-  h.update(entries.join('|'));
   return h.digest('hex');
+}
+
+/** 目录内容的稳定哈希（路径 + 文件内容，按路径排序）。 */
+function hashTree(dir) {
+  const files = [];
+  const walk = (d, prefix) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      files.push(`${prefix}<missing>`);
+      return;
+    }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = path.join(d, e.name);
+      const rel = `${prefix}${e.name}`;
+      if (e.isDirectory()) walk(p, `${rel}/`);
+      else if (e.isFile()) {
+        const st = fs.statSync(p);
+        files.push(`${rel}:${st.size}:${crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex')}`);
+      }
+    }
+  };
+  walk(dir, '');
+  return files.join('\n');
 }
 
 /**

@@ -38,20 +38,22 @@
     ④ 打包产物里 server 的运行时依赖没进去 → **dmg 能打出来但 app 启动即崩**
   - 详见 `specs/packaging/tasks.md` #16–#20
   - 剩余（有 EVS 凭据后）：完整链 = VMP sign → codesign → notarize → dmg
-  - ✅ **2026-10-23：打包管线验通**（`SKIP_VMP=1`）→ 产出
+  - **历史（2026-10-23，另一次验通）**：`SKIP_VMP=1 npm run pack` → 产出
     `release/Maestro-1.0.0-arm64.dmg`（**105M**），electron = 43.2.0+wvcus。
-    剩下只差「有 EVS 凭据后的 VMP sign → codesign → notarize」那半条。
-    - **两个前置坑**（踩过）：
+    那次是把 `packages/electron/node_modules/electron` **软链**到根的那份来绕
+    版本探测 —— 软链是**临时的**（不进 git、换台机器就没了），现在改成
+    `scripts/pack.cjs` 显式注入版本，**不再依赖软链**。
+    - 当时记下的**两个前置坑**（现在都由脚本自动兜住）：
       1. `pack` 之前必须先有 `packages/electron/dist/main.js` → 跑
          `npm run build:electron`（= `tsc`）。`pack` 脚本**不含** build，
          缺了会报 `Application entry file "dist/main.js" … does not exist`。
+         → 现在 `scripts/pack.cjs` **自己跑一次 tsc**（顺带保证打的不是旧版本）。
       2. electron-builder 算版本时找的是 **appDir 下**的
          `packages/electron/node_modules/electron/package.json` —— 但本仓的
          electron 声明是 **git URL**（castlabs EVS 版），且被 npm **提升到了
          根** `node_modules` → 那个路径不存在 → 报
          `Cannot compute electron version from installed node modules`。
-         修法：把 `packages/electron/node_modules/electron` 软链到根的那份
-         （或改用 `electronVersion` 字段显式指定）。
+         → 现在由 `scripts/pack.cjs` 显式注入 `electronVersion`。
     - codesign 在本机**没有有效证书**（只有腾讯 IOA MDM 的、不受信）→
       electron-builder 跳过签名（预期行为，Apple 凭据到位后才有）。
     - 顺带验了 PR #115：打出来的 app 里 `Resources/server` **1.6M、0 个测试
@@ -828,9 +830,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                        → GET /music/stream/:provider/:trackId
-                                                                          → musicService.getStreamUrl() 拿上游 URL
-                                                                            → proxyAudio() 转发到上游 CDN
+                                                                            → GET /music/stream/:provider/:trackId
+                                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
