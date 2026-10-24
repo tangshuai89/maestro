@@ -154,8 +154,36 @@ test.describe('跨包全链路', () => {
       .toContain('/music/stream/netease/');
 
     // 而且真的打过 QQ 的流（先失败再换源，不是压根没试）
-    expect(calls.some((c) => c.url.includes('/music/stream/qq/'))).toBe(true);
-    expect(calls.some((c) => c.url.includes('/music/stream/netease/'))).toBe(true);
+    //
+    // ⚠️ **这里必须用 poll，不能用裸断言**（2026-10-24 实测踩到）：
+    // 上面那个 poll 等的是 `<audio src>` **属性**，而 src 是渲染层**同步**设的、
+    // 浏览器发请求是**异步**的 → 断言可能跑在请求之前。
+    // 实测：CI 上这条连续两次都输掉这个竞态（本地加 1.5s 等待就 5/5 全过），
+    // 而降级链**本身是好的**（netease 的流真的返 200、音频真的在放）。
+    await expect
+      .poll(() => calls.some((c) => c.url.includes('/music/stream/qq/')), { timeout: 30_000 })
+      .toBe(true);
+    await expect
+      .poll(() => calls.some((c) => c.url.includes('/music/stream/netease/')), { timeout: 30_000 })
+      .toBe(true);
+
+    // 换源**不是**终点：得真的在放（用户可见的症状是「有声音」，不是「src 变了」）
+    await expect
+      .poll(
+        async () =>
+          await page
+            .locator('audio')
+            .first()
+            .evaluate((el) => ({ t: el.currentTime, err: el.error && el.error.code })),
+        { timeout: 30_000 },
+      )
+      .toMatchObject({ err: null });
+    await expect
+      .poll(
+        async () => await page.locator('audio').first().evaluate((el) => el.currentTime),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
   });
 
   test('搜索无结果 → 明确空态，不崩', async ({ page }) => {
