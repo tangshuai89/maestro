@@ -5,8 +5,8 @@
   "main": "dist/main.js",
   "scripts": {
     "predev": "node scripts/ensure-electron-dist.cjs",
-    "dev": "tsc && electron dist/main.js",
-    "build": "tsc",
+    "dev": "tsc -p tsconfig.build.json && electron dist/main.js",
+    "build": "node scripts/clean-dist.cjs dist && tsc -p tsconfig.build.json",
     "start": "electron dist/main.js",
     "gen-icons": "node scripts/gen-icons.cjs",
     "prepack": "node scripts/ensure-electron-dist.cjs",
@@ -53,7 +53,8 @@
       "dist/**/*",
       "!dist/**/*.map",
       "!dist/**/*.d.ts",
-      "!dist/**/*.d.ts.map"
+      "!dist/**/*.d.ts.map",
+      "!dist/**/*.test.js"
     ],
     "extraResources": [
       {

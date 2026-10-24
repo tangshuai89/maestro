@@ -80,3 +80,37 @@ castlabs/electron-releases#8244344c…") is not fixed in project.`
     $ curl -H "X-Maestro-Token: …" http://127.0.0.1:3999/storage/info
     {"backupDir":"…","backupCount":0}
     ```
+
+- [x] 21. 产物里混进了**测试代码** —— common / electron 两个包（**2026-10-24 完成**）
+  - 现象（实测）：`app.asar` 里有 **11 个 `*.test.js`**（`main.behavior.test.js` /
+    `preload.test.js` / `dev-port.test.js` …）；产物里
+    `Resources/server/node_modules/@maestro/common/dist/` 躺着 **5 个测试文件**的
+    `.js`/`.d.ts` + 一个**陈旧产物** `__gate_probe.test.js`（源文件已删，
+    `tsc` 不清旧输出 → 一直跟着出货）。
+  - 根因：两个包的构建都用**含测试文件的 tsconfig**（`include: ["src"]`），
+    且 `build.files` 把 dist 下所有文件都收进 asar。
+  - 修法：
+    1. `packages/{common,electron}/tsconfig.build.json`（`extends` 现有配置 +
+       `exclude: ["**/*.test.ts"]`）→ `build` / `dev` 显式用它；
+       `tsconfig.json`（typecheck 用）**不**排除 → 测试文件仍被类型检查。
+    2. `packages/{common,electron}/scripts/clean-dist.cjs` → **build 前清 dist**
+       （治陈旧产物）。
+    3. electron 的 `build.files` 再加一道保险 `!dist/**/*.test.js`。
+  - ⚠️ **为什么 clean 脚本要放包内而不是仓库根**：`@maestro/common` 会被
+    `npm install file:... --install-links` **复制**到
+    `packages/electron/pack-server-deps/node_modules/` → 那个副本里
+    `../../scripts/` **不存在** → 构建脚本引用仓库根的路径会直接崩。
+  - 验收（实测）：`asar list | grep test` → **0**；产物里
+    `@maestro/common/dist` → **只有 10 个源文件产物，0 个测试文件**；
+    `npm run pack` → dmg 146MB ✅；`npm run pack:verify` → ✅
+- [x] 22. `packages/common` 的 `npm test` 只跑 5 个测试文件里的 1 个（**2026-10-24 完成**）
+  - 原来是 `"test": "npm run build && node dist/normalizer.test.js"` → 只跑
+    `normalizer.test.js`，另外 4 个（`artistAlias` / `contract` / `grouping` /
+    `mask`）在这个包里**从来没跑过**。仓库根的 `npm test` 跑全部 5 个 ✅ →
+    CI 是绿的，**掩盖了包级脚本的过时**。
+  - 而且 #21 修完之后它会**直接失败**（`build` 不再产出 `dist/normalizer.test.js`）。
+  - 修法：新增 `packages/common/scripts/run-tests.cjs` → **自动发现**
+    `src/*.test.ts` → **逐个进程**跑（每个测试文件自己 `process.exit(1)`，
+    不能 import 到一起）→ 与仓库根 `scripts/test.sh` 的 `run_pkg common`
+    行为一致。**以后新增测试文件不用改脚本**（漏跑就是静默的质量缺口）。
+  - 验收：`npm test -w @maestro/common` → **5/5 个测试文件全跑** ✅

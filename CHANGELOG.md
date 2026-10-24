@@ -799,6 +799,43 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **产物里混进了测试代码 —— common / electron 两个包**（2026-10-24）
+
+  收口覆盖率口径时顺带发现的**出货卫生**问题（实测）：
+
+  - **`app.asar` 里有 11 个 `*.test.js`**（`main.behavior.test.js` /
+    `preload.test.js` / `dev-port.test.js` …）—— electron 的 `build.files` 把
+    dist 下**所有**文件都收进去（只排除了 map / d.ts）。
+  - **产物里 `@maestro/common/dist/` 躺着 5 个测试文件**的 `.js`/`.d.ts`
+    —— common 的 `build`/`prepare` 用的是**含测试文件**的 tsconfig，而
+    `prepare` 会在打包时的隔离安装里跑 → **跟着出货**。
+  - 外加一个**陈旧产物** `__gate_probe.test.js`（源文件已删，`tsc` 不清旧输出
+    → 一直留在 dist 里）。
+
+  **修法**：
+
+  1. `packages/{common,electron}/tsconfig.build.json`（`extends` 现有配置 +
+     `exclude: ["**/*.test.ts"]`）→ `build`/`dev` 显式用它；
+     `tsconfig.json`（typecheck 用）**不**排除 → 测试文件仍被类型检查。
+  2. `packages/{common,electron}/scripts/clean-dist.cjs` → **build 前清 dist**
+     （治陈旧产物）。
+  3. electron 的 `build.files` 再加一道保险 `!dist/**/*.test.js`。
+  4. `packages/common` 的 `npm test` 原来只跑 5 个测试文件里的 **1 个**
+     （另外 4 个在这个包里从来没跑过；仓库根的 `npm test` 跑全部 5 个 → CI 是绿的，
+     **掩盖了包级脚本的过时**）→ 改成 `scripts/run-tests.cjs` **自动发现**全部
+     `src/*.test.ts` 并**逐个进程**跑（每个测试文件自己 `process.exit(1)`，
+     不能 import 到一起）。
+
+  ⚠️ **clean 脚本放包内而不是仓库根**：`@maestro/common` 会被
+  `npm install file:... --install-links` **复制**到
+  `packages/electron/pack-server-deps/node_modules/` → 那个副本里
+  `../../scripts/` **不存在** → 引用仓库根路径会直接崩。
+
+  **验收**（实测）：`asar list | grep test` → **0**（原来 11）；产物里
+  `@maestro/common/dist` → **只有 10 个源文件产物，0 个测试文件**；
+  `npm test -w @maestro/common` → **5/5 个测试文件全跑** ✅；
+  `npm run pack` → dmg 146MB ✅；`npm run pack:verify` → ✅
+
 - **`npm run pack` 不重建 server / renderer → 打进去的是上一次的产物（静默发旧货）**（2026-10-24）
 
   打包真正带走的是 `Resources/server`（来自 `server/dist`）和 `Resources/renderer`
@@ -834,7 +871,6 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
   实测（修之后）：`SKIP_VMP=1 npm run pack` → dmg 145M，包里的
   `Resources/server/music/music.service.js` **含**当天合入的新代码 ✓。
-
 
 - **打包管线：`npm run pack` 端到端出 dmg —— 路上修了 4 个真 bug，其中 2 个是
   「把开发环境拆了」和「打出来的 app 启动即崩」**（2026-10-24）

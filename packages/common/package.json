@@ -13,10 +13,10 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "prepare": "tsc",
+    "build": "node scripts/clean-dist.cjs dist && tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node dist/normalizer.test.js",
+    "test": "node scripts/run-tests.cjs",
     "lint": "eslint ."
   },
   "dependencies": {
