@@ -53,6 +53,85 @@ done
 [ "$STALE" -eq 0 ] || echo "❌ 产物陈旧 —— 这个包不能发。"
 
 echo
+echo "── 出货产物不许带测试代码 ─────────────────────────"
+# 判据分两层：
+#   ① 仓库里的 dist 目录 → 跑 CI 那个门禁（判据更全：还查**陈旧产物**）
+#   ② 打好的 .app        → 端到端查（asar + sidecar），CI 打不了 dmg，只能在这查
+#
+# ⚠️ 为什么必须单独查：打包把 server/dist、renderer/dist **整个目录**拷进
+#    Resources/，而 electron 的 build.files 把 dist 下所有文件收进 asar
+#    → **dist 里有什么，用户手里就什么**。
+#    实测抓出过一个**从没提交过**的本地调试残留（reco/_tmp-dbg2.js）——
+#    它已经跟着一个 dmg 出过货。
+#
+# ⚠️ 判据有两类，别只查文件名：
+#   · 文件名含 .test. / .spec.  → foo.test.js
+#   · **路径里**有 test / e2e / test-helpers 这样的目录段 → test-helpers/in-process-http.js
+#     （后者文件名完全正常，只看文件名会漏掉 —— 实测 server 的测试夹具就是这么漏出去的）
+echo "① 仓库 dist 目录（CI 同一个门禁）："
+# ⚠️ 不能写成 `node ... | sed` —— 管道的退出码是 sed 的（恒 0）→ 门禁红了也看不出来。
+#   这正是本脚本早前踩过的坑（「构建成功」是假象）。
+GATE_OUT=$(node "$REPO_ROOT/scripts/check-artifact-hygiene.cjs" 2>&1)
+GATE_EXIT=$?
+printf '%s\n' "$GATE_OUT" | sed 's/^/   /'
+if [ "$GATE_EXIT" -ne 0 ]; then
+  echo "   ❌ dist 目录不干净"
+fi
+echo
+echo "② 打好的 .app（asar + sidecar）："
+NODE_APP_SCAN=$(node -e "
+  const path = require('path');
+  const fs = require('fs');
+  const asar = require('@electron/asar');
+  const resources = path.join(process.argv[1], 'Contents', 'Resources');
+  const fileRe = /\.(test|spec)\./;
+  const dirRe = /(^|\/)(tests?|e2e|__tests__|test-helpers)(\/|$)/;
+  const bad = [];
+  const archive = path.join(resources, 'app.asar');
+  try {
+    if (fs.existsSync(archive)) {
+      for (const f of asar.listPackage(archive)) {
+        const base = f.split('/').pop();
+        if (fileRe.test(base) || dirRe.test(f)) bad.push('app.asar' + f);
+      }
+    }
+  } catch (e) {
+    bad.push('app.asar 读取失败: ' + e.message);
+  }
+  const walk = (dir, rel) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const r = rel ? rel + '/' + e.name : e.name;
+      if (e.isDirectory()) {
+        // ⚠️ node_modules 里**只有我们自己发布的包**要查（@maestro/common）：
+        //    第三方包自带 test/ 目录是**正常的**（busboy/test/、minimist/test/ …）
+        //    —— 实测不排除它们会一次报出 120+ 个假阳性，门禁直接被噪音淹掉。
+        if (e.name === 'node_modules') {
+          const scope = path.join(dir, e.name, '@maestro');
+          if (fs.existsSync(scope)) walk(scope, rel + '/@maestro');
+          continue;
+        }
+        walk(path.join(dir, e.name), r);
+      } else if (e.isFile() && (fileRe.test(e.name) || dirRe.test(r))) bad.push(r);
+    }
+  };
+  for (const sub of ['server', 'renderer']) {
+    const d = path.join(resources, sub);
+    if (fs.existsSync(d)) walk(d, sub);
+  }
+  for (const b of bad) console.log(b);
+" "$APP" 2>/dev/null)
+APP_TEST_COUNT=$(printf '%s' "$NODE_APP_SCAN" | grep -c . || true)
+if [ "${APP_TEST_COUNT:-0}" -eq 0 ]; then
+  echo "✅ app.asar / Resources/server / Resources/renderer 里都没有测试代码"
+else
+  echo "❌ 出货产物里有 $APP_TEST_COUNT 个不该出货的文件："
+  printf '%s\n' "$NODE_APP_SCAN" | sed 's/^/     ✗ /'
+  echo "   → 这些会跟着包发给用户。修法：各包的构建 tsconfig 排除测试 + 构建前清 dist。"
+fi
+
+echo
 echo "── sidecar server ───────────────────────────────"
 SERVER="$APP/Contents/Resources/server"
 if [ ! -f "$SERVER/main.js" ]; then

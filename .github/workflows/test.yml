@@ -116,3 +116,49 @@ jobs:
           node scripts/coverage-diff-gate.js \
             --base ${{ github.event.pull_request.base.sha }} \
             --trust coverage/.line-coverage-trusted.txt
+
+  # ── 出厂产物卫生门禁 ────────────────────────────────────────────
+  #
+  # 判据：**出货目录里不许有测试代码 / 陈旧产物 / 源码。**
+  #
+  # 为什么单独一个 job（不塞进 check）：
+  #   · 它要**先构建全部出厂产物**才判得了（common → server → renderer →
+  #     electron，~2 分钟）→ 塞进 check 会拖慢主门禁。
+  #   · 拆开还能**并行**跑，两边互不拖累。
+  #   · 语义也不同：check 判「代码对不对」，这个判「**发出去的东西干不干净**」。
+  #
+  # 为什么必须有它（2026-10-24 实测）：这道门禁上线之前，出货卫生只靠
+  # 「人肉验收一次」（本地打一次包、asar list 一下）。**一次性的验收会腐烂** ——
+  # 实测当场就抓出三处已经在出货的东西：
+  #   · electron/dist 里的 11 个测试产物（打进 asar）
+  #   · common/dist 里的 5 个测试产物（跟着 sidecar 出货）
+  #   · server/dist 里的测试夹具 + 一个从没提交过的调试残留
+  #     （_tmp-dbg2.js —— **已经跟着一个 dmg 出过货**）
+  # 而这四类问题，**没有任何现有门禁会红**。
+  artifact-hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # ⚠️ 门禁的自测先跑（它不需要构建产物）—— 万一构建挂了，自测的结论
+      #    还在，能分清是「门禁自己坏了」还是「产物不干净」。
+      - name: 出货卫生门禁自测（证明门禁不是摆设）
+        run: node scripts/check-artifact-hygiene.cjs --self-test
+
+      # 四个出货包全都要构建 —— 少建一个，那个包就判不了（会被跳过而不是报错）。
+      - name: 构建全部出厂产物（common → server → renderer → electron）
+        run: npm run build
+
+      # ⚠️ --require-built：没构建过 = 失败，不是跳过。
+      #    「跳过」= 门禁形同虚设（这正是旧门禁的毛病）。
+      - name: 出货产物不许带测试代码 / 陈旧产物 / 源码
+        run: node scripts/check-artifact-hygiene.cjs --require-built
