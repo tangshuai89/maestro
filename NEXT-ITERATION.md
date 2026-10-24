@@ -448,25 +448,36 @@ python3 -m venv ~/.castlabs-evs-venv
     10 例 + `lib/lyrics` 17 例，全绿；typecheck / lint / 颜色门禁 / 双端 build 通过。
   - **未做**：全局热键（`globalShortcut`）留给 #7.3；逐字卡拉OK 未做。
 
-### 7.3 媒体键 + 全局热键 + 系统「正在播放」— **部分（仅 Tray）**
+### 7.3 媒体键 + 全局热键 + 系统「正在播放」— ✅ **2026-10-24 已交付**（`specs/desktop-integration`）
 
-- **目标**：桌面集成基本功——耳机/键盘媒体键控制、全局快捷键、系统媒体中心显示当前歌。
-- **现状**：Tray 已完成（macOS 菜单控制播放/暂停/上下首/显示/退出）。**尚未做**：
-  `navigator.mediaSession`（系统媒体控件/媒体键）、`globalShortcut`（全局热键）、
-  mac `MPNowPlayingInfoCenter`。
-- **现状 / 复用点**：renderer 用 `navigator.mediaSession` 设 metadata +
-  action handler；Electron 用 `globalShortcut` 注册全局热键；三者共享同一套播放命令。
-- **范围**：
-  - `navigator.mediaSession`：标题/歌手/封面 + play/pause/next/prev/seek（锁屏/系统媒体控件、部分平台媒体键）
-  - Electron `globalShortcut`：全局 播放/暂停、上/下一首、音量、切 lite（6.3）、开关桌面歌词（7.2）
-  - Tray 菜单动作复用同一套播放命令，不重复实现
+- **交付内容**：
+  - `navigator.mediaSession`（renderer，`hooks/useMediaSession.ts`）：metadata（歌名/歌手/专辑/封面）+
+    `playbackState` + `setPositionState` + **8 个 action handler**
+    （play / pause / previoustrack / nexttrack / seekbackward / seekforward / seekto / stop）
+  - `globalShortcut`（main，`global-shortcuts.ts`）：**6 条**全局热键
+    （`⌃⌥` + Space / ← / → / ↑ / ↓ / D）
+- **一个 API 顶三件事**：Chromium 在 macOS 上把 media session 接到了
+  `MPNowPlayingInfoCenter` → **系统媒体控件（控制中心/锁屏）、耳机与键盘媒体键、
+  macOS「正在播放」**一起点亮，不需要原生模块。
+- **⚠️ 关键约束（写进代码了，不只是约定）**：**媒体键不能注册成 `globalShortcut`**
+  —— Electron 在 macOS 上那样做会占住 remote command center 通道并**关掉
+  Chromium 自己的媒体键处理** → 媒体键会变成"有时双触发、有时失灵"。
+  ⇒ 媒体键**只走 mediaSession**；`global-shortcuts.ts` 里有守卫挡住，
+  `global-shortcuts.test.ts` + `main.behavior.test.ts` 两条断言守着。
+- **全局热键为什么用 `⌃⌥` 而不是 `⌘⇧`**：App 内部已经有 `⌘⇧M`/`⌘⇧D`/`⌘⇧L`
+  三个快捷键（mini / 桌面歌词 / lite）→ 全局热键若也用 `⌘⇧`，App 聚焦时
+  **两个 handler 同时触发**（切两次 = 白切）。
+- **零新增 IPC 通道**：全局热键**复用**托盘那条 `tray:command` 通道
+  （类型 `TrayCommand` → `PlaybackCommand`，通道名不动）。
 - **验收**：
-  - [ ] 键盘/耳机媒体键能控播放
-  - [ ] 自定义全局热键在 App 不聚焦时也生效
-  - [ ] mac「正在播放」/系统媒体控件显示当前歌名+封面并可控
-- **风险**：mac `MPNowPlayingInfoCenter` 若 `navigator.mediaSession` 覆盖不全，可能需少量原生/额外模块；先做 MediaSession 能覆盖的，缺口标注。
-- **依赖**：并进已实现的 Tray 菜单（`packages/electron/src/main.ts` 的 `createTray`）。
-- **估时**：+1–1.5 天
+  - [x] 自动化：mediaSession 的 8 个 handler **真的调到播放命令**（20 个用例）
+  - [x] 自动化：全局热键注册清单 + **零媒体键** + 退出注销（6 + 2 个用例）
+  - [x] 变异验证：删掉任一 handler 的调用 → 用例**必须红**；拆掉媒体键守卫 → 用例**必须红**
+  - [ ] 手测（**唯一一条无法自动化**）：插带媒体键的耳机 → ⏯/⏭/⏮ 响应 +
+        控制中心显示歌名封面 + `⌃⌥Space` 在 App 不在前台时能暂停
+- **未做（不在本轮）**：**自动更新**（`electron-updater`）—— 要 GitHub Releases
+  feed + **签名构建**才有意义（没签名的 dmg 更新完照样被 Gatekeeper 拦）
+  → 等 §0 的 Apple Dev + EVS 落地后单独立 spec。
 
 ### 7.4 音量功能接线 — 🔴 **整条是死代码（2026-10-20 发现的真 bug）**
 
