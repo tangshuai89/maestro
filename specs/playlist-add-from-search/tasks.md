@@ -56,8 +56,8 @@
   - [x] 去掉「＋」的 `stopPropagation` → SearchPanel 用例**必须红**
   - [x] 「已在歌单」判定改用 `item.id` → AddToPlaylistDialog 用例**必须红**
 - [x] **D2** `npm run typecheck` / `npm run lint` 0 error（新文件 0 warning）
-- [x] **D3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`
-- [x] **D4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）
+- [ ] **D3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`（**待跑**）
+- [ ] **D4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）（**待跑**）
 - [x] **D5** `CHANGELOG.md` + `specs/playlist-edit/spec.md` 的「不做什么」条目更新
 
 ## 不在本 spec 范围
