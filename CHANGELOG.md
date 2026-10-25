@@ -46,6 +46,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Titlebar.test.tsx` 补 2 条 + **变异验证 3 个**（不改 `unifiedItems` / 不强制
   同步快照 / 不更新 `q.idx` → 三条都红）。
 
+- **歌单编辑 —— 歌单能改名 / 能加歌 / 能移除单曲**（2026-10-25，`specs/playlist-edit`）
+
+  用户现在能建歌单、能删歌单，但**建完就没法管**：在「我的歌单」里只能看到
+  `歌单名（首数）` 和一个「删除」——**看不到里面有哪些歌、改不了名、加不了歌、
+  删不了单首歌**。
+
+  **⚠️ 先纠正上一轮产品盘点的说法**：盘点时写的是「后端有能力 UI 0 调用」——
+  **不准确**。实际是**四层里三层齐备**：后端 `patch(name/append/remove)` ✅、
+  接口层 `patchPlaylist` ✅、hook 层 `usePlaylist.rename/append/remove` ✅
+  （且有测试）。缺口精确落在**UI 组件**这一层。⇒ 补 UI 即可，
+  **零后端改动、零 hook 改动、零新依赖**。
+
+  - 新增 `PlaylistManagerModal`：标题行 inline 改名（✎ → Enter/失焦保存，
+    Esc 取消）、曲目列表（序号/标题/艺术家/时长）、每行「×」移除、
+    底部「▶ 播放全部」+「+ 添加歌曲」（本弹窗内嵌统一搜索，不跳走）
+  - NL 弹窗「我的歌单」区每行加「管理」入口；**保留**「点歌单名 = 播放」的既有行为
+  - 歌单数据由**持有 `usePlaylist()` 的组件注入**（单一数据源）——
+    组件里再 `usePlaylist()` 一次会多出一份独立 state，改完名 NL 弹窗里还是旧名
+
+  **跨包一致性（这次真正踩到的坑）**：「已在歌单」判定必须和服务端追加去重
+  **用同一个 key**。两端各写一份的话：客户端按 `id` 判「不在歌单」→ 放行「+ 加」，
+  服务端按 `platform:trackId` 判「重复」→ 跳过 ⇒ **用户点了「+」，歌单长度不变，
+  界面上也没提示**，症状就是「点了没反应」。
+
+  ⇒ key 提到 **`packages/common/src/playlist.ts`**（`playlistTrackKey`），
+  server 和 renderer **共用同一个函数**（`AGENTS.md`：跨包归一工具禁止两端各写一份）。
+  顺带发现并修正一个真实缺陷：**按 `item.id` 移除会一次干掉同一首歌的 QQ 版 +
+  Spotify 版**（两版 id 相同）—— 现在统一按 `platform:trackId` 移除。
+
+  **验证**（自动化，不靠手测）：
+  - `PlaylistManagerModal.test.tsx` **19 条**（逐条对应 spec §验收 1–14）+
+    `NLPlaylistModal.test.tsx` 补 1 条（「管理」入口）
+  - `packages/common/src/playlist.test.ts` 7 条（重点：**id 不同但首个音源相同
+    → key 相同**）+ `playlist.test.ts`（server）补 1 组（去重/移除按平台身份）
+  - **变异验证 3 个**：移除传 `track.id` → 用例红；「已在歌单」改用 `t.id` →
+    用例红；去掉空名校验 → 用例红（**「变异生效」与「门禁变红」分开断言**）
+  - typecheck / lint **0 error**（新文件 0 warning）
+
+  **未做**（沿用 `specs/nl-playlist/spec.md:188` 的原始边界）：
+  歌单内**排序 / 拖拽**、歌单封面、**从搜索结果一键「加到歌单」**
+  （另一个入口，单独一批做，避免动 `SearchPanel` 的 theater 布局）、
+  歌单分享 / 导出 / 跨设备同步、批量操作。
+
 - **桌面系统集成 —— 系统媒体控件 / 耳机媒体键 / macOS「正在播放」/ 全局热键**（2026-10-24，`specs/desktop-integration`）
 
   产品盘点时实测：`mediaSession` / `globalShortcut` / `MPNowPlayingInfoCenter` /

@@ -7,6 +7,7 @@
  * 命名冲突：同名自动追加 `-2`、`-3`（spec §风险）。
  */
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { playlistTrackKey } from '@maestro/common';
 import { StorageService } from '../common/storage';
 import type { UnifiedSearchItem } from '../music/types';
 
@@ -168,10 +169,10 @@ export class PlaylistService {
     // append 追加曲目（去重 by UnifiedSearchItem.id + sources[0]）
     if (body?.append !== undefined) {
       const add = this.validateTracks(body.append);
-      const seen = new Set(cur.tracks.map((t) => this.trackKey(t)));
+      const seen = new Set(cur.tracks.map((t) => playlistTrackKey(t)));
       let added = 0;
       for (const t of add) {
-        const k = this.trackKey(t);
+        const k = playlistTrackKey(t);
         if (!seen.has(k)) {
           cur.tracks.push(t);
           seen.add(k);
@@ -187,10 +188,9 @@ export class PlaylistService {
       }
       const drop = new Set(body.remove as string[]);
       const before = cur.tracks.length;
-      cur.tracks = cur.tracks.filter(
-        (t) =>
-          !drop.has(t.id) && !drop.has(`${t.sources?.[0]?.platform}:${t.sources?.[0]?.trackId}`),
-      );
+      // 移除同时接受两种标识：item.id（合并后的归一 id）或
+      // 平台曲目身份 `platform:trackId`（renderer 的「已在歌单」判定用的就是它）。
+      cur.tracks = cur.tracks.filter((t) => !drop.has(t.id) && !drop.has(playlistTrackKey(t)));
       this.logger.log(`patch: ${id} remove ${before - cur.tracks.length} tracks`);
     }
     if (cur.tracks.length > MAX_TRACKS) {
@@ -203,10 +203,5 @@ export class PlaylistService {
     list[idx] = cur;
     this.writeAll(sessionId, list);
     return cur;
-  }
-
-  private trackKey(t: UnifiedSearchItem): string {
-    const s = t.sources?.[0];
-    return s ? `${s.platform}:${s.trackId}` : t.id;
   }
 }
