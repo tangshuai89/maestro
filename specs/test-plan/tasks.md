@@ -55,9 +55,12 @@
 - [x] **D1** `/music/search` 输入清洗：XSS / 空 / 超长 — 已在 `like.e2e.test.ts` 覆盖（空 q → 400）
 - [x] **D2** `/music/lyrics/aggregate` cache hit / miss — 已在 `lyrics-aggregate.e2e.test.ts` 覆盖
 - [x] **D3** `/music/library` 脏数据过滤（Deezer 误入 fanOut）— 已在 `library-badge-merge.e2e.test.ts` 覆盖
-- [x] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400 — 2026-08-28 完成
-  - 新增 `PUT /music/deezer/preset` 端点 + `DeezerMusicProvider.isValidPreset`
-  - 测试：`deezer-preset.test.ts`（7 用例）
+- [~] **D4** `/music/deezer/preset` 切换持久化 + 不存在的 preset -> 400 — 2026-08-28 完成，**2026-10-24 归档（端点已删）**
+  - 当时：新增 `PUT /music/deezer/preset` 端点 + `DeezerMusicProvider.isValidPreset` + `deezer-preset.test.ts`（7 用例）
+  - 归档原因：该端点 renderer **从不调用**（切流派实际走 `GET /music/next?provider=deezer&preset=xxx`），
+    属于同一份状态的第二条死写路径。端点 + 测试 + 两个 static 方法一并删除。
+  - 替代覆盖：`deezer-preset-live.test.ts`（4 用例）测**活路径**的持久化，
+    含「强杀后重启 preset 仍在」——这条在删端点时发现活路径有真 bug（没走 setPref），已修。
 - [x] **D5** `/music/dislike/merged` 路由顺序（不被 `/dislike/:trackId` 截胡）— 已在 `like.e2e.test.ts` 覆盖
 - [x] **D6** `/auth/*` controller + `RequireInternalTokenGuard` 校验 — 2026-08-28 完成
   - **修复生产 bug**：`config.ts` 读 `MASTERO_INTERNAL_TOKEN`（typo）→ guard 永远失效

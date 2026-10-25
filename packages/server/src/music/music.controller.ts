@@ -121,8 +121,14 @@ export class MusicController {
     // Persist the Deezer preset on the session so subsequent /next
     // calls (without a preset query) keep the user's choice. Other
     // providers ignore this field.
+    //
+    // ⚠️ **必须走 setPref**（它内部会 persist），不能直接改 `session.prefs`：
+    //   直接改只动内存 → **不排写入** → 「选了流派、App 被强杀（sidecar
+    //   SIGKILL 不会跑 onModuleDestroy）→ 重启后流派回默认」。
+    //   这正是当年给死端点修过的同一个 bug（consistency-fixes G2），
+    //   但**活的那条路径当时漏了**。2026-10-24 补上。
     if (preset && normalizeProvider(provider) === 'deezer') {
-      session.prefs = { ...(session.prefs ?? {}), deezerPreset: preset };
+      this.sessionService.setPref(session, 'deezerPreset', preset);
     }
     return this.musicService.getNextTrack(session, normalizeProvider(provider));
   }
@@ -337,31 +343,19 @@ export class MusicController {
   }
 
   /**
-   * Switch the Deezer preset (genre chart) for the current session.
-   * The preset persists in session.prefs.deezerPreset so subsequent
-   * /next calls keep the user's choice.
+   * ⚠️ 这里**曾经**有过一个 `PUT /deezer/preset` 端点 —— 已删（2026-10-24）。
    *
-   * Body: { preset: string }
-   * 400 if preset is not a valid preset name.
+   * 为什么删：它是同一份状态的**第二条写路径**，而用户永远走不到它。
+   * renderer 切流派走的是 `GET /music/next?provider=deezer&preset=xxx`，
+   * 那个路由在调用 service **之前**顺手把 preset 落到 `session.prefs`。
+   * 死端点自己还带了一整个测试文件（`deezer-preset.test.ts`）在测它。
+   *
+   * 留着它的代价：一份没人调的 API + 一份测死路径的测试 + 两套校验语义
+   * （死端点会 400 拒非法 preset，活的路径不校验 —— 未知 preset 在
+   * `fetchRadioBatch` 里回退到 132 国际流行榜，不算错）。
+   *
+   * 真正在用的写路径见上面 `next()` 路由的 `setPref` 调用。
    */
-  @Put('deezer/preset')
-  setDeezerPreset(
-    @Body() body: { preset?: string },
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const preset = body?.preset;
-    if (!preset || !DeezerMusicProvider.isValidPreset(preset)) {
-      throw new BadRequestException(
-        `Invalid deezer preset "${preset}". Valid: ${DeezerMusicProvider.getPresetNames().join(', ')}`,
-      );
-    }
-    const session = this.sessionService.resolve(req, res);
-    // T10 (consistency-fixes G2)：走 setPref 而不是直接改 prefs，确保
-    // 重启后 preset 不丢失（旧实现只改内存没 persist）。
-    this.sessionService.setPref(session, 'deezerPreset', preset);
-    return { ok: true, preset };
-  }
 
   /**
    * §6.2 渠道优先级：保存用户拖拽排序后的渠道优先级列表。

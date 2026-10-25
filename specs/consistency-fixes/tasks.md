@@ -161,8 +161,10 @@
   - `music.service.ts` `patchLibraryWithSources`/`healLibraryItem`
     mutation 后 `libraryCache.delete(session.id)`
   - `reco.service.ts` coverCache 加 `{cover, at}` + 24h TTL
-  - 测试：prefs 持久化（`deezer-preset.test.ts` 扩展——重建 service 读
-    同一 storage 模拟重启）；session 快照测试；libraryCache 失效测试
+  - 测试：prefs 持久化（**2026-10-24 改名**：`deezer-preset.test.ts` 已随死端点删除，
+    该文件的持久化用例移到了 `deezer-preset-live.test.ts` —— 测的是**活路径**
+    `GET /music/next?provider=deezer&preset=xxx`，并覆盖「强杀后重启 preset 仍在」；
+    重建 service 读同一 storage 模拟重启的写法不变）；session 快照测试；libraryCache 失效测试
 
 ## 未排期（记录在案，暂不做）
 

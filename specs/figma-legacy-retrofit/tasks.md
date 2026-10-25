@@ -2,6 +2,24 @@
 
 > 关联：`specs/figma-legacy-retrofit/spec.md` · 方法论：`docs/figma-legacy-retrofit.md`
 
+> ⛔ **2026-10-24 归档本 spec 的待做项（Phase B / C / D 共 16 条）**
+>
+> **为什么归档**：这 16 条**全是 Figma 文件里的写操作**（跑 retrofit 计划喂
+> `use_figma`、建变量、补组件契约、像素级回归审计）—— **它们不产生任何 app 功能**。
+> 特别说明：本 spec 的 **Phase A（仓库内工具链，13 条）已经全部完成且是有价值的**
+> （`scripts/figma-retrofit-analyze.mjs` / `-plan-to-plugin.mjs` / `-fixture.mjs`
+> 都在，`npm run retrofit:analyze` 能用）—— 归档的只是「拿它去改真实 Figma 文件」这一步。
+>
+> **为什么现在做**：盘点时发现 32 条同类待办散在 3 个 spec 里（d5-code-connect 9 +
+> d6-description-template 7 + figma-legacy-retrofit 16），
+> **清单长度本身在稀释真待办的可见度**。
+>
+> **阻塞状态（如需复活再核）**：需要 Figma **写**权限（云端 MCP 的 `use_figma` /
+> `upload_assets` 在 Starter 团队有 20 次/月限额，2026-10-23 实测）；
+> 本仓没有 FIGMA_TOKEN（需用户自带）。
+>
+> **怎么复活**：把下面的 `[~]` 改回 `[ ]`。工具链都在，且 fixture 模式可以离线跑。
+
 ## Phase A — 仓库内工具链（已完成）
 
 - [x] **A1** `scripts/lib/figma-retrofit.mjs` — 分析核心（纯函数）
@@ -26,25 +44,25 @@
 
 ## Phase B — 真实文件执行（需要 Figma MCP OAuth + Full seat）
 
-- [ ] **B1** 备份/复制目标文件（官方建议：先在副本上试）
-- [ ] **B2** 跑分析器：`npm run retrofit:analyze -- --fetch <fileKey> --out .figma-retrofit`
-- [ ] **B3** 人工审阅计划：补组件语义名 + 确认变体轴切法 + 确认语义色归类
-- [ ] **B4** 生成段：`npm run retrofit:plan -- .figma-retrofit/retrofit-plan.json .figma-retrofit/plugin.js`
-- [ ] **B5** 类型校验：`npm run retrofit:typecheck -- .figma-retrofit/plugin.js`
-- [ ] **B6** 喂 use_figma 跑 SEG1（Foundations）→ 截图 + 查变量
-- [ ] **B7** 逐段跑 SEGn（Components）→ 每段后截图
-- [ ] **B8** 逐屏人工比对：内容差异处应显示各实例自己的文案
-- [ ] **B9** 老稿页标为只读基准（沿用 `99 · Archive` 做法）
+- [~] **B1** 备份/复制目标文件（官方建议：先在副本上试）
+- [~] **B2** 跑分析器：`npm run retrofit:analyze -- --fetch <fileKey> --out .figma-retrofit`
+- [~] **B3** 人工审阅计划：补组件语义名 + 确认变体轴切法 + 确认语义色归类
+- [~] **B4** 生成段：`npm run retrofit:plan -- .figma-retrofit/retrofit-plan.json .figma-retrofit/plugin.js`
+- [~] **B5** 类型校验：`npm run retrofit:typecheck -- .figma-retrofit/plugin.js`
+- [~] **B6** 喂 use_figma 跑 SEG1（Foundations）→ 截图 + 查变量
+- [~] **B7** 逐段跑 SEGn（Components）→ 每段后截图
+- [~] **B8** 逐屏人工比对：内容差异处应显示各实例自己的文案
+- [~] **B9** 老稿页标为只读基准（沿用 `99 · Archive` 做法）
 
 ## Phase C — 自动化验收（未开始）
 
-- [ ] **C1** `scripts/figma-retrofit-audit.mjs` — REST 结构审计（比对本仓 audit 脚本模式）
-- [ ] **C2** 像素级回归：老帧渲染 vs 实例组装渲染，差异阈值门禁
-- [ ] **C3** 契约回流：`setSharedPluginData` 契约 → `figma-code-connect.json` 候选
+- [~] **C1** `scripts/figma-retrofit-audit.mjs` — REST 结构审计（比对本仓 audit 脚本模式）
+- [~] **C2** 像素级回归：老帧渲染 vs 实例组装渲染，差异阈值门禁
+- [~] **C3** 契约回流：`setSharedPluginData` 契约 → `figma-code-connect.json` 候选
 
 ## Phase D — 语义补齐（需要人或 AI 判断，脚本做不了）
 
-- [ ] **D1** 机器名图层 → 语义名（分析器已标 `nameConfidence: generic`）
-- [ ] **D2** 变体轴命名（`tone=100b21` → `tone=accent`）
-- [ ] **D3** 语义色归类（surface/text/border → accent/primary/muted/…）
-- [ ] **D4** 组件契约补全（react 路径 / props / a11y / states）
+- [~] **D1** 机器名图层 → 语义名（分析器已标 `nameConfidence: generic`）
+- [~] **D2** 变体轴命名（`tone=100b21` → `tone=accent`）
+- [~] **D3** 语义色归类（surface/text/border → accent/primary/muted/…）
+- [~] **D4** 组件契约补全（react 路径 / props / a11y / states）

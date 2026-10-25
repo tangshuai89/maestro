@@ -156,7 +156,9 @@ library-import.e2e.test.ts（3 用例）。
 - ~~`/music/search` 输入清洗（XSS 字符 / 空串 / 超长）~~ ✅ music.controller e2e
 - `/music/lyrics/aggregate` cache hit
 - ~~`/music/library` 漏掉 fanOut / 脏数据~~ ✅ music.controller e2e (404 路径)
-- ~~`/music/deezer/preset` 切换持久化~~ ✅ music.controller e2e (合法/非法/缺失)
+- ~~`/music/deezer/preset` 切换持久化~~ ⛔ **2026-10-24 归档**：端点已删（renderer 从不调它），
+  活路径是 `GET /music/next?provider=deezer&preset=xxx`；持久化改由
+  `deezer-preset-live.test.ts` 覆盖（含强杀重启场景）
 - ~~`/music/dislike/merged` 路由顺序~~ ✅ music.controller e2e (400 路径)
 - ~~`/auth/*` controller + guard（`RequireInternalTokenGuard` 校验）~~ ✅ auth.controller e2e 33 项
 
