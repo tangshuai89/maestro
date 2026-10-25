@@ -14,6 +14,11 @@ export {
   COVER_TAGS,
   type VersionTag,
 } from './normalizer.js';
+export {
+  playlistTrackKey,
+  type PlaylistTrackKeyInput,
+  type PlaylistTrackKeySource,
+} from './playlist.js';
 export { stageNameAliasMatch, artistLooseMatch } from './artistAlias.js';
 export { titleAliasMatch, titleAliasKey } from './titleAlias.js';
 export { maskUin } from './mask.js';

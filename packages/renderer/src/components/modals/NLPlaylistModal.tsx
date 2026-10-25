@@ -14,6 +14,7 @@ import { Button } from '../ui/Button';
 import { Textarea } from '../ui/textarea';
 import { parseIntent, runReco, type NLIntent, type UnifiedSearchItem } from '../../api';
 import { usePlaylist } from '../../hooks/usePlaylist';
+import { PlaylistManagerModal } from './PlaylistManagerModal';
 
 export interface NLPlaylistModalProps {
   open: boolean;
@@ -57,7 +58,16 @@ export function NLPlaylistModal({
   const [saveName, setSaveName] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
+  // 歌单管理（specs/playlist-edit/）：正在管理哪个歌单（null = 没打开）
+  const [managingId, setManagingId] = React.useState<string | null>(null);
+
   const pl = usePlaylist();
+
+  /** 被管理的歌单（跟随 pl 的最新状态 —— 改完名/加完歌立刻反映）。 */
+  const managedPlaylist = React.useMemo(
+    () => pl.playlists.find((p) => p.id === managingId) ?? null,
+    [pl.playlists, managingId],
+  );
 
   React.useEffect(() => {
     if (!open) {
@@ -70,6 +80,7 @@ export function NLPlaylistModal({
       setConfirmItems(null);
       setSaveOpen(false);
       setSaveName('');
+      setManagingId(null);
     }
   }, [open]);
 
@@ -314,6 +325,9 @@ export function NLPlaylistModal({
                     >
                       {p.name}（{p.tracks.length}）
                     </button>
+                    <Button size="sm" variant="ghost" onClick={() => setManagingId(p.id)}>
+                      管理
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => void pl.remove_playlist(p.id)}>
                       删除
                     </Button>
@@ -380,6 +394,19 @@ export function NLPlaylistModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* 歌单管理（specs/playlist-edit/）：改名 / 加歌 / 移除单曲 / 播放全部 */}
+      <PlaylistManagerModal
+        open={managingId !== null}
+        onClose={() => setManagingId(null)}
+        playlist={managedPlaylist}
+        ops={pl}
+        onPlay={(items, index) => {
+          // 播放了就让开位置——用户是想去听歌，不是盯着管理面板。
+          setManagingId(null);
+          onPlay(items, index);
+        }}
+      />
     </Dialog>
   );
 }
