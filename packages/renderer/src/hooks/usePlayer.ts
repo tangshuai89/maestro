@@ -238,7 +238,19 @@ export function usePlayer(
   const queueRef = useRef<{
     tracks: Track[];
     idx: number;
-    unifiedItems?: UnifiedSearchItem[];
+    /**
+     * 与 `tracks` **索引对齐**、且**总是存在**。
+     *
+     * 为什么改成必填：队列只有 `playSearch` 一处创建（`switchToProvider` /
+     * `resetForSwitch` 置 null），而 playSearch 一次就把 `tracks` 和
+     * `unifiedItems` 一起建好（parsePlayableQueue 把不可播的从**两个数组里
+     * 同时**丢掉）。⇒ 非 null 的队列**必然**有 unifiedItems。
+     *
+     * 之前写成可选 → 下游写出一堆「万一没有呢」的兜底分支（`?? []` / `?:` ），
+     * 而那些分支**永远走不到** —— 覆盖率 diff 门禁会直接把它们报成未覆盖
+     * （不是 bug，是死代码）。这里把不变量写进类型，让编译器守住。
+     */
+    unifiedItems: UnifiedSearchItem[];
     /**
      * Reco queues only: fetch the next batch when the last track ends, instead
      * of looping back to #1. Returns the raw unified items for the next batch
@@ -1319,7 +1331,7 @@ export function usePlayer(
           });
           if (parsed.tracks.length) {
             q.tracks.push(...parsed.tracks);
-            (q.unifiedItems ??= []).push(...parsed.unifiedItems);
+            q.unifiedItems.push(...parsed.unifiedItems);
             q.idx += 1;
             presentTrack(q.tracks[q.idx], q.unifiedItems[q.idx]);
             void detectAndApplyLiked(q.unifiedItems[q.idx]);
@@ -1441,7 +1453,7 @@ export function usePlayer(
         return;
       }
       q.tracks = [...q.tracks, ...tracks];
-      q.unifiedItems = q.unifiedItems ? [...q.unifiedItems, ...aligned] : aligned;
+      q.unifiedItems = [...q.unifiedItems, ...aligned];
       // idx 不变但 items 引用变了——主动推一版 snapshot 给 reactive consumer。
       setQueueSnapshot({ idx: q.idx, items: q.unifiedItems });
       setError(null);
@@ -1486,9 +1498,7 @@ export function usePlayer(
       if (index < 0 || index >= q.tracks.length) return;
       const wasCurrent = index === q.idx;
       const tracks = q.tracks.filter((_, i) => i !== index);
-      const unifiedItems = q.unifiedItems
-        ? q.unifiedItems.filter((_, i) => i !== index)
-        : undefined;
+      const unifiedItems = q.unifiedItems.filter((_, i) => i !== index);
       q.tracks = tracks;
       q.unifiedItems = unifiedItems;
       if (tracks.length === 0) {
