@@ -354,6 +354,35 @@ describe('NLPlaylistModal · 本地歌单', () => {
     expect(await screen.findByText('歌单管理')).toBeInTheDocument();
     expect(screen.getByTestId('pm-name')).toHaveTextContent('我的歌单');
   });
+
+  it('在管理弹窗里点「▶ 播放全部」→ 调 onPlay(tracks, 0) + 关掉管理弹窗', async () => {
+    // ⚠️ 这条是被**覆盖率 diff 门禁**逼出来的：NL 弹窗把 onPlay 透传给
+    // 管理弹窗的那段回调（setManagingId(null) + onPlay(items, index)）
+    // 在此之前**从没被执行过** —— 管理弹窗自己的测试用的是它自己的 mock。
+    mocks.listPlaylists.mockResolvedValue([
+      {
+        id: 'p1',
+        name: '我的歌单',
+        tracks: [ITEMS[0]],
+        source: 'nl',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    const onPlay = vi.fn();
+    render(<NLPlaylistModal open onClose={() => {}} onPlay={onPlay} />);
+
+    await screen.findByText('我的歌单');
+    fireEvent.click(screen.getByRole('button', { name: '管理' }));
+    expect(await screen.findByText('歌单管理')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '▶ 播放全部' }));
+
+    await waitFor(() => expect(onPlay).toHaveBeenCalledWith([ITEMS[0]], 0));
+    // 播放了就让开位置（管理弹窗收起）
+    await waitFor(() => expect(screen.queryByTestId('pm-name')).not.toBeInTheDocument());
+  });
 });
 
 describe('NLPlaylistModal · 关闭', () => {
