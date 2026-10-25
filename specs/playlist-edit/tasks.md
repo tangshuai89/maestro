@@ -56,8 +56,8 @@
   - [x] 去掉空名校验 → 空名用例红
   - [x] **「变异确实生效」与「门禁确实变红」分开断言**
 - [x] **D2** `npm run typecheck` / `npm run lint` 0 error（新文件 0 warning）
-- [x] **D3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`
-- [x] **D4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）
+- [ ] **D3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`（**待跑**）
+- [ ] **D4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）（**待跑**）
 - [x] **D5** `CHANGELOG.md` + `specs/nl-playlist/spec.md` 的「不做什么」条目更新
 
 ## 不在本 spec 范围
