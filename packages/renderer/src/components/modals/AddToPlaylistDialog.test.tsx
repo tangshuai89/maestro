@@ -191,4 +191,39 @@ describe('AddToPlaylistDialog · 新建歌单并加入', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('名字已被占用'));
   });
+
+  it('新建歌单：按 Enter 提交（不点按钮）', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: '+ 新建歌单并加入' }));
+
+    const input = screen.getByLabelText('新歌单名');
+    fireEvent.change(input, { target: { value: 'Enter 建的' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(mocks.createPlaylist).toHaveBeenCalledWith({
+        name: 'Enter 建的',
+        tracks: [TRACK],
+        source: 'manual',
+      }),
+    );
+  });
+
+  it('关闭后重开 → 状态被重置（新建面板收起、名字不留）', async () => {
+    // 这个 effect 只在「组件还挂着、open 从 true 变 false」时才会跑
+    //（SearchPanel 那种「关掉就卸载」的用法永远走不到）——
+    // 所以必须专门测一次「关 → 开」的循环。
+    const { rerender } = render(<AddToPlaylistDialog open onClose={() => {}} track={TRACK} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ 新建歌单并加入' }));
+    fireEvent.change(screen.getByLabelText('新歌单名'), { target: { value: '半途而废' } });
+
+    // 关 → 开
+    rerender(<AddToPlaylistDialog open={false} onClose={() => {}} track={TRACK} />);
+    rerender(<AddToPlaylistDialog open onClose={() => {}} track={TRACK} />);
+
+    // 重开后是干净的：新建面板收起、输入框里的字没了
+    expect(screen.getByRole('button', { name: '+ 新建歌单并加入' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('新歌单名')).not.toBeInTheDocument();
+  });
 });
