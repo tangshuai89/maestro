@@ -56,8 +56,13 @@
   - [x] 去掉「＋」的 `stopPropagation` → SearchPanel 用例**必须红**
   - [x] 「已在歌单」判定改用 `item.id` → AddToPlaylistDialog 用例**必须红**
 - [x] **D2** `npm run typecheck` / `npm run lint` 0 error（新文件 0 warning）
-- [ ] **D3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`（**待跑**）
-- [ ] **D4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）（**待跑**）
+- [x] **D3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`
+- [x] **D4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）
+      —— ⚠️ **第一次跑是红的**：门禁报出 `AddToPlaylistDialog.tsx` 9 行未覆盖
+      （① 输入框的 Enter 提交路径 ② 「关闭时重置状态」那个 effect——
+      它只在「组件还挂着、open 从 true 变 false」时才跑，
+      而 SearchPanel 是「关掉就卸载」的用法 ⇒ 永远走不到）。
+      补了「按 Enter 提交」+「关 → 开循环」两条测试后才绿。
 - [x] **D5** `CHANGELOG.md` + `specs/playlist-edit/spec.md` 的「不做什么」条目更新
 
 ## 不在本 spec 范围
