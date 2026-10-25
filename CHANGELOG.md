@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **桌面系统集成 —— 系统媒体控件 / 耳机媒体键 / macOS「正在播放」/ 全局热键**（2026-10-24，`specs/desktop-integration`）
+
+  产品盘点时实测：`mediaSession` / `globalShortcut` / `MPNowPlayingInfoCenter` /
+  `electron-updater` 在 `packages/renderer/src` + `packages/electron/src` 的
+  命中数**全是 0** —— 同一批实测里产品功能面已经齐了，**唯一整层为空的是
+  「桌面应用该有的系统集成」**。这是"能跑"和"能天天用"之间的差距。
+
+  **一个 API 顶三件事**：`navigator.mediaSession` 在 macOS 上由 Chromium 接到了
+  `MPNowPlayingInfoCenter` → **系统媒体控件（控制中心/锁屏）、耳机与键盘媒体键、
+  macOS「正在播放」**一起点亮，**不需要原生模块**（原本计划里的 4 项工作压成 2 项）。
+
+  - `packages/renderer/src/hooks/useMediaSession.ts`：metadata（歌名/歌手/专辑/封面）+
+    `playbackState` + `setPositionState` + **8 个 action handler**
+    （play/pause/previoustrack/nexttrack/seekbackward/seekforward/seekto/stop）。
+    handler **只注册一次**、每次触发从 ref 读当下状态（避免切歌时重注册丢事件）。
+  - `packages/electron/src/global-shortcuts.ts`：**6 条**全局热键
+    （`⌃⌥` + Space / ← / → / ↑ / ↓ / D）。
+
+  **⚠️ 两条写进代码的约束（不只是约定）**：
+
+  ① **媒体键不能注册成 `globalShortcut`** —— Electron 在 macOS 上那样做会占住
+  remote command center 通道并**关掉 Chromium 自己的媒体键处理** → 媒体键会变成
+  "有时双触发、有时失灵"。⇒ 媒体键**只走 mediaSession**；`global-shortcuts.ts`
+  里有守卫挡住，`global-shortcuts.test.ts` + `main.behavior.test.ts` 两条断言守着。
+
+  ② **全局热键用 `⌃⌥` 而不是 `⌘⇧`** —— App 内部已经有 `⌘⇧M`/`⌘⇧D`/`⌘⇧L`
+  三个快捷键（mini/桌面歌词/lite），全局热键若也用 `⌘⇧`，App 聚焦时
+  **两个 handler 同时触发**（切两次 = 白切）。
+
+  **零新增 IPC 通道**：全局热键**复用**托盘那条 `tray:command`；类型
+  `TrayCommand` → `PlaybackCommand`（通道名不动 —— 改名要动 preload 白名单 +
+  `ipc-surface.test.ts` 的白名单卫生检查，收益不抵风险）。
+
+  **验证**（自动化覆盖，不靠手测）：
+  - `useMediaSession.test.tsx` 20 个用例 —— 重点是**每个 handler 真的调到了
+    对应的播放命令**（不是"注册了就算"）
+  - `global-shortcuts.test.ts` 6 个用例 + `main.behavior.test.ts` 新增 2 个
+    （注册清单 / **零媒体键** / 退出注销）
+  - **变异验证**：删掉任一 handler 里的调用 → 用例**必须红**；
+    把媒体键守卫短路 → 用例**必须红**（两条都实测过）
+  - renderer 全量 **52 文件 / 645 测试绿**（原 51/625）
+  - 唯一没自动化的：**1 条手测** —— 插带媒体键的耳机 → ⏯/⏭/⏮ 响应 +
+    控制中心显示歌名封面 + `⌃⌥Space` 在 App 不在前台时能暂停
+
+  **未做**：**自动更新**（`electron-updater`）—— 要 GitHub Releases feed +
+  **签名构建**才有意义（没签名的 dmg 更新完照样被 Gatekeeper 拦）→
+  等 Apple Dev + EVS 落地后单独立 spec。
+
 - **桌面歌词浮窗的**入口**补测 —— 它整个是 0% 覆盖**（2026-10-24）
 
   覆盖率报告里 `main.tsx | 0 | 0 | 0 | 0 | 1-16…102` —— 浮窗的**挂载点**
