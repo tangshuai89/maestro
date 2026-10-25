@@ -114,6 +114,45 @@ const mkTrack = (id: string) =>
   console.log('  ✓ patch: rename + append dedup + remove');
 }
 
+// ── 4b. 去重 / 移除按「平台曲目身份」，不是 item.id ────────
+// 同一首歌的 QQ 版和 Spotify 版：item.id 相同（合并后的归一 id），
+// 但 platform:trackId 不同 → **两首都在歌单里**。
+// 追加时若按 item.id 去重，第二版会被误吞；
+// 移除时若按 item.id 移除，一次会干掉两条。
+// renderer 的「已在歌单」判定用的是同一个 key（@maestro/common 的
+// playlistTrackKey）—— 这里的断言就是那条不变量的服务端一侧。
+{
+  const s = new PlaylistService(new FakeStorage() as any);
+  const mkVersion = (id: string, platform: string, trackId: string) =>
+    ({
+      id,
+      title: '同一首歌',
+      artist: 'a',
+      album: '',
+      coverUrl: '',
+      audioUrl: '',
+      duration: 0,
+      liked: false,
+      sources: [{ platform, trackId, hasCopyright: true, url: '' }],
+    }) as any;
+
+  const p = s.create('s', { name: 'x', tracks: [mkVersion('same-id', 'qq', 'T1')] });
+
+  // id 相同、平台不同 → 两首（不能被去重掉）
+  const two = s.patch('s', p.id, { append: [mkVersion('same-id', 'spotify', 'T1')] });
+  assert.strictEqual(two.tracks.length, 2);
+
+  // id 不同、平台曲目身份相同 → 同一首 → 去重（长度不变）
+  const stillTwo = s.patch('s', p.id, { append: [mkVersion('other-id', 'qq', 'T1')] });
+  assert.strictEqual(stillTwo.tracks.length, 2);
+
+  // 按平台身份移除 → 只干掉那一条，另一个版本还在
+  const one = s.patch('s', p.id, { remove: ['spotify:T1'] });
+  assert.strictEqual(one.tracks.length, 1);
+  assert.strictEqual(one.tracks[0].sources[0].platform, 'qq');
+  console.log('  ✓ dedup/remove by platform identity (not item.id)');
+}
+
 // ── 5. 校验 ─────────────────────────────────────────
 {
   const s5 = new PlaylistService(new FakeStorage() as any);
