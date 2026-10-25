@@ -64,9 +64,14 @@
   - [x] `removeFromQueue` 不显式 `setQueueSnapshot` → 快照同步用例**必须红**
   - [x] `jumpToQueueIndex` 不更新 `q.idx` → 跳歌用例**必须红**
 - [x] **E2** `npm run typecheck` / `npm run lint` 0 error（新文件 0 warning）
-- [ ] **E3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`（**待跑**）
-- [ ] **E4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）（**待跑**）
-- [ ] **E5** `CHANGELOG.md`（**待写**）
+- [x] **E3** 全量套件 `bash scripts/test.sh --ci` → `EXIT=0`
+- [x] **E4** 覆盖率 diff 门禁绿（本次新增行必须被执行过）
+      —— ⚠️ **第一次跑是红的**：门禁报出 `usePlayer.ts` 1 行未覆盖
+      （`removeFromQueue` 里 `q.unifiedItems ? ... : undefined` 的兜底分支）。
+      查下去发现 `queueRef` 只有 `playSearch` 一处创建、**总是**带 `unifiedItems`
+      ⇒ 那个分支**永远走不到**（死代码）。⇒ 把 `unifiedItems` 改成类型上的**必填**
+      （不变量写进类型，编译器守住），顺手删掉三处「万一没有呢」的冗余分支。
+- [x] **E5** `CHANGELOG.md`
 
 ## 不在本 spec 范围
 
