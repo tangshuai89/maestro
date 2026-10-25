@@ -329,6 +329,31 @@ describe('NLPlaylistModal · 本地歌单', () => {
 
     await waitFor(() => expect(mocks.deletePlaylist).toHaveBeenCalledWith('p1'));
   });
+
+  it('「我的歌单」区每行有「管理」入口 → 点开歌单管理弹窗（specs/playlist-edit/）', async () => {
+    mocks.listPlaylists.mockResolvedValue([
+      {
+        id: 'p1',
+        name: '我的歌单',
+        tracks: [ITEMS[0]],
+        source: 'nl',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    render(<NLPlaylistModal open onClose={() => {}} onPlay={() => {}} />);
+
+    expect(await screen.findByText('我的歌单')).toBeInTheDocument();
+    // 管理入口和删除入口并存 —— 「点歌单名 = 播放」这个既有行为不变
+    expect(screen.getByRole('button', { name: '管理' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '管理' }));
+
+    // 管理弹窗打开：标题行显示歌单名 + 曲目
+    expect(await screen.findByText('歌单管理')).toBeInTheDocument();
+    expect(screen.getByTestId('pm-name')).toHaveTextContent('我的歌单');
+  });
 });
 
 describe('NLPlaylistModal · 关闭', () => {
