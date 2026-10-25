@@ -28,6 +28,12 @@ const apiMocks = vi.hoisted(() => ({
   fetchLyricsAvailability: vi.fn(),
   searchAlbums: vi.fn(),
   fetchAlbumTracks: vi.fn(),
+  // 「加到歌单」弹窗（AddToPlaylistDialog）自己 usePlaylist() → 会拉歌单列表。
+  // 这里必须 mock，否则真实 fetch 会跑出去。
+  listPlaylists: vi.fn(),
+  createPlaylist: vi.fn(),
+  patchPlaylist: vi.fn(),
+  deletePlaylist: vi.fn(),
 }));
 const {
   searchUnified: mockSearchUnified,
@@ -47,6 +53,10 @@ vi.mock('../../api', async () => {
     fetchLyricsAvailability: apiMocks.fetchLyricsAvailability,
     searchAlbums: apiMocks.searchAlbums,
     fetchAlbumTracks: apiMocks.fetchAlbumTracks,
+    listPlaylists: apiMocks.listPlaylists,
+    createPlaylist: apiMocks.createPlaylist,
+    patchPlaylist: apiMocks.patchPlaylist,
+    deletePlaylist: apiMocks.deletePlaylist,
   };
 });
 
@@ -156,6 +166,10 @@ describe('SearchPanel', () => {
     mockFetchLyricsAvailability.mockReset();
     mockSearchAlbums.mockReset();
     mockFetchAlbumTracks.mockReset();
+    apiMocks.listPlaylists.mockReset().mockResolvedValue([]);
+    apiMocks.createPlaylist.mockReset();
+    apiMocks.patchPlaylist.mockReset();
+    apiMocks.deletePlaylist.mockReset();
     // 默认 searchUnified 返回一条结果
     mockSearchUnified.mockResolvedValue({
       items: SAMPLE,
@@ -227,6 +241,49 @@ describe('SearchPanel', () => {
     expect(onPlay).toHaveBeenCalledTimes(1);
     expect(onPlay.mock.calls[0][0]).toEqual(SAMPLE);
     expect(onPlay.mock.calls[0][1]).toBe(0);
+  });
+
+  it('点行尾的「＋」→ 打开「加到歌单」弹窗，且**不触发播放**', async () => {
+    const onPlay = vi.fn();
+    render(<SearchPanel onPlay={onPlay} onClose={() => {}} />);
+    const input = screen.getByPlaceholderText(/搜索/);
+    await userEvent.type(input, '晴天');
+    await waitFor(() => {
+      expect(screen.getByText('晴天')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '将 晴天 加入歌单' }));
+
+    // 弹窗打开
+    expect(await screen.findByText('加到歌单')).toBeInTheDocument();
+    // 关键：整行是 role=button（点行 = 播放）→ 按钮必须 stopPropagation
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it('「＋」按钮在**版本展开按钮之前**（行尾最右侧是版本按钮的专属位）', async () => {
+    mockSearchUnified.mockResolvedValue({
+      items: MULTI,
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    const input = screen.getByPlaceholderText(/搜索/);
+    await userEvent.type(input, '盲选');
+    await waitFor(() => {
+      expect(screen.getByText('盲选')).toBeInTheDocument();
+    });
+
+    const titleEl = screen.getByText('盲选');
+    const row = titleEl.closest('.sp-row') as HTMLElement;
+    const addBtn = row.querySelector('.sp-add-btn');
+    const verToggle = row.querySelector('.sp-ver-toggle');
+    expect(addBtn).not.toBeNull();
+    expect(verToggle).not.toBeNull();
+    // DOM 顺序：＋ 在版本按钮**之前**
+    expect(
+      addBtn!.compareDocumentPosition(verToggle!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('点击 bestSource===null 的 row → 不调 onPlay（disabled）', async () => {

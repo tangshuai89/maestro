@@ -31,6 +31,7 @@ function versionTypeBadge(type: VersionType): string {
 }
 import SourceChip from './SourceChip';
 import AlbumResults from './AlbumResults';
+import { AddToPlaylistDialog } from '../modals/AddToPlaylistDialog';
 
 /**
  * AETHER Search — 搜索全屏（Figma 03/Screen/Search 还原）。
@@ -115,6 +116,8 @@ export default function SearchPanel({
   // 点它只展开版本、不触发播放；播放三角挪到封面 hover 遮罩上（点击行体也播放）。
   // Bug #7 根因：行尾曾经是 ▶（播放），用户把它当"展开箭头"点 → 直接播放。
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  // 「加到歌单」的目标曲目（null = 弹窗没开）。specs/playlist-add-from-search/。
+  const [addTarget, setAddTarget] = useState<UnifiedSearchItem | null>(null);
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -603,6 +606,23 @@ export default function SearchPanel({
                         {mainReason === 'no-copyright' ? '无版权' : '无音源'}
                       </span>
                     )}
+                    {/* 加到歌单（specs/playlist-add-from-search/）。
+                        位置在**版本展开按钮之前** —— 行尾（最右侧）是版本按钮的
+                        专属位（Bug #7 的教训：用户会把行尾箭头当播放点）。
+                        无版权的歌也能加进歌单（加进去 ≠ 现在能播）。 */}
+                    <button
+                      type="button"
+                      className="sp-add-btn"
+                      aria-label={`将 ${it.title} 加入歌单`}
+                      title="加入歌单"
+                      onClick={(e) => {
+                        // 必须 stopPropagation：整行是 role=button → 点行 = 播放
+                        e.stopPropagation();
+                        setAddTarget(it);
+                      }}
+                    >
+                      ＋
+                    </button>
                     {hasVersions && (
                       <button
                         type="button"
@@ -706,6 +726,12 @@ export default function SearchPanel({
           </div>
         )}
       </div>
+
+      {/* 「加到歌单」选择器（specs/playlist-add-from-search/）。
+          只在选中某首时挂载 → 拉歌单列表的请求也只在那时发。 */}
+      {addTarget && (
+        <AddToPlaylistDialog open onClose={() => setAddTarget(null)} track={addTarget} />
+      )}
     </div>
   );
 }
