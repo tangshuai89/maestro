@@ -346,6 +346,32 @@
   gap: 2px;
 }
 
+/* 「加入歌单」按钮（specs/playlist-add-from-search/）。
+ * 位置在版本展开按钮**之前** —— 行尾（最右侧）是版本按钮的专属位
+ * （Bug #7：用户会把行尾箭头当播放点）。 */
+.sp-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--white) 14%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--white) 3%, transparent);
+  color: color-mix(in srgb, var(--text-main) 65%, transparent);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.12s ease;
+}
+
+.sp-add-btn:hover {
+  border-color: color-mix(in srgb, var(--white) 28%, transparent);
+  background: var(--glass-fill-strong);
+  color: var(--text-main);
+}
+
 /* 多版本展开按钮 —— 行尾（最右侧）唯一的"箭头"，点击只展开版本列表。
  * Bug #7：之前行尾是 ▶（播放），用户把最右侧的箭头当展开按钮点，结果直接播放。
  * 现在：行尾 = 本按钮（▾/▴ 上下箭头 + "N 个版本"文案），播放在封面遮罩上。 */
