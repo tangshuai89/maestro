@@ -129,6 +129,28 @@ describe('PlaylistManagerModal · 改名', () => {
     await waitFor(() => expect(ops.rename).toHaveBeenCalledWith('p1', '夜跑 II'));
   });
 
+  it('验收 4b：ESC 取消改名 → **不关掉整个弹窗**（Radix 在 document 层监听 Escape）', () => {
+    const onClose = vi.fn();
+    render(
+      <PlaylistManagerModal
+        open
+        onClose={onClose}
+        playlist={makePlaylist()}
+        ops={ops}
+        onPlay={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '重命名歌单' }));
+
+    const input = screen.getByLabelText('歌单名');
+    fireEvent.change(input, { target: { value: '不该保存' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(ops.rename).not.toHaveBeenCalled();
+    // 不拦住冒泡的话，ESC 会「取消改名」+「关掉弹窗」一起发生
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('验收 4：Esc 取消 → 不发请求', () => {
     renderModal();
     fireEvent.click(screen.getByRole('button', { name: '重命名歌单' }));

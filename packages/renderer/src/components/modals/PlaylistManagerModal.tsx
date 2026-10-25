@@ -212,7 +212,16 @@ export function PlaylistManagerModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-2xl max-h-[80vh] overflow-y-auto"
+        // ⚠️ 改名时按 ESC **只取消改名**，不关弹窗。
+        // Radix 的 `useEscapeKeydown` 在 document 上用 **capture: true** 注册
+        // → 捕获阶段先于目标元素触发 ⇒ 在输入框的 onKeyDown 里
+        // `stopPropagation()` / `preventDefault()` **都太晚**，必须走这里。
+        onEscapeKeyDown={(e) => {
+          if (editing) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>歌单管理</DialogTitle>
           <DialogDescription>{tracks.length} 首 · 改名、加歌、移除单曲</DialogDescription>
