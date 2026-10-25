@@ -189,6 +189,8 @@ Playlist 列表落 `state.json` 的 `playlists:{sessionId}` key（沿用 Storage
   > ✅ **已被 `specs/playlist-edit/` 接手并交付**（2026-10-25）：改名 / 加歌 /
   > 移除单曲 / 播放全部 + 歌单管理弹窗。**仍然不做**的是：曲目排序 / 拖拽、
   > 歌单封面、歌单分享 / 导出、批量操作。
+  > 🚚 **「从搜索结果一键加到歌单」已由 `specs/playlist-add-from-search/` 接手**
+  > （2026-10-25）—— 那是「攒歌单」的入口，不是「管歌单」。
 - ❌ 跨设备同步歌单（本地 storage，不上传）
 - ❌ 把 Intent 解析拆成多 LLM 调用（一次解析到位）
 - ❌ LLM 选曲（仍由 DeepSeek 在 prompt 里给 `{title, artist}[]`，
