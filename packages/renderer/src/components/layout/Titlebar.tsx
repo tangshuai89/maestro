@@ -31,6 +31,10 @@ interface Props {
   // Liked library
   likedCount: number;
   onOpenLiked: () => void;
+  // 播放队列（specs/queue-panel/）。count = 0 表示当前不是队列播放（电台模式）
+  // → 按钮禁用。徽章显示队列首数。
+  queueCount: number;
+  onOpenQueue: () => void;
   // Settings (backup / export / import)
   onOpenSettings: () => void;
   // Player mode (theater ↔ mini，⌘⇧M)。lite 模式下整个 titlebar 不渲染，
@@ -68,6 +72,8 @@ export default function Titlebar({
   onReset,
   likedCount,
   onOpenLiked,
+  queueCount,
+  onOpenQueue,
   onOpenSettings,
   playerMode,
   onTogglePlayerMode,
@@ -121,6 +127,22 @@ export default function Titlebar({
         {likedCount > 0 && (
           <span className="liked-count-badge" aria-label={`共 ${likedCount} 首`}>
             {likedCount > 999 ? '999+' : likedCount}
+          </span>
+        )}
+      </button>
+
+      {/* 播放队列（specs/queue-panel/）。队列为空 = 当前是电台模式 → 禁用。 */}
+      <button
+        className="titlebar-btn queue-btn"
+        onClick={onOpenQueue}
+        disabled={queueCount === 0}
+        title={queueCount > 0 ? `播放队列（${queueCount} 首）` : '当前没有队列（电台模式）'}
+        aria-label="播放队列"
+      >
+        ☰
+        {queueCount > 0 && (
+          <span className="queue-count-badge" aria-label={`队列 ${queueCount} 首`}>
+            {queueCount > 999 ? '999+' : queueCount}
           </span>
         )}
       </button>

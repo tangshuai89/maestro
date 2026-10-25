@@ -28,6 +28,7 @@ import RecoKeyModal from './components/modals/RecoKeyModal';
 import LikedLibraryModal from './components/modals/LikedLibraryModal';
 import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
 import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
+import { QueuePanel } from './components/modals/QueuePanel';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
 import PlayerNotice from './components/common/PlayerNotice';
@@ -201,6 +202,9 @@ export default function App() {
   const [nlOpen, setNlOpen] = useState(false);
   // 远端歌单（specs/remote-playlist Phase 5）
   const [remoteOpen, setRemoteOpen] = useState(false);
+  // 播放队列面板（specs/queue-panel/）—— titlebar ☰ 按钮。
+  // 队列数据在 usePlayer 里（queueUnifiedItems / queueIdx），本组件只开合。
+  const [queueOpen, setQueueOpen] = useState(false);
   // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
   // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
   const [likedCount, setLikedCount] = useState<number>(() => {
@@ -331,6 +335,7 @@ export default function App() {
     player.searchOpen ||
     likedOpen ||
     nlOpen ||
+    queueOpen ||
     settingsOpen ||
     reco.recoKeyOpen ||
     !!auth.authError ||
@@ -525,6 +530,8 @@ export default function App() {
             setLikedOpen(true);
           }}
           onOpenSettings={() => setSettingsOpen(true)}
+          queueCount={player.queueUnifiedItems?.length ?? 0}
+          onOpenQueue={() => setQueueOpen(true)}
           playerMode={playerMode}
           onTogglePlayerMode={handleTogglePlayerMode}
           desktopLyricsOn={desktopLyrics.enabled}
@@ -675,6 +682,21 @@ export default function App() {
             // 网络往返；失败时（newCount 为 undefined）回到兜底路径再拉一次。
             if (typeof newCount === 'number') setLikedCount(newCount);
             else void reloadLikedCount();
+          }}
+        />
+      )}
+
+      {queueOpen && (
+        <QueuePanel
+          open
+          onClose={() => setQueueOpen(false)}
+          items={player.queueUnifiedItems}
+          currentIndex={player.queueIdx}
+          onJump={(index) => {
+            player.jumpToQueueIndex(index);
+          }}
+          onRemove={(index) => {
+            player.removeFromQueue(index);
           }}
         />
       )}

@@ -1449,6 +1449,67 @@ export function usePlayer(
     [playSearch, wpsRef],
   );
 
+  /** 队列面板：跳到队列里的第 N 首（specs/queue-panel/）。
+   *
+   *  **不能**用 playSearch(unifiedItems, index) 重放整条队列：playSearch 会重新
+   *  parsePlayableQueue（可能再丢一批当前不可播的），而且会把播放头重置。
+   *  这里只改 `q.idx` + presentTrack —— 和 loadNextTrack 是同一条路。 */
+  const jumpToQueueIndex = useCallback(
+    (index: number) => {
+      const q = queueRef.current;
+      if (!q || !q.tracks.length) return;
+      if (index < 0 || index >= q.tracks.length) return;
+      q.idx = index;
+      presentTrack(q.tracks[index], q.unifiedItems?.[index]);
+      // ❤ 扇出 / 平台角标：跳歌和切歌一样要 detect
+      void detectAndApplyLiked(q.unifiedItems?.[index]);
+    },
+    [presentTrack, detectAndApplyLiked],
+  );
+
+  /** 队列面板：把第 N 首移出队列（specs/queue-panel/）。
+   *
+   *  ⚠️ 两条必须同时做的动作：
+   *  ① `tracks` 与 `unifiedItems` **索引对齐** —— 只改一个会让 idx 映射错位
+   *     （症状：点第 N 首跳到的歌，和面板上第 N 行显示的不是同一首）。
+   *  ② **显式** setQueueSnapshot —— presentTrack 里的同步是「只有 idx 真变了
+   *     才 setState」（避免同首跨平台 fallback 时无意义 re-render），而移除一个
+   *     **非当前**曲目时 idx 不变 ⇒ 不显式推一版的话，队列面板**不会重渲染**
+   *     （用户点了「×」但那一行还在）。
+   *
+   *  移除**当前**曲目 → 继续播下一首（splice 后同一位置就是下一首；移除的是
+   *  最后一首则回到上一首）；移除**别的**曲目 → 当前曲下标跟着前移，播放不中断。 */
+  const removeFromQueue = useCallback(
+    (index: number) => {
+      const q = queueRef.current;
+      if (!q || !q.tracks.length) return;
+      if (index < 0 || index >= q.tracks.length) return;
+      const wasCurrent = index === q.idx;
+      const tracks = q.tracks.filter((_, i) => i !== index);
+      const unifiedItems = q.unifiedItems
+        ? q.unifiedItems.filter((_, i) => i !== index)
+        : undefined;
+      q.tracks = tracks;
+      q.unifiedItems = unifiedItems;
+      if (tracks.length === 0) {
+        // 队列空了 → 没有「下一首」了（loadNextTrack 会走电台路径）
+        q.idx = -1;
+        setQueueSnapshot({ idx: -1, items: unifiedItems });
+        return;
+      }
+      if (wasCurrent) {
+        q.idx = Math.min(index, tracks.length - 1);
+        presentTrack(tracks[q.idx], unifiedItems?.[q.idx]);
+        void detectAndApplyLiked(unifiedItems?.[q.idx]);
+      } else if (index < q.idx) {
+        // 移除的在前面的 → 当前曲下标前移一位（播放不中断）
+        q.idx -= 1;
+      }
+      setQueueSnapshot({ idx: q.idx, items: unifiedItems });
+    },
+    [presentTrack, detectAndApplyLiked],
+  );
+
   // Auto-load on provider / preset change (but skip once when delaying a
   // source switch so the current song isn't interrupted).
   useEffect(() => {
@@ -2205,6 +2266,8 @@ export function usePlayer(
     loadNextTrack,
     playSearch,
     appendToQueue,
+    jumpToQueueIndex,
+    removeFromQueue,
     applyWpsProgress,
     handlePlayPause,
     handleSkip,

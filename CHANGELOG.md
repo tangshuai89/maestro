@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **播放队列面板 —— 看得见、跳得到、拿得出**（2026-10-25，`specs/queue-panel`）
+
+  播放队列一直是用户**完全看不见的黑盒**：搜了 20 首点了第 3 首，剩下的 17 首在哪？
+  能不能跳到第 7 首？能不能把第 12 首从队列里拿掉？全都不知道。
+
+  **数据层早就 100% 齐备**（`usePlayer` 的 `queueUnifiedItems` / `queueIdx` /
+  `loadNextTrack` 的循环推进）—— 缺的只是「看得见 + 能操作」这层 UI。
+  ⇒ **零后端改动**。
+
+  - Titlebar 加「☰ 队列」入口（带首数徽章；**没有队列时禁用** = 电台模式）
+  - 队列面板：序号 / 标题 / 艺术家 / 时长，**当前曲高亮**，底部显示首数 + 总时长
+  - 点歌名 → 跳到那一首；点「×」→ 把它移出队列
+    （移除**当前**曲目 → 继续播下一首；移除**别的** → 当前曲下标前移、播放不中断）
+
+  **一个真坑（写进代码注释了）**：`presentTrack` 里的队列快照同步是
+  **「只有 idx 真变了才 setState」**（避免同首跨平台 fallback 时无意义 re-render）。
+  但移除一个**非当前**曲目时 idx 不变 ⇒ 不显式推一版快照的话，
+  **队列面板不会重渲染**（用户点了「×」但那一行还在）。
+  ⇒ `removeFromQueue` 必须**显式** `setQueueSnapshot`（已有测试锁住）。
+
+  另一条：`tracks` 与 `unifiedItems` 是**索引对齐**的（`playSearch` 把不可播的
+  从两个数组里同时丢掉）⇒ 移除曲目必须**两个一起改**，只改一个会让 idx 映射错位
+  （症状：点第 N 首跳到的歌和面板第 N 行不是同一首）。
+
+  **视觉基线不受影响**（已核实）：`tests/visual/theater.spec.mjs` 截的是 `.th-root`
+  （`TheaterView`）；Titlebar 由 `App.tsx` 渲染，是 `TheaterView` 的**兄弟**、
+  不在 `.th-root` 里 ⇒ 加按钮不进截图。
+
+  **接线层只能靠浏览器覆盖采集**：`App.tsx` 没有单元测试，采集脚本
+  （`scripts/collect-browser-coverage.mjs`）加上了队列面板的交互
+  （开面板 / 跳一首 / 移一首 / Esc 关掉）—— 不走一遍的话覆盖率 diff 门禁会报
+  「App.tsx 的新增行没被执行过」。
+
+  **验证**：`usePlayer.core.test.tsx` 补 7 条 + `QueuePanel.test.tsx` 7 条 +
+  `Titlebar.test.tsx` 补 2 条 + **变异验证 3 个**（不改 `unifiedItems` / 不强制
+  同步快照 / 不更新 `q.idx` → 三条都红）。
+
 - **桌面系统集成 —— 系统媒体控件 / 耳机媒体键 / macOS「正在播放」/ 全局热键**（2026-10-24，`specs/desktop-integration`）
 
   产品盘点时实测：`mediaSession` / `globalShortcut` / `MPNowPlayingInfoCenter` /
