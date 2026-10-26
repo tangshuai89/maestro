@@ -376,6 +376,7 @@ export default function App() {
     recentOpen ||
     shortcutOpen ||
     settingsOpen ||
+    guideOpen ||
     reco.recoKeyOpen ||
     !!auth.authError ||
     auth.showCookieFallback;
