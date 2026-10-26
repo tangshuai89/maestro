@@ -82,7 +82,14 @@
   font-size: 15px;
 }
 
-.liked-count-badge {
+// 队列按钮（specs/queue-panel/）：同样复用 .titlebar-btn，右侧带首数徽章。
+.queue-btn {
+  position: relative;
+  font-size: 15px;
+}
+
+.liked-count-badge,
+.queue-count-badge {
   margin-left: 4px;
   padding: 1px 6px;
   border-radius: 8px;

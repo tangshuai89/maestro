@@ -38,6 +38,8 @@ const props = (over: Record<string, unknown> = {}) => ({
   onReset: vi.fn(),
   likedCount: 0,
   onOpenLiked: vi.fn(),
+  queueCount: 0,
+  onOpenQueue: vi.fn(),
   onOpenSettings: vi.fn(),
   playerMode: 'theater' as const,
   onTogglePlayerMode: vi.fn(),
@@ -130,6 +132,28 @@ describe('Titlebar', () => {
 
     render(<Titlebar {...props({ likedCount: 1500 })} />);
     expect(screen.getByLabelText('共 1500 首')).toHaveTextContent('999+');
+  });
+
+  it('队列按钮（specs/queue-panel/）：有队列 → 可点 + 首数徽章；无队列 → disabled', () => {
+    const onOpenQueue = vi.fn();
+    const { unmount } = render(<Titlebar {...props({ queueCount: 0, onOpenQueue })} />);
+    // 电台模式：没有队列 → 禁用
+    expect(screen.getByRole('button', { name: '播放队列' })).toBeDisabled();
+    expect(screen.queryByLabelText(/队列 \d+ 首/)).not.toBeInTheDocument();
+    unmount();
+
+    render(<Titlebar {...props({ queueCount: 12, onOpenQueue })} />);
+    const btn = screen.getByRole('button', { name: '播放队列' });
+    expect(btn).toBeEnabled();
+    expect(screen.getByLabelText('队列 12 首')).toHaveTextContent('12');
+
+    fireEvent.click(btn);
+    expect(onOpenQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('队列按钮：>999 首 → 徽章显示「999+」', () => {
+    render(<Titlebar {...props({ queueCount: 1500 })} />);
+    expect(screen.getByLabelText('队列 1500 首')).toHaveTextContent('999+');
   });
 
   it('推荐按钮：运行中 → disabled + 文案「…」', () => {

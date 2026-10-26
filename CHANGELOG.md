@@ -9,6 +9,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **播放队列面板 —— 看得见、跳得到、拿得出**（2026-10-25，`specs/queue-panel`）
+
+  播放队列一直是用户**完全看不见的黑盒**：搜了 20 首点了第 3 首，剩下的 17 首在哪？
+  能不能跳到第 7 首？能不能把第 12 首从队列里拿掉？全都不知道。
+
+  **数据层早就 100% 齐备**（`usePlayer` 的 `queueUnifiedItems` / `queueIdx` /
+  `loadNextTrack` 的循环推进）—— 缺的只是「看得见 + 能操作」这层 UI。
+  ⇒ **零后端改动**。
+
+  - Titlebar 加「☰ 队列」入口（带首数徽章；**没有队列时禁用** = 电台模式）
+  - 队列面板：序号 / 标题 / 艺术家 / 时长，**当前曲高亮**，底部显示首数 + 总时长
+  - 点歌名 → 跳到那一首；点「×」→ 把它移出队列
+    （移除**当前**曲目 → 继续播下一首；移除**别的** → 当前曲下标前移、播放不中断）
+
+  **一个真坑（写进代码注释了）**：`presentTrack` 里的队列快照同步是
+  **「只有 idx 真变了才 setState」**（避免同首跨平台 fallback 时无意义 re-render）。
+  但移除一个**非当前**曲目时 idx 不变 ⇒ 不显式推一版快照的话，
+  **队列面板不会重渲染**（用户点了「×」但那一行还在）。
+  ⇒ `removeFromQueue` 必须**显式** `setQueueSnapshot`（已有测试锁住）。
+
+  另一条：`tracks` 与 `unifiedItems` 是**索引对齐**的（`playSearch` 把不可播的
+  从两个数组里同时丢掉）⇒ 移除曲目必须**两个一起改**，只改一个会让 idx 映射错位
+  （症状：点第 N 首跳到的歌和面板第 N 行不是同一首）。
+
+  **视觉基线不受影响**（已核实）：`tests/visual/theater.spec.mjs` 截的是 `.th-root`
+  （`TheaterView`）；Titlebar 由 `App.tsx` 渲染，是 `TheaterView` 的**兄弟**、
+  不在 `.th-root` 里 ⇒ 加按钮不进截图。
+
+  **接线层只能靠浏览器覆盖采集**：`App.tsx` 没有单元测试，采集脚本
+  （`scripts/collect-browser-coverage.mjs`）加上了队列面板的交互
+  （开面板 / 跳一首 / 移一首 / Esc 关掉）—— 不走一遍的话覆盖率 diff 门禁会报
+  「App.tsx 的新增行没被执行过」。
+
+  **验证**：`usePlayer.core.test.tsx` 补 7 条 + `QueuePanel.test.tsx` 7 条 +
+  `Titlebar.test.tsx` 补 2 条 + **变异验证 3 个**（不改 `unifiedItems` / 不强制
+  同步快照 / 不更新 `q.idx` → 三条都红）。
+
+- **从统一搜索结果一键「加到歌单」**（2026-10-25，`specs/playlist-add-from-search`）
+
+  攒歌单最自然的动作是「搜到一首歌 → 存起来 → 再搜下一首」。之前只有
+  NL 生成 → 保存为歌单这一条路 —— 为了**存一首歌**先去想一句话、再走
+  「保存为歌单」二次弹窗，是把**顺手的事**做成了**仪式**。
+
+  - 统一搜索结果行加「＋」按钮 → 打开「加到歌单」选择器：
+    歌单列表（名字 + 首数）+ 每行「+ 加入」/「已在歌单」+「+ 新建歌单并加入」
+  - 加完**留在原地**并显示「已加入「X」」——不静默关窗（用户能直接确认
+    进了哪个歌单，也能顺手再往别的歌单加）
+  - **零后端改动**：`PATCH /library/playlists/:id` 的 `append` 与
+    `POST /library/playlists` 早就存在（`specs/playlist-edit/` 之前就有）
+
+  **两条位置/一致性的硬约束**：
+
+  ① **「＋」放在版本展开按钮之前**，不抢行尾。行尾（最右侧）是版本按钮的
+  **专属位** —— 那是 Bug #7 换来的：行尾曾经是 ▶ 播放三角，用户把它当
+  「展开箭头」点 → 直接播放。
+
+  ② **「已在歌单」判定必须按 `platform:trackId`**，与服务端追加去重
+  **同一个函数**（`@maestro/common` 的 `playlistTrackKey`，由 #129 提到跨包共享）。
+  若客户端按 `item.id` 判：客户端说「不在歌单」放行、服务端说「重复」跳过
+  ⇒ **歌单长度不变、界面无提示**，症状就是「点了没反应」。
+
+  **视觉基线不受影响**（已核实，不是猜的）：`tests/visual/theater.spec.mjs`
+  截的是 `.th-root`（`TheaterView`）**空闲态**；`SearchPanel` 由 `App.tsx` 在
+  `player.searchOpen` 时渲染，是 `TheaterView` 的**兄弟**、不在 `.th-root` 里；
+  空闲态没有结果行 ⇒ 结果行根本不进截图。新增样式沿用 `.sp-ver-toggle` 的
+  `color-mix(in srgb, var(--white) …)` 写法 → 不触发硬编码颜色门禁。
+
+  **验证**：`AddToPlaylistDialog.test.tsx` 9 条 + `SearchPanel.test.tsx` 补 2 条
+  （点「＋」不触发播放 / 「＋」在版本按钮之前）+ **变异验证 2 个**
+  （去掉 `stopPropagation` → 红；「已在歌单」改用 `item.id` → 红）。
+
+  **跨端一致性**：「已在歌单」判定与服务端追加去重**共用** `@maestro/common` 的
+  `playlistTrackKey`（由 #129 提到跨包共享）—— 两端各写一份的话，用户点了「+」
+  服务端去重掉、长度不变，症状是「点了没反应」。
+
 - **歌单编辑 —— 歌单能改名 / 能加歌 / 能移除单曲**（2026-10-25，`specs/playlist-edit`）
 
   用户现在能建歌单、能删歌单，但**建完就没法管**：在「我的歌单」里只能看到

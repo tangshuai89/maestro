@@ -585,6 +585,146 @@ describe('AI 推荐批次续播', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// 3b. 队列面板操作（specs/queue-panel/）：jumpToQueueIndex / removeFromQueue
+// ═══════════════════════════════════════════════════════════════════
+
+describe('队列面板操作', () => {
+  it('jumpToQueueIndex：跳到第 N 首 → 播那一首 + queueIdx 跟着变', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2'), item('3')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    act(() => {
+      result.current.jumpToQueueIndex(2);
+    });
+
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-3'));
+    expect(result.current.queueIdx).toBe(2);
+  });
+
+  it('jumpToQueueIndex：越界下标 / 没有队列 → 不动（不崩、不改播放头）', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    act(() => {
+      result.current.jumpToQueueIndex(99);
+      result.current.jumpToQueueIndex(-1);
+    });
+
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+    expect(result.current.queueIdx).toBe(0);
+  });
+
+  it('removeFromQueue：移除**当前曲前面**的那首 → 当前曲下标前移、播放不中断', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2'), item('3')], 1);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+
+    act(() => {
+      result.current.removeFromQueue(0);
+    });
+
+    // 还在播「歌-2」（下标从 1 变成 0）
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+    expect(result.current.queueIdx).toBe(0);
+    // 队列少了一首，且 tracks/unifiedItems **仍然索引对齐**
+    expect(result.current.queueUnifiedItems?.map((t) => t.title)).toEqual(['歌-2', '歌-3']);
+  });
+
+  it('removeFromQueue：移除**当前**曲目 → 继续播下一首（不中断）', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2'), item('3')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    act(() => {
+      result.current.removeFromQueue(0);
+    });
+
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+    expect(result.current.queueIdx).toBe(0);
+    expect(result.current.queueUnifiedItems?.map((t) => t.title)).toEqual(['歌-2', '歌-3']);
+  });
+
+  it('removeFromQueue：移除**最后一首且正在播** → 回到上一首', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2')], 1);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-2'));
+
+    act(() => {
+      result.current.removeFromQueue(1);
+    });
+
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+    expect(result.current.queueIdx).toBe(0);
+  });
+
+  it('removeFromQueue：移空整个队列 → queueIdx=-1（没有「下一首」了）', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    act(() => {
+      result.current.removeFromQueue(0);
+    });
+
+    await waitFor(() => expect(result.current.queueIdx).toBe(-1));
+    expect(result.current.queueUnifiedItems ?? []).toHaveLength(0);
+  });
+
+  it('removeFromQueue：移除**非当前**曲目 → 快照必须立刻同步（面板要重渲染）', async () => {
+    // ⚠️ 这条是**本 spec 最容易做错**的地方：
+    // presentTrack 里的快照同步是「只有 idx 真变了才 setState」（避免同首跨平台
+    // fallback 时无意义 re-render）。移除一个**非当前**曲目时 idx 不变 ⇒ 不显式
+    // 推一版快照的话，队列面板**不会重渲染**（用户点了「×」但那一行还在）。
+    // 这里断言的正是「显式同步」这件事。
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2'), item('3')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+    expect(result.current.queueUnifiedItems).toHaveLength(3);
+
+    act(() => {
+      result.current.removeFromQueue(2); // 最后一首，非当前
+    });
+
+    // idx 没变（还是 0）→ 只能靠 removeFromQueue 里的显式 setQueueSnapshot
+    expect(result.current.queueIdx).toBe(0);
+    expect(result.current.queueUnifiedItems).toHaveLength(2);
+    expect(result.current.queueUnifiedItems?.map((t) => t.title)).toEqual(['歌-1', '歌-2']);
+  });
+
+  it('removeFromQueue：越界下标 / 没有队列 → 不动', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.playSearch([item('1'), item('2')], 0);
+    });
+    await waitFor(() => expect(result.current.track?.title).toBe('歌-1'));
+
+    act(() => {
+      result.current.removeFromQueue(99);
+      result.current.removeFromQueue(-1);
+    });
+
+    expect(result.current.queueUnifiedItems).toHaveLength(2);
+    expect(result.current.queueIdx).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // 4. 播放失败降级链
 // ═══════════════════════════════════════════════════════════════════
 

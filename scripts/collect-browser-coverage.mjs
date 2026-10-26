@@ -331,6 +331,30 @@ async function main() {
     await page.locator('.sp-item .sp-row').first().click();
     await page.locator('audio').first().waitFor({ state: 'attached', timeout: 20_000 });
     await page.locator('.th-like').click();
+    // ── 队列面板（specs/queue-panel/）──────────────────────────
+    // 点第一首之后**队列就有了**（playSearch 把整个搜索结果变成队列）→
+    // 这几步专门走 App.tsx 的队列接线分支：开面板 / 跳一首 / 移一首 / 关掉。
+    // 接线层（App.tsx）**没有单元测试**，只能靠这里的浏览器覆盖采集走到 ——
+    // 不走一遍的话，覆盖率 diff 门禁会报「App.tsx 的新增行没被执行过」。
+    await page.locator('.titlebar-btn.queue-btn').waitFor({ state: 'visible', timeout: 20_000 });
+    // 队列为空时按钮是 disabled 的 → 等它可点再点（别用 click 的自动等待，它
+    // 对 disabled 按钮会一直等到超时）
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('.titlebar-btn.queue-btn');
+        return Boolean(el) && !el.disabled;
+      },
+      { timeout: 20_000 },
+    );
+    await page.locator('.titlebar-btn.queue-btn').click();
+    await page.locator('[role="dialog"]').waitFor({ state: 'visible', timeout: 20_000 });
+    // 跳到队列里的一首（点歌名）
+    await page.locator('[role="dialog"] button[aria-label^="播放 "]').first().click();
+    // 把一首移出队列（点 ×）
+    await page.locator('[role="dialog"] button[aria-label^="把 "]').first().click();
+    // 关掉面板（Esc）
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
     await page.waitForTimeout(1500);
     const entries = await page.coverage.stopJSCoverage();
     await browser.close();
