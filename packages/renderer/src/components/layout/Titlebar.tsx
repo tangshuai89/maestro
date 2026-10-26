@@ -35,9 +35,10 @@ interface Props {
   // → 按钮禁用。徽章显示队列首数。
   queueCount: number;
   onOpenQueue: () => void;
-
   /** 打开快捷键速查面板（specs/shortcut-cheatsheet/） */
   onOpenShortcuts: () => void;
+  /** 打开最近播放（specs/play-history/） */
+  onOpenRecent: () => void;
   // Settings (backup / export / import)
   onOpenSettings: () => void;
   // Player mode (theater ↔ mini，⌘⇧M)。lite 模式下整个 titlebar 不渲染，
@@ -78,6 +79,7 @@ export default function Titlebar({
   queueCount,
   onOpenQueue,
   onOpenShortcuts,
+  onOpenRecent,
   onOpenSettings,
   playerMode,
   onTogglePlayerMode,
@@ -160,6 +162,16 @@ export default function Titlebar({
         aria-label="快捷键"
       >
         ⌨
+      </button>
+
+      {/* 最近播放（specs/play-history/）：用户回头找「昨天那首」的唯一途径。 */}
+      <button
+        className="titlebar-btn recent-btn"
+        onClick={onOpenRecent}
+        title="最近播放"
+        aria-label="最近播放"
+      >
+        🕘
       </button>
 
       {showQuality && <QualityMenu quality={qqQuality} onSelect={onChangeQuality} />}

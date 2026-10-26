@@ -22,4 +22,13 @@ export {
 export { stageNameAliasMatch, artistLooseMatch } from './artistAlias.js';
 export { titleAliasMatch, titleAliasKey } from './titleAlias.js';
 export { maskUin } from './mask.js';
+export {
+  playHistoryKey,
+  mergePlayHistory,
+  normalisePlayHistoryEntry,
+  PLAY_HISTORY_LIMIT,
+  type PlayHistoryEntry,
+  type PlayHistoryInput,
+  type PlayHistoryPlatform,
+} from './playHistory.js';
 export { splitArtists } from './normalizer';

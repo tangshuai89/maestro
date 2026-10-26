@@ -9,9 +9,10 @@ import { ConfigService } from './config';
  *   - `music:${sessionId}`     → music.service.ts
  *   - `library:${sessionId}`   → music.service.ts
  *   - `playlists:${sessionId}` → library/playlist.service.ts
+ *   - `history:${sessionId}`   → music.service.ts（播放历史，specs/play-history）
  * 键名知识集中在这里，GC 时不用去各业务模块猜。
  */
-const SESSION_SCOPED_PREFIXES = ['music:', 'library:', 'playlists:'] as const;
+const SESSION_SCOPED_PREFIXES = ['music:', 'library:', 'playlists:', 'history:'] as const;
 
 /**
  * Persists opaque blobs (sessions, cached tokens, pending QR keys) to a

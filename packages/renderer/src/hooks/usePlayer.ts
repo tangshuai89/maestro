@@ -13,6 +13,7 @@ import {
   recomputeCrossPlatformLikeTotal,
   reportRecoSignal,
   getAuthStatusValidated,
+  recordPlayHistory,
 } from '../api';
 import type { Track, MusicProvider, QqQuality, UnifiedSearchItem, UnifiedSourceInfo } from '../api';
 import type { EquivalentFailReason } from '../api';
@@ -621,6 +622,21 @@ export function usePlayer(
       // 2s 超时不阻塞；同一首歌重复切同一首也安全（fill 完再做一次 likeCount
       // 返回新对象，前端用 setX(mutated) 触发 re-render）。
       if (unified) void fillLikeCountForCurrentTrack(unified, setCurrentUnified);
+      // 播放历史（specs/play-history/）：**换歌**时记一条。
+      // 同一首歌的跨平台降级（presentFallbackSource → presentTrack）**不记** ——
+      // 否则一次 code=4 降级会在历史里塞三条同一首歌。
+      // fire-and-forget：记历史失败绝不能影响播放。
+      if (isNewSong) {
+        void recordPlayHistory({
+          platform: next.provider,
+          trackId: next.id,
+          title: next.title,
+          artist: next.artist,
+          ...(next.album ? { album: next.album } : {}),
+          ...(next.coverUrl ? { coverUrl: next.coverUrl } : {}),
+          duration: next.duration,
+        }).catch(() => undefined);
+      }
       if (isNewSong) {
         triedPlatformsRef.current = new Set();
         triedTrackIdsRef.current = new Set();
