@@ -8,6 +8,13 @@
  *    Spotify 版 id 相同，按 id 移除会一次干掉两条。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+// 导出按钮会调 URL.createObjectURL + <a download> —— happy-dom 没有
+// createObjectURL，必须替掉（否则直接抛错）。
+vi.stubGlobal('URL', {
+  ...URL,
+  createObjectURL: vi.fn(() => 'blob:mock'),
+  revokeObjectURL: vi.fn(),
+});
 import { render, fireEvent, screen, waitFor } from '@testing-library/react';
 import { PlaylistManagerModal } from './PlaylistManagerModal';
 import type { Playlist, UnifiedSearchItem } from '../../api';
@@ -114,6 +121,26 @@ describe('PlaylistManagerModal · 展示', () => {
     const { onPlay } = renderModal();
     fireEvent.click(screen.getByRole('button', { name: '▶ 播放全部' }));
     expect(onPlay).toHaveBeenCalledWith([TRACK_A, TRACK_B], 0);
+  });
+});
+
+describe('PlaylistManagerModal · 导出（specs/playlist-export/）', () => {
+  it('点「导出」→ 触发 .txt 下载（文件名 = 歌单名）', () => {
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    renderModal();
+    const btn = screen.getByLabelText('导出歌单');
+    fireEvent.click(btn);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const a = clickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
+    expect(a.download).toBe('夜跑 Electron.txt');
+    clickSpy.mockRestore();
+  });
+
+  it('空歌单 → 导出按钮禁用', () => {
+    renderModal(makePlaylist({ tracks: [] }));
+    expect(screen.getByLabelText('导出歌单')).toBeDisabled();
   });
 });
 

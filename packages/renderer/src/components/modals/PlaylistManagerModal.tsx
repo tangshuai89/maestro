@@ -28,6 +28,7 @@ import { Input } from '../ui/Input';
 import { searchUnified, type Playlist, type UnifiedSearchItem } from '../../api';
 import { clampText, formatDuration } from '../../lib/format';
 import type { UsePlaylist } from '../../hooks/usePlaylist';
+import { downloadPlaylistText } from '../../lib/playlistExport';
 
 /** 服务端歌单名上限（`PlaylistService.MAX_NAME`）。 */
 const MAX_NAME = 60;
@@ -329,16 +330,29 @@ export function PlaylistManagerModal({
           <Button size="sm" onClick={() => onPlay(tracks, 0)} disabled={tracks.length === 0}>
             ▶ 播放全部
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setAdding((v) => !v);
-              setSearchError(null);
-            }}
-          >
-            {adding ? '收起' : '+ 添加歌曲'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setAdding((v) => !v);
+                setSearchError(null);
+              }}
+            >
+              {adding ? '收起' : '+ 添加歌曲'}
+            </Button>
+            {/* 导出（specs/playlist-export/）：把歌单导成 .txt 发给别人 */}
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="导出歌单"
+              title="导出歌单（.txt）"
+              disabled={tracks.length === 0}
+              onClick={() => downloadPlaylistText(playlist)}
+            >
+              导出
+            </Button>
+          </div>
         </div>
 
         {/* ── 添加歌曲（在本弹窗内展开，不跳走） ── */}
