@@ -161,6 +161,8 @@ const MULTI: UnifiedSearchItem[] = [
 
 describe('SearchPanel', () => {
   beforeEach(() => {
+    // 搜索历史走 localStorage（specs/search-history）→ 每个用例从干净状态开始
+    localStorage.removeItem('maestro:search-history');
     mockSearchUnified.mockReset();
     mockSearchOne.mockReset();
     mockFetchLyricsAvailability.mockReset();
@@ -191,6 +193,73 @@ describe('SearchPanel', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // ── 搜索历史（specs/search-history）────────────────────────────
+
+  it('搜过一次后清空输入框 → 显示「最近搜索」', async () => {
+    vi.useFakeTimers();
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    const input = screen.getByPlaceholderText(/搜索/) as HTMLInputElement;
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).type(input, '晴天');
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    // 输入框还有内容 → 历史不出现
+    expect(screen.queryByLabelText('最近搜索')).toBeNull();
+    // 清空输入 → 历史出现
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '' } });
+    });
+    expect(screen.getByLabelText('最近搜索')).toBeInTheDocument();
+    expect(screen.getByText('晴天')).toBeInTheDocument();
+  });
+
+  it('点历史条目 → 填回输入框并重新搜索', async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('maestro:search-history', JSON.stringify(['晴天']));
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    const input = screen.getByPlaceholderText(/搜索/) as HTMLInputElement;
+    fireEvent.click(screen.getByText('晴天'));
+    expect(input.value).toBe('晴天');
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    expect(mockSearchUnified).toHaveBeenCalledWith('晴天', 1, 20, expect.anything());
+  });
+
+  it('「清空」→ 历史没了（存储也清）', async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('maestro:search-history', JSON.stringify(['晴天']));
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    expect(screen.getByLabelText('最近搜索')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('清空'));
+    expect(screen.queryByLabelText('最近搜索')).toBeNull();
+    expect(localStorage.getItem('maestro:search-history')).toBeNull();
+  });
+
+  it('同一个词再搜 → 历史里还是一条（去重）', async () => {
+    vi.useFakeTimers();
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    const input = screen.getByPlaceholderText(/搜索/) as HTMLInputElement;
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).type(input, '晴天');
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '' } });
+    });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '晴天' } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '' } });
+    });
+    const items = screen.getAllByText('晴天');
+    expect(items.length).toBe(1);
   });
 
   it('初始状态：显示占位文案，不调 searchUnified', () => {

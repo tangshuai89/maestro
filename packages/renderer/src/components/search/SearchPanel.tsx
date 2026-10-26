@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { readSearchHistory, writeSearchHistory, clearSearchHistory } from '../../lib/storage';
+import { pushSearchHistory } from '../../lib/searchHistory';
 import {
   searchUnified,
   searchOne,
@@ -95,6 +97,12 @@ export default function SearchPanel({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emptyTimedOut, setEmptyTimedOut] = useState(false);
+  // 搜索历史（specs/search-history）：localStorage，最近搜过的词。
+  // 用 ref 兜住最新值 —— 写历史发生在 debounce effect 里，闭包里的
+  // history 会是旧值（同首 → 去重/排序会错）。
+  const [history, setHistory] = useState<string[]>(() => readSearchHistory());
+  const historyRef = useRef<string[]>(history);
+  historyRef.current = history;
   const [searched, setSearched] = useState(false);
   const [lyricsAvail, setLyricsAvail] = useState<Record<string, boolean>>({});
   const [sourceMode, setSourceMode] = useState<SourceMode>('all');
@@ -242,6 +250,14 @@ export default function SearchPanel({
       return;
     }
     debounceRef.current = setTimeout(() => {
+      // 记搜索历史：用户「停下来打字」的那一刻（debounce 触发）就是一次
+      // 真正的搜索意图。同一词再搜 → 移到最前（pushSearchHistory 负责去重）。
+      const next = pushSearchHistory(historyRef.current, kw);
+      if (next.length !== historyRef.current.length || next[0] !== historyRef.current[0]) {
+        historyRef.current = next;
+        setHistory(next);
+        writeSearchHistory(next);
+      }
       void runSearch(kw, 1, false, sourceMode);
     }, DEBOUNCE_MS);
     return () => {
@@ -494,6 +510,41 @@ export default function SearchPanel({
             ×
           </button>
         </div>
+
+        {/* ── 搜索历史（specs/search-history）────────────────────────────
+            只在「输入框是空的、还没搜」时出现 —— 搜出结果后它就该让位给结果。 */}
+        {tab === 'track' && !q.trim() && history.length > 0 && (
+          <div className="sp-history" aria-label="最近搜索">
+            <div className="sp-history-head">
+              <span className="sp-history-title">最近搜索</span>
+              <button
+                type="button"
+                className="sp-history-clear"
+                onClick={() => {
+                  clearSearchHistory();
+                  historyRef.current = [];
+                  setHistory([]);
+                }}
+              >
+                清空
+              </button>
+            </div>
+            <ul className="sp-history-list">
+              {history.map((h) => (
+                <li key={h}>
+                  <button
+                    type="button"
+                    className="sp-history-item"
+                    onClick={() => setQ(h)}
+                    title={`再搜「${h}」`}
+                  >
+                    {h}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* ── 专辑维度（specs/album-search） ── 整块委托给 AlbumResults：
             自己的 debounce / abort / 分页 / 曲目展开都在那边，
