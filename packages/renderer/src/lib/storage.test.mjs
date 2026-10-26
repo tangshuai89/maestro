@@ -85,8 +85,9 @@ function reset() {
 
 // ── 1. STORAGE_KEYS 常量 ──────────────────────────────────────
 {
-  // 7 个：provider / volume / quality / deezerPreset / theme / playerMode / audioFx
-  expect('1. STORAGE_KEYS 有 8 个 key', Object.keys(STORAGE_KEYS).length === 8);
+  // 9 个：provider / volume / quality / deezerPreset / theme / playerMode /
+  //       audioFx / searchHistory / onboardingDone
+  expect('1. STORAGE_KEYS 有 9 个 key', Object.keys(STORAGE_KEYS).length === 9);
   expect(
     '1b. STORAGE_KEYS.provider = "music-provider"',
     STORAGE_KEYS.provider === 'music-provider',
@@ -97,6 +98,10 @@ function reset() {
   expect(
     '1f. STORAGE_KEYS.searchHistory = "maestro:search-history"',
     STORAGE_KEYS.searchHistory === 'maestro:search-history',
+  );
+  expect(
+    '1g. STORAGE_KEYS.onboardingDone = "maestro:onboarding-done"',
+    STORAGE_KEYS.onboardingDone === 'maestro:onboarding-done',
   );
 }
 

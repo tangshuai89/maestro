@@ -42,7 +42,11 @@ const API_ORIGIN = 'http://127.0.0.1:3210';
  * 3200），见 tests/e2e/electronStub.mjs 的文件头。
  */
 async function seedProvider(page, provider = 'qq') {
-  await seedProviderLocal(page, provider);
+  // ⚠️ **标记「引导已看过」**（specs/first-run-guide）：首次启动引导是整屏覆盖层
+  //   ⇒ 它开着的时候页面上的点击全被它拦下（`frg-overlay intercepts pointer
+  //   events`）—— 2026-10-26 实测：跨包 E2E 的「收藏」那一步就是这么挂的。
+  //   引导不是这条链路要测的东西 ⇒ 别让它挡路。
+  await seedProviderLocal(page, provider, { onboardingDone: true });
   await installElectronStub(page, API_ORIGIN);
 }
 
@@ -180,7 +184,11 @@ test.describe('跨包全链路', () => {
       .toMatchObject({ err: null });
     await expect
       .poll(
-        async () => await page.locator('audio').first().evaluate((el) => el.currentTime),
+        async () =>
+          await page
+            .locator('audio')
+            .first()
+            .evaluate((el) => el.currentTime),
         { timeout: 30_000 },
       )
       .toBeGreaterThan(0);

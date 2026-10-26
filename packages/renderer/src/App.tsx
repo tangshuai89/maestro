@@ -33,6 +33,8 @@ import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
 import { QueuePanel } from './components/modals/QueuePanel';
 import { ShortcutModal } from './components/modals/ShortcutModal';
 import { RecentlyPlayedModal } from './components/modals/RecentlyPlayedModal';
+import FirstRunGuide from './components/onboarding/FirstRunGuide';
+import { markOnboardingDone, shouldShowOnboarding } from './lib/onboarding';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
 import PlayerNotice from './components/common/PlayerNotice';
@@ -223,6 +225,20 @@ export default function App() {
       .catch(() => setRecentEntries([]))
       .finally(() => setRecentLoading(false));
   }, []);
+  // 首次启动引导（specs/first-run-guide）—— 3 步，可跳过。
+  //
+  // 触发点：**选完音源之后**（选音源那步已经有 SourceSelect 全屏页了，
+  // 引导接在它后面，不重复造、也不挡在它前面）。
+  // 「看过没有」记在 localStorage（onboarding.ts）⇒ 跳过后不再打扰；
+  // 设置里的「重新看引导」可以再打开。
+  const [guideOpen, setGuideOpen] = useState(false);
+  useEffect(() => {
+    if (shouldShowOnboarding(Boolean(player.provider))) setGuideOpen(true);
+  }, [player.provider]);
+  const finishGuide = useCallback(() => {
+    markOnboardingDone();
+    setGuideOpen(false);
+  }, []);
   // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
   // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
   const [likedCount, setLikedCount] = useState<number>(() => {
@@ -360,6 +376,7 @@ export default function App() {
     recentOpen ||
     shortcutOpen ||
     settingsOpen ||
+    guideOpen ||
     reco.recoKeyOpen ||
     !!auth.authError ||
     auth.showCookieFallback;
@@ -746,6 +763,12 @@ export default function App() {
 
       {shortcutOpen && <ShortcutModal open onClose={() => setShortcutOpen(false)} />}
 
+      {/* 首次启动引导（specs/first-run-guide）—— 整屏覆盖层（z-index 55：在
+          search-overlay 之下 —— 第 2 步打开的 RecoKeyModal 要能点得到）。 */}
+      {guideOpen && (
+        <FirstRunGuide open onClose={finishGuide} onOpenRecoKey={() => reco.setRecoKeyOpen(true)} />
+      )}
+
       {nlOpen && (
         <NLPlaylistModal
           open
@@ -796,6 +819,11 @@ export default function App() {
           onCrossfadeSec={player.setCrossfadeSec}
           onEqBandGain={player.setEqBandGain}
           onApplyEqPreset={player.applyEqPreset}
+          onReplayGuide={() => {
+            // 关掉设置再开引导 —— 两个都是整屏覆盖层，叠着只会互相挡
+            setSettingsOpen(false);
+            setGuideOpen(true);
+          }}
         />
       )}
 

@@ -323,6 +323,31 @@ async function main() {
     await installElectronStub(page, `http://127.0.0.1:${API_PORT}`);
     await page.coverage.startJSCoverage({ resetOnNavigation: false });
     await page.goto(`http://127.0.0.1:${DEV_PORT}/`);
+    // ── 首次启动引导（specs/first-run-guide）───────────────────────
+    //
+    // ⚠️ **必须先把它走完**：引导是**整屏覆盖层**（z-index 500）⇒ 不点掉的
+    //   話后面**每一个点击都点不动**（搜索 / 队列 / 快捷键面板全在它下面）。
+    //
+    // 顺带把引导自己的覆盖采到（它是新代码，门禁会查它有没有被执行过）。
+    await page.locator('.frg-overlay').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.locator('.frg-btn--primary').click(); // 「开始」→ 第 2 步
+    // 第 2 步：先点「现在设置」→ 打开**已有的** RecoKeyModal（引导在 modal
+    // 之下，所以那个弹窗点得到）→ 关掉 → 再继续。
+    await page.locator('.frg-btn--ghost').click();
+    await page.locator('.reco-modal-close').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.locator('.reco-modal-close').click();
+    await page.waitForTimeout(300);
+    await page.locator('.frg-btn--primary').click(); // 「以后再说」→ 第 3 步
+    await page.locator('.frg-btn--primary').click(); // 「开始使用」→ 引导收工
+    await page.waitForTimeout(300);
+    // ── 设置里的「重新看引导」（specs/first-run-guide）──────────────
+    // 走 App.tsx 的接线分支：开设置 → 点「重新看引导」→ 引导重新打开 → 跳过。
+    // （点「重新看引导」会**顺手把设置关掉** —— 两个都是整屏覆盖层。）
+    await page.locator('.titlebar-btn.settings-btn-icon').click();
+    await page.getByRole('button', { name: '重新看引导' }).click();
+    await page.locator('.frg-overlay').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.locator('.frg-skip').click();
+    await page.waitForTimeout(300);
     await page.locator('.th-canvas').waitFor({ state: 'visible', timeout: 30_000 });
     // 搜索 → 播放 → 收藏（这三步会把 App 的主要分支都走过）
     await page.locator('.titlebar-btn.search-btn').click();

@@ -1,0 +1,121 @@
+@use '../abstracts' as *;
+
+// 首次启动引导（specs/first-run-guide）。整屏覆盖层：盖住主视图 ⇒
+// 用户想用 App 就必须读完（或明确跳过）。
+//
+// z-index 55（= search-overlay 之下）：第 2 步打开的 RecoKeyModal 要能点到 ⇒
+// 引导不能压在它上面。标题栏(100)仍在引导之上 —— 跟**搜索面板同款**（它的
+// 遮罩也是 60），不改动既有层次行为。
+//
+// ⚠️ 面板的**外观**（背景/边框/圆角/阴影）直接复用共享的 `.modal-panel`
+//    （见 _modal.scss）—— 本文件只做**布局覆盖**。理由有两个：
+//    ① 视觉一致（引导和搜索面板/key 弹窗是同一套面板语言）
+//    ② 硬编码颜色的**棘轮预算**不用为这个新文件开口子（阴影那个 rgba
+//       在 _modal.scss 里已经计过账）
+
+.frg-overlay {
+  // 覆盖 .modal-overlay 的「贴顶」布局 → 引导是整屏居中
+  align-items: center;
+  padding: 32px;
+  z-index: z('onboarding');
+}
+
+.frg-panel {
+  width: min(92vw, 560px);
+  max-height: 86vh;
+  padding: 22px 24px 20px;
+}
+
+.frg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.frg-kicker {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: $overlay-text-dim;
+}
+
+.frg-skip {
+  border: none;
+  background: transparent;
+  color: $overlay-text-dim;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.frg-skip:hover {
+  color: $overlay-text;
+}
+
+.frg-title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+  color: $overlay-text;
+}
+
+.frg-points {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.frg-point {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 12px;
+  border-left: 2px solid $accent-green;
+}
+
+.frg-point-head {
+  font-size: 14px;
+  font-weight: 600;
+  color: $overlay-text;
+}
+
+.frg-point-body {
+  font-size: 12px;
+  line-height: 1.55;
+  color: $overlay-text-dim;
+}
+
+.frg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.frg-btn {
+  height: 36px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.frg-btn--primary {
+  background: $accent-green;
+  // 亮色底上的文字用**最深底色**（令牌层有）⇒ 本文件零硬编码颜色
+  color: var(--primitive-bg-top);
+}
+
+.frg-btn--ghost {
+  background: transparent;
+  color: $overlay-text-dim;
+}
+
+.frg-btn--ghost:hover {
+  color: $overlay-text;
+}

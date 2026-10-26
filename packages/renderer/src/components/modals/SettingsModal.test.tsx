@@ -151,6 +151,8 @@ const baseProps = (over: Partial<React.ComponentProps<typeof SettingsModal>> = {
   onCrossfadeSec: () => {},
   onEqBandGain: () => {},
   onApplyEqPreset: () => {},
+  // 新手引导（specs/first-run-guide）—— 「重新看引导」入口
+  onReplayGuide: () => {},
   ...over,
 });
 
@@ -619,5 +621,12 @@ describe('SettingsModal · 交叉淡入淡出', () => {
     const mutedBtn = screen.getByRole('button', { name: /已静音/ });
     expect(mutedBtn.getAttribute('aria-pressed')).toBe('true');
     expect((screen.getByLabelText('音量') as HTMLInputElement).value).toBe('0');
+  });
+
+  it('「重新看引导」按钮 → 调 onReplayGuide（跳过了也能再看一遍）', () => {
+    const onReplayGuide = vi.fn();
+    render(<SettingsModal {...baseProps({ onReplayGuide })} />);
+    fireEvent.click(screen.getByRole('button', { name: '重新看引导' }));
+    expect(onReplayGuide).toHaveBeenCalledTimes(1);
   });
 });

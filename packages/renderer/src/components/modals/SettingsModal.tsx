@@ -71,6 +71,8 @@ interface Props {
   onCrossfadeSec: (sec: number) => void;
   onEqBandGain: (index: number, dB: number) => void;
   onApplyEqPreset: (presetId: string) => void;
+  /** 重新看首次启动引导（specs/first-run-guide）—— 跳过了也能再翻出来。 */
+  onReplayGuide: () => void;
 }
 
 /** ① 播放模式三态的中文名 + 快捷键提示（specs/lite-mode / specs/mini-player）。 */
@@ -117,6 +119,7 @@ export default function SettingsModal({
   onCrossfadeSec,
   onEqBandGain,
   onApplyEqPreset,
+  onReplayGuide,
 }: Props) {
   // ── §5 DeepSeek key 节 ─────────────────────────────────────
   const [recoStatus, setRecoStatus] = useState<RecoStatus | null>(null);
@@ -477,6 +480,20 @@ export default function SettingsModal({
               </button>
             </div>
             <StatusLine status={recoKeyStatus} />
+          </section>
+
+          {/* 新手引导（specs/first-run-guide）—— 跳过了也能再翻出来看 */}
+          <section className="set-section">
+            <h3 className="set-section-title">新手引导</h3>
+            <p className="set-section-hint">
+              第一次启动时的三步说明（这个 App 能干什么 / AI 推荐要 key / 快捷键在哪）。
+              跳过过了也能在这里重新看一遍。
+            </p>
+            <div className="set-row">
+              <button className="set-btn-sm" onClick={onReplayGuide}>
+                重新看引导
+              </button>
+            </div>
           </section>
 
           {/* ④ 渠道优先级 */}

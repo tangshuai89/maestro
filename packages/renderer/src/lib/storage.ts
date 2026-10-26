@@ -30,6 +30,10 @@ export const STORAGE_KEYS = {
   // 搜索历史（最近搜过的词，specs/search-history）。JSON 数组字符串。
   // 走 STORAGE_KEYS ⇒ 顺带被 collectLocalStorage() 打进加密备份。
   searchHistory: 'maestro:search-history',
+  // 首次启动引导是否看过（specs/first-run-guide）。值是 '1'。
+  // 属于**本机使用痕迹**（跟搜索历史同款），不是用户资产 ⇒ 不进服务端
+  // 的 session 分片。清掉它 ⇒ 下次启动会重新看到引导（可接受，不是 bug）。
+  onboardingDone: 'maestro:onboarding-done',
 } as const;
 
 export type ThemeMode = 'dark' | 'light' | 'system';
