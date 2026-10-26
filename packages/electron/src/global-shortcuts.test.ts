@@ -22,14 +22,35 @@ const {
   FORBIDDEN_MEDIA_KEYS,
   registerGlobalShortcuts,
   unregisterGlobalShortcuts,
+  isValidAccelerator,
 } = require('./global-shortcuts');
 
-/** 假 globalShortcut：记录注册表，测试直接触发回调。 */
+/**
+ * 假 globalShortcut：记录注册表，测试直接触发回调。
+ *
+ * ⚠️ **它必须模仿 electron 的真实行为**：认不出的 accelerator 是**抛异常**，
+ *    不是返回 false。
+ *
+ *    真实 electron：`TypeError: Error processing argument at index 0,
+ *    conversion failure from Control+Option+ArrowRight`
+ *
+ *    之前的替身「什么都收」→ 2026-10-26 之前的一版把方向键写成了 DOM 的
+ *    `ArrowRight`（electron 根本不认）→ 注册时抛异常 → 主进程里未捕获
+ *    rejection → **App 起不来**，而单测一直是绿的。
+ *
+ *    ⇒ 替身现在按 `isValidAccelerator` 判：**非法就抛**。
+ *    这条测试因此能守住「accelerator 必须是 electron 认的写法」。
+ */
 function makeFakeShortcutApi() {
   const registered = new Map<string, () => void>();
   const api = {
     registered,
     register(accelerator: string, callback: () => void): boolean {
+      if (!isValidAccelerator(accelerator)) {
+        throw new TypeError(
+          `Error processing argument at index 0, conversion failure from ${accelerator}`,
+        );
+      }
       registered.set(accelerator, callback);
       return true;
     },
@@ -76,18 +97,69 @@ function main() {
     assert.deepStrictEqual(
       registered.sort(),
       [
-        'Control+Option+ArrowDown',
-        'Control+Option+ArrowLeft',
-        'Control+Option+ArrowRight',
-        'Control+Option+ArrowUp',
         'Control+Option+D',
+        'Control+Option+Down',
+        'Control+Option+Left',
+        'Control+Option+Right',
         'Control+Option+Space',
+        'Control+Option+Up',
       ],
       '注册的 accelerator 清单与预期不符',
     );
     assert.strictEqual(globalShortcut.registered.size, 6, '注册表里应有 6 条');
     assert.strictEqual(warnings.length, 0, `不该有告警，实际：${warnings.join(' | ')}`);
     console.log('✅ 1. 注册了 6 条全局热键，清单与预期一致');
+  }
+
+  // ── 1b. 🛡️ 每个 accelerator 都必须是 electron 认的写法 ──────────
+  //
+  // 2026-10-26 实测的坑：方向键写成了 DOM 的 `ArrowRight`（electron 认的是
+  // `Right`）→ `register` 抛异常 → 主进程未捕获 rejection → **App 起不来**。
+  // 这条用例把「键名写错」当场挡住（假替身会像 electron 一样抛）。
+  {
+    for (const spec of GLOBAL_SHORTCUTS) {
+      assert.ok(
+        isValidAccelerator(spec.accelerator),
+        `accelerator 不是 electron 认的写法：${spec.accelerator}（${spec.label}）`,
+      );
+    }
+    // 反向验一次：DOM 的方向键名必须被判非法
+    for (const bad of [
+      'Control+Option+ArrowRight',
+      'Control+Option+ArrowLeft',
+      'Control+Option+ArrowUp',
+      'Control+Option+ArrowDown',
+    ]) {
+      assert.ok(
+        !isValidAccelerator(bad),
+        `${bad} 应该被判为非法（electron 认的是 Right/Left/Up/Down）`,
+      );
+    }
+    console.log('✅ 1b. 全部 accelerator 都是合法写法；DOM 的 Arrow* 名字被判非法');
+  }
+
+  // ── 1c. 🛡️ 非法 accelerator 只能被**跳过**，不能掀翻主进程 ────────
+  {
+    const { deps, globalShortcut, warnings } = makeDeps();
+    // 把其中一条换成 electron 不认的写法（模拟手滑 / 未来改坏）
+    const orig = GLOBAL_SHORTCUTS[1].accelerator;
+    GLOBAL_SHORTCUTS[1].accelerator = 'Control+Option+ArrowRight';
+    try {
+      const registered = registerGlobalShortcuts(deps);
+      assert.ok(
+        !registered.includes('Control+Option+ArrowRight'),
+        '非法 accelerator 不该出现在已注册清单里',
+      );
+      assert.ok(
+        warnings.some((w: string) => w.includes('ArrowRight')),
+        '跳过非法 accelerator 时应该给出告警',
+      );
+      // 其余 5 条照常注册 —— 一条坏的不该拖垮全部
+      assert.strictEqual(registered.length, 5, `其余 5 条应照常注册，实际 ${registered.length}`);
+    } finally {
+      GLOBAL_SHORTCUTS[1].accelerator = orig;
+    }
+    console.log('✅ 1c. 非法 accelerator 被跳过 + 告警，其余热键照常注册（不掀翻主进程）');
   }
 
   // ── 2. 🛡️ 守卫：**一个媒体键都不能注册** ────────────────────────
@@ -129,10 +201,10 @@ function main() {
     };
 
     fire('Control+Option+Space');
-    fire('Control+Option+ArrowRight');
-    fire('Control+Option+ArrowLeft');
-    fire('Control+Option+ArrowUp');
-    fire('Control+Option+ArrowDown');
+    fire('Control+Option+Right');
+    fire('Control+Option+Left');
+    fire('Control+Option+Up');
+    fire('Control+Option+Down');
     assert.deepStrictEqual(
       sent,
       ['playpause', 'next', 'prev', 'volumeup', 'volumedown'],

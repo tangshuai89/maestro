@@ -110,8 +110,15 @@ describe('shortcuts · 分组与展示', () => {
   });
 
   it('formatAccelerator 把 Electron accelerator 转成 macOS 符号', () => {
-    expect(formatAccelerator('Control+Option+ArrowRight')).toBe('⌃⌥→');
+    // ⚠️ 方向键用 **Electron 的名字**（Right/Left/Up/Down）——
+    //    主进程注册的就是这个串，写成 DOM 的 ArrowRight 注册会抛异常。
+    expect(formatAccelerator('Control+Option+Right')).toBe('⌃⌥→');
+    expect(formatAccelerator('Control+Option+Left')).toBe('⌃⌥←');
+    expect(formatAccelerator('Control+Option+Up')).toBe('⌃⌥↑');
+    expect(formatAccelerator('Control+Option+Down')).toBe('⌃⌥↓');
     expect(formatAccelerator('Control+Option+Space')).toBe('⌃⌥Space');
     expect(formatAccelerator('Control+Option+D')).toBe('⌃⌥D');
+    // 旧的 DOM 名字也留着兼容（万一别处还传）
+    expect(formatAccelerator('Control+Option+ArrowRight')).toBe('⌃⌥→');
   });
 });

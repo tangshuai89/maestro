@@ -72,9 +72,112 @@ export interface ShortcutSpec {
 }
 
 /**
+ * **Electron 认的修饰键**（见 Electron 文档的 `Accelerator` 段）。
+ *
+ * ⚠️ 这些是 **accelerator 串**里的名字，不是 `KeyboardEvent.key`。
+ *    `KeyboardEvent.key` 用的是 DOM 名字（`ArrowRight`），accelerator 用的是
+ *    Electron 自己的名字（`Right`）—— **混用会让 `register` 直接抛异常**。
+ */
+const VALID_MODIFIERS = new Set([
+  'Command',
+  'Cmd',
+  'Control',
+  'Ctrl',
+  'CommandOrControl',
+  'CmdOrCtrl',
+  'Alt',
+  'Option',
+  'AltGr',
+  'Shift',
+  'Super',
+  'Meta',
+]);
+
+/**
+ * **Electron 认的主键**。
+ *
+ * ⚠️ 方向键是 `Up` / `Down` / `Left` / `Right`（**不是** `ArrowUp` 等）。
+ */
+const VALID_KEYS = new Set([
+  ...'0123456789'.split(''),
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+  ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
+  'Plus',
+  'Space',
+  'Tab',
+  'Capslock',
+  'Numlock',
+  'Scrolllock',
+  'Backspace',
+  'Delete',
+  'Insert',
+  'Return',
+  'Enter',
+  'Up',
+  'Down',
+  'Left',
+  'Right',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'Escape',
+  'Esc',
+  'VolumeUp',
+  'VolumeDown',
+  'VolumeMute',
+  'MediaNextTrack',
+  'MediaPreviousTrack',
+  'MediaStop',
+  'MediaPlayPause',
+  'PrintScreen',
+  ...Array.from({ length: 10 }, (_, i) => `num${i}`),
+  'numdec',
+  'numadd',
+  'numsub',
+  'nummult',
+  'numdiv',
+]);
+
+/**
+ * 这个 accelerator 串 Electron 认不认？
+ *
+ * ## 为什么需要这个函数（2026-10-26 实测）
+ *
+ * `globalShortcut.register` 遇到**认不出的 accelerator** 是**抛异常**，不是
+ * 返回 false：
+ *
+ *     TypeError: Error processing argument at index 0, conversion failure from
+ *     Control+Option+ArrowRight
+ *
+ * 而注册发生在主进程的 async 上下文里 → **未捕获的 promise rejection** →
+ * **主进程直接挂掉**（症状：`npm run dev` 起不来，App 一启动就崩，
+ * "Network service crashed or was terminated"）。
+ *
+ * ⇒ 光靠 `register` 的返回值（false = 注册失败）**兜不住**这种错 ——
+ *    得在**调用之前**就拦住（这里），并且调用本身还要 try/catch（双保险）。
+ *
+ * 真正的根因是**键名写错**：accelerator 用的是 Electron 的名字
+ * （`Right` / `Left` / `Up` / `Down`），不是 DOM 的 `KeyboardEvent.key`
+ * （`ArrowRight` / …）。这个白名单就是把那两类名字挡在外面。
+ */
+export function isValidAccelerator(accelerator: string): boolean {
+  if (!accelerator) return false;
+  const parts = accelerator.split('+');
+  const key = parts[parts.length - 1];
+  const modifiers = parts.slice(0, -1);
+  if (!VALID_KEYS.has(key)) return false;
+  return modifiers.every((m) => VALID_MODIFIERS.has(m));
+}
+
+/**
  * 快捷键表（第一版，固定一组，不做配置 UI）。
  *
  * 全部用 `⌃⌥`（Control+Option）—— 与 App 内的 `⌘⇧` 系列不撞。
+ *
+ * ⚠️ 方向键写的是 **`Right` / `Left` / `Up` / `Down`**（Electron 的名字），
+ *    **不是** `ArrowRight` 等 DOM 名字 —— 后者会让 `register` 抛异常，
+ *    在主进程里变成未捕获 rejection ⇒ App 起不来（2026-10-26 实测）。
  */
 export const GLOBAL_SHORTCUTS: ShortcutSpec[] = [
   {
@@ -83,22 +186,22 @@ export const GLOBAL_SHORTCUTS: ShortcutSpec[] = [
     run: (d) => d.sendCommand('playpause'),
   },
   {
-    accelerator: 'Control+Option+ArrowRight',
+    accelerator: 'Control+Option+Right',
     label: '下一首',
     run: (d) => d.sendCommand('next'),
   },
   {
-    accelerator: 'Control+Option+ArrowLeft',
+    accelerator: 'Control+Option+Left',
     label: '上一首',
     run: (d) => d.sendCommand('prev'),
   },
   {
-    accelerator: 'Control+Option+ArrowUp',
+    accelerator: 'Control+Option+Up',
     label: '音量 +5%',
     run: (d) => d.sendCommand('volumeup'),
   },
   {
-    accelerator: 'Control+Option+ArrowDown',
+    accelerator: 'Control+Option+Down',
     label: '音量 −5%',
     run: (d) => d.sendCommand('volumedown'),
   },
@@ -135,7 +238,30 @@ export function registerGlobalShortcuts(deps: GlobalShortcutDeps): string[] {
       deps.warn?.(`跳过 ${spec.accelerator}（${spec.label}）：已被占用`);
       continue;
     }
-    const ok = deps.globalShortcut.register(spec.accelerator, () => spec.run(deps));
+    // 守卫 3：accelerator 必须是 Electron 认的格式。
+    //
+    // ⚠️ **必须在调用之前拦**：Electron 对认不出的 accelerator 是**抛异常**
+    // （"conversion failure from ..."），而这里在主进程的 async 上下文里 →
+    // 未捕获 rejection → **主进程挂掉**（2026-10-26 实测：`npm run dev` 起不来）。
+    if (!isValidAccelerator(spec.accelerator)) {
+      deps.warn?.(
+        `跳过 ${spec.accelerator}（${spec.label}）：不是合法的 Electron accelerator` +
+          `（方向键用 Right/Left/Up/Down，不是 ArrowRight/…）`,
+      );
+      continue;
+    }
+    // 双保险：就算白名单漏了某种写法，Electron 抛的异常也不能掀翻主进程。
+    let ok = false;
+    try {
+      ok = deps.globalShortcut.register(spec.accelerator, () => spec.run(deps));
+    } catch (e) {
+      deps.warn?.(
+        `快捷键 ${spec.accelerator}（${spec.label}）注册抛错：${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+      continue;
+    }
     if (ok) {
       registered.push(spec.accelerator);
     } else {

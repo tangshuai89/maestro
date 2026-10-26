@@ -148,10 +148,14 @@ export const SHORTCUT_GROUP_ORDER: ShortcutGroup[] = ['播放', '界面', '桌�
 /**
  * 把 Electron 的 accelerator 串转成 macOS 符号（展示用）。
  *
- * 例：`Control+Option+ArrowRight` → `⌃⌥→`。
+ * 例：`Control+Option+Right` → `⌃⌥→`。
  *
  * ⚠️ 这是**纯展示**的格式化（accelerator 本身还是 Electron 的格式），
  * 不是键位判定 —— 判定永远走 `matchesShortcut`。
+ *
+ * ⚠️ 方向键在 accelerator 里是 `Right` / `Left` / `Up` / `Down`
+ *    （Electron 的名字，不是 DOM 的 `ArrowRight`）。两个都留着：
+ *    旧串（万一别处还传）也能正常显示。
  */
 export function formatAccelerator(accelerator: string): string {
   const map: Record<string, string> = {
@@ -164,6 +168,10 @@ export function formatAccelerator(accelerator: string): string {
     Option: '⌥',
     Alt: '⌥',
     Shift: '⇧',
+    Right: '→',
+    Left: '←',
+    Up: '↑',
+    Down: '↓',
     ArrowRight: '→',
     ArrowLeft: '←',
     ArrowUp: '↑',
