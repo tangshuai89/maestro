@@ -355,6 +355,35 @@ async function main() {
     // 关掉面板（Esc）
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
+    // ── 快捷键速查面板（specs/shortcut-cheatsheet/）─────────────
+    // 走 App.tsx 的接线分支：开面板 → 看一眼 → 关掉。
+    // App.tsx 没有单元测试，接线层只能靠这里的浏览器覆盖采集走到。
+    await page.locator('.titlebar-btn.shortcut-btn').click();
+    await page.locator('[role="dialog"]').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    // 收掉搜索面板：overlayOpen 为真时 lite 模式的键盘分支**整个走不到**
+    // （App.tsx：`if (playerMode !== 'lite' || overlayOpen) return;`）。
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(600);
+    // ── 极简（lite）模式的键盘（specs/lite-mode）─────────────────
+    // App.tsx 里 Esc / Space 这两个分支**只在 lite 模式**可达 → 覆盖率
+    // diff 门禁会报它们没被执行过。⌘⇧L 进 lite → Esc 退出 → 再进 lite
+    // → Space 播放/暂停。
+    await page.keyboard.press('Meta+Shift+L');
+    await page.waitForTimeout(800);
+    await page.keyboard.press('Escape'); // exit-lite 分支
+    await page.waitForTimeout(800);
+    await page.keyboard.press('Meta+Shift+L');
+    await page.waitForTimeout(800);
+    // 焦点不能落在按钮上：空格在按钮里是「激活该按钮」，不是播放/暂停
+    // （App.tsx 的 play-pause 分支专门挡这个）。
+    await page.evaluate(() => {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) el.blur();
+    });
+    await page.keyboard.press('Space'); // play-pause 分支
+    await page.waitForTimeout(800);
     await page.waitForTimeout(1500);
     const entries = await page.coverage.stopJSCoverage();
     await browser.close();

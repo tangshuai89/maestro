@@ -59,6 +59,14 @@ describe('ShortcutModal', () => {
     expect(screen.getByText(APP_SHORTCUTS[0].label)).toBeInTheDocument();
   });
 
+  it('IPC 失败（全局热键拿不到）→ 不崩，显示说明', async () => {
+    globalShortcuts.getGlobalShortcuts.mockRejectedValue(new Error('boom'));
+    renderModal();
+    await waitFor(() => expect(screen.getByText(/当前环境没有全局热键/)).toBeInTheDocument());
+    // App 内快捷键照常显示
+    expect(screen.getByText(APP_SHORTCUTS[0].label)).toBeInTheDocument();
+  });
+
   it('媒体键单独一段（它走 mediaSession，不是 globalShortcut）', async () => {
     renderModal();
     expect(screen.getByText('媒体键')).toBeInTheDocument();
