@@ -35,6 +35,9 @@ interface Props {
   // → 按钮禁用。徽章显示队列首数。
   queueCount: number;
   onOpenQueue: () => void;
+
+  /** 打开快捷键速查面板（specs/shortcut-cheatsheet/） */
+  onOpenShortcuts: () => void;
   // Settings (backup / export / import)
   onOpenSettings: () => void;
   // Player mode (theater ↔ mini，⌘⇧M)。lite 模式下整个 titlebar 不渲染，
@@ -74,6 +77,7 @@ export default function Titlebar({
   onOpenLiked,
   queueCount,
   onOpenQueue,
+  onOpenShortcuts,
   onOpenSettings,
   playerMode,
   onTogglePlayerMode,
@@ -145,6 +149,17 @@ export default function Titlebar({
             {queueCount > 999 ? '999+' : queueCount}
           </span>
         )}
+      </button>
+
+      {/* 快捷键速查（specs/shortcut-cheatsheet/）。用户不知道 App 有哪些快捷键，
+          只能靠试 —— 这个入口把定义表（= 实现的唯一真源）摊开给他看。 */}
+      <button
+        className="titlebar-btn shortcut-btn"
+        onClick={onOpenShortcuts}
+        title="快捷键"
+        aria-label="快捷键"
+      >
+        ⌨
       </button>
 
       {showQuality && <QualityMenu quality={qqQuality} onSelect={onChangeQuality} />}

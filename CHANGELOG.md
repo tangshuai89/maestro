@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **快捷键速查面板 —— 把「已经有的快捷键」摊开给人看**（2026-10-26，`specs/shortcut-cheatsheet`）
+
+  App 里早就有 11 个快捷键（App 内 5 个 + 全局 6 个）外加媒体键，但**用户
+  不知道它们存在** —— 只能靠"试出来"。功能盘点里这条排 P3（成本 0.5 天）。
+
+  **关键不是"把键位抄到面板里"，是"面板和实现不可能漂移"**：
+
+  | 段           | 真源                                                            | 面板怎么拿到                |
+  | ------------ | --------------------------------------------------------------- | --------------------------- |
+  | App 内快捷键 | **新建** `renderer/src/lib/shortcuts.ts` 的 `APP_SHORTCUTS`     | 直接 import                 |
+  | 全局热键     | 主进程 `electron/src/global-shortcuts.ts` 的 `GLOBAL_SHORTCUTS` | 只读 IPC `shortcuts:global` |
+  | 媒体键       | `navigator.mediaSession`                                        | 说明文字（不是键位表）      |
+  - `APP_SHORTCUTS` 每条带**判定条件**，配套 `matchesShortcut(e, def)` 是**唯一**
+    的判定实现 ⇒ **`App.tsx` 的 3 个 keydown 改成调它**（不再手写
+    `(e.metaKey||e.ctrlKey) && e.shiftKey && e.key.toLowerCase()==='m'`）。
+  - **面板渲染 `APP_SHORTCUTS`**（不再手抄第二份）。
+  - 全局热键**不在 renderer 抄一份** —— 走一条只读 IPC 把**数据**递出去。
+
+  ⇒ 改键位只改那张表一处；面板和实现**物理上不可能**漂移（抄一份的方案迟早
+  会出现"改了实现忘了改面板 → 面板骗用户"）。
+
+  面板分三段：**App 内快捷键**（按 播放/界面/桌面 分组）/ **全局热键**
+  （App 不在前台也能用）/ **媒体键**（耳机线控、键盘、macOS 锁屏控制 ——
+  走 `navigator.mediaSession`，**不是** globalShortcut：Electron 在 macOS 上
+  把媒体键实现成 globalShortcut，走同一条 remote command center 通道，一旦
+  注册就会占住通道并关掉 Chromium 自己的媒体键处理）。
+
+  入口：Titlebar 的「⌨ 快捷键」按钮。浏览器 dev（无 Electron）没有全局热键
+  → 面板**明说**，不假装有。
+
 - **播放队列面板 —— 看得见、跳得到、拿得出**（2026-10-25，`specs/queue-panel`）
 
   播放队列一直是用户**完全看不见的黑盒**：搜了 20 首点了第 3 首，剩下的 17 首在哪？

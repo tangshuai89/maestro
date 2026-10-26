@@ -145,6 +145,16 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('sidecar-ready', handler);
   },
 
+  /**
+   * 全局热键清单（**只读**，specs/shortcut-cheatsheet/）。
+   *
+   * 真源在主进程的 `global-shortcuts.ts`（`GLOBAL_SHORTCUTS`）—— renderer
+   * 拿不到那个模块，所以走一条只读通道把**数据**递出去，**不在 renderer
+   * 侧抄一份**（抄 = 迟早漂移；面板会骗用户）。
+   */
+  getGlobalShortcuts: (): Promise<Array<{ accelerator: string; label: string }>> =>
+    ipcRenderer.invoke('shortcuts:global'),
+
   /** Open a QQ Music login window; resolves when the login cookie is captured. */
   qqLogin: (): Promise<QqLoginResponse> =>
     ipcRenderer.invoke(
