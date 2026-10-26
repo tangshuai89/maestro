@@ -105,6 +105,21 @@ COV_MARKER="$PWD/.coverage-collected-at"
 # （lcov 是行级格式，不依赖字节偏移，两边天然可比）。见 scripts/merge-lcov.js。
 #
 # node 管线（.test.ts / .test.mjs）：独立 temp 目录
+#
+# ⚠️ **temp 目录是「每个包一个」**（2026-10-26 修「同一文件被两种方式加载」）。
+#
+# 同一个源文件在 node 管线里会被**两种方式加载**：
+#   - ts-node 编译（**带 source map**）→ 行号 = 源码行号 ✅
+#   - node 原生 type-stripping（**无 source map**）→ c8 拿脚本的**字节偏移**去切
+#     **磁盘上的源码** → 行号**算错**（实测 `playHistory.ts`：真数据 52/63，
+#     错数据 75/81）
+# 两份数据落进**同一个文件记录**时，c8 的逐文件合并会让**后一份 0 命中**的
+# 覆盖真数据 → 覆盖率被低估 → diff 门禁把「明明测过」的函数判成「从未被执行」
+# → **误拦**（2026-10-26 实测：4-E 播放历史被这么拦过一次）。
+#
+# ⇒ 每个包**各自采集**（独立 temp 目录）→ 各自出 lcov → 用 merge-lcov.js
+# 在**文本层取 max 并集**（跨包的两份数据不再互相覆盖 —— merge-lcov.js 跨文件
+# 合并本来就是取 max，缺的只是「别让 c8 先把它们混进同一个记录」）。
 C8_NODE=(
   --clean=false --reporter=lcov
   "--report-dir=$COVERAGE_DIR" "--temp-directory=$COV_TMP_NODE"
@@ -117,6 +132,19 @@ C8_NODE=(
   # 与「硬编码颜色门禁不扫测试文件」是同一个原则。
   "--exclude=**/test/**" "--exclude=**/e2e/**"
 )
+
+# 某个包自己的 node 采集 temp 目录（覆盖 C8_NODE 里的共享目录）
+c8_node_for_pkg() {
+  local pkg="$1"
+  local out=("${C8_NODE[@]}")
+  local i
+  for i in "${!out[@]}"; do
+    case "${out[$i]}" in
+      --temp-directory=*) out[$i]="--temp-directory=$COV_TMP_NODE/$pkg" ;;
+    esac
+  done
+  printf '%s\n' "${out[@]}"
+}
 
 # ── 失败清单 ───────────────────────────────────────────────────────
 report_failures() {
@@ -163,13 +191,14 @@ run_pkg() {
         # .mjs tests import .ts source via the ESM loader; without
         # --extension .ts c8 only counts .js files and the coverage is 0%.
         # → node 管线：独立的 temp 目录（与 vitest 管线分开，见 C8_NODE 上方注释）
-        ( cd "$root/packages/$pkg" && npx c8 "${C8_NODE[@]}" --src src node "$f" ) || ok=0
+        # → **每个包一个 temp 目录**（见 C8_NODE 上方「同一文件被两种方式加载」）
+        ( cd "$root/packages/$pkg" && npx c8 $(c8_node_for_pkg "$pkg") --src src node "$f" ) || ok=0
       else
         ( cd "$root/packages/$pkg" && node "$f" ) || ok=0
       fi
     else
       if [ "$INSTRUMENT" -eq 1 ]; then
-        ( cd "$root/packages/$pkg" && npx c8 "${C8_NODE[@]}" --src src npx ts-node "$f" ) || ok=0
+        ( cd "$root/packages/$pkg" && npx c8 $(c8_node_for_pkg "$pkg") --src src npx ts-node "$f" ) || ok=0
       else
         ( cd "$root/packages/$pkg" && npx ts-node "$f" ) || ok=0
       fi
@@ -307,7 +336,34 @@ c8_report() {
   # 而那正是它要修的缺陷本身。报告前先自测，改坏了当场红。
   node "$PWD/scripts/merge-lcov.js" --self-test || return 1
 
-  c8_report_one "$COV_TMP_NODE" "$node_dir"
+  # node 侧：**每个包各自出 lcov → 文本层取 max 并集**
+  #
+  # 为什么不能一个共享 temp 目录一次出（2026-10-26 实测踩到的坑）：
+  # 同一个源文件在 node 管线里会被**两种方式加载**（ts-node 带 source map /
+  # node 原生 type-stripping 不带）→ 两份数据的**行号空间不同** → 混进
+  # 同一个文件记录时，后一份 0 命中的会把真数据覆盖掉 → 覆盖率被低估
+  # → diff 门禁把「明明测过的函数」判成「从未被执行」→ **误拦**。
+  #
+  # ⇒ 分包采集 + 分包出 lcov + merge-lcov.js 取 max（跨文件合并本来就取 max，
+  #    缺的只是「别让 c8 先把两份数据混进同一个记录」）。
+  local pkg_lcov_dir="$node_dir/.per-pkg"
+  rm -rf "$pkg_lcov_dir"
+  mkdir -p "$pkg_lcov_dir"
+  local pkg_lcovs=()
+  for pkg_dir in "$COV_TMP_NODE"/*; do
+    [ -d "$pkg_dir" ] || continue
+    local pkg_name
+    pkg_name=$(basename "$pkg_dir")
+    # c8 的 --report-dir 是**目录**，产物是里面的 lcov.info
+    c8_report_one "$pkg_dir" "$pkg_lcov_dir/$pkg_name"
+    [ -f "$pkg_lcov_dir/$pkg_name/lcov.info" ] && pkg_lcovs+=("$pkg_lcov_dir/$pkg_name/lcov.info")
+  done
+  if [ "${#pkg_lcovs[@]}" -gt 0 ]; then
+    node "$PWD/scripts/merge-lcov.js" "$node_dir/lcov.info" "${pkg_lcovs[@]}" || return 1
+  else
+    # 一个包都没采到（不该发生）→ 留空 lcov，别让后面的步骤读到脏数据
+    : > "$node_dir/lcov.info"
+  fi
 
   # ── 浏览器端覆盖率（接线层：App.tsx / main.tsx）────────────────
   #

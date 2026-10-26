@@ -53,6 +53,9 @@ const API_BASE = API_ORIGIN;
 
 export type MusicProvider = 'qq' | 'netease' | 'deezer' | 'spotify';
 
+// 播放历史的共享类型（server 存/读用同一份 —— 见 packages/common/src/playHistory.ts）
+import type { PlayHistoryEntry } from '@maestro/common';
+
 export const PROVIDER_LABELS: Record<MusicProvider, string> = {
   qq: 'QQ 音乐',
   netease: '网易云音乐',
@@ -332,6 +335,52 @@ export interface Playlist {
   prompt?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+// ── 播放历史（specs/play-history）───────────────────────────────────
+
+/**
+ * 记一条播放。
+ *
+ * 语义是「**最近播放**」：同一首再听 → 移到最前 + 更新时间，不追加第二条
+ * （去重逻辑在服务端的 `mergePlayHistory`，前端不重复实现）。
+ *
+ * fire-and-forget：记历史失败**绝不能**影响播放。
+ */
+export async function recordPlayHistory(input: {
+  platform: MusicProvider;
+  trackId: string;
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  duration?: number;
+}): Promise<{ ok: true }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/history`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+/** 读播放历史（最近优先）。 */
+export async function fetchPlayHistory(): Promise<PlayHistoryEntry[]> {
+  const res = await fetchWithToken(`${API_BASE}/music/history`, { credentials: 'include' });
+  const data = (await res.json()) as { entries?: PlayHistoryEntry[] };
+  return Array.isArray(data.entries) ? data.entries : [];
+}
+
+/** 清空播放历史。 */
+export async function clearPlayHistory(): Promise<{ ok: true; removed: number }> {
+  return json(
+    await fetchWithToken(`${API_BASE}/music/history`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
+  );
 }
 
 export async function listPlaylists(): Promise<Playlist[]> {

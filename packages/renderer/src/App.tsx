@@ -10,8 +10,9 @@ import { useAuth } from './hooks/useAuth';
 import { useReco } from './hooks/useReco';
 import { useTheme } from './hooks/useTheme';
 import { useDeezerEditorials } from './hooks/useDeezerEditorials';
-import { getLibrary } from './api';
+import { getLibrary, fetchPlayHistory, clearPlayHistory } from './api';
 import type { LibraryImportResult, MusicProvider } from './api';
+import type { PlayHistoryItem } from './components/modals/RecentlyPlayedModal';
 import { readCachedLibrary } from './lib/likedCache';
 import { createAudioSlots } from './lib/audioSlots';
 import { readStoredPlayerMode, writeStoredPlayerMode, type PlayerMode } from './lib/storage';
@@ -31,6 +32,7 @@ import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
 import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
 import { QueuePanel } from './components/modals/QueuePanel';
 import { ShortcutModal } from './components/modals/ShortcutModal';
+import { RecentlyPlayedModal } from './components/modals/RecentlyPlayedModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
 import PlayerNotice from './components/common/PlayerNotice';
@@ -209,6 +211,18 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   // 快捷键速查面板（specs/shortcut-cheatsheet/）
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  // 最近播放（specs/play-history/）
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [recentEntries, setRecentEntries] = useState<PlayHistoryItem[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const openRecent = useCallback(() => {
+    setRecentOpen(true);
+    setRecentLoading(true);
+    void fetchPlayHistory()
+      .then((list) => setRecentEntries(list as PlayHistoryItem[]))
+      .catch(() => setRecentEntries([]))
+      .finally(() => setRecentLoading(false));
+  }, []);
   // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
   // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
   const [likedCount, setLikedCount] = useState<number>(() => {
@@ -343,6 +357,7 @@ export default function App() {
     likedOpen ||
     nlOpen ||
     queueOpen ||
+    recentOpen ||
     shortcutOpen ||
     settingsOpen ||
     reco.recoKeyOpen ||
@@ -541,6 +556,7 @@ export default function App() {
           queueCount={player.queueUnifiedItems?.length ?? 0}
           onOpenQueue={() => setQueueOpen(true)}
           onOpenShortcuts={() => setShortcutOpen(true)}
+          onOpenRecent={openRecent}
           playerMode={playerMode}
           onTogglePlayerMode={handleTogglePlayerMode}
           desktopLyricsOn={desktopLyrics.enabled}
@@ -691,6 +707,24 @@ export default function App() {
             // 网络往返；失败时（newCount 为 undefined）回到兜底路径再拉一次。
             if (typeof newCount === 'number') setLikedCount(newCount);
             else void reloadLikedCount();
+          }}
+        />
+      )}
+
+      {recentOpen && (
+        <RecentlyPlayedModal
+          open
+          onClose={() => setRecentOpen(false)}
+          entries={recentEntries}
+          loading={recentLoading}
+          onPlay={(items, index) => {
+            setRecentOpen(false);
+            player.playSearch(items, index);
+          }}
+          onClear={() => {
+            void clearPlayHistory()
+              .then(() => setRecentEntries([]))
+              .catch(() => undefined);
           }}
         />
       )}

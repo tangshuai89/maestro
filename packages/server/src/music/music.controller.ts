@@ -19,6 +19,7 @@ import { QqMusicProvider } from './qq.provider';
 import { NeteaseMusicProvider } from './netease.provider';
 import { LyricsService } from './lyrics.service';
 import { normalizeProvider, MusicProvider, MUSIC_PROVIDERS } from '../common/provider';
+import type { PlayHistoryInput } from '@maestro/common';
 import { SessionService } from '../common/session';
 import { DeezerMusicProvider } from './deezer.provider';
 import { QqQuality } from './qq.provider';
@@ -661,6 +662,37 @@ export class MusicController {
   async importLibrary(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const session = this.sessionService.resolve(req, res);
     return this.musicService.importLiked(session);
+  }
+
+  // ── 播放历史（specs/play-history）───────────────────────────────────
+  /** 读播放历史（最近优先）。没有历史 → 空数组（不是 404）。 */
+  @Get('history')
+  async getPlayHistory(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const session = this.sessionService.resolve(req, res);
+    return { entries: this.musicService.getPlayHistory(session) };
+  }
+
+  /**
+   * 记一条播放（换歌时前端调）。
+   *
+   * 幂等：同一 `platform:trackId` 再记一次 → 移到最前 + 更新时间，不追加第二条。
+   */
+  @Post('history')
+  async recordPlayHistory(
+    @Body() body: PlayHistoryInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = this.sessionService.resolve(req, res);
+    const entry = this.musicService.recordPlayHistory(session, body ?? ({} as PlayHistoryInput));
+    return { ok: true as const, entry };
+  }
+
+  /** 清空播放历史。 */
+  @Delete('history')
+  async clearPlayHistory(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const session = this.sessionService.resolve(req, res);
+    return { ok: true as const, removed: this.musicService.clearPlayHistory(session) };
   }
 
   /** 读最近一次 import 的库（无则 404）。 */

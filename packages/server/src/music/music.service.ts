@@ -28,7 +28,16 @@ import {
   selectBestSource,
   sortByRelevance,
 } from './search.util';
-import { extractVersionTag, splitArtists, type VersionTag } from '@maestro/common';
+import {
+  extractVersionTag,
+  splitArtists,
+  mergePlayHistory,
+  normalisePlayHistoryEntry,
+  PLAY_HISTORY_LIMIT,
+  type PlayHistoryEntry,
+  type PlayHistoryInput,
+  type VersionTag,
+} from '@maestro/common';
 import { MatchService } from '../match/match.service';
 import { jaroWinkler } from '../match/fuzzy';
 import { artistTransliterationMatch, warmupJa, romanizeJa } from './translit';
@@ -4581,6 +4590,56 @@ export class MusicService {
    *    item 直接复用 storage 里的 `likedPlatforms`（import 时已写好）。fanOut
    *    真变更通常 < 数百 entry → 受影响 item 通常 < 数百，**实际工作量从
    *    O(I×S×F) ≈ 30M ops 降到 O(I×S + F + 数百×S) ≈ 数十 K ops**。 */
+  // ── 播放历史（specs/play-history）─────────────────────────────────
+  /**
+   * 播放历史（最近播放）的存储键。session 分片 —— 跟 ❤ 库/歌单一样，
+   * 换 session（清 cookie / 换浏览器）就是另一份，互不串。
+   */
+  private historyKey(sessionId: string): string {
+    return `history:${sessionId}`;
+  }
+
+  /**
+   * 读播放历史（最近优先）。
+   *
+   * 语义是「**最近播放**」而不是「每一次播放的流水」：同一首歌再听一次 →
+   * 移到最前、更新时间，不追加第二条（流水账对「找回昨天那首」没用，
+   * 还会让列表被同一首歌刷屏）。
+   */
+  getPlayHistory(session: Session): PlayHistoryEntry[] {
+    const stored = this.storage.get<PlayHistoryEntry[]>(this.historyKey(session.id));
+    if (!Array.isArray(stored)) return [];
+    const out: PlayHistoryEntry[] = [];
+    for (const item of stored) {
+      if (!item || typeof item !== 'object') continue;
+      if (typeof item.id !== 'string' || !item.id) continue;
+      if (typeof item.title !== 'string' || !item.title) continue;
+      if (typeof item.playedAt !== 'number') continue;
+      out.push(item);
+      if (out.length >= PLAY_HISTORY_LIMIT) break;
+    }
+    return out;
+  }
+
+  /**
+   * 记一条播放：去重 + 移到最前 + 截断（合并逻辑在 common 的
+   * `mergePlayHistory`，两端共用一份 —— 见 packages/common/src/playHistory.ts）。
+   */
+  recordPlayHistory(session: Session, input: PlayHistoryInput): PlayHistoryEntry | null {
+    const entry = normalisePlayHistoryEntry(input);
+    if (!entry) return null;
+    const merged = mergePlayHistory(this.getPlayHistory(session), entry);
+    this.storage.set(this.historyKey(session.id), merged);
+    return entry;
+  }
+
+  /** 清空播放历史。 */
+  clearPlayHistory(session: Session): number {
+    const before = this.getPlayHistory(session).length;
+    this.storage.set(this.historyKey(session.id), []);
+    return before;
+  }
+
   getLibrary(session: Session): {
     items: UnifiedSearchItem[];
     sources: Array<{

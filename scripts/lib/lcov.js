@@ -66,9 +66,76 @@ function parseLcov(text) {
   const duplicates = [];
   /** @type {FileCov | null} */
   let current = null;
+  /**
+   * lcov 规范里 `FN:` 与 `FNDA:` 是**平行数组**（第 i 个 FN 配第 i 个 FNDA），
+   * 而「同名函数」在一条记录里可能出现多次（见 finalizeFn 的注释）⇒ 必须
+   * **缓冲到记录结束再配对**，不能边读边建 map（那会「后写覆盖」）。
+   * @type {Array<{ln: number, name: string}>}
+   */
+  let fnList = [];
+  /** @type {Array<{hits: number, name: string}>} */
+  let fndaList = [];
+
+  /**
+   * 把缓冲的 FN / FNDA 收进 `current`。
+   *
+   * ⚠️ **同名函数取 max 命中，不是「后写覆盖」**（2026-10-26 实测踩到的坑）。
+   *
+   * c8 会给**同一个源文件**写两组函数记录：一份来自 ts-node 编译的**源码**
+   * （行号 = 源码行号），一份来自**编译产物 dist**（行号 = 产物行号）。
+   * 两组函数**同名** → 按名字建 map 时「后写覆盖」会把**真命中**盖成 0：
+   *   FN:52,playHistoryKey  FNDA:2,playHistoryKey   ← 源码版，真命中
+   *   FN:75,playHistoryKey  FNDA:0,playHistoryKey   ← dist 版，0 命中
+   * ⇒ 取 max 后是 2（真相：函数确实被调用过）；「后写覆盖」会得到 0
+   *   → diff 门禁把「明明测过的函数」判成「从未被执行」→ **误拦**。
+   *
+   * 跨文件合并时早就取 max 了（merge-lcov.js）—— 这里补齐**单文件内**的对齐。
+   *
+   * **行号跟着「命中更多的那条」走**：dist 版的行号是**产物行号**（不是源码行号），
+   * 门禁按行号在 diff 里定位函数 ⇒ 行号必须来自**真命中**的那条。
+   */
+  function finalizeFn() {
+    if (!current) return;
+    const n = Math.max(fnList.length, fndaList.length);
+    for (let i = 0; i < n; i++) {
+      const f = fnList[i];
+      const d = fndaList[i];
+      let ln = 0;
+      let name = '';
+      let hits = 0;
+      if (f && d && f.name === d.name) {
+        ln = f.ln;
+        name = f.name;
+        hits = d.hits;
+      } else if (f) {
+        // 平行数组对不上（工具不守规范）→ 退回按名字找命中
+        ln = f.ln;
+        name = f.name;
+        hits = fndaList.find((x) => x.name === f.name)?.hits ?? 0;
+      } else if (d) {
+        name = d.name;
+        hits = d.hits;
+      } else {
+        continue;
+      }
+      const prevHits = current.fnda.get(name);
+      // 同名函数：**命中多的那条说了算**（max）——
+      //   · 命中数只增不减（真命中不能被 0 盖掉）
+      //   · 行号跟着**命中更多的那条**走（dist 版的行号是产物行号，不是源码行号）
+      if (prevHits === undefined || hits >= prevHits) {
+        current.fnda.set(name, Math.max(prevHits ?? 0, hits));
+        if (ln) current.fn.set(name, ln);
+      } else if (!current.fn.has(name) && ln) {
+        current.fn.set(name, ln);
+      }
+    }
+    fnList = [];
+    fndaList = [];
+  }
 
   for (const line of text.split('\n')) {
     if (line.startsWith('SF:')) {
+      finalizeFn();
       const file = line.slice(3).trim();
       if (files.has(file)) {
         duplicates.push(file);
@@ -80,6 +147,7 @@ function parseLcov(text) {
       continue;
     }
     if (line.startsWith('end_of_record')) {
+      finalizeFn();
       current = null;
       continue;
     }
@@ -106,7 +174,7 @@ function parseLcov(text) {
       if (idx < 0) continue;
       const hits = Number(rest.slice(0, idx));
       const name = rest.slice(idx + 1);
-      current.fnda.set(name, Number.isFinite(hits) ? hits : 0);
+      fndaList.push({ hits: Number.isFinite(hits) ? hits : 0, name });
     } else if (line.startsWith('FN:')) {
       // FN:<line>,<name>
       const rest = line.slice(3);
@@ -114,7 +182,7 @@ function parseLcov(text) {
       if (idx < 0) continue;
       const ln = Number(rest.slice(0, idx));
       const name = rest.slice(idx + 1);
-      current.fn.set(name, Number.isFinite(ln) ? ln : 0);
+      fnList.push({ ln: Number.isFinite(ln) ? ln : 0, name });
     }
   }
   return { files, duplicates };
@@ -215,6 +283,47 @@ if (require.main === module && process.argv[2] === '--self-test') {
       '重复文件：**保留第一个**的 DA（不是后者覆盖前者）',
       d && d.da.get(1) === 5 && d.da.size === 1,
     );
+  }
+
+  // 2b. **同名函数出现多次**（c8 对同一源文件写了「源码版 + dist 版」两组）
+  //     → 取 max 命中，且**行号跟着命中多的那条**（dist 版的行号是产物行号，不是源码行号）。
+  //
+  //     回归依据（2026-10-26 实测）：`packages/common/src/playHistory.ts` 的
+  //     `playHistoryKey` 在 node 管线里是 FN:52/FNDA:2（源码版，真命中）
+  //     + FN:75/FNDA:0（dist 版）⇒ 「后写覆盖」会得到 0 → diff 门禁把
+  //     **明明测过**的函数判成「从未被执行」→ 误拦。
+  {
+    const { files } = parseLcov(
+      [
+        'SF:packages/a/src/x.ts',
+        'FN:52,playHistoryKey',
+        'FN:63,mergePlayHistory',
+        'FN:73,normalisePlayHistoryEntry',
+        'FN:75,playHistoryKey',
+        'FN:81,mergePlayHistory',
+        'FNF:5',
+        'FNH:3',
+        'FNDA:2,playHistoryKey',
+        'FNDA:5,mergePlayHistory',
+        'FNDA:5,normalisePlayHistoryEntry',
+        'FNDA:0,playHistoryKey',
+        'FNDA:0,mergePlayHistory',
+        'end_of_record',
+        '',
+      ].join('\n'),
+    );
+    const d = files.get('packages/a/src/x.ts');
+    expect(
+      '同名函数：命中取 max（2，不是被后面的 0 盖掉）',
+      d && d.fnda.get('playHistoryKey') === 2,
+    );
+    expect('同名函数：mergePlayHistory 命中 5', d && d.fnda.get('mergePlayHistory') === 5);
+    expect(
+      '同名函数：行号跟命中多的那条（52，不是 dist 版的 75）',
+      d && d.fn.get('playHistoryKey') === 52,
+    );
+    expect('同名函数：mergePlayHistory 行号 63', d && d.fn.get('mergePlayHistory') === 63);
+    expect('同名函数：只留一个条目（不是 5 个）', d && d.fn.size === 3 && d.fnda.size === 3);
   }
 
   // 3. 「行级可信」判据

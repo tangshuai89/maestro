@@ -41,6 +41,7 @@ const props = (over: Record<string, unknown> = {}) => ({
   queueCount: 0,
   onOpenQueue: vi.fn(),
   onOpenShortcuts: vi.fn(),
+  onOpenRecent: vi.fn(),
   onOpenSettings: vi.fn(),
   playerMode: 'theater' as const,
   onTogglePlayerMode: vi.fn(),
@@ -66,6 +67,15 @@ describe('Titlebar', () => {
     expect(btn).toBeInTheDocument();
     fireEvent.click(btn);
     expect(onOpenShortcuts).toHaveBeenCalledTimes(1);
+  });
+
+  it('最近播放按钮：点了就打开（specs/play-history/）', () => {
+    const onOpenRecent = vi.fn();
+    render(<Titlebar {...props({ onOpenRecent })} />);
+    const btn = screen.getByLabelText('最近播放');
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(onOpenRecent).toHaveBeenCalledTimes(1);
   });
 
   it('Deezer 预置下拉：仅 provider=deezer 且有 editorials 时出现', () => {
