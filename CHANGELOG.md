@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   入口：Titlebar 的「⌨ 快捷键」按钮。浏览器 dev（无 Electron）没有全局热键
   → 面板**明说**，不假装有。
+
 - **搜索历史 —— 搜过的词找不回来**（2026-10-26，`specs/search-history`）
 
   用户搜过的词**找不回来** —— 搜索框每次都是空的，重度用户只能凭记忆再敲一遍。
@@ -53,7 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     意图），不是每次 `onChange` —— 否则「周杰」「周杰伦晴天」这种中间态全进去。
   - UI：只在「输入框是空的、还没搜」时出现（一排胶囊标签）；点一条 → 填回输入框
     走正常搜索；右上角「清空」。
->>>>>>> 57da21d (feat(renderer): 搜索历史 —— 搜过的词找不回来)
 
 - **播放队列面板 —— 看得见、跳得到、拿得出**（2026-10-25，`specs/queue-panel`）
 

@@ -58,6 +58,9 @@ const {
   writeStoredPlayerMode,
   readAudioFx,
   writeAudioFx,
+  readSearchHistory,
+  writeSearchHistory,
+  clearSearchHistory,
   collectLocalStorage,
   restoreLocalStorage,
 } = await import('./storage.ts');
@@ -407,6 +410,59 @@ reset();
   }
   expect('32. restoreLocalStorage LS 异常 → 不崩', !threw);
   lsStore.set = origSetItem;
+}
+
+// ── 32b. 搜索历史：localStorage 异常安全 ──────────────────────
+// （覆盖率 diff 门禁在 CI 上抓到这三行从没被执行过：catch 回退分支。）
+reset();
+{
+  const origGet = lsStore.get;
+  lsStore.get = () => {
+    throw new Error('SecurityError');
+  };
+  let threw = false;
+  let result = null;
+  try {
+    result = readSearchHistory();
+  } catch {
+    threw = true;
+  }
+  expect('32b. readSearchHistory LS 读异常 → 不崩', !threw);
+  expect(
+    '32c. readSearchHistory LS 读异常 → 回落空数组',
+    Array.isArray(result) && result.length === 0,
+  );
+  lsStore.get = origGet;
+}
+reset();
+{
+  const origSet = lsStore.set;
+  lsStore.set = () => {
+    throw new Error('QuotaExceeded');
+  };
+  let threw = false;
+  try {
+    writeSearchHistory(['晴天']);
+  } catch {
+    threw = true;
+  }
+  expect('32d. writeSearchHistory LS 写异常 → 不崩', !threw);
+  lsStore.set = origSet;
+}
+reset();
+{
+  const origDelete = lsStore.delete;
+  lsStore.delete = () => {
+    throw new Error('SecurityError');
+  };
+  let threw = false;
+  try {
+    clearSearchHistory();
+  } catch {
+    threw = true;
+  }
+  expect('32e. clearSearchHistory LS 删异常 → 不崩', !threw);
+  lsStore.delete = origDelete;
 }
 
 // ── 33. round-trip: collect → restore ─────────────────────────
