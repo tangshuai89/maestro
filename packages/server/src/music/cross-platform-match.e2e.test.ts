@@ -46,6 +46,9 @@ let qqLikedRemote: string[] = [];
 const spotifyLikes: string[] = [];
 const netease = {
   search: async () => neteaseSearchResults,
+  // 网易云实探（probeFullStream）：真实 provider 用它判「是不是**完整流**」
+  // （30s 试听带 freeTrialInfo → 不算）。mock 统一当成完整流。
+  probeFullStream: async () => true,
   like: async (_ps: unknown, id: string) => {
     neteaseLikes.push(id);
     return true;
