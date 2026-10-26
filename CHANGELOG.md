@@ -1011,6 +1011,7 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
   这个缺口是 `ce20518` 给 main.ts 加 `setWindowOpenHandler` 时留下的，测试替身
   一直没跟上。
+
 - **播放兜底链「取首个命中就返回」—— 29 秒试听卡死的真根因**（2026-10-26，`specs/trial-source-fallback`）
 
   用户报「**又**出现 29 秒的情况」（`00:11 / 00:29` + `30S TRIAL` 角标）。
@@ -1061,7 +1062,6 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
   **局限（如实记录）**：QQ 的 30s 试听流服务端仍分不出来（GetVkey 照给 purl），
   QQ 侧试听识别仍靠 renderer 的运行时时长判定；Spotify 全曲流要靠 WPS，
   服务端等价源路径给不了。
->>>>>>> 965680e (fix(playback): 兜底链候选必须实探 —— 修「29 秒试听」卡死)
 
 ### Fixed
 

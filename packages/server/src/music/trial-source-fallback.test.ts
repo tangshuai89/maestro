@@ -280,6 +280,34 @@ async function main() {
     ok('5. 普通等价搜索（❤ 同步路径）不做实探');
   }
 
+  // ── 6. 只有种子平台能写红心 → 没有跨平台候选 → reason 分级 ──
+  // 这条覆盖 `!candidates.length` 那个提前返回分支（覆盖率 diff 门禁在 CI 上
+  // 抓到它没被执行过：跨平台候选永远非空，所以这个分支平时走不到）。
+  {
+    reset();
+    qqSearchResults = [
+      qqTrack('qq-vip', 'Drip Dry Eyes', 'YUKIHIRO TAKAHASHI', 330, { vipLocked: true }),
+    ];
+    // 只登录了 qq → 去掉种子平台后**没有任何跨平台候选**
+    const onlyQqSession = {
+      id: 'sess-qq-only',
+      providers: { qq: { qqCookie: 'c' } },
+    };
+    const res = await svc.findPlayableEquivalent(
+      onlyQqSession,
+      'qq',
+      { title: 'Drip Dry Eyes', artist: 'YUKIHIRO TAKAHASHI', duration: 330 },
+      { excludeTrackId: 'other-mid' },
+    );
+    assert.strictEqual(res.source, null, '没有可播源 → source=null');
+    assert.strictEqual(
+      res.reason,
+      'vip-locked',
+      `同平台候选是 VIP 锁 → reason 应为 vip-locked（实际 ${res.reason}）`,
+    );
+    ok('6. 无跨平台候选 + 同平台候选被锁 → null + reason=vip-locked');
+  }
+
   console.log(`\n${pass} 个用例全部通过 ✅`);
 }
 
