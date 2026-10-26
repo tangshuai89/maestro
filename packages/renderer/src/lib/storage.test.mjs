@@ -83,7 +83,7 @@ function reset() {
 // ── 1. STORAGE_KEYS 常量 ──────────────────────────────────────
 {
   // 7 个：provider / volume / quality / deezerPreset / theme / playerMode / audioFx
-  expect('1. STORAGE_KEYS 有 7 个 key', Object.keys(STORAGE_KEYS).length === 7);
+  expect('1. STORAGE_KEYS 有 8 个 key', Object.keys(STORAGE_KEYS).length === 8);
   expect(
     '1b. STORAGE_KEYS.provider = "music-provider"',
     STORAGE_KEYS.provider === 'music-provider',
@@ -91,6 +91,10 @@ function reset() {
   expect('1c. STORAGE_KEYS.volume = "maestro:volume"', STORAGE_KEYS.volume === 'maestro:volume');
   expect('1d. STORAGE_KEYS.theme = "maestro:theme"', STORAGE_KEYS.theme === 'maestro:theme');
   expect('1e. STORAGE_KEYS.playerMode = "player-mode"', STORAGE_KEYS.playerMode === 'player-mode');
+  expect(
+    '1f. STORAGE_KEYS.searchHistory = "maestro:search-history"',
+    STORAGE_KEYS.searchHistory === 'maestro:search-history',
+  );
 }
 
 // ── 2. readStoredProvider：无值 → null ────────────────────────
