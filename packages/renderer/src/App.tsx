@@ -819,7 +819,11 @@ export default function App() {
           onCrossfadeSec={player.setCrossfadeSec}
           onEqBandGain={player.setEqBandGain}
           onApplyEqPreset={player.applyEqPreset}
-          onReplayGuide={() => setGuideOpen(true)}
+          onReplayGuide={() => {
+            // 关掉设置再开引导 —— 两个都是整屏覆盖层，叠着只会互相挡
+            setSettingsOpen(false);
+            setGuideOpen(true);
+          }}
         />
       )}
 

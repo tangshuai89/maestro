@@ -340,6 +340,14 @@ async function main() {
     await page.locator('.frg-btn--primary').click(); // 「以后再说」→ 第 3 步
     await page.locator('.frg-btn--primary').click(); // 「开始使用」→ 引导收工
     await page.waitForTimeout(300);
+    // ── 设置里的「重新看引导」（specs/first-run-guide）──────────────
+    // 走 App.tsx 的接线分支：开设置 → 点「重新看引导」→ 引导重新打开 → 跳过。
+    // （点「重新看引导」会**顺手把设置关掉** —— 两个都是整屏覆盖层。）
+    await page.locator('.titlebar-btn.settings-btn-icon').click();
+    await page.getByRole('button', { name: '重新看引导' }).click();
+    await page.locator('.frg-overlay').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.locator('.frg-skip').click();
+    await page.waitForTimeout(300);
     await page.locator('.th-canvas').waitFor({ state: 'visible', timeout: 30_000 });
     // 搜索 → 播放 → 收藏（这三步会把 App 的主要分支都走过）
     await page.locator('.titlebar-btn.search-btn').click();
