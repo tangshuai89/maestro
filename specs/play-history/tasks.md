@@ -31,10 +31,30 @@
 ## 4. 门禁
 
 - [x] `npm run typecheck` 全绿
-- [ ] `npm run lint` 全绿
-- [ ] 全量套件 + 覆盖率 diff 门禁绿
-- [ ] 变异验证：去掉去重 → 门禁必须红
+- [x] `npm run lint` 全绿（0 error；16 个 warning 是仓库既有的）
+- [x] 全量套件 `bash scripts/test.sh --ci` → EXIT=0（59 个 vitest 文件 / 740 条用例 + node 管道）
+- [x] 覆盖率 diff 门禁（base = `7cc96ce`）→ ✅ 本次改动的代码全部被执行过
+- [x] 变异验证：去掉 `mergePlayHistory` 的去重 → **红**（断言1 文件内容确实变了；
+      断言2 common 的 `playHistory.test.ts` 2 failed；断言3 server 的
+      `play-history.test.ts` ERR_ASSERTION 4≠3 —— **server 侧走的是 common 的
+      `dist/`，验这个变异前必须先 `npm run build` 重建 dist**，否则测的是旧产物）
 - [ ] PR 合并后核对内容进 master
+
+## 4b. 覆盖率 diff 门禁抓出来的**三个真缺口**（已补）
+
+- [x] `music.controller.ts` 的三个端点从没被 HTTP 层调过 → 新增
+      `play-history.controller.e2e.test.ts`（17 条）
+- [x] `api.ts` 的 `fetchPlayHistory` / `clearPlayHistory` 从没被调过 →
+      `api.test.mjs` 补 10 条
+- [x] `App.tsx` 的 `openRecent` + 弹窗挂载 + `onPlay` 是纯接线层 →
+      `collect-browser-coverage.mjs` 补三步（开 → 点一条播放 → 清空）
+
+## 4c. 顺带修掉的**两个覆盖率工具链 bug**（不是本 feature 的事，但本 PR 的门禁依赖它们）
+
+- [x] `scripts/lib/lcov.js`：同名函数的「后写覆盖」把真命中盖成 0
+      → 按 lcov 规范平行数组配对 + 命中取 max（反向验证：拆掉两道防线 → 自测红 4 项）
+- [x] `scripts/test.sh`：node 管线按包分目录采集（同一文件被两种方式加载时，
+      行号空间不同 → c8 的逐文件合并让 0 命中覆盖真数据）
 
 ## 5. 局限（如实记录）
 
