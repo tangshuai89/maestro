@@ -1,7 +1,10 @@
 @use '../abstracts' as *;
 
-// 首次启动引导（specs/first-run-guide）。整屏覆盖层：挡在标题栏前面 ⇒
+// 首次启动引导（specs/first-run-guide）。整屏覆盖层：盖住主视图 ⇒
 // 用户想用 App 就必须读完（或明确跳过）。
+//
+// z-index 55（= search-overlay 之下）：第 2 步打开的 RecoKeyModal 要能点到 ⇒
+// 引导不能压在它上面。
 //
 // 配色跟 .modal-panel 一致（fixed-dark 的 $overlay-* 调色板）：引导是
 // 「深色浮层」语义，跟搜索面板 / key 弹窗同一套视觉语言。

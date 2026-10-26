@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     引导是**帮助**，不是关卡 —— 设置里还能「重新看引导」。
   - flag 在 localStorage（`maestro:onboarding-done`）：属于**本机使用痕迹**
     （跟搜索历史同款），不进服务端的 session 分片。
-  - 整屏覆盖层（z-index 500）：盖住标题栏 ⇒ 用户没法「看不见它」继续用；
-    但在 modal 之下 ⇒ 第 2 步打开的 key 弹窗点得到。
+  - 整屏覆盖层（z-index 55）：盖住主视图 ⇒ 用户没法「看不见它」继续用；
+    放在 search-overlay(60) 之下 ⇒ 第 2 步打开的 key 弹窗**点得到**
+    （盖住它的话那个弹窗就废了）。
 
 - **播放历史（最近播放）—— 找回「昨天那首」**（2026-10-26，`specs/play-history`）
 

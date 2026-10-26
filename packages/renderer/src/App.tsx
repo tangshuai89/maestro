@@ -763,8 +763,8 @@ export default function App() {
 
       {shortcutOpen && <ShortcutModal open onClose={() => setShortcutOpen(false)} />}
 
-      {/* 首次启动引导（specs/first-run-guide）—— 整屏覆盖层（z-index 500：
-          盖住标题栏，但在 modal 之下 —— 第 2 步打开的 RecoKeyModal 要能点）。 */}
+      {/* 首次启动引导（specs/first-run-guide）—— 整屏覆盖层（z-index 55：在
+          search-overlay 之下 —— 第 2 步打开的 RecoKeyModal 要能点得到）。 */}
       {guideOpen && (
         <FirstRunGuide open onClose={finishGuide} onOpenRecoKey={() => reco.setRecoKeyOpen(true)} />
       )}

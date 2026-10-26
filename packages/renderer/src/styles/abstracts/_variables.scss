@@ -22,10 +22,11 @@ $z-layers: (
   'titlebar': 100,
   'modal': 1000,
   // 首次启动引导（specs/first-run-guide）：整屏覆盖层。
-  // ⇒ 必须**盖住标题栏(100)**（不然用户能「看不见它」继续用），
-  //    但要**在 modal(1000) 之下** —— 第 2 步会打开 RecoKeyModal，
-  //    引导压着它的话那个弹窗就点不到了。
-  'onboarding': 500,
+  // ⇒ 放在 **search-overlay(60) 之下** —— 第 2 步会打开 RecoKeyModal，
+  //    引导压着它的话那个弹窗就点不到（60 > 55 ⇒ 弹窗在上面）。
+  //    标题栏(100)仍在引导之上 —— 跟**搜索面板同款**（它的遮罩也是 60），
+  //    不改动既有层次行为。
+  'onboarding': 55,
 );
 
 // The only breakpoint in the app: below this height the side column
