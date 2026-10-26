@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **播放历史（最近播放）—— 找回「昨天那首」**（2026-10-26，`specs/play-history`）
+
+  用户回头找「昨天那首」的**唯一途径** —— 功能盘点 P1（`playHistory / 播放历史
+→ 0 处`，前后端都没有 ⇒ 纯新增）。
+
+  - 存在**服务端**（`history:<sessionId>`，新增到 `SESSION_SCOPED_PREFIXES` ⇒
+    死 session 的键会被 GC 回收）：播放历史是**用户数据**，跟 ❤ 库/歌单一样，
+    换 session 就是另一份、也进加密备份。**搜索历史**才是本机使用痕迹（走
+    localStorage，见 `specs/search-history/`）—— 两者刻意不同。
+  - 语义是「**最近播放**」而不是「播放流水」：同一首再听 → 移到最前 + 更新时间，
+    不追加第二条（流水账对「找回昨天那首」没用，还会让列表被同一首歌刷屏）。
+  - 记录时机在 `usePlayer.presentTrack` 的 **isNewSong** 分支 —— 同一首歌的跨平台
+    降级不记（否则一次 code=4 降级会在历史里塞三条同一首歌）。fire-and-forget：
+    记历史失败绝不能影响播放。
+  - 共享类型放 common（`PlayHistoryEntry` / `mergePlayHistory` /
+    `normalisePlayHistoryEntry`）：server 存/读、renderer 判定共用一份。
+  - UI：Titlebar「🕘 最近播放」→ 弹窗列出条目（歌名/歌手/时长/相对时间），
+    点一条能播，有「清空历史」。
+
+  最多留 200 条；同歌重播不重复记（刻意的「最近播放」语义）。
+
 - **快捷键速查面板 —— 把「已经有的快捷键」摊开给人看**（2026-10-26，`specs/shortcut-cheatsheet`）
 
   App 里早就有 11 个快捷键（App 内 5 个 + 全局 6 个）外加媒体键，但**用户
