@@ -1,4 +1,5 @@
 import type { MusicProvider, QqQuality } from '../api';
+import { parseSearchHistory } from './searchHistory';
 import {
   clampCrossfade,
   defaultAudioFx,
@@ -26,6 +27,9 @@ export const STORAGE_KEYS = {
   playerMode: 'player-mode',
   // 音频效果偏好（EQ 开关/10 段增益/预置 + crossfade 时长，specs/audio-fx）
   audioFx: 'maestro:audio-fx',
+  // 搜索历史（最近搜过的词，specs/search-history）。JSON 数组字符串。
+  // 走 STORAGE_KEYS ⇒ 顺带被 collectLocalStorage() 打进加密备份。
+  searchHistory: 'maestro:search-history',
 } as const;
 
 export type ThemeMode = 'dark' | 'light' | 'system';
@@ -202,6 +206,39 @@ export function writeAudioFx(prefs: AudioFxPrefs): void {
     );
   } catch {
     /* quota / private mode — 不持久化也能用 */
+  }
+}
+
+// ── 搜索历史（specs/search-history）──────────────────────────────────
+/**
+ * 读搜索历史。**任何异常都回落空数组**：localStorage 用户能手改，备份导入也能
+ * 塞东西，而这里在搜索面板的渲染路径上 —— 一次 JSON 解析失败不该让搜索面板崩。
+ * 真正的规整（去空白/去重/丢脏数据）在 `lib/searchHistory.ts` 的
+ * `parseSearchHistory` 里做。
+ */
+export function readSearchHistory(): string[] {
+  try {
+    return parseSearchHistory(localStorage.getItem(STORAGE_KEYS.searchHistory));
+  } catch {
+    return [];
+  }
+}
+
+/** 写搜索历史（调用方负责先算好新数组）。 */
+export function writeSearchHistory(history: readonly string[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.searchHistory, JSON.stringify(history));
+  } catch {
+    /* quota / private mode — 搜索历史丢了不影响功能 */
+  }
+}
+
+/** 清空搜索历史。 */
+export function clearSearchHistory(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.searchHistory);
+  } catch {
+    /* ignore */
   }
 }
 

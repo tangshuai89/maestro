@@ -38,6 +38,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   入口：Titlebar 的「⌨ 快捷键」按钮。浏览器 dev（无 Electron）没有全局热键
   → 面板**明说**，不假装有。
+- **搜索历史 —— 搜过的词找不回来**（2026-10-26，`specs/search-history`）
+
+  用户搜过的词**找不回来** —— 搜索框每次都是空的，重度用户只能凭记忆再敲一遍。
+  功能盘点 P2（成本 0.5 天；`searchHistory → 0 处`，前后端都没有 ⇒ 纯新增）。
+
+  - 存在 **localStorage**（`maestro:search-history`）：搜索词是「本机使用痕迹」，
+    不是用户资产 —— 不需要像 ❤ 库/歌单那样按 session 分片落到 `state.json`。
+    走 `STORAGE_KEYS` ⇒ **顺带被加密备份自动带走**（`collectLocalStorage()`）。
+  - 规则：去空白 / 不记空串 / **同词去重并移到最前**（追加第二条会让列表全是
+    重复）/ 最多 12 条 / 单条 ≤ 120 字 / 读时**丢脏数据**（localStorage 用户
+    能手改、备份导入也能塞；解析失败绝不能让搜索面板崩）。
+  - **什么时候记**：debounce 触发的那一刻（用户「停下来打字」= 一次真实搜索
+    意图），不是每次 `onChange` —— 否则「周杰」「周杰伦晴天」这种中间态全进去。
+  - UI：只在「输入框是空的、还没搜」时出现（一排胶囊标签）；点一条 → 填回输入框
+    走正常搜索；右上角「清空」。
+>>>>>>> 57da21d (feat(renderer): 搜索历史 —— 搜过的词找不回来)
 
 - **播放队列面板 —— 看得见、跳得到、拿得出**（2026-10-25，`specs/queue-panel`）
 

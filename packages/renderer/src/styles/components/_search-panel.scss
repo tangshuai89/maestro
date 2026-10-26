@@ -887,3 +887,64 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+// ── 搜索历史（specs/search-history）────────────────────────────────
+// 只在「输入框是空的、还没搜」时出现。样式跟着 .sp-empty 的克制程度走：
+// 不抢结果的视觉重量，但要点得中。
+.sp-history {
+  padding: 18px 16px 4px;
+}
+
+.sp-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sp-history-title {
+  color: color-mix(in srgb, var(--text-main) 45%, transparent);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sp-history-clear {
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--text-main) 40%, transparent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sp-history-clear:hover {
+  color: var(--text-main);
+}
+
+.sp-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sp-history-item {
+  max-width: 240px;
+  padding: 4px 10px;
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--white) 4%, transparent);
+  color: color-mix(in srgb, var(--text-main) 75%, transparent);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.sp-history-item:hover {
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--white) 9%, transparent);
+}
