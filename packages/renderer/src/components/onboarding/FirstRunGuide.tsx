@@ -95,8 +95,15 @@ export default function FirstRunGuide({ open, onClose, onOpenRecoKey }: Props) {
   };
 
   return (
-    <div className="frg-overlay" role="dialog" aria-modal="true" aria-label="首次启动引导">
-      <div className="frg-panel">
+    // 面板复用共享的 .modal-overlay / .modal-panel（阴影/边框/圆角都在那边，
+    // 硬编码颜色预算也在那边）—— 引导的样式只做**布局覆盖**。
+    <div
+      className="modal-overlay frg-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="首次启动引导"
+    >
+      <div className="modal-panel frg-panel">
         <div className="frg-head">
           <span className="frg-kicker">{current.kicker}</span>
           <button type="button" className="frg-skip" onClick={finish}>

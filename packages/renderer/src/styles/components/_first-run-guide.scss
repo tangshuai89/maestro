@@ -4,34 +4,26 @@
 // 用户想用 App 就必须读完（或明确跳过）。
 //
 // z-index 55（= search-overlay 之下）：第 2 步打开的 RecoKeyModal 要能点到 ⇒
-// 引导不能压在它上面。
+// 引导不能压在它上面。标题栏(100)仍在引导之上 —— 跟**搜索面板同款**（它的
+// 遮罩也是 60），不改动既有层次行为。
 //
-// 配色跟 .modal-panel 一致（fixed-dark 的 $overlay-* 调色板）：引导是
-// 「深色浮层」语义，跟搜索面板 / key 弹窗同一套视觉语言。
+// ⚠️ 面板的**外观**（背景/边框/圆角/阴影）直接复用共享的 `.modal-panel`
+//    （见 _modal.scss）—— 本文件只做**布局覆盖**。理由有两个：
+//    ① 视觉一致（引导和搜索面板/key 弹窗是同一套面板语言）
+//    ② 硬编码颜色的**棘轮预算**不用为这个新文件开口子（阴影那个 rgba
+//       在 _modal.scss 里已经计过账）
 
 .frg-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: z('onboarding');
-  display: flex;
+  // 覆盖 .modal-overlay 的「贴顶」布局 → 引导是整屏居中
   align-items: center;
-  justify-content: center;
   padding: 32px;
-  background: $scrim;
-  backdrop-filter: blur(8px);
+  z-index: z('onboarding');
 }
 
 .frg-panel {
   width: min(92vw, 560px);
   max-height: 86vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
   padding: 22px 24px 20px;
-  background: $overlay-bg;
-  border: 1px solid $overlay-border;
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 
 .frg-head {
@@ -115,7 +107,8 @@
 
 .frg-btn--primary {
   background: $accent-green;
-  color: #06231a;
+  // 亮色底上的文字用**最深底色**（令牌层有）⇒ 本文件零硬编码颜色
+  color: var(--primitive-bg-top);
 }
 
 .frg-btn--ghost {
