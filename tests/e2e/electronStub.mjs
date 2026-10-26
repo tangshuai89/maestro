@@ -59,15 +59,31 @@ export async function installElectronStub(page, apiBase) {
 /**
  * 让 App 跳过 SourceSelect 直接进剧场（与 App 自带 `?demo=` 同一个 localStorage 键）。
  *
+ * ## `opts.onboardingDone`
+ *
+ * 首次启动引导（specs/first-run-guide）是**整屏覆盖层** ⇒ 它开着的时候，
+ * 页面上任何点击都会被它拦下（`frg-overlay intercepts pointer events`）。
+ *
+ * ⇒ 测「App 的主链路」时**必须**把它标记成已看过（跟跳过 SourceSelect 同一个
+ * 道理：那个页面不是被测对象，就别让它挡路）。
+ *
+ * ⚠️ 浏览器覆盖采集脚本（`scripts/collect-browser-coverage.mjs`）**故意不传**
+ *    这个标记 —— 它要**走一遍**引导，顺带把引导自己的覆盖采到。
+ *
  * @param {import('@playwright/test').Page} page
  * @param {string} provider
+ * @param {{onboardingDone?: boolean}} [opts]
  */
-export async function seedProvider(page, provider = 'qq') {
-  await page.addInitScript((p) => {
-    try {
-      localStorage.setItem('music-provider', p);
-    } catch {
-      /* private mode：交给 SourceSelect 分支，断言会明确失败 */
-    }
-  }, provider);
+export async function seedProvider(page, provider = 'qq', opts = {}) {
+  await page.addInitScript(
+    ({ p, onboardingDone }) => {
+      try {
+        localStorage.setItem('music-provider', p);
+        if (onboardingDone) localStorage.setItem('maestro:onboarding-done', '1');
+      } catch {
+        /* private mode：交给 SourceSelect 分支，断言会明确失败 */
+      }
+    },
+    { p: provider, onboardingDone: Boolean(opts.onboardingDone) },
+  );
 }
