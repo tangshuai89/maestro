@@ -362,6 +362,22 @@ async function main() {
     await page.locator('[role="dialog"]').waitFor({ state: 'visible', timeout: 20_000 });
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
+    // ── 最近播放（specs/play-history/）───────────────────────────
+    // 走 App.tsx 的接线分支：开「最近播放」→ 拉历史（openRecent → fetchPlayHistory）
+    // → 清空（clearPlayHistory）→ 关掉。
+    // 这三步覆盖的是 App.tsx 里**新增的**行（openRecent 回调 + 弹窗挂载），
+    // App.tsx 没有单元测试，接线层只能靠这里的浏览器覆盖采集走到。
+    await page.locator('.titlebar-btn.recent-btn').click();
+    await page.locator('[role="dialog"]').waitFor({ state: 'visible', timeout: 20_000 });
+    // 历史里可能有条目（浏览器里放过歌 → usePlayer 记了一条），也可能没有。
+    // 有条目时点「清空历史」走 clearPlayHistory；没有就跳过（按钮不渲染）。
+    const clearBtn = page.locator('[role="dialog"] button[aria-label="清空播放历史"]');
+    if (await clearBtn.count()) {
+      await clearBtn.first().click();
+      await page.waitForTimeout(500);
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
     // 收掉搜索面板：overlayOpen 为真时 lite 模式的键盘分支**整个走不到**
     // （App.tsx：`if (playerMode !== 'lite' || overlayOpen) return;`）。
     await page.keyboard.press('Escape');

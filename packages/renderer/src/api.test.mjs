@@ -92,6 +92,8 @@ const {
   isPlayableEntry,
   playableReason,
   unplayableText,
+  fetchPlayHistory,
+  clearPlayHistory,
 } = api;
 
 let passed = 0;
@@ -846,6 +848,68 @@ reset();
   expect('48. 有效登录态 loggedIn=true 且无 expired', alive.loggedIn === true && !alive.expired);
 
   globalThis.fetch = realFetch;
+}
+
+// ── 49. 播放历史：fetchPlayHistory / clearPlayHistory ──────────
+// 覆盖门禁抓到的「这两个函数从未被执行过」—— 接线层（App.tsx 的
+// openRecent / 弹窗的清空按钮）在浏览器里跑，这里锁住**请求本身**的形状。
+reset();
+{
+  mockResponse = new Response(
+    JSON.stringify({
+      entries: [
+        {
+          id: 'qq:t1',
+          platform: 'qq',
+          trackId: 't1',
+          title: '第一首',
+          artist: '歌手',
+          duration: 210,
+          playedAt: 1700000000000,
+        },
+      ],
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+  const list = await fetchPlayHistory();
+  expect(
+    '49. fetchPlayHistory URL 含 /music/history',
+    fetchCalls[0].url.includes('/music/history'),
+  );
+  expect(
+    '49b. fetchPlayHistory 带 credentials（session cookie 要带上）',
+    fetchCalls[0].init.credentials === 'include',
+  );
+  expect('50. fetchPlayHistory 返回 entries 数组', Array.isArray(list) && list.length === 1);
+  expect('50b. fetchPlayHistory 条目内容对得上', list[0]?.id === 'qq:t1');
+}
+
+// 50c. 服务端返回的形状不对（没有 entries）→ 返回空数组，不炸
+reset();
+{
+  mockResponse = new Response('{}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const list = await fetchPlayHistory();
+  expect('50c. 没有 entries 字段 → 返回空数组（不炸）', Array.isArray(list) && list.length === 0);
+}
+
+// 51. clearPlayHistory：DELETE 请求
+reset();
+{
+  mockResponse = new Response(JSON.stringify({ ok: true, removed: 3 }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const res = await clearPlayHistory();
+  expect(
+    '51. clearPlayHistory URL 含 /music/history',
+    fetchCalls[0].url.includes('/music/history'),
+  );
+  expect('51b. clearPlayHistory method = DELETE', fetchCalls[0].init.method === 'DELETE');
+  expect('51c. clearPlayHistory 带 credentials', fetchCalls[0].init.credentials === 'include');
+  expect('51d. clearPlayHistory 返回 removed 数量', res?.removed === 3);
 }
 
 console.log(`\n🎉 api.test: ${passed} passed, ${failed} failed`);
