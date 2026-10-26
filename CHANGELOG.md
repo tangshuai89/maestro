@@ -995,6 +995,25 @@ destination`。`createMediaElementSource` 每元素只能调一次且不共享�
 
 ### Fixed
 
+- **electron 的 `main.ipc-exec.test.ts` 替身缺 `setWindowOpenHandler` —— 同一个 commit 在 CI 绿、本地红**（2026-10-26）
+
+  `main.ts` 的 `createWindow` 会调 `mainWindow.webContents.setWindowOpenHandler(...)`
+  （放行 Spotify OAuth 的子窗口）。但 `main.ipc-exec.test.ts` 的 `FakeWebContents`
+  **没有这个方法**（`main.behavior.test.ts` 的替身有）→ `createWindow` 抛
+  `TypeError` → 落在 `app.whenReady().then(...)` 里变成**未捕获 rejection**。
+
+  **表现是环境相关的，所以特别难查**：
+  - CI：进程在未捕获 rejection 到达前就退出（exit 0）→ 绿
+  - 本地：进程活得更久 → rejection 到达 → 整个测试文件非零退出 → 红
+
+  ⇒ 同一个 commit 在 CI 绿、在本地红。补上替身方法 = 让结果**确定**
+  （不再依赖「进程退出得比 rejection 快」这种时序运气）。
+
+  这个缺口是 `ce20518` 给 main.ts 加 `setWindowOpenHandler` 时留下的，测试替身
+  一直没跟上。
+
+### Fixed
+
 - **NL 检索的离线评测门禁 —— CI 里从来没跑过，而且自己有 3 个「静默按通过算」的洞**（2026-10-24）
 
   `CLAUDE.md` 写的是「**PR 门禁主体**」，但 `grep -rn "reco:eval" .github/workflows/`

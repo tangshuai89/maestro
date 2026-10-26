@@ -42,6 +42,15 @@ class FakeWebContents {
   openDevTools() {}
   loadURL() {}
   loadFile() {}
+  // main.ts 的 createWindow 会调 webContents.setWindowOpenHandler（Spotify OAuth
+  // 的子窗口放行）。替身**必须**有它，否则 createWindow 抛 TypeError →
+  // app.whenReady().then(...) 里的未捕获 rejection → 整个测试文件非零退出。
+  //
+  // ⚠️ 这个缺口一直都在（setWindowOpenHandler 是 ce20518 加进 main.ts 的，替身
+  // 没跟上），但**表现是环境相关的**：CI 上进程在未捕获 rejection 到达前就退出
+  // （exit 0）→ 绿；本地进程活得更久 → rejection 到达 → 红。
+  // ⇒ 同一个 commit 在 CI 绿、本地红。补上方法 = 让结果**确定**。
+  setWindowOpenHandler() {}
   isDestroyed() {
     return false;
   }
