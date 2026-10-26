@@ -88,16 +88,10 @@ describe('playlistExport · 文件名', () => {
 });
 
 describe('playlistExport · 下载', () => {
-  let createObjectURL: ReturnType<typeof vi.spyOn>;
-  let revokeObjectURL: ReturnType<typeof vi.spyOn>;
-  let click: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
-    createObjectURL = vi
-      .spyOn(URL, 'createObjectURL')
-      .mockReturnValue('blob:mock' as unknown as string);
-    revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -106,7 +100,8 @@ describe('playlistExport · 下载', () => {
 
   it('点「导出」→ 生成 .txt 下载（文件名 = 歌单名）', () => {
     downloadPlaylistText(playlist('通勤路上', [track('晴天', '周杰伦', 269)]));
-    expect(createObjectURL).toHaveBeenCalled();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    const click = vi.mocked(HTMLAnchorElement.prototype.click);
     expect(click).toHaveBeenCalledTimes(1);
     // a.download 必须是「歌单名.txt」
     const created = click.mock.instances[0] as unknown as HTMLAnchorElement;
