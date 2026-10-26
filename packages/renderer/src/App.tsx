@@ -15,6 +15,7 @@ import type { LibraryImportResult, MusicProvider } from './api';
 import { readCachedLibrary } from './lib/likedCache';
 import { createAudioSlots } from './lib/audioSlots';
 import { readStoredPlayerMode, writeStoredPlayerMode, type PlayerMode } from './lib/storage';
+import { APP_SHORTCUT_BY_ID, matchesShortcut } from './lib/shortcuts';
 import { downloadLyricsImage } from './lib/lyricsShare';
 import { wpsLog, wpsError, wpsDebugBanner } from './lib/debug';
 import SourceSelect from './components/source-select/SourceSelect';
@@ -29,6 +30,7 @@ import LikedLibraryModal from './components/modals/LikedLibraryModal';
 import { NLPlaylistModal } from './components/modals/NLPlaylistModal';
 import { RemotePlaylistModal } from './components/modals/RemotePlaylistModal';
 import { QueuePanel } from './components/modals/QueuePanel';
+import { ShortcutModal } from './components/modals/ShortcutModal';
 import SettingsModal from './components/modals/SettingsModal';
 import AuthErrorPanel from './components/common/AuthErrorPanel';
 import PlayerNotice from './components/common/PlayerNotice';
@@ -205,6 +207,8 @@ export default function App() {
   // 播放队列面板（specs/queue-panel/）—— titlebar ☰ 按钮。
   // 队列数据在 usePlayer 里（queueUnifiedItems / queueIdx），本组件只开合。
   const [queueOpen, setQueueOpen] = useState(false);
+  // 快捷键速查面板（specs/shortcut-cheatsheet/）
+  const [shortcutOpen, setShortcutOpen] = useState(false);
   // 首帧秒出：从 localStorage 缓存取最近一次库数量（writeCachedLibrary 写入），
   // 避免 titlebar ❤ 按钮显示 "0" 一闪。后台 getLibrary 拉到后用真实值覆盖。
   const [likedCount, setLikedCount] = useState<number>(() => {
@@ -277,9 +281,12 @@ export default function App() {
   }, [playerMode, bgLayerRef, coverBackdropRef]);
   // Cmd+Shift+M（避开 macOS Cmd+M 最小化）。setPlayerMode 是稳定引用，
   // effect 内直接调，不把 handler 加进依赖。
+  //
+  // ⚠️ 键位条件**不在这里手写** —— 走 `lib/shortcuts.ts` 的定义表
+  // （快捷键面板渲染的是同一张表 ⇒ 面板和实现不可能漂移）。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+      if (matchesShortcut(e, APP_SHORTCUT_BY_ID['toggle-mini'])) {
         e.preventDefault();
         setPlayerMode((m) => (m === 'mini' ? 'theater' : 'mini'));
       }
@@ -303,7 +310,7 @@ export default function App() {
   // ⌘⇧L 归 lite 模式（§6.3）、⌘⇧M 归 mini，所以这里用 D(Desktop)。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+      if (matchesShortcut(e, APP_SHORTCUT_BY_ID['toggle-desktop-lyrics'])) {
         e.preventDefault();
         toggleDesktopLyrics();
       }
@@ -336,6 +343,7 @@ export default function App() {
     likedOpen ||
     nlOpen ||
     queueOpen ||
+    shortcutOpen ||
     settingsOpen ||
     reco.recoKeyOpen ||
     !!auth.authError ||
@@ -346,18 +354,18 @@ export default function App() {
   playPauseRef.current = player.handlePlayPause;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+      if (matchesShortcut(e, APP_SHORTCUT_BY_ID['toggle-lite'])) {
         e.preventDefault();
         setPlayerMode((m) => (m === 'lite' ? 'theater' : 'lite'));
         return;
       }
       if (playerMode !== 'lite' || overlayOpen) return;
-      if (e.key === 'Escape') {
+      if (matchesShortcut(e, APP_SHORTCUT_BY_ID['exit-lite'])) {
         e.preventDefault();
         setPlayerMode('theater');
         return;
       }
-      if (e.code !== 'Space' && e.key !== ' ') return;
+      if (!matchesShortcut(e, APP_SHORTCUT_BY_ID['play-pause'])) return;
       // 焦点在输入框 / 按钮里时空格另有归属，不是播放/暂停：
       //   输入框 —— 空格是打字；
       //   按钮   —— 浏览器在 keyup 阶段才由空格生成 click（激活该按钮），
@@ -532,6 +540,7 @@ export default function App() {
           onOpenSettings={() => setSettingsOpen(true)}
           queueCount={player.queueUnifiedItems?.length ?? 0}
           onOpenQueue={() => setQueueOpen(true)}
+          onOpenShortcuts={() => setShortcutOpen(true)}
           playerMode={playerMode}
           onTogglePlayerMode={handleTogglePlayerMode}
           desktopLyricsOn={desktopLyrics.enabled}
@@ -700,6 +709,8 @@ export default function App() {
           }}
         />
       )}
+
+      {shortcutOpen && <ShortcutModal open onClose={() => setShortcutOpen(false)} />}
 
       {nlOpen && (
         <NLPlaylistModal

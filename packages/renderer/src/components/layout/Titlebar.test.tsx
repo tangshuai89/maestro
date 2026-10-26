@@ -40,6 +40,7 @@ const props = (over: Record<string, unknown> = {}) => ({
   onOpenLiked: vi.fn(),
   queueCount: 0,
   onOpenQueue: vi.fn(),
+  onOpenShortcuts: vi.fn(),
   onOpenSettings: vi.fn(),
   playerMode: 'theater' as const,
   onTogglePlayerMode: vi.fn(),
@@ -56,6 +57,15 @@ describe('Titlebar', () => {
   it('音源菜单常驻', () => {
     render(<Titlebar {...props()} />);
     expect(screen.getByTitle('切换音源')).toBeInTheDocument();
+  });
+
+  it('快捷键按钮：点了就打开速查面板（specs/shortcut-cheatsheet/）', () => {
+    const onOpenShortcuts = vi.fn();
+    render(<Titlebar {...props({ onOpenShortcuts })} />);
+    const btn = screen.getByLabelText('快捷键');
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(onOpenShortcuts).toHaveBeenCalledTimes(1);
   });
 
   it('Deezer 预置下拉：仅 provider=deezer 且有 editorials 时出现', () => {

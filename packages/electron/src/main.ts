@@ -25,7 +25,11 @@ import {
   type OverlayWindowLike,
 } from './desktop-lyrics/desktop-lyrics-controller';
 import { oauthBuffer } from './auth/oauth-buffer';
-import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './global-shortcuts';
+import {
+  registerGlobalShortcuts,
+  unregisterGlobalShortcuts,
+  GLOBAL_SHORTCUTS,
+} from './global-shortcuts';
 import type { TrayCommand } from './preload';
 import { logger } from './lib/logger';
 
@@ -1071,6 +1075,14 @@ app.whenReady().then(async () => {
     ready: widevineReady,
     status: widevineStatus,
   }));
+
+  // ── 全局热键清单（只读）─────────────────────────────────────────────
+  // 快捷键速查面板要显示「App 不在前台也能用」的那组全局热键，而它们的
+  // **真源就在主进程**（global-shortcuts.ts 的 GLOBAL_SHORTCUTS）。
+  // ⇒ 这里只把**数据**递出去，不在 renderer 侧抄一份（抄 = 迟早漂移）。
+  ipcMain.handle('shortcuts:global', () =>
+    GLOBAL_SHORTCUTS.map((s) => ({ accelerator: s.accelerator, label: s.label })),
+  );
 
   // ── 桌面歌词浮窗（§7.2）────────────────────────────────────────────────
   // 放在 tray / IPC 注册之前：tray 菜单项要读 controller.enabled，
