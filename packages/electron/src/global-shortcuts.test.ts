@@ -162,6 +162,35 @@ function main() {
     console.log('✅ 1c. 非法 accelerator 被跳过 + 告警，其余热键照常注册（不掀翻主进程）');
   }
 
+  // ── 1d. 🛡️ register **抛异常** → 跳过 + 告警，不掀翻主进程 ──────
+  //
+  // 守卫 3（白名单）拦的是「写法不对」，但 electron 那边还有别的限制
+  // （比如系统已经把某个组合占了）⇒ register 仍可能抛。
+  // 那条 catch 是**双保险的最后一道**：它必须存在，而且必须有测试走到它。
+  {
+    const { deps, globalShortcut, warnings } = makeDeps();
+    const orig = deps.globalShortcut.register;
+    deps.globalShortcut.register = (accelerator: string, callback: () => void) => {
+      if (accelerator === 'Control+Option+D') {
+        // 模拟 electron 在白名单之外抛的错
+        throw new Error('electron 说不行');
+      }
+      return orig.call(deps.globalShortcut, accelerator, callback);
+    };
+    const registered = registerGlobalShortcuts(deps);
+    assert.ok(!registered.includes('Control+Option+D'), '抛错的那条不该算「已注册」（它没注册上）');
+    assert.ok(
+      warnings.some((w: string) => w.includes('electron 说不行')),
+      '应该 warn 出抛错信息（别静默吞掉）',
+    );
+    assert.strictEqual(
+      registered.length,
+      5,
+      `其余 5 条照常注册 —— 一条坏的不该拖垮全部，实际 ${registered.length}`,
+    );
+    console.log('✅ 1d. register 抛异常 → 跳过 + 告警，其余热键照常注册');
+  }
+
   // ── 2. 🛡️ 守卫：**一个媒体键都不能注册** ────────────────────────
   {
     const { deps, globalShortcut } = makeDeps();
@@ -271,7 +300,7 @@ function main() {
     console.log('✅ 8. 注销抛错被吞掉（退出路径不崩）');
   }
 
-  console.log('\n🎉 global-shortcuts.test 全部 8 项通过');
+  console.log('\n🎉 global-shortcuts.test 全部 9 项通过');
 }
 
 main();
