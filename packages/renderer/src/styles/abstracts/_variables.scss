@@ -21,6 +21,11 @@ $z-layers: (
   'player-notice': 90,
   'titlebar': 100,
   'modal': 1000,
+  // 首次启动引导（specs/first-run-guide）：整屏覆盖层。
+  // ⇒ 必须**盖住标题栏(100)**（不然用户能「看不见它」继续用），
+  //    但要**在 modal(1000) 之下** —— 第 2 步会打开 RecoKeyModal，
+  //    引导压着它的话那个弹窗就点不到了。
+  'onboarding': 500,
 );
 
 // The only breakpoint in the app: below this height the side column

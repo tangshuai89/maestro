@@ -86,6 +86,10 @@ async function seedProvider(page, provider = 'deezer') {
   await page.addInitScript((p) => {
     try {
       localStorage.setItem('music-provider', p);
+      // ⚠️ **同时标记「引导已看过」**（specs/first-run-guide）：首次启动引导是
+      //   整屏覆盖层（z-index 500）⇒ 不标记的话它会盖住剧场界面 ⇒ 截图跟
+      //   基线完全对不上（这个 job 比的是**剧场视图**，引导是另一个东西）。
+      localStorage.setItem('maestro:onboarding-done', '1');
     } catch {
       /* private mode：交给 SourceSelect 分支，断言会明确失败 */
     }
