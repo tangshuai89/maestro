@@ -39,8 +39,10 @@ describe('ShortcutModal', () => {
   });
 
   it('全局热键从主进程拉取并渲染（renderer 不硬编码）', async () => {
+    // ⚠️ 用 **Electron 的写法**（Right，不是 DOM 的 ArrowRight）——
+    //    主进程注册的就是这个串，写错会让 register 抛异常、App 起不来。
     globalShortcuts.getGlobalShortcuts.mockResolvedValue([
-      { accelerator: 'Control+Option+ArrowRight', label: '下一首' },
+      { accelerator: 'Control+Option+Right', label: '下一首' },
       { accelerator: 'Control+Option+Space', label: '播放 / 暂停' },
     ]);
     renderModal();
