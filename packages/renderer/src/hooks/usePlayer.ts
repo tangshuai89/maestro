@@ -959,17 +959,19 @@ export function usePlayer(
         );
         return false;
       }
-      const sameProviderAlt = src.platform === cur.provider && src.trackId !== cur.id;
       if (triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`)) {
         console.warn(
           `[audio] "${display.title}" 兜底到 ${src.platform}/${src.trackId}，但该源已试过`,
         );
         return false;
       }
-      if (triedPlatformsRef.current.has(src.platform) && !sameProviderAlt) {
-        console.warn(`[audio] "${display.title}" 兜底到 ${src.platform}，但该平台本首歌已试过`);
-        return false;
-      }
+      // ⚠️ **不再按平台拦截**（2026-10-26 修，用户实测「又出现 29 秒」）。
+      // 旧守卫是「这个平台本首歌试过 → 整平台拉黑」，它会把**同平台的另一个
+      // 可播版本**一起拒掉——而那恰恰是「当前 mid 取不到流」时唯一的活路
+      // （实测：QQ 0019n4uH2jsLcq 无 purl，同歌 0012pLSk373qDS 有流）。
+      // 现在服务端返回的源**逐个实探过**（probe 过才返回），所以精确到
+      // 曲目级的 triedTrackIds 守卫就足够防循环；平台级的循环由
+      // serverEquivTriedRef「每首歌只问一次服务端」兜住。
       console.warn(
         `[audio] "${display.title}" 在 ${cur.provider} 播放失败，` +
           `兜底切到 ${src.platform} 源（${unified ? 'unified' : 'radio 无 unified'}）`,
@@ -1047,12 +1049,18 @@ export function usePlayer(
       const src = equiv.source;
       lastEquivReasonRef.current = equiv.reason;
       if (currentUnifiedRef.current?.id !== songId) return;
-      const sameProviderAlt = !!src && src.platform === cur.provider && src.trackId !== cur.id;
+      // ⚠️ **只按曲目级守卫拦截，不按平台拦截**（2026-10-26 修，用户实测
+      // 「又出现 29 秒」）。旧守卫是「这个平台本首歌试过 → 整平台拉黑」，
+      // 它会把**同平台的另一个可播版本**一起拒掉——而那恰恰是当前源只是
+      // 试听/死源时唯一的活路（实测：QQ 0019n4uH2jsLcq 无 purl，同歌
+      // 0012pLSk373qDS 有流；网易云 528685 实探出完整流）。
+      // 服务端返回的源是**逐个实探过**的（probe 通过才返回），所以精确到
+      // 曲目级的守卫足够；平台级/循环由 trialServerTriedRef「每首歌只问
+      // 一次服务端」兜住。
       if (
         src &&
         fullProviders.includes(src.platform) &&
-        !triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`) &&
-        (!triedPlatformsRef.current.has(src.platform) || sameProviderAlt)
+        !triedTrackIdsRef.current.has(`${src.platform}:${src.trackId}`)
       ) {
         console.warn(
           `[audio] "${display.title}" 30s 试听，服务端匹配到 ${src.platform} ` + `全曲源，升级`,

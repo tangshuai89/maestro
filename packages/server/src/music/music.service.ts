@@ -641,6 +641,41 @@ export class MusicService {
     // —— 同平台换版本实探失败意味着「歌在、流不给」，最接近真相。
     let sawLocked = false;
     let sawStreamFail = false;
+
+    /**
+     * 实探候选：返回 true = 这个源真能出声。
+     *
+     * ⚠️ **实探是唯一可信的「能不能出声」判据**（2026-10-26 修，用户实测
+     * 「又出现 29 秒」）。搜索元数据不可靠，两头都会错：
+     *  - QQ 搜索**不返** pay_album/pay_track（见 qq.provider.ts 的 QqPay 注释），
+     *    付费/无版权的 mid 被标成 vipLocked=false，点进去 GetVkey 压根不给 purl
+     *    → 前端 code=4 → 降级到 Deezer 的 30s 试听 → 用户卡在 29 秒。
+     *  - 网易云 vipLocked（fee>0）与真实可播性也不一致：实测 528685
+     *    「DRIP DRY EYES」标 vipLocked=true，probeFullStream 却拿到**完整流**。
+     *
+     * 所以：候选必须**逐个实探**，实探不过就换**同 tier 的下一个**候选，
+     * 而不是「取首个命中就返回」——那会把一个刚被证明取不到流的死源推给前端，
+     * 同时把后面真正能播的候选**全部遮蔽**（2026-10-26 实测就是这个形状：
+     * 服务端返回刚失败的 QQ 0019n4uH2jsLcq，而同歌的 0012pLSk373qDS /
+     * 网易云 528685 都能出全曲流）。
+     */
+    const probe = async (platform: MusicProvider, t: Track): Promise<boolean> => {
+      // QQ 的 vipLocked 判的是「要不要绿钻 / 单独购买」——非会员拿到的仍是
+      // 30s 试听流，实探分不出来（GetVkey 照给 purl）→ 仍按元数据拒。
+      // 网易云**不**按元数据拒：probeFullStream 要求完整流（freeTrialInfo 不算），
+      // 实探过就是真能出声，元数据说 fee>0 也不作数。
+      if (platform === 'qq' && t.vipLocked === true) {
+        sawLocked = true;
+        return false;
+      }
+      const ok = await this.probePlayable(session, platform, t);
+      if (!ok) {
+        if (t.vipLocked === true) sawLocked = true;
+        else sawStreamFail = true;
+      }
+      return ok;
+    };
+
     // 0) 同平台换版本兜底（2026-10-19「交换余生」报障）：QQ/网易云同一首歌常有
     //    多个 songmid——专辑版可能需单购无 purl，单曲版却能出全曲流。跨平台搜
     //    不到的"死歌"，同平台另一版本可能活着。**先于**跨平台执行：同账号同
@@ -652,28 +687,27 @@ export class MusicService {
         seedProvider,
         seed,
         new Set([opts.excludeTrackId]),
+        (t) => probe(seedProvider, t),
       );
       if (alt) {
-        if (await this.probePlayable(session, seedProvider, alt)) {
-          const playable = this.toPlayableTrack(alt);
-          this.logger.log(
-            `equivalent same-provider alt: ${seedProvider}/${opts.excludeTrackId} → ` +
-              `${alt.id} "${alt.title} - ${alt.artist}"`,
-          );
-          return {
-            source: {
-              platform: seedProvider,
-              trackId: alt.id,
-              hasCopyright: true,
-              url: playable.audioUrl,
-              mediaMid: alt.mediaMid,
-              vipLocked: false, // 实探已出流，不信元数据锁标
-            },
-            reason: null,
-          };
-        }
-        sawStreamFail = true; // 换到的版本也出不了流
+        const playable = this.toPlayableTrack(alt);
+        this.logger.log(
+          `equivalent same-provider alt: ${seedProvider}/${opts.excludeTrackId} → ` +
+            `${alt.id} "${alt.title} - ${alt.artist}"`,
+        );
+        return {
+          source: {
+            platform: seedProvider,
+            trackId: alt.id,
+            hasCopyright: true,
+            url: playable.audioUrl,
+            mediaMid: alt.mediaMid,
+            vipLocked: false, // 实探已出流，不信元数据锁标
+          },
+          reason: null,
+        };
       }
+      // alt 为 null：要么没匹配上，要么匹配上了但实探不过（probe 里已记账）。
     }
 
     // §6.2：用用户渠道优先级，只在 canSyncLike（已登录且能写红心）的子集里
@@ -684,13 +718,16 @@ export class MusicService {
     if (!candidates.length) {
       return {
         source: null,
-        reason: sawStreamFail ? 'stream-failed' : 'no-match',
+        reason: sawStreamFail ? 'stream-failed' : sawLocked ? 'vip-locked' : 'no-match',
       };
     }
 
+    // 每个平台都**实探过**才算数：probe 回调在匹配层逐个试候选，第一个
+    // 真能出声的才被返回。传了 accept → searchEquivalent 走**不走缓存**的
+    // 那条路（缓存里只有首个命中，拿不到同 tier 的其它候选）。
     const found = await Promise.all(
       candidates.map(async (p) => {
-        const t = await this.searchEquivalent(session, p, seed);
+        const t = await this.searchEquivalent(session, p, seed, undefined, (c) => probe(p, c));
         return [p, t] as const;
       }),
     );
@@ -700,17 +737,9 @@ export class MusicService {
       const hit = found.find(([pp]) => pp === p);
       const t = hit?.[1];
       if (!t) continue;
-      // VIP 锁守卫：跨平台 fallback 拿到的「同名同长」等价曲，若目标平台
-      // 这个版本也是 VIP 锁（VIP 独占 / 付费 / 只给试听）→ 切过去同样会
-      // 30s 试听 / code=4，前端 tryFallbackSource / tryUpgradeFromTrial
-      // 反复调到这里，死循环。修法：服务端跳过 vipLocked 候选；priority
-      // 全锁完 → 落到方法末尾返 null，前端拿到 null 后 setError 干净退出。
-      // 复刻自用户实测「浓缩蓝鲸 (Live) - 彭忠豪」：网易云 + QQ 两平台都 VIP
-      // 锁，不带这个守卫会无限 code=4。
-      if (t.vipLocked === true) {
-        sawLocked = true;
-        continue;
-      }
+      // ⚠️ VIP 锁守卫**已由实探取代**：旧实现按元数据 vipLocked 一票否决，
+      //   而元数据两头都不可靠（见 probe 的注释）。现在实探过就是能出声。
+      //   probe 里对 QQ 仍然保留元数据否决（QQ 的试听流实探分不出来）。
       const playable = this.toPlayableTrack(t);
       return {
         source: {
@@ -719,8 +748,8 @@ export class MusicService {
           hasCopyright: true,
           url: playable.audioUrl,
           mediaMid: t.mediaMid,
-          // 透传 vipLocked: false（已校验，前端可放心切；保留字段保 SourceInfo
-          // 接口一致，未来前端做更细粒度过滤时有数据可读）。
+          // 透传 vipLocked: false（实探已出流，前端可放心切；保留字段保
+          // SourceInfo 接口一致，未来前端做更细粒度过滤时有数据可读）。
           vipLocked: false,
         },
         reason: null,
@@ -2382,6 +2411,7 @@ export class MusicService {
     platform: MusicProvider,
     meta: LikeMeta,
     excludeIds?: Set<string>,
+    accept?: (t: Track) => Promise<boolean>,
   ): Promise<Track | null> {
     const kw = `${meta.title} ${meta.artist}`.trim();
     if (!kw) return null;
@@ -2389,8 +2419,18 @@ export class MusicService {
     // 常驻缓存「记首个命中」的语义冲突——混用会把 exclude 后的亚军写进缓存
     // 污染 like-sync，或把含死 mid 的缓存结果回给兜底。绕过缓存直搜，
     // 失败路径低频，可接受。
-    if (excludeIds?.size) {
-      const r = await this.searchEquivalentUncached(session, platform, meta, kw, excludeIds);
+    //
+    // ⚠️ accept（实探回调）同理必须绕缓存：缓存里只有**首个命中**，而实探
+    // 需要在匹配层逐个试**同 tier 的其它候选**（首个命中可能是死源）。
+    if (excludeIds?.size || accept) {
+      const r = await this.searchEquivalentUncached(
+        session,
+        platform,
+        meta,
+        kw,
+        excludeIds,
+        accept,
+      );
       return r.track;
     }
     // 结果缓存：同一 session 对同一 (platform, kw, 时长分桶) 的等价曲搜索返回
@@ -2454,6 +2494,7 @@ export class MusicService {
     meta: LikeMeta,
     kw: string,
     excludeIds?: Set<string>,
+    accept?: (t: Track) => Promise<boolean>,
   ): Promise<{ track: Track | null; clean: boolean }> {
     try {
       // 准备 N 组搜索变体 + 各自的 limit。对每个变体跑「搜索 → 4 tier 匹配」，
@@ -2547,7 +2588,14 @@ export class MusicService {
           `${v.tag}=${v.kw}→${tracks.length}` + (samples.length ? ` [${samples.join(', ')}]` : ''),
         );
         if (tracks.length === 0) continue;
-        const matched = this.matchEquivalentTrack(platform, meta, tracks, v.tag, excludeIds);
+        const matched = await this.matchEquivalentTrack(
+          platform,
+          meta,
+          tracks,
+          v.tag,
+          excludeIds,
+          accept,
+        );
         if (matched) return { track: matched, clean: true };
       }
       // 全部变体都跑过且没命中 → 记日志，明确告诉调用方"试过哪些变体 + 各自
@@ -2621,14 +2669,20 @@ export class MusicService {
   /** 4 tier 匹配：strict → loose → title-exact → cross-script。
    *  任一命中即返回 + 写日志。tag 用于日志标注命中来自哪个搜索变体。
    *  `excludeIds`：同平台换版本兜底时排除刚挂掉的 trackId，否则首个命中
-   *  永远是同一个死源。 */
-  private matchEquivalentTrack(
+   *  永远是同一个死源。
+   *  `accept`：**实探回调**（可选）。命中之后先问它「这个源真能出声吗」——
+   *  返回 false 就**继续试同 tier 的下一个候选**（不是换 tier，匹配严格度
+   *  保持不变）。用于播放兜底：搜索元数据说能播 ≠ 真能出声（QQ 付费 mid
+   *  标 vipLocked=false 却是无 purl 的死源；网易云 fee>0 标 vipLocked=true
+   *  却可能实探出完整流）。见 findPlayableEquivalent。 */
+  private async matchEquivalentTrack(
     platform: MusicProvider,
     meta: LikeMeta,
     tracks: Track[],
     tag: string,
     excludeIds?: Set<string>,
-  ): Track | null {
+    accept?: (t: Track) => Promise<boolean>,
+  ): Promise<Track | null> {
     const wantKey = this.normalizeKey(meta.title, meta.artist);
     const wantTitleKey = this.normalizeKey(meta.title, '');
     const wantArtistKey = this.normalizeKey(meta.artist, '');
@@ -2672,6 +2726,7 @@ export class MusicService {
       const tk = this.normalizeKey(t.title, t.artist);
       if (tk !== wantKey) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
+      if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
       this.logger.debug?.(
         `searchEquivalent ${platform} exact match [${tag}]: "${t.title} - ${t.artist}"`,
       );
@@ -2709,6 +2764,7 @@ export class MusicService {
       // 下方 Tier 3b「标题完全相等 + 时长 ±3s 严格」强佐证通道兜底。
       if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
+      if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
       this.logger.log(
         `searchEquivalent ${platform} loose match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -2740,6 +2796,7 @@ export class MusicService {
       const candVersion = this.versionTagStrict(t.title);
       if (this.durationMismatchVersionSafe(wantVersion, candVersion, meta.duration, t.duration))
         continue;
+      if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
       this.logger.log(
         `searchEquivalent ${platform} title-exact match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -2770,6 +2827,7 @@ export class MusicService {
       if (!this.isCrossScript(ta, wantArtistKey)) continue;
       if (meta.duration <= 0 || t.duration <= 0) continue; // 强佐证要求双方时长已知
       if (this.durationMismatch(meta.duration, t.duration)) continue; // ±3s 严格
+      if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
       this.logger.log(
         `searchEquivalent ${platform} cross-script strong match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -2795,6 +2853,7 @@ export class MusicService {
       const ta = this.normalizeKey(t.artist, '');
       if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
+      if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
       this.logger.log(
         `searchEquivalent ${platform} cross-script title match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -2847,6 +2906,7 @@ export class MusicService {
         const candVersion = this.versionTagStrict(t.title);
         if (this.durationMismatchVersionSafe(wantVersion, candVersion, meta.duration, t.duration))
           continue;
+        if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
         this.logger.log(
           `searchEquivalent ${platform} relaxed title match [${tag}]: ` +
             `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +
@@ -2918,6 +2978,7 @@ export class MusicService {
         // KiraCola 那种「同 title + 完全不同艺人」在此处被拒。
         if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
         if (this.durationMismatch(meta.duration, t.duration)) continue;
+        if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
         this.logger.log(
           `searchEquivalent ${platform} co-author-suffix match [${tag}]: ` +
             `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}" ` +
@@ -2944,6 +3005,7 @@ export class MusicService {
       const ta = this.normalizeKey(t.artist, '');
       if (!this.artistLooseMatch(t.artist, meta.artist)) continue;
       if (this.durationMismatch(meta.duration, t.duration)) continue;
+      if (accept && !(await accept(t))) continue; // 实探不过 → 换同 tier 的下一个候选
       this.logger.log(
         `searchEquivalent ${platform} fuzzy title match [${tag}]: ` +
           `"${t.title} - ${t.artist}" ← "${meta.title} - ${meta.artist}"` +

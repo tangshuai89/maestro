@@ -592,6 +592,148 @@ describe('usePlayer 兜底链 / 分级失败 / 队列', () => {
     expect(result.current.track?.provider).toBe('qq');
   });
 
+  // ── 试听升级 · 2026-10-26 修（specs/trial-source-fallback）──────
+
+  it('试听升级：服务端返回**同平台的另一个 trackId** → 必须切过去', async () => {
+    // 复刻用户实测「又出现 29 秒」：
+    //   QQ/tq-dead（死 mid，code=4）→ 降级到 Deezer 的 30s 试听
+    //   → 试听升级时服务端返回 **QQ 的另一个 mid**（同歌真正能播的那个）。
+    // 旧守卫是**平台级**黑名单：qq 这首歌试过 → 整平台拉黑 → 把唯一那条
+    // 活路堵死 → 用户卡在 29 秒。现在只按**曲目级**拦截。
+    //
+    // ⚠️ 用假定时器（兜底链有 2.3s 墙钟成本）→ 断言必须**同步**，
+    //    不能用 waitFor（testing-library 的 waitFor 靠定时器推进，假定时器下死等）。
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem('maestro:qq-quality', 'standard');
+      const item = unified({
+        id: 't4',
+        title: 'Drip Dry Eyes',
+        artist: 'YUKIHIRO TAKAHASHI',
+        duration: 330,
+        best: 'qq',
+        platforms: [
+          { platform: 'qq', trackId: 'tq-dead' },
+          { platform: 'deezer', trackId: 'td-preview' },
+        ],
+      });
+      apiMocks.findEquivalentSource.mockResolvedValue({
+        source: {
+          platform: 'qq',
+          trackId: 'tq-alive',
+          hasCopyright: true,
+          url: '/music/stream/qq/tq-alive',
+        },
+        reason: null,
+      });
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([item], 0);
+      });
+      expect(result.current.track?.provider).toBe('qq');
+      expect(a.src).toContain('/music/stream/qq/tq-dead');
+
+      // qq 挂 → 降级到 item 内的 deezer 源（Deezer 免费只有 30s 预览）
+      await driveErrorFallback(a);
+      expect(result.current.track?.provider).toBe('deezer');
+
+      // deezer 是 30s 试听 → 触发试听升级
+      Object.defineProperty(a, 'duration', { value: 30, configurable: true });
+      await act(async () => {
+        a.dispatchEvent(new Event('loadedmetadata'));
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      // 服务端给的同平台另一个 mid → 必须切过去
+      expect(result.current.track?.id).toBe('tq-alive');
+      expect(result.current.track?.provider).toBe('qq');
+      expect(a.src).toContain('/music/stream/qq/tq-alive');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('试听升级：服务端返回**没试过的平台** → 照常升级（别被改动带坏）', async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem('maestro:qq-quality', 'standard');
+      const item = unified({
+        id: 't5',
+        duration: 200,
+        best: 'qq',
+        platforms: [{ platform: 'qq', trackId: 'tq5' }],
+      });
+      apiMocks.findEquivalentSource.mockResolvedValue({
+        source: {
+          platform: 'netease',
+          trackId: 'tn5',
+          hasCopyright: true,
+          url: '/music/stream/netease/tn5',
+        },
+        reason: null,
+      });
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([item], 0);
+      });
+      expect(result.current.track?.provider).toBe('qq');
+      Object.defineProperty(a, 'duration', { value: 30, configurable: true });
+      await act(async () => {
+        a.dispatchEvent(new Event('loadedmetadata'));
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(result.current.track?.provider).toBe('netease');
+      expect(result.current.track?.id).toBe('tn5');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('试听升级：服务端返回的源**已经试过** → 不换源（防循环）', async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem('maestro:qq-quality', 'standard');
+      const item = unified({
+        id: 't6',
+        duration: 200,
+        best: 'qq',
+        platforms: [{ platform: 'qq', trackId: 'tq6' }],
+      });
+      apiMocks.findEquivalentSource.mockResolvedValue({
+        // 同一个 mid —— 曲目级守卫必须拦住（否则会无限来回换）
+        source: {
+          platform: 'qq',
+          trackId: 'tq6',
+          hasCopyright: true,
+          url: '/music/stream/qq/tq6',
+        },
+        reason: null,
+      });
+      const { result, a } = setup();
+      act(() => {
+        result.current.playSearch([item], 0);
+      });
+      expect(result.current.track?.provider).toBe('qq');
+      Object.defineProperty(a, 'duration', { value: 30, configurable: true });
+      await act(async () => {
+        a.dispatchEvent(new Event('loadedmetadata'));
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(result.current.trialFellBack).toBe(true);
+      expect(result.current.track?.id).toBe('tq6');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // ── 队列 ─────────────────────────────────────────────────────
 
   it('playSearch → 队列只留可播条目（unified 与 track 索引对齐）', () => {
