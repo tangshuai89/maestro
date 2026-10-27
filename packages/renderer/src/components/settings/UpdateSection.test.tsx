@@ -95,6 +95,47 @@ describe('UpdateSection', () => {
     await waitFor(() => expect(screen.getByText(/检查更新失败/)).toBeInTheDocument());
   });
 
+  // ── catch 分支也得有测试（门禁会逐行查）────────────────────────
+  //
+  // ① preload 是老版本（没有 updater 通道）⇒ onIpc 抛 ⇒ 只能靠问一次初始状态
+  it('onIpc 抛错（老 preload 没有该通道）⇒ 不炸', async () => {
+    (window as unknown as { electronAPI?: unknown }).electronAPI = {
+      getUpdateState: api.getUpdateState,
+      checkForAppUpdate: api.checkForAppUpdate,
+      installAppUpdate: api.installAppUpdate,
+      onIpc: () => {
+        throw new Error('refused to subscribe to non-allowlisted channel');
+      },
+    };
+    render(<UpdateSection />);
+    await waitFor(() => expect(api.getUpdateState).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /检查更新|浏览器/ })).toBeInTheDocument();
+  });
+
+  // ② 主进程调用失败（网络/未发布）⇒ catch 掉，错误状态由主进程推
+  it('checkForAppUpdate 抛错 ⇒ catch 掉，不炸', async () => {
+    api.checkForAppUpdate.mockRejectedValue(new Error('boom'));
+    render(<UpdateSection />);
+    await waitFor(() => expect(api.getUpdateState).toHaveBeenCalled());
+    screen.getByRole('button', { name: '检查更新' }).click();
+    await waitFor(() => expect(api.checkForAppUpdate).toHaveBeenCalled());
+    // 没崩就行（错误状态由主进程推过来）
+    expect(screen.getByRole('button', { name: /检查更新|检查中/ })).toBeInTheDocument();
+  });
+
+  // ③ 安装失败 ⇒ catch 掉
+  it('installAppUpdate 抛错 ⇒ catch 掉，不炸', async () => {
+    api.installAppUpdate.mockRejectedValue(new Error('没有待安装的更新'));
+    render(<UpdateSection />);
+    await waitFor(() => expect(api.getUpdateState).toHaveBeenCalled());
+    push({ kind: 'ready', version: '1.2.0' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '重启并安装' })).toBeInTheDocument(),
+    );
+    screen.getByRole('button', { name: '重启并安装' }).click();
+    await waitFor(() => expect(api.installAppUpdate).toHaveBeenCalled());
+  });
+
   it('没有 electronAPI（浏览器 dev）⇒ 不炸，也不发请求', async () => {
     delete (window as unknown as { electronAPI?: unknown }).electronAPI;
     render(<UpdateSection />);
