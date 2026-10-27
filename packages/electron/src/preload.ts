@@ -18,6 +18,8 @@ const SUBSCRIBABLE_CHANNELS = new Set([
   'netease-login-result',
   'tray:command',
   'desktop-lyrics:changed',
+  // 自动更新状态（specs/auto-update）—— main 每次状态变化推一次
+  'updater:state',
   'spotify:oauth-protocol',
   // ⚠️ 这里**只放 main→renderer（main 会 webContents.send）的通道**。
   // 'console-message' 曾经在这个列表里，但方向是反的：main 侧是
@@ -25,6 +27,9 @@ const SUBSCRIBABLE_CHANNELS = new Set([
   // 不是 main 推给 renderer。留着它 = renderer 可以订阅一个永远不会来的通道
   // （静默失败，且看起来"配了"）。见 src/ipc-surface.test.ts 第 3 条。
 ]);
+
+/** 自动更新的状态类型（specs/auto-update）—— 渲染层用 `import type` 拿它。 */
+export type { UpdateState } from './updater';
 
 export interface QqLoginResult {
   /** Full "k=v; k=v" QQ Music login cookie header. */
@@ -287,6 +292,14 @@ const electronAPI = {
    * Used by `useAuth` to survive the "OS hands the URL before main window
    * is ready" race.
    */
+  // ── 自动更新（specs/auto-update）─────────────────────────────────
+  /** 拿当前更新状态（渲染层挂载时问一次，之后靠 'updater:state' 事件推）。 */
+  getUpdateState: (): Promise<unknown> => ipcRenderer.invoke('updater:get-state'),
+  /** 手动检查一次更新。 */
+  checkForAppUpdate: (): Promise<unknown> => ipcRenderer.invoke('updater:check'),
+  /** 退出并安装已下载的更新。 */
+  installAppUpdate: (): Promise<unknown> => ipcRenderer.invoke('updater:install'),
+
   consumeOAuthCallback: (): Promise<
     | { code: string; state: string; receivedAt: number }
     | { error: string; state?: string; receivedAt: number }

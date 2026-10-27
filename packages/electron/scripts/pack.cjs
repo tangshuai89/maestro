@@ -291,6 +291,24 @@ try {
 }
 assertWorkspaceIntact('组装 server 依赖');
 
+// ── 7b. electron 主进程的运行时依赖（electron-updater）──────────────────────
+//
+// 自动更新要 electron-updater。它是 electron 包的**生产依赖**，但 npm workspace
+// 把它提升到了**仓库根**的 node_modules ⇒ electron-builder 的 appDir
+// （packages/electron）里找不到它 ⇒ 打进 asar 的包**没有这个依赖**。
+//
+// ⇒ 复制一份到 packages/electron/node_modules（见 updater-runtime-deps.cjs）。
+//    main 侧是懒加载 + try/catch ⇒ 就算这一步失败，App 也只是「没有自动更新」，
+//    不会起不来。
+try {
+  const { assemble: assembleUpdaterDeps } = require('./updater-runtime-deps.cjs');
+  assembleUpdaterDeps();
+} catch (err) {
+  console.error(`\n❌ [pack] 装配 electron 主进程依赖失败：${err?.message ?? err}\n`);
+  process.exit(1);
+}
+assertWorkspaceIntact('装配主进程依赖');
+
 // ── 8. 跑 electron-builder ──────────────────────────────────────────────────
 const checkOnly = process.argv.includes('--check');
 const passthrough = process.argv.slice(2).filter((a) => a !== '--check');

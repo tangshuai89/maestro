@@ -31,6 +31,13 @@ import {
   GLOBAL_SHORTCUTS,
 } from './global-shortcuts';
 import type { TrayCommand } from './preload';
+import {
+  createElectronUpdaterBridge,
+  createUpdater,
+  createUnsupportedUpdater,
+  loadElectronUpdater,
+  type Updater,
+} from './updater';
 import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
@@ -1084,6 +1091,55 @@ app.whenReady().then(async () => {
     GLOBAL_SHORTCUTS.map((s) => ({ accelerator: s.accelerator, label: s.label })),
   );
 
+  // ── 自动更新（specs/auto-update）──────────────────────────────────────────
+  /**
+   * 更新状态机（dev / 未打包 / 依赖缺失时是 unsupported）。
+   *
+   * ⚠️ **只有打包后的 app 才真的查更新**：未发布的 app 查更新必然失败
+   * （"No published versions"）⇒ 报个假错误还不如不查。
+   */
+  let appUpdater: Updater | null = null;
+
+  function setupUpdater(): Updater {
+    if (!app.isPackaged) {
+      return createUnsupportedUpdater('开发模式不检查更新');
+    }
+    const auto = loadElectronUpdater();
+    if (!auto) {
+      // 依赖没打进产物（打包失误）⇒ **App 照常启动**，只是没有自动更新。
+      return createUnsupportedUpdater('自动更新不可用（缺少 electron-updater）');
+    }
+    // 下载自动进行（electron-updater 默认），但**安装必须用户点**「重启并安装」
+    // ⇒ 关掉「退出时自动安装」，别在用户没同意的时候换掉他的 App。
+    auto.autoInstallOnAppQuit = false;
+    const u = createUpdater(createElectronUpdaterBridge(auto));
+    // 状态变化 → 推给渲染层（渲染层订阅 'updater:state'）
+    u.subscribe((state) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('updater:state', state);
+      }
+    });
+    return u;
+  }
+
+  function registerUpdaterIpc(): void {
+    ipcMain.handle(
+      'updater:get-state',
+      () => appUpdater?.getState() ?? { kind: 'unsupported', reason: '自动更新未初始化' },
+    );
+    ipcMain.handle('updater:check', async () => {
+      if (!appUpdater) return { kind: 'unsupported', reason: '自动更新未初始化' };
+      return appUpdater.check();
+    });
+    ipcMain.handle('updater:install', () => {
+      const st = appUpdater?.getState();
+      // 状态不是「已就绪」⇒ 没有可安装的更新（electron-updater 会抛）
+      if (!st || st.kind !== 'ready') return { ok: false, reason: '没有待安装的更新' };
+      appUpdater?.install();
+      return { ok: true };
+    });
+  }
+
   // ── 桌面歌词浮窗（§7.2）────────────────────────────────────────────────
   // 放在 tray / IPC 注册之前：tray 菜单项要读 controller.enabled，
   // 浮窗开关态变化也要回刷 tray 勾选。
@@ -1130,6 +1186,14 @@ app.whenReady().then(async () => {
       mainWindow.webContents.send('desktop-lyrics:changed', snap);
     }
   });
+  // ── 自动更新（specs/auto-update）──────────────────────────────────────
+  // 装配在 IPC 注册之后、窗口创建之后：状态变化要往窗口推。
+  appUpdater = setupUpdater();
+  registerUpdaterIpc();
+  // 启动后**静默检查一次**（打包后才有意义）：下载会自动进行，
+  // 但**安装**要用户点「重启并安装」⇒ 不会在用户不知情时换掉他的 App。
+  if (app.isPackaged) void appUpdater.check();
+
   registerDesktopLyricsIpc();
 
   // ── 全局热键（§7.3 · specs/desktop-integration）──────────────────────

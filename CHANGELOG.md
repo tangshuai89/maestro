@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **自动更新 —— 发版后用户不用手动下 dmg**（2026-10-27，`specs/auto-update`）
+
+  功能盘点 **P0**：`electron-updater / autoUpdater → 0 处` —— 不装它，每次发版
+  用户都得自己去 Releases 页找 dmg、下载、拖进 Applications、替换旧版。
+
+  - **状态机独立成纯模块**（`packages/electron/src/updater.ts`）：不 import
+    electron ⇒ 能单测；`electron-updater` 的 API 由 main 侧**适配**进来。
+  - **dev 模式一律不查更新**：未发布的 app 查更新必然失败（"No published
+    versions"）⇒ 报个假错误还不如不查，状态直接是 `unsupported`。
+  - **懒加载 + try/catch**：`electron-updater` 没打进产物时 **App 照常启动**，
+    只是没有自动更新（降级，不是崩）。
+  - **下载自动进行，安装要用户点**「重启并安装」（关掉了
+    `autoInstallOnAppQuit`）—— 别在用户不知情的时候换掉他的 App。
+  - 设置里一个「应用更新」段：状态 + 「检查更新」+「重启并安装」。
+
+  ⚠️ **真跑起来还差 A1**：macOS 的自动更新要求更新包**已签名且已公证**
+  （Developer ID + notarization）⇒ A1 没做完之前，这段代码只能在
+  「状态机 + UI + 单测 + 打包装配」这一层验证。
+
 - **首次启动引导（3 步可跳过）—— 新手知道这 App 能干什么**（2026-10-26，`specs/first-run-guide`）
 
   装上之后的第一次打开，用户看到的是**选音源页** —— 选完就进剧场，**再没有任何

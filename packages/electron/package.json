@@ -15,15 +15,17 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
   "devDependencies": {
+    "@eslint/js": "^9.8.0",
+    "@types/node": "^22.0.0",
     "electron": "https://github.com/castlabs/electron-releases#8244344c33634d9323377c0d0fd1d9b7f9b69540",
     "electron-builder": "^24.13.3",
-    "typescript": "^5.5.4",
-    "@types/node": "^22.0.0",
-    "@eslint/js": "^9.8.0",
     "eslint": "^9.8.0",
     "globals": "^15.9.0",
+    "typescript": "^5.5.4",
     "typescript-eslint": "^8.0.0"
   },
   "build": {
@@ -51,6 +53,7 @@
     },
     "files": [
       "dist/**/*",
+      "node_modules/**/*",
       "!dist/**/*.map",
       "!dist/**/*.d.ts",
       "!dist/**/*.d.ts.map",
@@ -72,6 +75,13 @@
       {
         "from": "build",
         "to": "build"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "tangshuai89",
+        "repo": "maestro"
       }
     ]
   }

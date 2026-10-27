@@ -25,6 +25,7 @@ import {
   type AudioFxPrefs,
 } from '../../lib/audioFx';
 import RecoKeyModal from './RecoKeyModal';
+import UpdateSection from '../settings/UpdateSection';
 import ChannelPriorityList from '../settings/ChannelPriorityList';
 import AccountsList from '../settings/AccountsList';
 import LibraryManager from '../settings/LibraryManager';
@@ -481,6 +482,9 @@ export default function SettingsModal({
             </div>
             <StatusLine status={recoKeyStatus} />
           </section>
+
+          {/* 应用更新（specs/auto-update）—— 状态真源在主进程 */}
+          <UpdateSection />
 
           {/* 新手引导（specs/first-run-guide）—— 跳过了也能再翻出来看 */}
           <section className="set-section">
