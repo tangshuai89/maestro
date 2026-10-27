@@ -15,11 +15,11 @@
 ## 3. 门禁
 
 - [x] `npm run typecheck` 全绿
-- [ ] `npm run lint` 全绿
-- [ ] 全量套件 `bash scripts/test.sh --ci` → EXIT=0
-- [ ] 覆盖率 diff 门禁（base = `0bb5860`）→ ✅ 本次改动的代码全部被执行过
-- [ ] 变异验证：分隔符改成 `-` → 门禁必须红
-- [ ] PR 合并后核对内容进 master
+- [x] `npm run lint` 全绿（PR #136 的 CI `Lint` 步 success）
+- [x] 全量套件 `bash scripts/test.sh --ci` → **EXIT=0**（PR #136 的 CI `Run tests` 步 success）
+- [x] 覆盖率 diff 门禁（base = `0bb5860`）→ ✅ 本次改动的代码全部被执行过（PR #136 的 CI `Coverage diff gate` 步 success）
+- [x] 变异验证：分隔符改成 `-` → 门禁必须红（PR #136 描述记录：分隔符改成 `-` → **3 条用例精确红** ✅）
+- [x] PR 合并后核对内容进 master（master 的 `playlistExport.ts` 注释里明写「带连字符 —— 用「-」会被误读成分隔符」✅ 用的不是 `-`）
 
 ## 4. 局限（如实记录）
 

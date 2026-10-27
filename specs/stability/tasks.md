@@ -926,8 +926,8 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   - 还原「重复文件保留第一个」→ 共享模块红三条
   - 还原门禁的旧判据 → 门禁红一条
 
-- [ ] **H18** 产物里混进了**测试代码** —— common / electron 两个包
-      （2026-10-24 实测，**未修**）
+- [x] **H18** 产物里混进了**测试代码** —— common / electron 两个包
+      （2026-10-24 实测 → **2026-10-24 已修**，PR #123 + 前一个 commit）
 
   H17 收口覆盖率口径时顺带发现的**出货卫生**问题（与覆盖率无关，独立关注点）：
 
@@ -947,18 +947,38 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
     （`"test": "npm run build && node dist/normalizer.test.js"`）→ 包级脚本过时
     （根 `npm test` 跑全部 5 个 ✓）。
 
-  **修法**（不能照搬 server 的方案 —— server 的 `npm test` 不存在，而 common 的
-  `npm test` 现在跑的是 `dist/normalizer.test.js`）：
-  - common 加 `tsconfig.build.json`（exclude `**/*.test.ts`）→ `build` / `prepare`
-    改用它 → build 前清 `dist`（治陈旧产物）；
-  - common 的 `npm test` 改成从 `src` 跑**全部 5 个**（用 ts-node，与根
-    `scripts/test.sh` 的 `run_pkg common` 一致）；
-  - electron 同上加 `tsconfig.build.json`（或至少 `build.files` 排除
-    `!dist/**/*.test.js`）+ build 前清 `dist`。
+  **实际怎么修的**（比原计划多做了一层：不是「一次性验收」，而是**加门禁**）：
+  - `packages/common/tsconfig.build.json` + `packages/electron/tsconfig.build.json`
+    （exclude `**/*.test.ts` / `**/*.spec.ts`）→ 两包的 `build` / `dev` 显式用
+    `-p tsconfig.build.json`；`tsconfig.json`（typecheck 用）**不**排除 → 测试
+    文件**仍被类型检查**（不是「排除了就不管了」）。
+  - 两包各加 `scripts/clean-dist.cjs` → **build 前清 `dist`**（治陈旧产物：
+    `tsc` 不删旧输出 → 已删除的源文件会留下产物，像 `__gate_probe.test.js`）。
+    ⚠️ 清 dist 必须**连带清 `tsconfig.build.tsbuildinfo`**：server 的 tsconfig
+    开了 `incremental` → 清完 dist 后 tsc 判定「全都编译过了」→ **一个文件都不
+    产出、退出码 0、屏幕一行输出都没有**（静默降级）。
+  - `packages/common` 的 `npm test` 改成 `node scripts/run-tests.cjs` → 跑这个包里
+    **全部 5 个** `*.test.ts`（从 `src` 跑，用 ts-node，与根 `scripts/test.sh` 的
+    `run_pkg common` 一致）。原脚本「只跑 5 个里的 1 个」，而且依赖 `dist/` 里有
+    测试产物 —— 排除后那条命令会直接失败。
+  - `packages/common/package.json` 加 `"files": ["dist"]` → 出厂包里**只带 dist**
+    （`src` / `scripts` / `tsconfig*.json` 不再跟出去）。
+  - **新增门禁** `scripts/check-artifact-hygiene.cjs` + CI 的 `artifact-hygiene`
+    job（与 `check` 并行）→ 判四个出货包的 dist：**测试代码**（文件名含
+    `.test.`/`.spec.`，或路径里有 `test`/`e2e`/`test-helpers` 段）、**陈旧产物**
+    （dist 里的文件在 src 里找不到对应源文件）、**源码**（dist 里出现 `.ts`）。
+    `--require-built`：没构建过 = **失败**，不是跳过（「跳过」= 门禁形同虚设）。
+  - `verify-pack.sh` 补了 macOS 端到端那层（asar + sidecar 真的起来答
+    `/storage/info`）—— CI 打不了 dmg，只能在本地查。
 
-  **验收**：`npm run pack` + `npm run pack:verify`；**`asar list | grep test`
-  必须 0 命中**；`Resources/server/node_modules/@maestro/common/dist` 里
-  grep test 必须 0 命中。
+  **验收**（实测）：`npm run pack` → dmg 145M ✅；`npm run pack:verify` ✅；
+  **`asar list | grep test` 0 命中** ✅；`Resources/server/node_modules/@maestro/common/dist`
+  里 grep test 0 命中 ✅；出厂包里 `@maestro/common` **只有 dist + package.json** ✅；
+  sidecar 解析 `@maestro/common` → `dist/index.js` ✅ 导出可用 ✅。
+
+  ⚠️ 门禁的两个避坑（实测踩出来的）：目录名要**整段匹配**（否则 `latest/` 这种正常
+  目录被误判）；`node_modules` 只查 `@maestro/*`（第三方包自带 `test/` 目录是正常的
+  —— busboy/minimist 等，不排除会一次报出 **120+ 个假阳性**，门禁直接被噪音淹掉）。
 
 - [x] **H13** `usePlayer.ts` 真实未覆盖 **345 行 / 59 个连续段** —— 补测到 124 行
 
