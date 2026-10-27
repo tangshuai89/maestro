@@ -53,4 +53,4 @@
 - [x] 覆盖率 diff 门禁（base = `0685467`）→ ✅ 本次改动的代码全部被执行过
 - [x] 变异验证：把 `markOnboardingDone()` 改成不写 flag → 引导会**反复出现**
       ⇒ **红**（断言1 文件内容确实变了；断言2 `onboarding.test.tsx` 3 failed / 8 passed）
-- [ ] PR 合并后核对内容进 master
+- [x] PR 合并后核对内容进 master（PR #139 已合；master 里有 `components/onboarding/FirstRunGuide.tsx` + `lib/onboarding.ts` ✅）

@@ -271,8 +271,15 @@ python3 -m venv ~/.castlabs-evs-venv
   - SourceMenu 降级为"临时覆盖"，默认跟随优先级
   - AETHER 全屏风格还原（`feat(settings)` commit `c472b05`）+
     token-adoption 二次补强（`628ea84`，6 处直换 token + budget 给品牌识别色扩 9 处）
+- **已补上（2026-10-26，PR #139）**：
+  - [x] 首次启动引导流 —— 选完音源后的**一次性 3 步引导**（欢迎 → AI 推荐（可选）
+    → 上手），每步可跳过、完成后不再打扰、设置里能重看（specs/first-run-guide）。
+    ⚠️ **口径要说准**：**选音源那一步没换**（仍是 `SourceSelect`，spec 明确把
+    「引导里的音源选择」列为**不做** —— 那步已经有了）；旧路 `RecoKeyModal` 也
+    **保留**（引导第 2 步的「现在设置」就是打开它）。
+    ⇒ 原来那句「仍是 SourceSelect + RecoKeyModal 旧路」里的**引导流**那半已过时
+    —— 现在的链路是 SourceSelect → **3 步引导** → 剧场。
 - **未做（可后置）**：
-  - [ ] 首次启动引导流（仍是 SourceSelect + RecoKeyModal 旧路；新装流程还没合并）
   - [ ] 没选源就退出 App 时的确认弹窗
 - **估时（剩余）**：1 天
 

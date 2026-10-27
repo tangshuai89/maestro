@@ -47,10 +47,10 @@
 ## 6. 门禁
 
 - [x] `npm run typecheck` 全绿
-- [ ] `npm run lint` 全绿
-- [ ] 全量套件 `bash scripts/test.sh --ci` → EXIT=0
-- [ ] 覆盖率 diff 门禁（base = `994582b`）→ ✅ 本次改动的代码全部被执行过
-- [ ] PR 合并后核对内容进 master
+- [x] `npm run lint` 全绿（PR #133 的 CI `Lint` 步 success）
+- [x] 全量套件 `bash scripts/test.sh --ci` → **EXIT=0**（PR #133 的 CI `Run tests` 步 success）
+- [x] 覆盖率 diff 门禁（base = `994582b`）→ ✅ 本次改动的代码全部被执行过（PR #133 的 CI `Coverage diff gate` 步 success）
+- [x] PR 合并后核对内容进 master（PR #133 已合入 master ✅）
 
 ## 7. 局限（如实记录，不假装解决）
 

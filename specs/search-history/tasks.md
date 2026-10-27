@@ -21,11 +21,11 @@
 ## 4. 门禁
 
 - [x] `npm run typecheck` 全绿
-- [ ] `npm run lint` 全绿
-- [ ] 全量套件 `bash scripts/test.sh --ci` → EXIT=0
-- [ ] 覆盖率 diff 门禁（base = `0bb5860`）→ ✅ 本次改动的代码全部被执行过
-- [ ] 变异验证：去掉去重 → 门禁必须红
-- [ ] PR 合并后核对内容进 master
+- [x] `npm run lint` 全绿（PR #135 的 CI `Lint` 步 success）
+- [x] 全量套件 `bash scripts/test.sh --ci` → **EXIT=0**（PR #135 的 CI `Run tests` 步 success）
+- [x] 覆盖率 diff 门禁（base = `0bb5860`）→ ✅ 本次改动的代码全部被执行过（PR #135 的 CI `Coverage diff gate` 步 success）
+- [x] 变异验证：去掉去重 → 门禁必须红（PR #135 描述记录：去掉 `pushSearchHistory` 的去重 → **两条用例精确红**）
+- [x] PR 合并后核对内容进 master（master 的 `searchHistory.ts` 里去重在 `history.filter((h) => h !== entry)` ✅）
 
 ## 5. 坑（留档）
 

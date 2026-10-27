@@ -32,11 +32,11 @@
 ## 5. 门禁
 
 - [x] `npm run typecheck` 全绿
-- [ ] `npm run lint` 全绿
-- [ ] 全量套件 `bash scripts/test.sh --ci` → EXIT=0
-- [ ] 覆盖率 diff 门禁（base = `0bb5860`）→ ✅ 本次改动的代码全部被执行过
-- [ ] 变异验证：`matchesShortcut` 改成永远不命中 → 门禁必须红
-- [ ] PR 合并后核对内容进 master
+- [x] `npm run lint` 全绿（PR #134 的 CI `Lint` 步 success）
+- [x] 全量套件 `bash scripts/test.sh --ci` → **EXIT=0**（PR #134 的 CI `Run tests` 步 success）
+- [x] 覆盖率 diff 门禁（base = `0bb5860`）→ ✅ 本次改动的代码全部被执行过（PR #134 的 CI `Coverage diff gate` 步 success）
+- [x] 变异验证：`matchesShortcut` 改成永远不命中 → 门禁必须红（2026-10-27 实测：`matchesShortcut` 开头加 `if (1) return false;` → `shortcuts.test.tsx` **5 failed / 6 passed** ✅；PR #134 当时做的是另一个变异——「去掉 shift 要求 → 门禁精确红」，两条都做过）
+- [x] PR 合并后核对内容进 master（master 的 `shortcuts.ts` 里 `matchesShortcut` 是**唯一**判定实现，`App.tsx` 调用它 ✅）
 
 ## 6. 局限（如实记录）
 

@@ -38,7 +38,7 @@
       断言2 common 的 `playHistory.test.ts` 2 failed；断言3 server 的
       `play-history.test.ts` ERR_ASSERTION 4≠3 —— **server 侧走的是 common 的
       `dist/`，验这个变异前必须先 `npm run build` 重建 dist**，否则测的是旧产物）
-- [ ] PR 合并后核对内容进 master
+- [x] PR 合并后核对内容进 master（PR #137 已合；master 里有 `packages/common/src/playHistory.ts` + `packages/server/src/music/play-history.controller.e2e.test.ts` ✅）
 
 ## 4b. 覆盖率 diff 门禁抓出来的**三个真缺口**（已补）
 
