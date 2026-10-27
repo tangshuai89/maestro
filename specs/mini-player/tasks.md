@@ -21,11 +21,15 @@
 > 偏离说明：设计 spec §4 草图里的「队列」按钮未实现 —— 现有代码没有独立队列视图，
 > ❤ 库弹窗已走 titlebar。如要补，先定队列 UI 再加。
 
-## Phase 2 — 角色叠加层（待 Figma 稿，本轮不做）
+## Phase 2 — 角色叠加层（**归档 [~] 2026-10-27**：cosplay 层的装饰，不是功能）
 
-- [ ] 芙宁娜角色（OpenGameArt CC0 资源 + license 标注）`lib/characters/`
-- [ ] `CharacterOverlay` + 状态动画 + `<1100px` 隐藏
-- [ ] `CharacterOverlay.test.tsx`
+> 审计结论：角色立绘是**装饰**（cosplay 层），喜欢可以留着，但别混在「功能待办」
+> 里占位 —— 它不产生用户价值，却一直挂在 mini-player 的待办里。
+> ⇒ 标 `[~]` 归档：**不做**，也不占待办位。想做时从这里捡起来。
+
+- [~] 芙宁娜角色（OpenGameArt CC0 资源 + license 标注）`lib/characters/`
+- [~] `CharacterOverlay` + 状态动画 + `<1100px` 隐藏
+- [~] `CharacterOverlay.test.tsx`
 
 ## Phase 3 — 集成与打磨
 
