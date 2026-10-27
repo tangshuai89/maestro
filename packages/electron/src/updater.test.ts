@@ -13,7 +13,12 @@ export {};
 const assert = require('node:assert');
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { createUpdater, loadElectronUpdater, createElectronUpdaterBridge } = require('./updater');
+const {
+  createUpdater,
+  loadElectronUpdater,
+  createElectronUpdaterBridge,
+  setupUpdater,
+} = require('./updater');
 import type { UpdateState } from './updater';
 
 type Handler = (payload: never) => void;
@@ -289,6 +294,61 @@ async function main() {
     );
   }
 
+  // ── 13. setupUpdater：三条分支都要有测试 ────────────────────────
+  //
+  // 这三条分支原来在 main.ts 里（接线层，没单测）⇒ 「打包成功加载了
+  // electron-updater」那条**永远走不到** ⇒ 覆盖率门禁会报它没被执行过。
+  // ⇒ 决策挪到 updater.ts，这里用假实现把三条分支都走一遍。
+  {
+    // 13a. dev（未打包）⇒ unsupported，且**不加载依赖**
+    let loadCalled = 0;
+    const u = setupUpdater({
+      isPackaged: false,
+      load: () => {
+        loadCalled++;
+        return null;
+      },
+    });
+    expect(
+      '13a. dev → unsupported',
+      u.getState().kind === 'unsupported',
+      JSON.stringify(u.getState()),
+    );
+    expect('13b. dev 根本不加载依赖（不查更新 ⇒ 不发请求）', loadCalled === 0, String(loadCalled));
+
+    // 13c. 打包了但依赖缺失 ⇒ unsupported（App 照常启动）
+    const u2 = setupUpdater({ isPackaged: true, load: () => null });
+    expect(
+      '13c. 依赖缺失 → unsupported',
+      u2.getState().kind === 'unsupported',
+      JSON.stringify(u2.getState()),
+    );
+
+    // 13d. 打包了 + 依赖在 ⇒ 正常状态机 + 状态变化回调 + 关掉「退出时自动安装」
+    const fakeAuto = {
+      checkForUpdates: async () => undefined,
+      on: () => undefined,
+      quitAndInstall: () => undefined,
+      autoInstallOnAppQuit: true,
+    };
+    const seen: string[] = [];
+    const u3 = setupUpdater({
+      isPackaged: true,
+      load: () => fakeAuto,
+      onState: (st: UpdateState) => seen.push(st.kind),
+    });
+    expect(
+      '13d. 正常接入 → 初始状态 idle',
+      u3.getState().kind === 'idle',
+      JSON.stringify(u3.getState()),
+    );
+    expect(
+      '13e. 关掉了「退出时自动安装」（安装必须用户点「重启并安装」）',
+      fakeAuto.autoInstallOnAppQuit === false,
+      String(fakeAuto.autoInstallOnAppQuit),
+    );
+    expect('13f. 状态回调被订阅了（收到初始状态）', seen.length >= 1, JSON.stringify(seen));
+  }
   console.log(`\n🎉 updater.test: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

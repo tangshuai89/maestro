@@ -31,13 +31,7 @@ import {
   GLOBAL_SHORTCUTS,
 } from './global-shortcuts';
 import type { TrayCommand } from './preload';
-import {
-  createElectronUpdaterBridge,
-  createUpdater,
-  createUnsupportedUpdater,
-  loadElectronUpdater,
-  type Updater,
-} from './updater';
+import { loadElectronUpdater, setupUpdater as setupUpdaterCore, type Updater } from './updater';
 import { logger } from './lib/logger';
 
 // Pin the app name so userData / logs land under a stable, branded dir in
@@ -1101,25 +1095,17 @@ app.whenReady().then(async () => {
   let appUpdater: Updater | null = null;
 
   function setupUpdater(): Updater {
-    if (!app.isPackaged) {
-      return createUnsupportedUpdater('开发模式不检查更新');
-    }
-    const auto = loadElectronUpdater();
-    if (!auto) {
-      // 依赖没打进产物（打包失误）⇒ **App 照常启动**，只是没有自动更新。
-      return createUnsupportedUpdater('自动更新不可用（缺少 electron-updater）');
-    }
-    // 下载自动进行（electron-updater 默认），但**安装必须用户点**「重启并安装」
-    // ⇒ 关掉「退出时自动安装」，别在用户没同意的时候换掉他的 App。
-    auto.autoInstallOnAppQuit = false;
-    const u = createUpdater(createElectronUpdaterBridge(auto));
-    // 状态变化 → 推给渲染层（渲染层订阅 'updater:state'）
-    u.subscribe((state) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('updater:state', state);
-      }
+    // 决策在 updater.ts 里（可单测）—— 这里只负责**接线**：
+    // 状态变化推给渲染层，IPC 通道在下面注册。
+    return setupUpdaterCore({
+      isPackaged: app.isPackaged,
+      load: () => loadElectronUpdater(),
+      onState: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('updater:state', state);
+        }
+      },
     });
-    return u;
   }
 
   function registerUpdaterIpc(): void {

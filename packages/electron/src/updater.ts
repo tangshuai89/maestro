@@ -144,6 +144,38 @@ export function createUnsupportedUpdater(reason: string): Updater {
   return u;
 }
 
+/**
+ * 「要不要接自动更新、怎么接」的决策 —— **从 main.ts 里抽出来**，因为：
+ * ① main.ts 是**接线层**（没有单元测试，只有浏览器覆盖采集能碰到）
+ * ② 但这几条分支（dev / 依赖缺失 / 正常）**必须有测试** ⇒ 抽成纯函数
+ *
+ * @param opts.isPackaged 打包后的 app 才有自动更新（dev 查更新必然失败）
+ * @param opts.load      加载 electron-updater（注入点：单测用假实现）
+ * @param opts.onState   状态变化回调（main 侧推给渲染层）
+ */
+export interface UpdaterSetupOptions {
+  isPackaged: boolean;
+  load: () => ElectronAutoUpdater | null;
+  onState?: (state: UpdateState) => void;
+}
+
+export function setupUpdater(opts: UpdaterSetupOptions): Updater {
+  if (!opts.isPackaged) {
+    return createUnsupportedUpdater('开发模式不检查更新');
+  }
+  const auto = opts.load();
+  if (!auto) {
+    // 依赖没打进产物（打包失误）⇒ **App 照常启动**，只是没有自动更新。
+    return createUnsupportedUpdater('自动更新不可用（缺少 electron-updater）');
+  }
+  // 下载自动进行（electron-updater 默认），但**安装必须用户点**「重启并安装」
+  // ⇒ 关掉「退出时自动安装」，别在用户没同意的时候换掉他的 App。
+  auto.autoInstallOnAppQuit = false;
+  const u = createUpdater(createElectronUpdaterBridge(auto));
+  if (opts.onState) u.subscribe(opts.onState);
+  return u;
+}
+
 // ── electron-updater 适配层 ────────────────────────────────────────
 //
 // ⚠️ **懒加载**：`electron-updater` 是 electron 包的**运行时依赖**，而打包时
