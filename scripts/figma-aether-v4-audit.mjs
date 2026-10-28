@@ -10,6 +10,8 @@
 // 审计标准见 docs/figma-driven-frontend.md §8 与 01 · Foundations 的 README
 // ─────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { resolve } from 'node:path';
 const FILE_KEY = process.env.FIGMA_FILE_KEY || 'FtbRZXvzlCp4Sq9e322cQQ';
 const TOKEN = process.env.FIGMA_TOKEN;
 const AS_JSON = process.argv.includes('--json');
@@ -17,10 +19,91 @@ const FIXTURE = process.argv.includes('--fixture')
   ? process.argv[process.argv.indexOf('--fixture') + 1]
   : null;
 
-if (!TOKEN && !FIXTURE) {
+if (!TOKEN && !FIXTURE && !process.argv.includes('--self-test')) {
   console.error('缺少 FIGMA_TOKEN。获取: Figma → Settings → Security → Personal access tokens');
   process.exit(2);
 }
+
+/**
+ * 自测：期望清单（EXPECTED_SETS）与**规格文档**交叉核对。
+ *
+ * ## 为什么需要
+ *
+ * `EXPECTED_SETS` 是「这个 Figma 文件里应该有哪些组件集、各几个变体」的**清单**。
+ * D5 新建的 10 个组件集一开始**不在**清单里 → 谁在 Figma 里误删了它们，
+ * 审计**不会红**（等于白建）。
+ *
+ * 但清单是**手抄**的 → 规格文档改了、清单忘了改，就又是一处漂移。
+ * 所以这里让清单**从规格文档推导**：文档里有、清单里没有（或变体数不同）
+ * → 自测变红。
+ *
+ * ⇒ 这一条同时守住两个方向：
+ *   ① 「新增组件忘了加进清单」（漏）
+ *   ② 「清单和规格对不上」（漂移）
+ *
+ * 离线可跑（不碰网络、不需要 token）⇒ 可以挂进 `test:ci`。
+ */
+function selfTest() {
+  const specPath = resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    '../specs/d5-new-components/component-specs.md',
+  );
+  const failures = [];
+  let text = '';
+  try {
+    text = readFileSync(specPath, 'utf8');
+  } catch (err) {
+    console.error(`❌ 读不到规格文档 ${specPath}: ${err.message}`);
+    process.exit(1);
+  }
+
+  // 从「## N. 名字」+「变体: … (N 个)」里抽出 10 个组件集
+  const specSets = new Map();
+  const re = /^## \d+\. ([^\n]+)\n[\s\S]*?^变体:[^\n]*?\((\d+) 个\)/gm;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    specSets.set(m[1].trim(), Number(m[2]));
+  }
+
+  if (specSets.size === 0) {
+    console.error('❌ 规格文档里一个组件集都没解析出来 —— 格式变了？自测本身失效了');
+    process.exit(1);
+  }
+
+  for (const [name, count] of specSets) {
+    if (!(name in EXPECTED_SETS)) {
+      failures.push(`规格里有「${name}」，但 EXPECTED_SETS 里**没有** → 误删它审计不会红`);
+      continue;
+    }
+    if (EXPECTED_SETS[name] !== count) {
+      failures.push(
+        `「${name}」变体数对不上：规格 ${count} 个，EXPECTED_SETS 写的是 ${EXPECTED_SETS[name]} 个`,
+      );
+    }
+  }
+
+  // 规格文档自己声明的总变体数 vs 逐个加起来
+  const total = /^- (\d+) 变体$/m.exec(text);
+  if (total) {
+    const sum = [...specSets.values()].reduce((a, b) => a + b, 0);
+    if (sum !== Number(total[1])) {
+      failures.push(`逐个加起来 ${sum} ≠ 文档声明的 ${total[1]} 变体`);
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error(`❌ figma-aether-v4-audit 自测失败（${failures.length} 项）:`);
+    for (const f of failures) console.error(`   ✗ ${f}`);
+    process.exit(1);
+  }
+  console.log(
+    `✅ figma-aether-v4-audit 自测通过（${specSets.size} 个 D5 组件集与规格文档一致，` +
+      `都在 EXPECTED_SETS 里 → 误删会被审计抓到）`,
+  );
+  process.exit(0);
+}
+
+
 
 const api = async (path, retries = 3) => {
   if (FIXTURE) {
@@ -56,7 +139,29 @@ const EXPECTED_SETS = {
   'Card/Neural': 2,
   'Controls/Transport': 2,
   'Button/Like': 3, // unliked|liked|fanout（跨平台红心）
+  // ── D5_NEW 的 10 个组件集（specs/d5-new-components）────────────────
+  // 加进来的**目的**：这 10 个是 D5 新建的组件（Modal/Shell 等），之前不在
+  // 期望清单里 → 谁在 Figma 里**误删**了它们，审计**不会红**（等于白建）。
+  // 现在每个都在清单里 → 少了 / 变体数变了 → 审计立刻报出来。
+  //
+  // ⚠️ 变体数**不是手抄的**：它与 `specs/d5-new-components/component-specs.md`
+  //    交叉核对（见下面的 `--self-test`）→ 规格文档改了、这里忘了改 → 自测变红。
+  'Modal/Shell': 1, // state=default
+  'Modal/ErrorPanel': 2, // state=collapsed|expanded
+  'Modal/RecoLoading': 2, // state=loading|error
+  'SourceChip': 4, // platform=qq|netease|deezer|spotify
+  'Screen/SourceSelect': 2, // state=empty|ready
+  'Titlebar': 3, // state=logged-out|logged-in|logging-in
+  'Layout/QualityMenu': 3, // quality=standard|high|lossless
+  'Layout/SourceMenu': 4, // provider=qq|netease|deezer|spotify
+  'Layout/DeezerPresetSelect': 3, // state=default|hover|open
+  'Modal/NeteaseCookie': 4, // state=empty|qr-shown|cookie-paste|submitting
 };
+// 自测放在这里：EXPECTED_SETS 刚定义完（const 有 TDZ，早于它用会 ReferenceError）
+if (process.argv.includes('--self-test')) {
+  selfTest();
+}
+
 const EXPECTED_COMPONENTS = [
   'Scene/Backdrop',
   'State/RecoUnconfigured',

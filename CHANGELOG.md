@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PR 模板：把仓库已经在守的门禁写成一份清单**（2026-10-28）
+
+  仓库**之前没有** PR 模板 → 贡献者只能自己翻 CI 日志才知道该做什么。
+
+  新建 `.github/PULL_REQUEST_TEMPLATE.md`：必做项（typecheck / lint / 全量套件 /
+  覆盖率 diff 门禁 / CHANGELOG）+ **条件触发项**（动了动效 → `specs/motion-spec.json`
+  要加条目；新建组件 → `component-specs.md` 要更新 + audit 要过；改了 `specs/**`
+  → 对应 `tasks.md` 的**验收清单**要勾上并写证据；改了打包产物 → `pack.cjs --self-test`
+  + `pack:verify` 要过）。
+
+  ⚠️ **诚实说明**：模板里的 checkbox 是**承诺**不是门禁 —— 它不会让 CI 变红。
+  真要强制「动了动效 → motion spec 必须一起动」，还得加一道 CI 检查
+  （已记进 `NEXT-ITERATION.md` 的「门禁收口」）。
+
+- **Figma v4 audit 的期望清单补上 D5 的 10 个组件集 —— 误删它们现在会红**（2026-10-28）
+
+  `scripts/figma-aether-v4-audit.mjs` 的 `EXPECTED_SETS` 是「这个 Figma 文件里应该
+  有哪些组件集、各几个变体」的清单。D5 新建的 10 个（`Modal/Shell` / `Titlebar` /
+  `SourceChip` …，合计 28 变体）**一开始不在清单里** → 谁在 Figma 里**误删**了它们，
+  审计**不会红**（等于白建）。
+
+  - 加进 `EXPECTED_SETS` → 少了 / 变体数变了 → 审计立刻报出来。
+  - 顺带加 `--self-test`（**离线**、不需要 token，已挂进 `test:ci`）：把
+    `EXPECTED_SETS` 与 `specs/d5-new-components/component-specs.md` **交叉核对**
+    → 清单不再是**手抄**的；规格改了忘了改清单会被当场抓到（守住①漏 ②漂移两个方向）。
+  - 变异验证（实测）：从清单里删掉 `Titlebar` → 自测红；把 `Modal/Shell` 的变体数
+    写成 2 → 自测红；恢复 → 绿。
+
+### Added
+
 - **自动更新 —— 发版后用户不用手动下 dmg**（2026-10-27，`specs/auto-update`）
 
   功能盘点 **P0**：`electron-updater / autoUpdater → 0 处` —— 不装它，每次发版

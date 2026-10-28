@@ -24,6 +24,15 @@
 
 ## Phase C — 持续
 
-- [ ] **C1** 任何新增动效的 PR 必含 spec 条目（PR template 加 checkbox）
+- [x] **C1** 任何新增动效的 PR 必含 spec 条目（PR template 加 checkbox）
+      （2026-10-28 落地）→ 新建 `.github/PULL_REQUEST_TEMPLATE.md`，含
+      「**新增或修改了动效**？→ `specs/motion-spec.json` 加了对应条目」这一条，
+      并指明 Figma 侧怎么同步、用哪条命令校验（`audit-d10.mjs`）。
+      顺带把仓库**已经在守**的几条一起放进模板（typecheck / lint / 全量套件 /
+      覆盖率 diff 门禁 / CHANGELOG / 新建组件 / 改 spec 要勾验收清单 / 改打包产物）
+      —— 贡献者只在一处看清单，少一个去处就少一次「忘了」。
+      ⚠️ **诚实说明**：checkbox 本身是**承诺**不是门禁 —— 模板不会让 CI 变红。
+      真要强制，得加一道「动了动效 → `specs/motion-spec.json` 必须一起动」的
+      CI 检查（**尚未做**，见 NEXT-ITERATION）。
 - [x] **C2** 与 D4 同步：spec 改了 → tokens 自动 export → SCSS diff —— D4 交付的
       `tokens:check` 已接进 `test:ci`，覆盖这条

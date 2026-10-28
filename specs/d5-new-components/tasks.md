@@ -28,7 +28,19 @@
 
 ## Phase C — 后续
 
-- [ ] **C1** v4 audit `EXPECTED_SETS` 加 10 个 D5_NEW 组件名（防未来误删）
+- [x] **C1** v4 audit `EXPECTED_SETS` 加 10 个 D5_NEW 组件名（防未来误删）
+      （2026-10-28 落地）→ `scripts/figma-aether-v4-audit.mjs` 的 `EXPECTED_SETS`
+      加了 `Modal/Shell`(1) / `Modal/ErrorPanel`(2) / `Modal/RecoLoading`(2) /
+      `SourceChip`(4) / `Screen/SourceSelect`(2) / `Titlebar`(3) /
+      `Layout/QualityMenu`(3) / `Layout/SourceMenu`(4) /
+      `Layout/DeezerPresetSelect`(3) / `Modal/NeteaseCookie`(4)（合计 28 变体 ✓）
+      → **谁在 Figma 里误删了它们，审计会红**（之前不在清单里 → 白建）。
+      - 顺带加了 `--self-test`（离线、不需要 token，已挂进 `test:ci`）：把
+        `EXPECTED_SETS` 与**本规格文档**交叉核对 —— 规格里有而清单里没有 → 红；
+        变体数对不上 → 红；逐个加起来 ≠ 文档声明的 28 变体 → 红。
+        ⇒ 清单不再是**手抄**的，规格改了忘了改清单会被当场抓到。
+      - 变异验证（实测）：从 `EXPECTED_SETS` 删掉 `Titlebar` → 自测红；
+        把 `Modal/Shell` 的变体数写成 2 → 自测红；恢复 → 绿。
 - [ ] **C2** 任何新建组件的 PR 必含 component-specs.md 更新 + strict audit PASS
 
 ## Phase B 执行记录（2026-09-20）
