@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   根因：`scripts/ensure-electron-dist.cjs` 里写的是
 
   ```js
-  path.resolve(__dirname, '../../node_modules/electron')
+  path.resolve(__dirname, '../../node_modules/electron');
   ```
 
   从 `packages/electron/scripts` 出发 = **`packages/node_modules/electron`** ——
@@ -103,6 +103,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   这也是本轮连续第三个「静默降级」了（第三个在 `ensure-electron-dist`）——
   **静默降级是这个仓库反复出现的一类 bug**，值得单独立一条长期项盯着。
+
+- **PR 模板：把仓库已经在守的门禁写成一份清单**（2026-10-28）
+
+  仓库**之前没有** PR 模板 → 贡献者只能自己翻 CI 日志才知道该做什么。
+
+  新建 `.github/PULL_REQUEST_TEMPLATE.md`：必做项（typecheck / lint / 全量套件 /
+  覆盖率 diff 门禁 / CHANGELOG）+ **条件触发项**（动了动效 → `specs/motion-spec.json`
+  要加条目；新建组件 → `component-specs.md` 要更新 + audit 要过；改了 `specs/**`
+  → 对应 `tasks.md` 的**验收清单**要勾上并写证据；改了打包产物 → `pack.cjs --self-test`
+  - `pack:verify` 要过）。
+
+  ⚠️ **诚实说明**：模板里的 checkbox 是**承诺**不是门禁 —— 它不会让 CI 变红。
+  真要强制「动了动效 → motion spec 必须一起动」，还得加一道 CI 检查
+  （已记进 `NEXT-ITERATION.md` 的「门禁收口」）。
+
+- **Figma v4 audit 的期望清单补上 D5 的 10 个组件集 —— 误删它们现在会红**（2026-10-28）
+
+  `scripts/figma-aether-v4-audit.mjs` 的 `EXPECTED_SETS` 是「这个 Figma 文件里应该
+  有哪些组件集、各几个变体」的清单。D5 新建的 10 个（`Modal/Shell` / `Titlebar` /
+  `SourceChip` …，合计 28 变体）**一开始不在清单里** → 谁在 Figma 里**误删**了它们，
+  审计**不会红**（等于白建）。
+
+  - 加进 `EXPECTED_SETS` → 少了 / 变体数变了 → 审计立刻报出来。
+  - 顺带加 `--self-test`（**离线**、不需要 token，已挂进 `test:ci`）：把
+    `EXPECTED_SETS` 与 `specs/d5-new-components/component-specs.md` **交叉核对**
+    → 清单不再是**手抄**的；规格改了忘了改清单会被当场抓到（守住①漏 ②漂移两个方向）。
+  - 变异验证（实测）：从清单里删掉 `Titlebar` → 自测红；把 `Modal/Shell` 的变体数
+    写成 2 → 自测红；恢复 → 绿。
+
+### Fixed
+
+- **`packages/electron/node_modules` 这条「本机绝对路径自指软链」被提交进了仓库**（2026-10-28）
+
+  ⚠️ 这是**我自己**在 #141 里带进去的（`git add` 时把一个「名叫 node_modules 的**符号链接**」
+  当普通文件收进了索引）。
+
+  根因：根 `.gitignore` 第 1 行写的是 `node_modules/` —— **带斜杠只匹配目录**，
+  而**符号链接在 git 眼里是文件** → 规则不生效 → 直接进了提交。
+  （同一份仓库里 `.opencode/.gitignore` 写的偏偏是不带斜杠的 `node_modules` —— 两种写法并存，
+  迟早踩到。）
+
+  后果（都不是小问题）：
+
+  1. 别人 / CI checkout 出来是一条指向 `/Users/tangshuai/maestro/packages/electron/node_modules`
+     的**死链** —— 把我这台机器的路径写进了公共仓库。
+  2. 在本机上它还**自指**（指向自己）→ `ls` 直接报
+     `too many levels of symbolic links` → 连 pre-commit 的 prettier 都 stat 不了
+     → **这次合并 master 的提交就是被它当场挡下来的**（不是推测：hook 报的就是这条）。
+  3. `electron-builder` 的 `files` 含 `node_modules/**/*` → 打包时按这个路径收依赖，
+     遇到死链是**另一种**炸法。
+
+  修法：
+  - `git rm --cached` 把它从索引里摘掉（仓库里不再有这条软链）；
+  - `.gitignore` 改成**不带斜杠**的 `node_modules` → 目录 / 文件 / 符号链接三种都匹配，
+    不会再有第二次。
 
 ### Added
 
