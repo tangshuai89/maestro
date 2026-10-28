@@ -40,6 +40,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `node_modules` 移走 = 模拟「缺依赖 → app 启动即崩」）→ 报 3 项失败 → **exit 1** ✓；
   没有任何产物时 → 5 项失败 → exit 1 ✓。
 
+- **`ensure-electron-dist.cjs` 的路径算错了 → 它从来没真正装过 electron 二进制**（2026-10-28）
+
+  上一条的 macOS CI job **第一次跑就抓到**了这个 bug：
+
+  ```
+  ❌ [pack] electronDist 里没有 Electron.app（…/node_modules/electron/dist）
+  ```
+
+  根因：`scripts/ensure-electron-dist.cjs` 里写的是
+
+  ```js
+  path.resolve(__dirname, '../../node_modules/electron')
+  ```
+
+  从 `packages/electron/scripts` 出发 = **`packages/node_modules/electron`** ——
+  **那个目录根本不存在**（npm workspaces 把 electron **提升**到了**仓库根**的
+  node_modules）→ 脚本每次都走「installer 不存在 → 静默 exit 0」
+  → **它从来没真正下载过任何东西**。
+
+  本地之所以看不出问题：二进制早被别的途径装好了（`install.js` 自带
+  `isInstalled()` 判定 → 已装就跳过）⇒ 脚本的「没装」分支永远走不到。
+
+  ⇒ 只有在**全新 node_modules** 的环境（= CI runner）里才会暴露。
+
+  修法：
+  - **两处都找**（仓库根的 `node_modules/electron` ← workspace 提升的位置；
+    包自己的 `node_modules/electron` ← 有版本冲突时 npm 就地装的位置）。
+  - 「electron 包装了、但里面没有 install.js」不再**静默跳过** → 那是**异常状态**
+    （二进制永远下不下来），要明确报错；否则错误会伪装成「electron 没装」，
+    最后以「electronDist 里没有 Electron.app」这种看不懂的形式爆出来。
+
 ### Added
 
 - **自动更新 —— 发版后用户不用手动下 dmg**（2026-10-27，`specs/auto-update`）
