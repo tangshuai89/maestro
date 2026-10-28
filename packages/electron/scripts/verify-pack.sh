@@ -21,7 +21,18 @@
 # `require('@nestjs/core')` 会解析失败 → **app 启动即崩**。
 # 这个症状在「dmg 出出来了」之后才会暴露，所以必须单独验。
 set -uo pipefail
-cd "$(dirname "$0")/.."
+
+# ⚠️ **路径要在 cd 之前、且用绝对路径算好**（2026-10-28 修的真 bug）：
+#   原来 `cd "$(dirname "$0")/.."` 之后，再用**相对**的 `$0` 算 REPO_ROOT
+#   → `$0` 相对于**新的 cwd** 解释 → 解析到不存在的地方 → REPO_ROOT 变成空
+#   → 「产物新鲜度」检查**静默跳过**（本地也是！脚本里 `find` 一个不存在的
+#   目录 → SRC_NEWEST 为空 → 那段 if 永远不进 → **没人发现它一直没跑**）。
+#   CI 从仓库根调用时更直接：cd 失败 → `REPO_ROOT` 为空 →
+#   `node /scripts/check-artifact-hygiene.cjs` → 模块找不到 → 门禁误报「dist 不干净」。
+# ⇒ 用 `${BASH_SOURCE[0]}`（脚本自己的路径）先 `cd ... && pwd` 取绝对路径。
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$SCRIPT_DIR/.."
 
 # ── 参数 ──
 REQUIRE_DMG=1
@@ -83,10 +94,16 @@ echo "── 产物新鲜度（防「打进旧版本」）───────�
 #
 # 判据：包里的产物 mtime 必须**不早于**当前源码的最新 mtime。
 # （包里的文件 mtime = 构建时刻，electron-builder 拷贝不重写 → 可比）
-REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 SRC_NEWEST=$(find "$REPO_ROOT/packages/server/src" "$REPO_ROOT/packages/renderer/src" \
   -type f \( -name '*.ts' -o -name '*.tsx' \) -exec stat -f '%m %N' {} \; 2>/dev/null \
   | sort -rn | head -1 | cut -d' ' -f1)
+# ⚠️ **必须把「比的是什么」打出来** —— 否则「没找到源码 → 静默跳过」这件事
+#    根本看不出来（这正是 REPO_ROOT 算错时发生的事：检查一直在跳过，没人发现）。
+if [ -z "$SRC_NEWEST" ]; then
+  fail "找不到源码（\$REPO_ROOT/packages/{server,renderer}/src）→ 新鲜度检查没法做"
+else
+  echo "   （比对的基准：源码最新的一处改动 $(date -r "$SRC_NEWEST" '+%m-%d %H:%M')）"
+fi
 STALE=0
 for rel in "server/main.js" "renderer/index.html"; do
   f="$APP/Contents/Resources/$rel"

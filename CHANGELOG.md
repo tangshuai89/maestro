@@ -71,6 +71,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     （二进制永远下不下来），要明确报错；否则错误会伪装成「electron 没装」，
     最后以「electronDist 里没有 Electron.app」这种看不懂的形式爆出来。
 
+- **`verify-pack.sh` 的 `REPO_ROOT` 算错 → 「产物新鲜度」检查一直在静默跳过**（2026-10-28）
+
+  ⚠️ 这是 **PR #121 里我自己引入的**（当时给「产物新鲜度」检查加的）——
+  macOS CI job 第一次跑就把它炸出来了。
+
+  原来脚本是：
+
+  ```bash
+  cd "$(dirname "$0")/.."                       # 先 cd
+  REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"   # 再用**相对**的 $0 算
+  ```
+
+  `$0` 是**相对**路径 → `cd` 之后它相对于**新的 cwd** 解释 → 解析到不存在的地方
+  → `REPO_ROOT` 变成空/错位。
+
+  后果分两种，**都很难看出来**：
+  - 本地（从 `packages/electron` 跑）→ `REPO_ROOT` 指到仓库外 → `find` 找不到
+    源码 → `SRC_NEWEST` 为空 → **新鲜度检查整段跳过**（那个 if 永远不进）
+    → 「检查一直不存在」这件事**没有任何报错**。
+  - CI（从仓库根跑）→ `cd` 失败 → `REPO_ROOT` 为空 →
+    `node /scripts/check-artifact-hygiene.cjs` → 模块找不到 → **门禁误报**
+    「dist 目录不干净」。
+
+  修法：
+  - 用 `${BASH_SOURCE[0]}`（脚本自己的路径）先 `cd ... && pwd` 取**绝对路径**，
+    再算 `REPO_ROOT`、再 `cd`。
+  - **把「比的是什么」打出来**（「比对的基准：源码最新的一处改动 …」）——
+    否则「没找到源码 → 静默跳过」这件事根本看不出来。
+  - 找不到源码时**明确失败**，不再静默跳过。
+
+  这也是本轮连续第三个「静默降级」了（第三个在 `ensure-electron-dist`）——
+  **静默降级是这个仓库反复出现的一类 bug**，值得单独立一条长期项盯着。
+
 ### Added
 
 - **自动更新 —— 发版后用户不用手动下 dmg**（2026-10-27，`specs/auto-update`）
