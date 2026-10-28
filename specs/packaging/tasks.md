@@ -173,6 +173,41 @@ castlabs/electron-releases#8244344c…") is not fixed in project.`
     `require.resolve('@maestro/common')` → 解析到 `dist/index.js` ✅；导出可用 ✅
 
 - [x] 23. 出货验收**全是"人肉验一次"** —— 6 条勾选框一直空着（**2026-10-24 完成**）
+
+- [x] 26. 出厂验收**没有强制力** + CI 查不到「出厂 app 起不来」（**2026-10-28 完成**）
+
+  `scripts/verify-pack.sh` 是**唯一**能验「出厂 app 能不能起来」的东西
+  （它把出厂的 `Resources/server/main.js` **真的起一次**再探 `/storage/info`），
+  但它有两个洞：
+
+  1. **永远 exit 0** —— 哪怕满屏 ❌。它是个「报告」，不是门禁。
+     ⇒ 「app 装上就崩」这条路径**实际上没有任何门禁**。
+     ⚠️ 讽刺：同一个脚本早前就因为「`node ... | sed` 的退出码是 sed 的（恒 0）」
+     踩过一次坑（"构建成功"是假象），但**脚本自己**的退出码一直没管。
+  2. **CI 上根本没有它** —— dmg 要 hdiutil + 签名，CI 上打不出来
+     → 「出厂 app 起不来」**只能本地验** → 半年没人验一次。
+
+  **修法**：
+  - 脚本改成**有 ❌ 就 exit 1**（新增 `fail()` 累加器；失败项**逐条列出**；
+    `node -e` 的依赖解析探针改成**自己 exit(1)**，脚本看它的退出码，
+    不用管道）；`--no-dmg` 开关给「只造了 .app」的场景用。
+  - 新增 `.github/workflows/packaged-app.yml`（**macOS runner**）：
+    `electron-builder --dir` 造 .app（**不出 dmg** → 省掉 hdiutil 与签名的
+    失败面）→ 跑 `verify-pack.sh --no-dmg` → **有 ❌ 就红**。
+    ⚠️ 必须是 macOS：探针跑的是**出厂 app 里的那个 Electron 二进制**
+    （`ELECTRON_RUN_AS_NODE=1`）→ ubuntu 上没有那个可执行文件。
+    代价：macOS runner 按 10 倍分钟计费（与 `visual.yml` 同款取舍）⇒ 用
+    **paths 过滤**把触发面收窄到「能影响出货产物」的路径。
+
+  **实测**：
+  - `npm run pack -- --dir` → 出 .app、**不出 dmg** ✓；`verify-pack.sh --no-dmg`
+    → **全部检查通过，exit 0** ✓（含「出厂 sidecar 真起来并答了 /storage/info」）
+  - **反面**（把出厂 server 的 `node_modules` 移走 = 模拟「缺依赖 → app 启动即崩」）
+    → 报 **3 项失败**（没有 server/node_modules / 依赖解析失败 / 出厂 sidecar 起不来）
+    → **exit 1** ✓
+  - 没有任何产物时 → 5 项失败 → exit 1 ✓
+  - `check-artifact-hygiene.cjs` 在这个脚本里改成带 `--require-built`
+    （没构建过 = **失败**，不是跳过 —— 「跳过」= 门禁形同虚设）
   - 现象：`specs/packaging/spec.md` 的「验收标准」6 条**一条没勾**，而且
     **没人说得清哪条证据守着它** —— 勾选框空着 = 没人知道它是"没做"还是
     "做了但没记证据"。这类"欠账"最消耗个人开发者：清单看着长，其实早就不欠。

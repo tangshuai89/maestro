@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 # 验收打包产物：dmg 在不在、.app 结构对不对、**sidecar server 的依赖能不能解析**。
 #
+# ## ⚠️ 退出码（2026-10-28 改）
+#
+# 以前这个脚本**永远 exit 0** —— 哪怕它满屏 ❌。它是个「报告」，不是门禁。
+# ⇒ 「出厂 app 能不能起来」这条路径**实际上没有任何门禁**（CI 打不了 dmg，
+#   只有这个脚本能查；��本该守的地方它不守）。
+#
+# 现在：**有 ❌ 就 exit 1**（全部检查都过才 exit 0）。
+#   - 失败项会**逐条列出来**（不只是一句「有问题」）
+#   - `--no-dmg`：只造了 .app、没造 dmg 时用（CI 的 macOS job 走这条路
+#     —— `electron-builder --dir` 出 .app 不出 dmg，省掉 hdiutil 的时间与失败面）
+#
+# ⚠️ 同一类坑本脚本早前踩过：「构建成功」是假象（`node ... | sed` 的退出码是
+#    sed 的，恒 0）。所以这里**不用管道取退出码**，一律单独捕获。
+#
 # 为什么单独查 sidecar：server 是通过 extraResources 放在 `Resources/server/` 的
 # （**不在 asar 里**），而它的依赖（@nestjs/core 等）没被打包进去 →
 # `spawn(process.execPath, [Resources/server/main.js])` 起来后
@@ -9,20 +23,56 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# ── 参数 ──
+REQUIRE_DMG=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-dmg) REQUIRE_DMG=0 ;;   # 只造了 .app（CI 的 --dir 路径）
+    *) echo "用法: verify-pack.sh [--no-dmg]" >&2; exit 2 ;;
+  esac
+done
+
+# ── 失败累加器：所有 ❌ 都往这儿记，最后统一 exit 1 ──
+FAIL_COUNT=0
+FAILURES=()
+fail() {
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAILURES+=("$1")
+  echo "❌ $1"
+}
+
 RELEASE="release"
 APP="$RELEASE/mac-arm64/Maestro.app"
 
 echo "── 产物 ─────────────────────────────────────────"
-ls -lh "$RELEASE"/*.dmg 2>/dev/null || echo "❌ 没有 dmg"
+if ls -lh "$RELEASE"/*.dmg >/dev/null 2>&1; then
+  ls -lh "$RELEASE"/*.dmg
+elif [ "$REQUIRE_DMG" -eq 1 ]; then
+  fail "没有 dmg（release/*.dmg 不存在）—— 跑 npm run pack 造一个"
+else
+  echo "（--no-dmg：跳过 dmg 检查）"
+fi
 echo
-du -sh "$APP" 2>/dev/null || echo "❌ 没有 .app"
+if du -sh "$APP" >/dev/null 2>&1; then
+  du -sh "$APP"
+else
+  fail "没有 .app（$APP 不存在）"
+fi
 
 echo
 echo "── .app 结构 ───────────────────────────────────"
-ls "$APP/Contents/Resources" 2>/dev/null || echo "❌ 没有 Resources"
+if ls "$APP/Contents/Resources" >/dev/null 2>&1; then
+  ls "$APP/Contents/Resources"
+else
+  fail "没有 Resources（$APP/Contents/Resources 不存在）"
+fi
 echo
 echo "app.asar 大小："
-ls -lh "$APP/Contents/Resources/app.asar" 2>/dev/null | awk '{print "  " $5}' || echo "  ❌ 没有 app.asar"
+if ls -lh "$APP/Contents/Resources/app.asar" 2>/dev/null | awk '{print "  " $5}'; then
+  :
+else
+  fail "没有 app.asar（$APP/Contents/Resources/app.asar 不存在）"
+fi
 
 echo
 echo "── 产物新鲜度（防「打进旧版本」）──────────────────"
@@ -43,14 +93,12 @@ for rel in "server/main.js" "renderer/index.html"; do
   [ -f "$f" ] || continue
   mt=$(stat -f '%m' "$f")
   if [ -n "$SRC_NEWEST" ] && [ "$mt" -lt "$SRC_NEWEST" ]; then
-    echo "❌ $rel 比源码还旧（产物 $(date -r "$mt" '+%m-%d %H:%M') < 源码 $(date -r "$SRC_NEWEST" '+%m-%d %H:%M')）"
-    echo "   → 打包前没重新构建 → 打进去的是**旧代码**。跑 npm run pack（它会自己构建全部产物）。"
-    STALE=1
+    fail "$rel 比源码还旧（产物 $(date -r "$mt" '+%m-%d %H:%M') < 源码 $(date -r "$SRC_NEWEST" '+%m-%d %H:%M')）—— 打包前没重新构建 → 打进去的是**旧代码**。跑 npm run pack（它会自己构建全部产物）。"
   else
     echo "✅ $rel 不比源码旧（$(date -r "$mt" '+%m-%d %H:%M')）"
   fi
 done
-[ "$STALE" -eq 0 ] || echo "❌ 产物陈旧 —— 这个包不能发。"
+
 
 echo
 echo "── 出货产物不许带测试代码 ─────────────────────────"
@@ -71,11 +119,14 @@ echo "── 出货产物不许带测试代码 ───────────
 echo "① 仓库 dist 目录（CI 同一个门禁）："
 # ⚠️ 不能写成 `node ... | sed` —— 管道的退出码是 sed 的（恒 0）→ 门禁红了也看不出来。
 #   这正是本脚本早前踩过的坑（「构建成功」是假象）。
-GATE_OUT=$(node "$REPO_ROOT/scripts/check-artifact-hygiene.cjs" 2>&1)
+# ⚠️ **--require-built**：没构建过 = **失败**，不是跳过。
+#   「跳过」= 门禁形同虚设（同一个原则，CI 的 artifact-hygiene job 已经这么用）。
+#   没有 dist → 谈不上「产物干不干净」。
+GATE_OUT=$(node "$REPO_ROOT/scripts/check-artifact-hygiene.cjs" --require-built 2>&1)
 GATE_EXIT=$?
 printf '%s\n' "$GATE_OUT" | sed 's/^/   /'
 if [ "$GATE_EXIT" -ne 0 ]; then
-  echo "   ❌ dist 目录不干净"
+  fail "dist 目录不干净（check-artifact-hygiene.cjs 报了问题）—— 见上面的清单"
 fi
 echo
 echo "② 打好的 .app（asar + sidecar）："
@@ -126,7 +177,7 @@ APP_TEST_COUNT=$(printf '%s' "$NODE_APP_SCAN" | grep -c . || true)
 if [ "${APP_TEST_COUNT:-0}" -eq 0 ]; then
   echo "✅ app.asar / Resources/server / Resources/renderer 里都没有测试代码"
 else
-  echo "❌ 出货产物里有 $APP_TEST_COUNT 个不该出货的文件："
+  fail "出货产物里有 $APP_TEST_COUNT 个不该出货的文件："
   printf '%s\n' "$NODE_APP_SCAN" | sed 's/^/     ✗ /'
   echo "   → 这些会跟着包发给用户。修法：各包的构建 tsconfig 排除测试 + 构建前清 dist。"
 fi
@@ -135,8 +186,13 @@ echo
 echo "── sidecar server ───────────────────────────────"
 SERVER="$APP/Contents/Resources/server"
 if [ ! -f "$SERVER/main.js" ]; then
-  echo "❌ 没有 Resources/server/main.js"
-  exit 0
+  fail "没有 Resources/server/main.js —— sidecar 根本不在包里"
+  # 后面每一项都依赖它 → 直接收尾（退出码仍是 1）
+  echo
+  echo "── 结论 ─────────────────────────────────────────"
+  echo "❌ $FAIL_COUNT 项失败："
+  for f in "${FAILURES[@]}"; do echo "   ✗ $f"; done
+  exit 1
 fi
 echo "server/main.js 存在"
 echo "server 目录内容："
@@ -144,29 +200,35 @@ ls "$SERVER" | head -10
 if [ -d "$SERVER/node_modules" ]; then
   echo "✅ server/node_modules 存在（$(ls "$SERVER/node_modules" | wc -l | tr -d ' ') 个包）"
 else
-  echo "❌ **没有 server/node_modules** —— sidecar 的 require 会解析失败"
+  fail "**没有 server/node_modules** —— sidecar 的 require 会解析失败 → app 启动即崩"
 fi
 
 echo
 echo "── sidecar 依赖解析实测（ELECTRON_RUN_AS_NODE）────"
 ELECTRON="$APP/Contents/MacOS/Maestro"
 if [ -x "$ELECTRON" ]; then
-  ELECTRON_RUN_AS_NODE=1 "$ELECTRON" -e "
-    try {
-      const p = require.resolve('@nestjs/core', { paths: ['$SERVER'] });
-      console.log('✅ @nestjs/core 解析到：' + p);
-    } catch (e) {
-      console.log('❌ @nestjs/core 解析失败：' + e.code);
+  # ⚠️ **node -e 自己 exit(1)**，脚本看它的退出码 —— 不能只看它打印了什么
+  #    （管道会吞掉退出码，那是本脚本早前踩过的坑）。
+  RESOLVE_OUT=$(ELECTRON_RUN_AS_NODE=1 "$ELECTRON" -e "
+    let bad = 0;
+    for (const m of ['@nestjs/core', '@maestro/common']) {
+      try {
+        const p = require.resolve(m, { paths: ['$SERVER'] });
+        console.log('✅ ' + m + ' 解析到：' + p);
+      } catch (e) {
+        bad++;
+        console.log('❌ ' + m + ' 解析失败：' + e.code);
+      }
     }
-    try {
-      const p = require.resolve('@maestro/common', { paths: ['$SERVER'] });
-      console.log('✅ @maestro/common 解析到：' + p);
-    } catch (e) {
-      console.log('❌ @maestro/common 解析失败：' + e.code);
-    }
-  " 2>&1 | head -8
+    process.exit(bad ? 1 : 0);
+  " 2>&1)
+  RESOLVE_RC=$?
+  printf '%s\n' "$RESOLVE_OUT" | head -8
+  if [ "$RESOLVE_RC" -ne 0 ]; then
+    fail "出厂 sidecar 的依赖解析失败（见上）→ app 启动即崩"
+  fi
 else
-  echo "（找不到可执行的 $ELECTRON，跳过实测）"
+  fail "找不到可执行的 $ELECTRON —— 出厂 app 连二进制都没进包"
 fi
 
 echo
@@ -220,7 +282,7 @@ else
   if [ "$SIDECAR_READY" -eq 1 ]; then
     echo "✅ 出厂 sidecar 起来了，/storage/info 有响应（端口 ${SIDECAR_PROBE_PORT}）"
   else
-    echo "❌ **出厂 sidecar 起不来 / 接口不通** —— 这个包不能发"
+    fail "**出厂 sidecar 起不来 / 接口不通** —— 这个包不能发"
     echo "   最后几行日志："
     tail -6 "$SIDECAR_PROBE_DIR/server.log" 2>/dev/null | sed 's/^/     /'
   fi
@@ -229,3 +291,15 @@ else
   cleanup_probe
   trap - EXIT
 fi
+
+echo
+echo "── 结论 ─────────────────────────────────────────"
+if [ "$FAIL_COUNT" -eq 0 ]; then
+  echo "✅ 全部检查通过（出厂产物可以发）"
+  exit 0
+fi
+echo "❌ $FAIL_COUNT 项失败："
+for f in "${FAILURES[@]}"; do echo "   ✗ $f"; done
+echo
+echo "   → 这些问题会**跟着包发给用户**（最严重的一种是「app 装上就崩」）。"
+exit 1

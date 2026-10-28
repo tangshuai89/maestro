@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **出厂验收变成真门禁 + 搬进 CI（macOS）—— 「app 装上就崩」这条路径不再没人管**（2026-10-28）
+
+  `packages/electron/scripts/verify-pack.sh` 是**唯一**能验「出厂 app 能不能起来」
+  的东西（它把出厂的 `Resources/server/main.js` **真的起一次**再探 `/storage/info`）。
+  但它有两个洞：
+
+  1. **永远 exit 0** —— 哪怕满屏 ❌。它是个「报告」，不是门禁。
+     ⇒ 「app 装上就崩」这条路径**实际上没有任何门禁**。
+     ⚠️ 讽刺：同一个脚本早前就因为「`node ... | sed` 的退出码是 sed 的（恒 0）」
+     踩过一次坑（"构建成功"是假象），但**脚本自己**的退出码一直没管。
+  2. **CI 上根本没有它** —— dmg 要 hdiutil + 签名，CI 上打不出来
+     → 「出厂 app 起不来」**只能本地验** → 半年没人验一次。
+
+  **修法**：
+
+  - 脚本改成**有 ❌ 就 exit 1**：新增 `fail()` 累加器，失败项**逐条列出**；
+    依赖解析探针改成 `node -e` **自己 exit(1)**、脚本看它的退出码（不用管道
+    —— 管道会吞退出码）；新增 `--no-dmg` 开关给「只造了 .app」的场景。
+  - 新增 `.github/workflows/packaged-app.yml`（**macOS runner**）：
+    `electron-builder --dir` 造 .app（**不出 dmg** → 省掉 hdiutil 与签名的失败面）
+    → 跑 `verify-pack.sh --no-dmg` → **有 ❌ 就红**。
+    ⚠️ 必须是 macOS：探针跑的是**出厂 app 里的那个 Electron 二进制**
+    （`ELECTRON_RUN_AS_NODE=1`）→ ubuntu 上没有那个可执行文件。代价：macOS runner
+    按 10 倍分钟计费（与 `visual.yml` 同款取舍）⇒ 用 **paths 过滤**把触发面收窄
+    到「能影响出货产物」的路径。
+
+  **实测**：`npm run pack -- --dir` → 出 .app、不出 dmg ✓；验收 → 全过 exit 0 ✓
+  （含「出厂 sidecar 真起来并答了 `/storage/info`」）；**反面**（把出厂 server 的
+  `node_modules` 移走 = 模拟「缺依赖 → app 启动即崩」）→ 报 3 项失败 → **exit 1** ✓；
+  没有任何产物时 → 5 项失败 → exit 1 ✓。
+
+### Added
+
 - **自动更新 —— 发版后用户不用手动下 dmg**（2026-10-27，`specs/auto-update`）
 
   功能盘点 **P0**：`electron-updater / autoUpdater → 0 处` —— 不装它，每次发版

@@ -1,0 +1,85 @@
+# 出厂产物验收（macOS）—— 「app 装上能不能起来」
+#
+# ## 为什么需要这条 workflow
+#
+# `packages/electron/scripts/verify-pack.sh` 会**真的起一次**出厂的 sidecar
+# （`Resources/server/main.js`）并探它的 `/storage/info` —— 这一层只有它能查：
+#
+#   - CI 上**打不了 dmg**（dmg 要 hdiutil + 签名），但 `.app` 可以
+#     （`electron-builder --dir`）→ 所以「出厂 app 起不来」这件事此前
+#     **完全没人验** → 直到用户装上才发现（实测踩过：sidecar 缺 @nestjs/core
+#     → dmg 都出来了 → app 启动即崩）。
+#   - 前面的检查只验「依赖能解析」（require.resolve）→ **不覆盖**
+#     「进程起不来 / 端口不通 / 鉴权头不对 / 环境变量没生效」这一整类事故。
+#
+# ## 为什么用 macOS runner
+#
+# 探针用的是**出厂 app 里的那个 Electron 二进制**
+# （`ELECTRON_RUN_AS_NODE=1`）—— 它是 macOS 的可执行文件，ubuntu 上没有。
+# 代价：macOS runner 按 10 倍分钟计费（与 visual.yml 同款取舍）。
+# ⇒ 用 **paths 过滤**把触发面收窄到「能影响出货产物」的路径。
+#
+# ## 它和别的门禁的关系
+#
+#   - `artifact-hygiene`（ubuntu）→ 判**仓库里**的 dist 干不干净
+#   - 本 workflow（macOS）→ 判**打好的 .app** 里干不干净 + 能不能起来
+#   两者互补：前者抓「测试代码/陈旧产物混进 dist」，后者抓「产物的运行时布局坏了」。
+
+name: Packaged App (macOS)
+
+on:
+  pull_request:
+    paths:
+      - 'packages/electron/**'
+      - 'packages/server/**'
+      - 'packages/renderer/**'
+      - 'packages/common/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/packaged-app.yml'
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  packaged-app:
+    # ⚠️ 必须是 macOS：探针跑的是**出厂 app 里的 Electron 二进制**。
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: 构建 common（server/renderer 依赖它的 dist）
+        run: npm run build:common
+
+      # ⚠️ `--dir` = **只出 .app，不出 dmg**：
+      #   - 省掉 hdiutil 的时间与失败面（dmg 要签名，CI 上没证书）
+      #   - 我们要验的是「app 能不能起来」，不是「dmg 能不能压出来」
+      #   - `pack.cjs` 会把多余参数透传给 electron-builder ✓
+      # ⚠️ `SKIP_VMP=1`：跳过 Widevine VMP 签名（要 castLabs EVS 凭据，
+      #   那是 A1 的事）→ 不影响「app 能不能起来」这个判据。
+      - name: 造 .app（不造 dmg）
+        working-directory: packages/electron
+        run: SKIP_VMP=1 npm run pack -- --dir
+
+      # ⚠️ 这一步**有 ❌ 就 exit 1**（2026-10-28 改的）—— 以前这个脚本永远
+      #   exit 0 → 满屏 ❌ 也不拦 ⇒ 这条路径实际上没有门禁。
+      - name: 验收出厂产物（.app 结构 / 出货卫生 / 出厂 sidecar 真起来一次）
+        run: bash packages/electron/scripts/verify-pack.sh --no-dmg
+
+      - name: 失败时把出厂 sidecar 的日志捞出来
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-app-logs
+          path: |
+            packages/electron/release/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
