@@ -110,7 +110,7 @@
 ## P2 — Spotify/WPS 生命周期
 
 - [x] **T7** Spotify token/session 生命周期
-  - `common/session.ts` `persistSpotify`（~214）：校验传入的
+  - `packages/server/src/common/session.ts` `persistSpotify`（~214）：校验传入的
     ProviderSession 与当前 live `s.providers.spotify` 是同一对象引用
     （不是则说明已登出/重登，丢弃写入并 log）
   - `spotify.provider.ts` `getValidTokenForRenderer`（~474）：refresh

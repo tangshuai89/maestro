@@ -186,7 +186,7 @@
 > H2 / H3 已闭合；H1 的**测试**已补但**测不出来**（被 H6 挡住）；
 > H6 实测影响远大于预估 —— 不是 1pp 的口径微调，是 **~24pp** 的语义差。
 
-- [x] **H1** `renderer/src/hooks/usePlayer.ts` 行覆盖 **5.3%**（115/2155，未覆盖段连续 116–2155）
+- [x] **H1** `packages/renderer/src/hooks/usePlayer.ts` 行覆盖 **5.3%**（115/2155，未覆盖段连续 116–2155）
   - 根因：`usePlayer.test.mjs` 的 99 项断言只调用了 `usePlayer.ts` **导出的纯函数**
     （`pickFallbackSource` / `shouldTransientRetry` / `parsePlayableQueue` …），
     **从未调用 `usePlayer` 这个 hook 本身** → 2040 行 hook 体一行没跑
@@ -224,7 +224,7 @@
       卡死探测 1500ms ≈ 2.3s）→ 用假定时器手动推进，**23.4s → 392ms**，
       且与负载无关（理由同 H4 的两条 flaky）
 
-- [x] **H2** `server/src/reco/reco.service.ts` 行覆盖 **11.1%**、函数覆盖 **4.7%**（5/107）
+- [x] **H2** `packages/server/src/reco/reco.service.ts` 行覆盖 **11.1%**、函数覆盖 **4.7%**（5/107）
   - 根因：`reco.test.ts`（1401 行）只调了 `svc.setApiKey()` 和 `svc.status()`，
     **从未调用** `run()` / `evaluate()` / `recordSignals()` / `callDeepSeekForParse()`
     —— 也就是 DeepSeek 推荐主链路一次没执行
@@ -233,7 +233,7 @@
     复测 **行 84.6%（1587/1876）、函数 91.5%（43/47）**，
     `run()` / `evaluate()` / `recordSignals()` / `callDeepSeekForParse()` 均已执行
 
-- [x] **H3** `server/src/music/entitlement.ts` 函数覆盖 **0%** —— `classifyPlaybackFailure`
+- [x] **H3** `packages/server/src/music/entitlement.ts` 函数覆盖 **0%** —— `classifyPlaybackFailure`
   - 文件自己的注释就写着「纯函数，白盒可测」，但没有任何测试调过它
   - 这是「凭据失效 / 权益失效 / 无版权」三态判定的入口，直接决定用户看到哪种提示
   - ✅ **已闭合**（`90ddf5f` 新增 `server/src/music/entitlement.classify.test.ts`，
@@ -278,8 +278,8 @@
     网络"—— 那是许愿不是事实）→ 全打桩 + 加一道网络陷阱（fetch 一调用就抛 +
     计数，结束断言零真实网络请求）
 
-- [x] **H5** `electron/src/main.ts` + `preload.ts` 零覆盖 —— **已补执行级测试**
-  - `3f7373a` 先加了 `electron/src/ipc-surface.test.ts`（5 条**全量通道面**契约：
+- [x] **H5** `packages/electron/src/main.ts` + `preload.ts` 零覆盖 —— **已补执行级测试**
+  - `3f7373a` 先加了 `packages/electron/src/ipc-surface.test.ts`（5 条**全量通道面**契约：
     renderer→main / main→renderer / 白名单方向 / 白名单生效），但只断言通道名，
     **不执行实现** → 行覆盖仍 0
   - 2026-10-21 补**执行级**测试（19 条）：`preload.test.ts`（真调 API，断言通道/
@@ -1156,9 +1156,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                                → GET /music/stream/:provider/:trackId
-                                                                                                  → musicService.getStreamUrl() 拿上游 URL
-                                                                                                    → proxyAudio() 转发到上游 CDN
+                                                                                                        → GET /music/stream/:provider/:trackId
+                                                                                                          → musicService.getStreamUrl() 拿上游 URL
+                                                                                                            → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
@@ -1244,6 +1244,45 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
     代码有问题，只代表环境没权限。
   - 实测：`music.controller.ts` 从 **77.33%（979/1266）→ 87.84%（1112/1266）**；
     899-1001 段从 **0 行 → 97 行覆盖**；生产代码**零改动**（只新增测试文件）。
+
+- [x] **H19** 验收清单的**证据指向不存在的文件** —— 清单已经在腐烂，但没人看得出来
+      （2026-10-29，PR #144）
+
+  `specs/<name>/tasks.md` 是判断「这件事到底做没做完」的**唯一**依据（1174 条勾选项）。
+  它腐烂有两种，第二种此前**完全没人管**：合并后没人回来勾（实测 21 项没勾，其中
+  15 项在**已合并**的 feature 里），以及 —— **勾了，但证据指向的文件早就改名 /
+  搬家 / 删了**。
+
+  后者之所以没人发现，是因为那些条目**读起来完全通顺**：
+  「`electron/src/main.ts` 加了全局热键」—— 谁会先去 stat 这个文件？
+
+  **实测（写门禁时的现场数据）**：全仓 **206 条**仓库路径证据里 **17 条是死的**：
+
+  | 死法                     | 条数 | 例子                                                      |
+  | ------------------------ | ---- | --------------------------------------------------------- |
+  | 漏了 `packages/` 前缀    | 10   | `electron/src/main.ts` → `packages/electron/src/main.ts`  |
+  | 文件搬家了               | 5    | `scripts/pack.cjs` → `packages/electron/scripts/pack.cjs` |
+  | 指向构建产物（不可复现） | 2    | `packages/server/dist/...` → 改指源码                     |
+
+  **修法**：
+  - 新增 `scripts/check-acceptance-evidence.mjs`（挂进 `test:ci` → 任何 PR 都跑）：
+    清单里每个**仓库路径证据**必须还指向真实存在的文件；不存在就红，并给出可操作
+    的诊断（「你大概漏了 `packages/` 前缀，正确路径是 X」）。
+  - 豁免表 `scripts/acceptance-evidence-ignore.json`：每条必须写 `reason`，
+    没有 reason 的视为**未登记** → 照样红（防止为了过门禁去改清单措辞）。
+  - 17 条全部修掉；唯一保留的一条（历史 dmg 产物路径）走了豁免表并写明理由。
+
+  **变异验证**（门禁自己的可信度，3 个变异全被抓）：
+
+  | 变异                       | 自测                |
+  | -------------------------- | ------------------- |
+  | 存在性判定恒为真           | ❌ 红（3 条断言挂） |
+  | 后缀匹配建议失效           | ❌ 红（1 条）       |
+  | 「缺 reason 的豁免」被放行 | ❌ 红（1 条）       |
+
+  **诚实说明局限**：只校验「文件还在」，**不校验文件内容是否仍然证明那条结论**；
+  只覆盖**带仓库路径**的证据（占清单项 11%）；这是**全仓体检**不是 PR 增量检查。
+  「清单项本身自动从 CI 结论回填」**没做**（见 NEXT-ITERATION §6）。
 
 ## I. 存储与备份卫生（2026-10-20 实测发现）
 

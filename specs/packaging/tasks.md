@@ -19,7 +19,7 @@
     真正的原因见 18 —— **是打包过程自己把它弄没的**。
   - 现在的链路：`SKIP_VMP=1 npm run pack` → `release/Maestro-1.0.0-arm64.dmg`（116MB）
     → 挂载出的 `.app` 里 **sidecar server 真的能起来**（见 20 的验收）。
-  - 验收脚本：`npm run pack:verify`（`scripts/verify-pack.sh`）—— 看产物结构 +
+  - 验收脚本：`npm run pack:verify`（`packages/electron/scripts/verify-pack.sh`）—— 看产物结构 +
     **实测 sidecar 的依赖能不能解析**（不是看配置，是真的 `require.resolve`）。
 - [x] 17. electron-builder 算不出 electron 版本 → 打包入口显式注入实际装好的版本
   - 现象：`⨯ Cannot compute electron version from installed node modules - none of
@@ -138,7 +138,8 @@ castlabs/electron-releases#8244344c…") is not fixed in project.`
     —— 只断言「干净时通过」是不够的，那不证明它拦得住东西。
 
 - [x] 24. server 的 dist 漏了测试夹具 + `nest build` **不清** dist（**2026-10-24 完成**）
-  - 现象 A：`packages/server/dist/test-helpers/in-process-http.js` 在出厂产物里
+  - 现象 A：测试夹具 `packages/server/src/test-helpers/in-process-http.ts` 的编译产物
+    在出厂产物里
     —— `src/test-helpers/` **只被 `*.test.ts` 引用**，但构建 tsconfig 排除了
     `src/test/**` 却**漏了** `src/test-helpers/**` → 夹具跟着
     `extraResources` 一起出货。
@@ -176,7 +177,7 @@ castlabs/electron-releases#8244344c…") is not fixed in project.`
 
 - [x] 26. 出厂验收**没有强制力** + CI 查不到「出厂 app 起不来」（**2026-10-28 完成**）
 
-  `scripts/verify-pack.sh` 是**唯一**能验「出厂 app 能不能起来」的东西
+  `packages/electron/scripts/verify-pack.sh` 是**唯一**能验「出厂 app 能不能起来」的东西
   （它把出厂的 `Resources/server/main.js` **真的起一次**再探 `/storage/info`），
   但它有两个洞：
 
@@ -216,7 +217,7 @@ castlabs/electron-releases#8244344c…") is not fixed in project.`
        （`npm run build` 四个包全建 + `--require-built` 判定）+ `pack.cjs`
        的 `REQUIRED_ARTIFACTS`
     2. `node packages/server/dist/main.js` 独立启动后正常服务
-       → **本次新增自动化**：`scripts/verify-pack.sh` 的「出厂 sidecar 实测」
+       → **本次新增自动化**：`packages/electron/scripts/verify-pack.sh` 的「出厂 sidecar 实测」
     3. `npm run pack` 产物 Resources 里有 server/dist → `pack.cjs` +
        `verify-pack.sh`
     4. packaged 启动后 spawn sidecar → 等端口 ready → 打开 BrowserWindow
