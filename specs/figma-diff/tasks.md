@@ -141,8 +141,10 @@
 - [ ] @blocked **I1** **补 AI_CONTRACT 段到其余 25 个组件 + 9 屏** ——
       设计稿侧写操作（10-24 归档区，**不占待办清单位置**），
       但它是「向下驱动」的**前提**（不是"对齐"）⇒ 值得单独拍板。
-      **当前阻塞**：Figma 写工具被 Starter 套餐付费墙拦（2026-10-23 实测），
-      且用户 2026-10-29 表示「我乱了，我再想想其他的」⇒ 两道锁都在
+      **已拍板（2026-10-29）**：走「**升 Figma 席位**」路线 —— Starter 团队的云端 MCP
+      **写工具**被付费墙拦、桌面本地 MCP 只读；升到 **Dev/Full** 席位即解锁桌面写通道。
+      ⇒ 当前只差席位升级本身（用户侧操作），解锁后按 `scripts/figma-snapshot-seg.js`
+      的载体规则（COMPONENT → `.description`）批量补段
 - [ ] @deferred **I2** code-connect 补 10 个映射（Icon/* ×8 · State/RecoUnconfigured · Scene/Backdrop）
       —— 属 10-24 归档决策里「持续对齐」那一类，等用户拍板
 - [ ] @blocked **I3** motion spec 补登记 39 个 `@keyframes` → **须同步 Figma**（`audit-d10` 核对 id 集合一致），只改仓库会让校验红
