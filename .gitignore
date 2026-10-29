@@ -1,4 +1,9 @@
-node_modules/
+# ⚠️ 这里**不能**带斜杠：`node_modules/` 只匹配**目录**，而符号链接在 git 眼里
+#    是**文件** → 规则不生效 → 「名叫 node_modules 的软链」会被提交进仓库。
+#    真实事故（2026-10-28）：一条指向 `/Users/tangshuai/maestro/packages/electron/node_modules`
+#    的**本机绝对路径自指软链**进了 master → 别人 checkout 出来是死链，
+#    本机上还会绕成 `too many levels of symbolic links`（连 pre-commit 的 prettier 都 stat 不了）。
+node_modules
 dist/
 release/
 .env

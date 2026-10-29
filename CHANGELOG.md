@@ -9,6 +9,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **出厂验收变成真门禁 + 搬进 CI（macOS）—— 「app 装上就崩」这条路径不再没人管**（2026-10-28）
+
+  `packages/electron/scripts/verify-pack.sh` 是**唯一**能验「出厂 app 能不能起来」
+  的东西（它把出厂的 `Resources/server/main.js` **真的起一次**再探 `/storage/info`）。
+  但它有两个洞：
+
+  1. **永远 exit 0** —— 哪怕满屏 ❌。它是个「报告」，不是门禁。
+     ⇒ 「app 装上就崩」这条路径**实际上没有任何门禁**。
+     ⚠️ 讽刺：同一个脚本早前就因为「`node ... | sed` 的退出码是 sed 的（恒 0）」
+     踩过一次坑（"构建成功"是假象），但**脚本自己**的退出码一直没管。
+  2. **CI 上根本没有它** —— dmg 要 hdiutil + 签名，CI 上打不出来
+     → 「出厂 app 起不来」**只能本地验** → 半年没人验一次。
+
+  **修法**：
+
+  - 脚本改成**有 ❌ 就 exit 1**：新增 `fail()` 累加器，失败项**逐条列出**；
+    依赖解析探针改成 `node -e` **自己 exit(1)**、脚本看它的退出码（不用管道
+    —— 管道会吞退出码）；新增 `--no-dmg` 开关给「只造了 .app」的场景。
+  - 新增 `.github/workflows/packaged-app.yml`（**macOS runner**）：
+    `electron-builder --dir` 造 .app（**不出 dmg** → 省掉 hdiutil 与签名的失败面）
+    → 跑 `verify-pack.sh --no-dmg` → **有 ❌ 就红**。
+    ⚠️ 必须是 macOS：探针跑的是**出厂 app 里的那个 Electron 二进制**
+    （`ELECTRON_RUN_AS_NODE=1`）→ ubuntu 上没有那个可执行文件。代价：macOS runner
+    按 10 倍分钟计费（与 `visual.yml` 同款取舍）⇒ 用 **paths 过滤**把触发面收窄
+    到「能影响出货产物」的路径。
+
+  **实测**：`npm run pack -- --dir` → 出 .app、不出 dmg ✓；验收 → 全过 exit 0 ✓
+  （含「出厂 sidecar 真起来并答了 `/storage/info`」）；**反面**（把出厂 server 的
+  `node_modules` 移走 = 模拟「缺依赖 → app 启动即崩」）→ 报 3 项失败 → **exit 1** ✓；
+  没有任何产物时 → 5 项失败 → exit 1 ✓。
+
+- **`ensure-electron-dist.cjs` 的路径算错了 → 它从来没真正装过 electron 二进制**（2026-10-28）
+
+  上一条的 macOS CI job **第一次跑就抓到**了这个 bug：
+
+  ```
+  ❌ [pack] electronDist 里没有 Electron.app（…/node_modules/electron/dist）
+  ```
+
+  根因：`scripts/ensure-electron-dist.cjs` 里写的是
+
+  ```js
+  path.resolve(__dirname, '../../node_modules/electron');
+  ```
+
+  从 `packages/electron/scripts` 出发 = **`packages/node_modules/electron`** ——
+  **那个目录根本不存在**（npm workspaces 把 electron **提升**到了**仓库根**的
+  node_modules）→ 脚本每次都走「installer 不存在 → 静默 exit 0」
+  → **它从来没真正下载过任何东西**。
+
+  本地之所以看不出问题：二进制早被别的途径装好了（`install.js` 自带
+  `isInstalled()` 判定 → 已装就跳过）⇒ 脚本的「没装」分支永远走不到。
+
+  ⇒ 只有在**全新 node_modules** 的环境（= CI runner）里才会暴露。
+
+  修法：
+  - **两处都找**（仓库根的 `node_modules/electron` ← workspace 提升的位置；
+    包自己的 `node_modules/electron` ← 有版本冲突时 npm 就地装的位置）。
+  - 「electron 包装了、但里面没有 install.js」不再**静默跳过** → 那是**异常状态**
+    （二进制永远下不下来），要明确报错；否则错误会伪装成「electron 没装」，
+    最后以「electronDist 里没有 Electron.app」这种看不懂的形式爆出来。
+
+- **`verify-pack.sh` 的 `REPO_ROOT` 算错 → 「产物新鲜度」检查一直在静默跳过**（2026-10-28）
+
+  ⚠️ 这是 **PR #121 里我自己引入的**（当时给「产物新鲜度」检查加的）——
+  macOS CI job 第一次跑就把它炸出来了。
+
+  原来脚本是：
+
+  ```bash
+  cd "$(dirname "$0")/.."                       # 先 cd
+  REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"   # 再用**相对**的 $0 算
+  ```
+
+  `$0` 是**相对**路径 → `cd` 之后它相对于**新的 cwd** 解释 → 解析到不存在的地方
+  → `REPO_ROOT` 变成空/错位。
+
+  后果分两种，**都很难看出来**：
+  - 本地（从 `packages/electron` 跑）→ `REPO_ROOT` 指到仓库外 → `find` 找不到
+    源码 → `SRC_NEWEST` 为空 → **新鲜度检查整段跳过**（那个 if 永远不进）
+    → 「检查一直不存在」这件事**没有任何报错**。
+  - CI（从仓库根跑）→ `cd` 失败 → `REPO_ROOT` 为空 →
+    `node /scripts/check-artifact-hygiene.cjs` → 模块找不到 → **门禁误报**
+    「dist 目录不干净」。
+
+  修法：
+  - 用 `${BASH_SOURCE[0]}`（脚本自己的路径）先 `cd ... && pwd` 取**绝对路径**，
+    再算 `REPO_ROOT`、再 `cd`。
+  - **把「比的是什么」打出来**（「比对的基准：源码最新的一处改动 …」）——
+    否则「没找到源码 → 静默跳过」这件事根本看不出来。
+  - 找不到源码时**明确失败**，不再静默跳过。
+
+  这也是本轮连续第三个「静默降级」了（第三个在 `ensure-electron-dist`）——
+  **静默降级是这个仓库反复出现的一类 bug**，值得单独立一条长期项盯着。
+
 - **PR 模板：把仓库已经在守的门禁写成一份清单**（2026-10-28）
 
   仓库**之前没有** PR 模板 → 贡献者只能自己翻 CI 日志才知道该做什么。
@@ -17,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   覆盖率 diff 门禁 / CHANGELOG）+ **条件触发项**（动了动效 → `specs/motion-spec.json`
   要加条目；新建组件 → `component-specs.md` 要更新 + audit 要过；改了 `specs/**`
   → 对应 `tasks.md` 的**验收清单**要勾上并写证据；改了打包产物 → `pack.cjs --self-test`
-  + `pack:verify` 要过）。
+  - `pack:verify` 要过）。
 
   ⚠️ **诚实说明**：模板里的 checkbox 是**承诺**不是门禁 —— 它不会让 CI 变红。
   真要强制「动了动效 → motion spec 必须一起动」，还得加一道 CI 检查
@@ -36,6 +131,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     → 清单不再是**手抄**的；规格改了忘了改清单会被当场抓到（守住①漏 ②漂移两个方向）。
   - 变异验证（实测）：从清单里删掉 `Titlebar` → 自测红；把 `Modal/Shell` 的变体数
     写成 2 → 自测红；恢复 → 绿。
+
+### Fixed
+
+- **`packages/electron/node_modules` 这条「本机绝对路径自指软链」被提交进了仓库**（2026-10-28）
+
+  ⚠️ 这是**我自己**在 #141 里带进去的（`git add` 时把一个「名叫 node_modules 的**符号链接**」
+  当普通文件收进了索引）。
+
+  根因：根 `.gitignore` 第 1 行写的是 `node_modules/` —— **带斜杠只匹配目录**，
+  而**符号链接在 git 眼里是文件** → 规则不生效 → 直接进了提交。
+  （同一份仓库里 `.opencode/.gitignore` 写的偏偏是不带斜杠的 `node_modules` —— 两种写法并存，
+  迟早踩到。）
+
+  后果（都不是小问题）：
+
+  1. 别人 / CI checkout 出来是一条指向 `/Users/tangshuai/maestro/packages/electron/node_modules`
+     的**死链** —— 把我这台机器的路径写进了公共仓库。
+  2. 在本机上它还**自指**（指向自己）→ `ls` 直接报
+     `too many levels of symbolic links` → 连 pre-commit 的 prettier 都 stat 不了
+     → **这次合并 master 的提交就是被它当场挡下来的**（不是推测：hook 报的就是这条）。
+  3. `electron-builder` 的 `files` 含 `node_modules/**/*` → 打包时按这个路径收依赖，
+     遇到死链是**另一种**炸法。
+
+  修法：
+  - `git rm --cached` 把它从索引里摘掉（仓库里不再有这条软链）；
+  - `.gitignore` 改成**不带斜杠**的 `node_modules` → 目录 / 文件 / 符号链接三种都匹配，
+    不会再有第二次。
 
 ### Added
 

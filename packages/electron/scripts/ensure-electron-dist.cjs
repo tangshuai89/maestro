@@ -32,12 +32,41 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const electronDir = path.resolve(__dirname, '../../node_modules/electron');
-const installer = path.join(electronDir, 'install.js');
+// ⚠️ electron 可能装在**两处**：
+//   ① 仓库根的 node_modules（npm workspaces 把它**提升**上去了 —— 本仓就是这种）
+//   ② 包自己的 node_modules（npm 有版本冲突时会就地装）
+//
+// 🚨 **2026-10-28 修的真 bug**：这里原来写的是
+//    `path.resolve(__dirname, '../../node_modules/electron')`
+//    → 从 `packages/electron/scripts` 出发 = **`packages/node_modules/electron`**
+//    → **那个目录根本不存在** → 脚本每次都走「installer 不存在 → 静默 exit 0」
+//    → **它从来没真正装过任何东西**。
+//    本地之所以看不出问题：二进制早就被别的途径装好了（`install.js` 自带
+//    `isInstalled()` 判定 → 已装就跳过）。
+//    ⇒ 第一次在 CI 上跑（macOS runner，node_modules 是全新装的）立刻炸：
+//    `electronDist 里没有 Electron.app`。
+//
+// ⇒ 现在**两处都找**，且「electron 包装了但没有 install.js」不再静默跳过 ——
+//    那是**异常状态**，要明确报错（否则错误会伪装成「electron 没装」）。
+const CANDIDATES = [
+  path.resolve(__dirname, '../../../node_modules/electron'), // 仓库根（workspace 提升）
+  path.resolve(__dirname, '../node_modules/electron'), // 包自己的
+];
+const electronDir = CANDIDATES.find((d) => fs.existsSync(d));
 
-// electron 没装（比如 `--omit=dev` 的生产安装）→ 不是错误，跳过。
-if (!fs.existsSync(installer)) {
+// electron 整个都没装（比如 `--omit=dev` 的生产安装）→ 不是错误，跳过。
+if (!electronDir) {
   process.exit(0);
+}
+
+const installer = path.join(electronDir, 'install.js');
+if (!fs.existsSync(installer)) {
+  console.error(
+    `\n❌ [electron] 装的是 ${electronDir}，但里面没有 install.js。\n` +
+      '   → 这是**异常状态**（不是「没装 electron」）→ 二进制永远下不下来。\n' +
+      '   → 修法：删掉 node_modules/electron 后重装（npm install electron 的那个 git 依赖）。\n',
+  );
+  process.exit(1);
 }
 
 console.log('[electron] 确认 electron 二进制…');
