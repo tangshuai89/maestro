@@ -64,6 +64,11 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple 
          （漏 `packages/` 前缀 10 / 文件搬家 5 / 指向构建产物 2）。
          变异验证：3 个变异（存在性判定恒真 / 后缀建议失效 / 缺 reason 的豁免被放行）
          全部被自测抓到。
+   - [x] **验收清单「未勾项」分类（2026-10-29，PR #145）**：52 条未勾项逐条判定 →
+         `@blocked` 22 / `@manual` 12 / `@deferred` 11 / `@todo` **5**（只有 5 条是真
+         ·工程债）+ 补勾 2 条已完成的。新增台账 `specs/acceptance-backlog.md`
+         （含 12 条手测清单 + 22 条阻塞清单按阻塞源分组），并给门禁加一条规则
+         （**未勾项没带分类标记 → 红**）→ 清单不会重新烂回去。
    - [ ] **验收清单自动回填（**没做**）**：上面那道只管「证据文件还在」，**不查**
          「证据内容是否仍然证明那条结论」；清单项本身仍要靠人勾（lint / 全量套件 /
          覆盖率 diff 门禁 / 变异验证 四项）。
@@ -77,14 +82,14 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple 
          @keyframes → motion-spec.json 必须也改）。
 
          ⚠️ **2026-10-29 实测：这道门禁现在还不能直接上**，两个前置都没到位：
-                 ① **`motion-spec.json` 已经脱节** —— D10 落地之后又发生了 **14 次**动效改动，
-                    spec 一次都没动过；其中 **2 个新增 `@keyframes`**（`player-notice-in` /
-                    `mini-player-in`）**根本没登记**。直接上门禁 = 要先补这 14 条。
-                 ② **补条目要同步 Figma** —— `audit-d10.mjs` 会核对「Figma ↔ 仓库 spec id
-                    集合一致」，只改仓库会让那条校验红 ⇒ **必须有 FIGMA_TOKEN** 才能补。
-                 ⇒ 建议顺序：① 先把 `motion-spec.json` 与代码**重新对齐**（含 Figma 侧）；
-                    ② 门禁的判据**收窄**到「PR 新增了 `@keyframes` 名字」才要求登记
-                    （改 transition 时长只 warn），否则日常改样式会被误伤。
+                         ① **`motion-spec.json` 已经脱节** —— D10 落地之后又发生了 **14 次**动效改动，
+                            spec 一次都没动过；其中 **2 个新增 `@keyframes`**（`player-notice-in` /
+                            `mini-player-in`）**根本没登记**。直接上门禁 = 要先补这 14 条。
+                         ② **补条目要同步 Figma** —— `audit-d10.mjs` 会核对「Figma ↔ 仓库 spec id
+                            集合一致」，只改仓库会让那条校验红 ⇒ **必须有 FIGMA_TOKEN** 才能补。
+                         ⇒ 建议顺序：① 先把 `motion-spec.json` 与代码**重新对齐**（含 Figma 侧）；
+                            ② 门禁的判据**收窄**到「PR 新增了 `@keyframes` 名字」才要求登记
+                            （改 transition 时长只 warn），否则日常改样式会被误伤。
 
    - [x] **`verify-pack.sh` 改成「有 ❌ 就 exit 1」（2026-10-28，PR #142 已合）**：
          失败项逐条列出 + `--no-dmg` 开关 + 新增 `.github/workflows/packaged-app.yml`

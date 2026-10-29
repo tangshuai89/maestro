@@ -220,7 +220,15 @@ export function parseChecklist(text) {
         if (looksLikeRepoPath(code)) evidence.push(code);
       }
     }
-    items.push({ line: i + 1, checked: m[1].toLowerCase() === 'x', title, evidence });
+    const checked = m[1].toLowerCase() === 'x';
+    const tagMatch = checked ? null : /^@(blocked|manual|deferred|todo)\b/.exec(title);
+    items.push({
+      line: i + 1,
+      checked,
+      title,
+      evidence,
+      tag: tagMatch ? tagMatch[1] : null,
+    });
   }
   return items;
 }
@@ -271,6 +279,7 @@ export function runChecks({ root, ignore, specsDir = 'specs' }) {
   const dead = [];
   const ignoredHits = [];
   const badIgnores = [];
+  const untagged = [];
   let totalEvidence = 0;
 
   // 豁免表：key = `${specRelPath}::${evidence}` → 记录
@@ -303,6 +312,9 @@ export function runChecks({ root, ignore, specsDir = 'specs' }) {
     if (!existsSync(full)) continue;
     const text = readFileSync(full, 'utf8');
     for (const item of parseChecklist(text)) {
+      if (!item.checked && !item.tag) {
+        untagged.push({ spec: specRel, line: item.line, title: item.title });
+      }
       for (const ev of item.evidence) {
         totalEvidence++;
         const key = `${specRel}::${ev}`;
@@ -325,7 +337,7 @@ export function runChecks({ root, ignore, specsDir = 'specs' }) {
       }
     }
   }
-  return { dead, ignored: ignoredHits, badIgnores, specDirs, totalEvidence };
+  return { dead, ignored: ignoredHits, badIgnores, untagged, specDirs, totalEvidence };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -354,6 +366,8 @@ function selfTest() {
       '- [x] **A6** 不是路径（外部路径）→ `~/knowledge/maestro/x.md`',
       '- [x] **A7** 被豁免（带 reason）→ `packages/demo/src/waived.ts`',
       '- [x] **A8** 被豁免但缺 reason → `packages/demo/src/bad-waiver.ts`',
+      '- [ ] @manual 带分类标记的未勾项（不该报）',
+      '- [ ] 没有分类标记的未勾项（该报）',
       '',
     ].join('\n'),
   );
@@ -390,6 +404,8 @@ function selfTest() {
     ['裸文件名不误伤', !r.dead.some((d) => d.evidence === 'ok.ts')],
     ['带 reason 的豁免被放行', r.ignored.some((i) => i.evidence === 'packages/demo/src/waived.ts')],
     ['缺 reason 的豁免算未登记', bad.includes('packages/demo/src/bad-waiver.ts')],
+    ['带分类标记的未勾项不报', !r.untagged.some((u) => u.title.includes('带分类标记'))],
+    ['没分类标记的未勾项被抓', r.untagged.some((u) => u.title.includes('没有分类标记'))],
   ];
 
   let failed = 0;
@@ -461,6 +477,19 @@ async function main() {
       console.log(`  ❌ ${b?.spec ?? '(缺 spec)'} :: ${b?.evidence ?? '(缺 evidence)'}`);
     }
     console.log('  ⇒ 每条豁免都必须写 reason，否则视为未登记。');
+  }
+
+  if (result.untagged.length) {
+    console.log(`\n── 未勾但没写分类（${result.untagged.length} 条）—— 「没勾」必须带理由 ──`);
+    for (const u of result.untagged) {
+      const t = u.title.length > 70 ? u.title.slice(0, 70) + '…' : u.title;
+      console.log(`  ❌ ${u.spec}:${u.line}  ${t}`);
+    }
+    console.log('  ⇒ 四个标记选一个（紧跟在 `- [ ]` 后面）：');
+    console.log('    @blocked   外部阻塞（缺凭据 / 缺账号 / 缺网络 / 等决策）');
+    console.log('    @manual    必须人测（真机 / 桌面 / 真实登录态）');
+    console.log('    @deferred  明确延后（可选 / 不在本期范围）');
+    console.log('    @todo      真·欠着的工程活');
   }
 
   if (result.dead.length) {
