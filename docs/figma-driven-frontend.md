@@ -434,3 +434,34 @@ computed 值逐位相同，alpha 0.25 正确解析。
 **剩余**：Tailwind 默认色阶批（**属 shadcn Phase 2 批 1，不是 AETHER 令牌** ——
 两个专题撞在同一批文件上须合并做）；provider 健康状态色 / AI 理由色（设计稿没这套语义，
 需先拍板归属）。
+
+---
+
+**D12 增量（2026-10-29）—— `figma:diff` 统一入口「设计稿变了，前端该改什么」**：
+
+前面 D1–D11 各自解决一个对齐问题，但**没有一条能回答"现在该改哪些前端文件"**。
+且 token 腿的 dump 停在 2026-10-13（之后 `renderer/src/styles/` 改了 26 次），
+live workflow 无 `FIGMA_TOKEN` 时静默跳过 ⇒ **「设计稿变更 → 前端感知」的真实能力 ≈ 0**。
+
+新增统一入口（专题见 `specs/figma-diff/`）：
+
+- `scripts/figma-snapshot-seg.js` —— use_figma **只读**采集段：遍历 Components / Screens / Motion，
+  **只取 `---...---` AI_CONTRACT 段**（精确提取，非截断）以控返回体。
+  载体规则与 `audit-d1` / `audit-d10` 同源（COMPONENT 用 `.description`，FRAME 用隐藏 TEXT 子节点）。
+- `scripts/figma-snapshot.json` —— 人工落盘的快照（use_figma 无 fs 权限，这是唯一死结）。
+- `scripts/lib/figma-snapshot.mjs` —— 四腿纯函数：`tokens` / `components` / `descriptions` / `motion`。
+- `scripts/figma-diff.mjs` —— 主入口，`--json` / `--gate` / `--only` / `--snapshot`。
+- `scripts/figma-diff.test.mjs` —— **25 个反向验证测试** + 变异验证 5/5 被抓住。
+
+**清单方向铁律**：主线段只放「Figma 要求前端改」的（`must` / `should`），
+反向差异（仓库有、设计稿没有；映射指向不存在的组件）一律降为 `note` 并单列
+「附注：设计稿侧待办（不占待办清单位置）」—— 与 2026-10-24 归档决策同一条边界。
+
+**现状实测**：motion spec 20 条 vs 代码 39 个 `@keyframes`，spec 里提到的 keyframes 名字 **0 个**
+⇒ D10 双向闭环从未跑通，本入口把它暴露为 `should`（补登记须同步 Figma，故不自动修）。
+
+**接进 CI**：`test:ci` 追加 `figma-diff.test.mjs && figma-diff.mjs --gate`；
+**快照缺失 = exit 0 跳过**（还没采集不是错误），显式 `--snapshot` 指定却不存在 = exit 2。
+
+**为什么没被 10-24 归档掉**：归档的是"一次性/持续对齐"（产出物是"设计稿与代码对齐"），
+本入口属**驱动基础设施**——它不对齐任何东西，它**让变更可被感知**。
