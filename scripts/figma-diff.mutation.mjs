@@ -173,9 +173,9 @@ const MUTATIONS = [
   {
     id: 'M19',
     file: 'figma-diff.mjs',
-    from: 'if (rawComponents.length === 0 && rawScreens.length === 0) {',
-    to: 'if (false) {',
-    why: '退化快照守卫失效（空快照被当成"设计稿没有差异"）',
+    from: 'for (const [k, actual] of Object.entries(expected)) {\n  if (counts[k] !== actual) {',
+    to: 'for (const [k, actual] of Object.entries(expected)) {\n  if (false) {',
+    why: 'counts 交叉校验失效（只抄了 1 个组件的截断快照能通过 → 门禁假绿）',
   },
   {
     id: 'M20',
@@ -212,6 +212,118 @@ const MUTATIONS = [
     to: 'if (false) {',
     why: '--only 拼错不报错 → 静默跑成 0 条差异',
   },
+
+  // ── 2026-10-29 第二轮独立评审：2 条存活变异 + 2 个新引入的回退 + 1 个退化输入 ──
+  // 第一轮封堵后，评审用自己的变异集再跑一遍，又找出 6 个洞。
+  // 下面每一条都对应**一个具体的、可复现的**输入，不是假想。
+  {
+    id: 'M25',
+    file: 'figma-diff.mjs',
+    from: '    if (entry.lane && entry.lane !== diff.lane) continue;',
+    to: '    // 不按 lane 过滤',
+    why: '豁免不按 lane 过滤 → 一条 motion 的豁免把 components 的 should 也豁免掉（评审实测存活）',
+  },
+  {
+    id: 'M26',
+    file: 'figma-diff.mjs',
+    from:
+      'for (const c of components) {\n' +
+      '  const rp = reactPathOf(c.aiContract);\n' +
+      '  if (rp) c.aiContract.react = rp;\n' +
+      '}',
+    to: 'for (const c of components) {\n  // 调用点不再清洗 react 路径\n}',
+    why: '组件调用点不清洗 react 路径 → 报给 agent 的是带引号的死路径（评审实测存活 S6 的组件侧）',
+  },
+  {
+    id: 'M27',
+    file: 'figma-diff.mjs',
+    from:
+      'for (const s of screens) {\n' +
+      '  const rp = reactPathOf(s.aiContract);\n' +
+      '  if (rp) s.aiContract.react = rp;\n' +
+      '}',
+    to: 'for (const s of screens) {\n  // 调用点不再清洗 react 路径\n}',
+    why: '屏幕调用点不清洗 react 路径 → 带引号的值像"不是路径" → 屏幕的 must 静默消失（评审实测存活 S6）',
+  },
+  {
+    id: 'M28',
+    file: 'lib/figma-snapshot.mjs',
+    from: '    const skipNonPath = isScreen && !looksLikeRepoPath(reactPath);',
+    to: '    const skipNonPath = !looksLikeRepoPath(reactPath);',
+    why: '组件集也享受"不像路径就跳过"的豁免 → `react: xxx.tsx（待新建）` 静默漏报（评审实测的回退 B）',
+  },
+  {
+    id: 'M29',
+    file: 'lib/figma-snapshot.mjs',
+    from:
+      '    if (!exact && map.figmaNodeId && comp.nodeId && map.figmaNodeId !== comp.nodeId) {\n' +
+      '      const mappedName = nodeIdToName.get(map.figmaNodeId);\n' +
+      '      if (mappedName !== comp.name) {',
+    to:
+      '    if (!exact && map.figmaNodeId && comp.nodeId && map.figmaNodeId !== comp.nodeId) {\n' +
+      '      const mappedName = nodeIdToName.get(map.figmaNodeId);\n' +
+      '      if (false) {',
+    why: '映射的 nodeId 抄成另一个**存在**的节点时不报（评审实测的回退 C · 组件侧）',
+  },
+  {
+    id: 'M30',
+    file: 'lib/figma-snapshot.mjs',
+    from:
+      '        // 映射 id 还在但**指向别的名字** ⇒ 抄错节点了 ⇒ 也报。\n' +
+      '        if (mappedName !== comp.name) {',
+    to:
+      '        // 映射 id 还在但**指向别的名字** ⇒ 抄错节点了 ⇒ 也报。\n' + '        if (false) {',
+    why: '屏幕侧的"映射抄错节点"检查被摘掉（评审实测的回退 C · 屏幕侧）',
+  },
+  {
+    id: 'M31',
+    file: 'figma-diff.mjs',
+    from: "if (wants('tokens') && (!tokenDumpMeta.present || tokenDumpMeta.variables === 0)) {",
+    to: "if (wants('tokens') && !tokenDumpMeta.present) {",
+    why: 'token dump 的 variables 是空数组时静默跳过 tokens 腿（评审实测的退化输入）',
+  },
+  {
+    id: 'M32',
+    file: 'figma-diff.mjs',
+    from: "if (!snapshot.motion || typeof snapshot.motion !== 'object') {",
+    to: 'if (false) {',
+    why: 'motion 非对象时不报错 → 采集失败被当成"没有动效"',
+  },
+  {
+    id: 'M33',
+    file: 'figma-diff.mjs',
+    from: 'if (!Array.isArray(snapshot.motion.spec)) {',
+    to: 'if (false) {',
+    why: 'motion.spec 不是数组时不报错 → motion 腿静默跑成 0 条差异',
+  },
+  {
+    id: 'M34',
+    file: 'lib/figma-snapshot.mjs',
+    from: "    .replace(/,$/, '')\n    .replace(/^['\"]|['\"]$/g, '')",
+    to: "    .replace(/^['\"]|['\"]$/g, '')\n    .replace(/,$/, '')",
+    why: 'reactPathOf 的清洗顺序倒过来（先去引号再去逗号）→ 路径尾部残留引号 → 假的 must',
+  },
+  {
+    id: 'M35',
+    file: 'figma-diff.mjs',
+    from: '} else if (ccAt !== -1) {',
+    to: '} else if (false) {',
+    why: '显式指定 --code-connect 却不存在的文件时不报错 → 静默当成空映射表，差异清单失真',
+  },
+  {
+    id: 'M36',
+    file: 'figma-diff.mjs',
+    from: '  if (mappings.length === 0) {',
+    to: '  if (false) {',
+    why: 'code-connect 映射表存在但为空时不报错 → 全都变 unmapped → 而 unmapped 在豁免表里 → 门禁假绿',
+  },
+  {
+    id: 'M37',
+    file: 'lib/figma-snapshot.mjs',
+    from: '    const isScreen = comp._isScreen === true;',
+    to: '    const isScreen = true;',
+    why: '「是不是屏幕」不按来源判 → 组件集白拿屏幕的「不像路径就跳过」豁免 → 撞名组件集静默漏报',
+  },
 ];
 
 const argList = process.argv.slice(2);
@@ -230,6 +342,19 @@ if (argList.includes('--list')) {
   process.exit(0);
 }
 
+// --only <id>：只跑指定的几条（迭代单条变异时省时间）。
+//   --only M30  或  --only M25,M26
+const onlyAt = argList.indexOf('--only');
+const onlyIds = onlyAt !== -1 ? argList[onlyAt + 1].split(',').map((s) => s.trim()) : null;
+if (onlyIds) {
+  const known = new Set(MUTATIONS.map((m) => m.id));
+  const bad = onlyIds.filter((id) => !known.has(id));
+  if (bad.length) {
+    console.error(`❌ --only 里的未知变异 id: ${bad.join(', ')}`);
+    process.exit(2);
+  }
+}
+
 // ── 跑测试，返回 exit code ─────────────────────────────────────
 function runTests() {
   try {
@@ -239,6 +364,29 @@ function runTests() {
     return { code: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` };
   }
 }
+
+// ── 行为指纹：跑真实快照，比对差异清单的 JSON ──────────────────
+// 用途：区分两种「存活」——
+//   ① **判据没被测到**（真洞）：变异改变了行为，但测试没红 ⇒ 必须修；
+//   ② **等效变异**（假洞）：变异压根没改变行为（写错了锚点）⇒ 是变异脚本自己的 bug，
+//      不是判据的洞。
+// 两者都表现为"测试全绿"，但结论完全相反。2026-10-29 实测：M30 被我写成
+// `const _ignored = true` 这种空变异，差点被当成"判据有洞"去改判据。
+function behaviorFingerprint() {
+  try {
+    const out = execFileSync('node', [resolve(__dirname, 'figma-diff.mjs'), '--json'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const j = JSON.parse(out);
+    // 只取影响判定的部分：差异清单 + 统计。repoHead 之类的会随 git 状态变。
+    return JSON.stringify({ diffs: j.diffs, stats: j.stats });
+  } catch (e) {
+    return `__error__:${e.status ?? 1}:${String(e.stdout ?? '').slice(0, 120)}`;
+  }
+}
+
+const BASE_FINGERPRINT = behaviorFingerprint();
 
 // ── 基线：不变异时测试必须是绿的（否则谈不上"变坏被抓"）──────
 console.log('▶ 基线检查（不变异，测试必须全绿）…');
@@ -253,14 +401,20 @@ console.log('  ✅ 基线绿\n');
 // ── 逐个变异 ───────────────────────────────────────────────────
 let caught = 0;
 const missed = [];
+const equivalent = [];
+const targets = onlyIds ? MUTATIONS.filter((m) => onlyIds.includes(m.id)) : MUTATIONS;
 
-for (const m of MUTATIONS) {
+for (const m of targets) {
   const target = resolve(__dirname, m.file);
   const original = readFileSync(target, 'utf8');
   const hits = original.split(m.from).length - 1;
   if (hits !== 1) {
     console.error(`❌ ${m.id} 变异锚点不唯一（命中 ${hits} 次）—— 变异无效，先修脚本`);
     console.error(`   锚点: ${JSON.stringify(m.from.slice(0, 70))}`);
+    process.exit(1);
+  }
+  if (m.from === m.to) {
+    console.error(`❌ ${m.id} 变异是空变异（from === to）—— 不会改变任何行为，先修脚本`);
     process.exit(1);
   }
 
@@ -272,8 +426,18 @@ for (const m of MUTATIONS) {
       const red = (res.out.match(/^not ok /gm) || []).length;
       console.log(`✅ ${m.id} 被抓住（${red || '≥1'} 个测试红） — ${m.why}`);
     } else {
-      missed.push(m);
-      console.log(`❌ ${m.id} 没被抓住（测试仍然全绿）— ${m.why}`);
+      // 测试全绿 —— 先分清是「真洞」还是「等效变异」
+      const fp = behaviorFingerprint();
+      if (fp === BASE_FINGERPRINT) {
+        equivalent.push(m);
+        console.log(
+          `⚠️  ${m.id} 测试全绿，但**行为指纹没变** ⇒ 这是**等效变异**（锚点写错了，压根没改到判据），不是判据的洞。`,
+        );
+        console.log(`      ${m.why}`);
+      } else {
+        missed.push(m);
+        console.log(`❌ ${m.id} 没被抓住（测试仍然全绿，但行为已变）— ${m.why}`);
+      }
     }
   } finally {
     writeFileSync(target, original, 'utf8');
@@ -290,11 +454,17 @@ if (restored.code !== 0) {
 console.log('✅ 还原后测试回到绿');
 
 console.log('');
-console.log(`变异验证：${caught}/${MUTATIONS.length} 被抓住`);
+console.log(`变异验证：${caught}/${targets.length} 被抓住`);
+if (equivalent.length) {
+  console.error(
+    `⚠️  等效变异 ${equivalent.length} 条（锚点写错，没改到判据）：${equivalent.map((m) => m.id).join(', ')}`,
+  );
+  console.error('   ⇒ 这是**变异脚本自己的 bug**，不是判据的洞 —— 修锚点，别改判据。');
+}
 if (missed.length) {
   console.error(`❌ 漏网 ${missed.length} 条：${missed.map((m) => m.id).join(', ')}`);
   console.error('   ⇒ 这些判据**没被测到**，等于没有判据。');
-  process.exit(1);
 }
+if (missed.length || equivalent.length) process.exit(1);
 console.log('✅ 全部变异都被抓住 —— 判据是可验证的');
 process.exit(0);

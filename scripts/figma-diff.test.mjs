@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -1030,6 +1030,75 @@ test('端到端: 屏幕被重建过（nodeId 对不上）→ nodeIdChanged', () 
   }
 });
 
+test('端到端: 屏幕的映射抄成另一个**存在**的节点 → 必须报 nodeIdChanged', () => {
+  // 回归 C 的屏幕侧：只看"映射 id 在不在快照里"查不出"抄到了别的节点"。
+  // 组件侧已有同款用例（见下），屏幕侧之前只覆盖了"id 完全不存在"。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-screenwrongnode-'));
+  try {
+    const cc = JSON.parse(
+      execFileSync(
+        'node',
+        ['-e', `console.log(require('fs').readFileSync('figma-code-connect.json','utf8'))`],
+        { cwd: ROOT, encoding: 'utf8' },
+      ),
+    );
+    const searchModal = cc.mappings.find((m) => m.figmaComponent === 'Screen/Search/Modal');
+    const other = cc.mappings.find(
+      (m) => m.figmaComponent && m.figmaComponent !== 'Screen/Search/Modal',
+    );
+    const ccPath = join(dir, 'cc.json');
+    writeFileSync(
+      ccPath,
+      JSON.stringify({
+        ...cc,
+        mappings: cc.mappings.map((m) =>
+          m.figmaComponent === 'Screen/Search/Modal' ? { ...m, figmaNodeId: other.figmaNodeId } : m,
+        ),
+      }),
+    );
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({
+        components: [
+          MODAL_COMPONENT,
+          // 「另一个节点」必须**真的在快照里**，否则命中的是"节点已消失"分支而不是"抄错节点"
+          {
+            ...MODAL_COMPONENT,
+            name: other.figmaComponent,
+            nodeId: other.figmaNodeId,
+          },
+        ],
+        screens: [
+          {
+            name: 'Screen/Search/Modal',
+            nodeId: searchModal.figmaNodeId,
+            type: 'FRAME',
+            contract: '',
+          },
+        ],
+      }),
+    );
+    const { stdout } = runDiff([
+      '--json',
+      '--only',
+      'components',
+      '--snapshot',
+      p,
+      '--code-connect',
+      ccPath,
+    ]);
+    const j = assertCleanJson(stdout, '屏幕映射抄错节点');
+    const hit = (j.diffs ?? []).find((d) => d.kind === 'nodeIdChanged');
+    assert.ok(
+      hit,
+      `屏幕映射抄到别的节点必须报 nodeIdChanged，实际：${JSON.stringify((j.diffs ?? []).map((d) => d.kind))}`,
+    );
+    assert.equal(hit.detail.mappedTo, other.figmaComponent);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('端到端: 同名不同类（组件集 + 同名屏幕）→ 不得误报 nodeIdChanged', () => {
   // 真实数据：`Screen/SourceSelect` 既是 02 页的 COMPONENT_SET（515:133，
   // code-connect 映射指的就是它），又是 03 页的同名 FRAME（314:1432）。
@@ -1146,6 +1215,339 @@ test('端到端: 契约里的 react 路径带引号/尾逗号 → 仍能正确�
       0,
       '带引号的路径应被清洗后再判定（该文件确实存在）',
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── 第二轮独立评审（2026-10-29）新增的封堵用例 ──────────────────
+
+test('端到端: 豁免只写 lane:motion → components 腿的差异不该被顺带豁免', () => {
+  // 独立评审实测的存活变异 S4：豁免表只写 {lane:'motion', reason}，
+  // 去掉 lane 过滤后，components 腿的 unmapped（should）也被豁免 ⇒ 门禁假绿。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-lane-'));
+  try {
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({ components: [MODAL_COMPONENT, unmappedComponent()] }),
+    );
+    const allowPath = join(dir, 'allow.json');
+    writeFileSync(
+      allowPath,
+      JSON.stringify({ allow: [{ lane: 'motion', reason: '只该豁免 motion 腿' }] }),
+    );
+    const { code, stdout } = runDiff([
+      '--json',
+      '--gate',
+      '--only',
+      'components',
+      '--snapshot',
+      p,
+      '--allowlist',
+      allowPath,
+    ]);
+    assert.equal(code, 1, `lane 不符不得豁免，必须仍红，实际 ${code}`);
+    assertCleanJson(stdout, 'lane 过滤');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: 屏幕的 react 路径带引号 + 文件不存在 → 必须报 must', () => {
+  // 独立评审实测的存活变异 S6 的**屏幕侧**表现：清洗发生在**调用点**
+  // （figma-diff.mjs 里 `reactPathOf(c.aiContract)` 写回 aiContract.react）。
+  // 屏幕的豁免判据是 `isScreen && !looksLikeRepoPath(reactPath)` ——
+  // 带引号的值不像路径 ⇒ 会被跳过 ⇒ **调用点不清洗 ⇒ 屏幕的 must 静默消失**。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-screenquoted-'));
+  try {
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({
+        components: [MODAL_COMPONENT],
+        screens: [
+          {
+            name: 'Screen/Search/Modal',
+            nodeId: '466:2',
+            type: 'FRAME',
+            contract:
+              'AI_CONTRACT:\n  react: "packages/renderer/src/components/search/NoSuchFile.tsx"\n  props: {}\n  a11y: {}\n  states: []',
+          },
+        ],
+      }),
+    );
+    const { code, stdout } = runDiff(['--json', '--only', 'components', '--snapshot', p]);
+    const j = assertCleanJson(stdout, '屏幕带引号路径');
+    const hit = (j.diffs ?? []).find((d) => d.kind === 'reactPathMissing');
+    assert.ok(
+      hit,
+      `屏幕的带引号路径不存在必须报 must，实际：${JSON.stringify((j.diffs ?? []).map((d) => d.kind))}`,
+    );
+    assert.equal(hit.severity, 'must');
+    assert.notEqual(code, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: 契约里的 react 路径带引号 + 文件不存在 → 必须报 must', () => {
+  // 独立评审实测的存活变异 S6：M17 改的是 lib 里的 reactPathOf（被单元测试抓住），
+  // 但**调用点**不再清洗路径这件事没有端到端用例。
+  // 关键：带引号的值若没被清洗，looksLikeRepoPath 会判它"不是路径"而跳过 ⇒ must 0。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-quotedmissing-'));
+  try {
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({
+        components: [
+          {
+            ...MODAL_COMPONENT,
+            name: 'Modal/Gone',
+            nodeId: '7:7',
+            contract:
+              'AI_CONTRACT:\n  react: "packages/renderer/src/components/gone/Gone.tsx"\n  props: {}\n  a11y: {}\n  states: []',
+          },
+        ],
+      }),
+    );
+    const { code, stdout } = runDiff(['--json', '--only', 'components', '--snapshot', p]);
+    const j = assertCleanJson(stdout, '带引号且不存在');
+    const hit = (j.diffs ?? []).find((d) => d.kind === 'reactPathMissing');
+    assert.ok(hit, `带引号且不存在的路径必须报 must，实际：${JSON.stringify(j.diffs)}`);
+    assert.equal(hit.severity, 'must');
+    // 报出来的路径必须是**清洗后**的（否则 coding agent 拿到的是带引号的死路径）
+    assert.ok(
+      !String(hit.detail.reactPath).includes('"'),
+      `报出的 react 路径应已去掉引号，实际：${hit.detail.reactPath}`,
+    );
+    assert.notEqual(code, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: 组件集的 react 值带注释后缀（不像路径）→ 仍必须报 must', () => {
+  // 独立评审实测的回退 B：`react: xxx.tsx（待新建）` 这种写法，
+  // 之前被"不像路径就跳过"的豁免静默漏报（组件集不该享受那个豁免 —— 那是给屏幕的）。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-annotated-'));
+  try {
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({
+        components: [
+          {
+            ...MODAL_COMPONENT,
+            name: 'Screen/QueuePanel',
+            nodeId: '520:14',
+            contract:
+              'AI_CONTRACT:\n  react: packages/renderer/src/components/queue/QueuePanel.tsx（待新建）\n  props: {}\n  a11y: {}\n  states: []',
+          },
+        ],
+      }),
+    );
+    const { code, stdout } = runDiff(['--json', '--only', 'components', '--snapshot', p]);
+    const j = assertCleanJson(stdout, '组件集带注释后缀');
+    const hit = (j.diffs ?? []).find((d) => d.kind === 'reactPathMissing');
+    assert.ok(hit, `组件集不像路径的 react 值也必须报 must，实际：${JSON.stringify(j.diffs)}`);
+    assert.notEqual(code, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: 映射的 nodeId 抄成另一个**存在**的节点 → 必须报 nodeIdChanged', () => {
+  // 独立评审实测的回退 C：只看"映射 id 在不在快照里"查不出"抄到了别的节点"。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-wrongnode-'));
+  try {
+    const cc = JSON.parse(
+      execFileSync(
+        'node',
+        ['-e', `console.log(require('fs').readFileSync('figma-code-connect.json','utf8'))`],
+        { cwd: ROOT, encoding: 'utf8' },
+      ),
+    );
+    const shell = cc.mappings.find((m) => m.figmaComponent === 'Modal/Shell');
+    const errPanel = cc.mappings.find((m) => m.figmaComponent === 'Modal/ErrorPanel');
+    // 把 Modal/Shell 的映射改成指向 ErrorPanel 的 nodeId（模拟抄错节点）
+    const ccPath = join(dir, 'cc.json');
+    writeFileSync(
+      ccPath,
+      JSON.stringify({
+        ...cc,
+        mappings: cc.mappings.map((m) =>
+          m.figmaComponent === 'Modal/Shell' ? { ...m, figmaNodeId: errPanel.figmaNodeId } : m,
+        ),
+      }),
+    );
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({
+        components: [
+          {
+            ...MODAL_COMPONENT,
+            name: 'Modal/Shell',
+            nodeId: shell.figmaNodeId,
+          },
+          {
+            ...MODAL_COMPONENT,
+            name: 'Modal/ErrorPanel',
+            nodeId: errPanel.figmaNodeId,
+          },
+        ],
+      }),
+    );
+    const { stdout } = runDiff([
+      '--json',
+      '--only',
+      'components',
+      '--snapshot',
+      p,
+      '--code-connect',
+      ccPath,
+    ]);
+    const j = assertCleanJson(stdout, '映射抄错节点');
+    const hit = (j.diffs ?? []).find(
+      (d) => d.kind === 'nodeIdChanged' && String(d.title).includes('Modal/Shell'),
+    );
+    assert.ok(
+      hit,
+      `映射抄到别的节点必须报 nodeIdChanged，实际：${JSON.stringify((j.diffs ?? []).map((d) => d.kind))}`,
+    );
+    assert.equal(hit.detail.mappedTo, 'Modal/ErrorPanel');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: --code-connect 指定的文件不存在 → 退出码 2（不能静默当成空映射表）', () => {
+  // 空映射表 ⇒ 所有组件都变成 unmapped ⇒ 差异清单失真，而退出码还是"正常的 1"。
+  // 显式指定了路径却找不到 ⇒ 是调用方的错 ⇒ 必须 exit 2。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-nocc-'));
+  try {
+    const p = writeSnapshot(dir, MIN_SNAPSHOT);
+    const { code, out } = runDiff([
+      '--json',
+      '--only',
+      'components',
+      '--snapshot',
+      p,
+      '--code-connect',
+      join(dir, 'no-such-code-connect.json'),
+    ]);
+    assert.equal(code, 2, `显式指定的映射表缺失必须是 exit 2，实际 ${code}：${out.slice(0, 200)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: 组件集与屏幕撞名时，组件集**不能**享受屏幕的豁免', () => {
+  // 真实数据 `Screen/SourceSelect`：既是 02 页的 COMPONENT_SET（515:133），
+  // 又是 03 页的同名 FRAME（314:1432）。
+  // 「是不是屏幕」必须按**来源**判而不是按**名字**判 ——
+  // 否则那个组件集会白拿「不像路径就跳过」的豁免 ⇒ 它的 react 值写成
+  // 非路径时**静默漏报**（组件集不该有这条豁免）。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-collide-'));
+  try {
+    const p = writeSnapshot(
+      dir,
+      buildSnapshot({
+        components: [
+          {
+            ...MODAL_COMPONENT,
+            name: 'Screen/SourceSelect',
+            nodeId: '515:133',
+            contract:
+              'AI_CONTRACT:\n  react: packages/renderer/src/components/source-select/Pending.tsx（待新建）\n  props: {}\n  a11y: {}\n  states: []',
+          },
+        ],
+        screens: [
+          {
+            name: 'Screen/SourceSelect',
+            nodeId: '314:1432',
+            type: 'FRAME',
+            contract: '',
+          },
+        ],
+      }),
+    );
+    const { stdout } = runDiff(['--json', '--only', 'components', '--snapshot', p]);
+    const j = assertCleanJson(stdout, '撞名组件集');
+    const hit = (j.diffs ?? []).find(
+      (d) => d.kind === 'reactPathMissing' && d.detail?.nodeId === '515:133',
+    );
+    assert.ok(
+      hit,
+      `撞名的**组件集**必须按组件规则报 must（不得享受屏幕豁免），实际：${JSON.stringify((j.diffs ?? []).map((d) => [d.kind, d.detail?.nodeId]))}`,
+    );
+    assert.equal(hit.severity, 'must');
+    assert.ok(hit.title.includes('组件'), `标题应说明是组件，实际：${hit.title}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: code-connect 映射表是空的 → 退出码 2（不能静默变成"全都未映射"）', () => {
+  // 退化输入：映射表存在但 0 条映射 ⇒ 所有组件都变成 unmapped，
+  // 而 unmapped 正好在豁免表里 ⇒ 门禁照样绿 —— 与「空 token dump」同一种假绿。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-emptycc-'));
+  try {
+    const p = writeSnapshot(dir, MIN_SNAPSHOT);
+    const ccPath = join(dir, 'cc.json');
+    writeFileSync(ccPath, JSON.stringify({ mappings: [] }));
+    const { code, out } = runDiff([
+      '--json',
+      '--only',
+      'components',
+      '--snapshot',
+      p,
+      '--code-connect',
+      ccPath,
+    ]);
+    assert.equal(code, 2, `空映射表必须是 exit 2，实际 ${code}：${out.slice(0, 200)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: token dump 的 variables 是空数组 → 退出码 2（不能静默跳过）', () => {
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-emptydump-'));
+  try {
+    const p = writeSnapshot(dir, MIN_SNAPSHOT);
+    const dumpPath = join(dir, 'dump.json');
+    writeFileSync(dumpPath, JSON.stringify({ variables: [] }));
+    const { code, out } = runDiff([
+      '--json',
+      '--only',
+      'tokens',
+      '--snapshot',
+      p,
+      '--token-dump',
+      dumpPath,
+    ]);
+    assert.equal(code, 2, `空变量数组必须是 exit 2，实际 ${code}：${out.slice(0, 200)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('端到端: motion 非对象 / motion.spec 非数组 → 退出码 2（隔离用例）', () => {
+  // 隔离要点：counts.motionEntries 传 null，让 counts 校验**不**拦，
+  // 只有 motion 自身的检查能拦 —— 否则这两条守卫是"被 counts 顺带挡住"的，测不到。
+  const dir = mkdtempSync(join(process.env.TMPDIR || '/tmp', 'figma-diff-motioniso-'));
+  try {
+    const p1 = writeSnapshot(dir, buildSnapshot({ components: [MODAL_COMPONENT], motion: null }));
+    // counts 与 null 的 motion 对齐（不靠 counts 拦）
+    const raw1 = JSON.parse(readFileSync(p1, 'utf8'));
+    raw1.counts.motionEntries = null;
+    writeFileSync(p1, JSON.stringify(raw1));
+    const r1 = runDiff(['--json', '--snapshot', p1]);
+    assert.equal(r1.code, 2, `motion 非对象必须是 exit 2，实际 ${r1.code}`);
+
+    const p2 = writeSnapshot(dir, buildSnapshot({ components: [MODAL_COMPONENT], motion: {} }));
+    const raw2 = JSON.parse(readFileSync(p2, 'utf8'));
+    raw2.counts.motionEntries = null;
+    writeFileSync(p2, JSON.stringify(raw2));
+    const r2 = runDiff(['--json', '--snapshot', p2]);
+    assert.equal(r2.code, 2, `motion.spec 非数组必须是 exit 2，实际 ${r2.code}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

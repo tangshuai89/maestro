@@ -73,10 +73,14 @@ export function parseContract(text) {
 export function reactPathOf(contract) {
   const raw = contract?.react;
   if (!raw) return null;
+  // ⚠️ 顺序要紧：**先去尾逗号，再去引号**。
+  //    反过来（`"path",` → 先去首引号 → `path",` → 再去尾逗号 → `path"`）会留下一个尾引号，
+  //    于是路径变成 `path"` → 查文件必然不存在 → 报出假的 must。
+  //    （这个顺序错误之前被"不像路径就跳过"的检查掩盖着，直到组件集不再享受那个豁免才暴露。）
   const cleaned = String(raw)
     .trim()
-    .replace(/^['"]|['"]$/g, '')
     .replace(/,$/, '')
+    .replace(/^['"]|['"]$/g, '')
     .trim();
   return cleaned || null;
 }
@@ -176,13 +180,25 @@ export function diffComponents(snapshotComponents, mappings, repoFileExists, sna
   }
   // 反向查找的候选 = 组件集 ∪ 屏幕
   //（Screen/*/Modal 这类映射指向 03 · Screens 上的 FRAME，不在组件集清单里）
-  const allNodes = [...snapshotComponents, ...snapshotScreens];
+  //
+  // ⚠️ **「是不是屏幕」按来源判，不按名字判**。
+  //    真实数据里 `Screen/SourceSelect` 既是 02 页的 COMPONENT_SET（515:133），
+  //    又是 03 页的同名 FRAME（314:1432）。按名字判 ⇒ 那个**组件集**会被当成屏幕
+  //    ⇒ 白白拿到「不像路径就跳过」的豁免（而组件集不该有这条豁免）
+  //    ⇒ 它的 react 值写成非路径时会**静默漏报**。
+  const allNodes = [
+    ...snapshotComponents.map((c) => ({ ...c, _isScreen: false })),
+    ...snapshotScreens.map((c) => ({ ...c, _isScreen: true })),
+  ];
   const figmaNames = new Set(allNodes.map((c) => c.name));
-  const allNodeIds = new Set(allNodes.map((c) => c.nodeId).filter(Boolean));
-  const screenNames = new Set(snapshotScreens.map((c) => c.name));
+  // nodeId → 名字：用来判「映射是不是抄到了另一个节点身上」
+  // （2026-10-29 独立评审实测的回退：映射的 nodeId 抄成另一个**存在**的节点时，
+  //   只看"映射 id 在不在快照里"是查不出来的）
+  const nodeIdToName = new Map();
+  for (const n of allNodes) if (n.nodeId) nodeIdToName.set(n.nodeId, n.name);
 
   for (const comp of allNodes) {
-    const isScreen = screenNames.has(comp.name);
+    const isScreen = comp._isScreen === true;
     const kindWord = isScreen ? '屏幕' : '组件';
     const candidates = byName.get(comp.name) ?? [];
     // 这个节点自己就是被映射的那个吗？
@@ -190,10 +206,16 @@ export function diffComponents(snapshotComponents, mappings, repoFileExists, sna
     const map = exact ?? candidates[0];
 
     // a) AI_CONTRACT 指向的 React 文件不存在 → 前端该补组件（这是"向下驱动"的主线）
+    //
+    //    ⚠️ 「不像路径就跳过」这条豁免**只对屏幕生效**。
     //    屏幕的 react 值未必是路径（Screen/EmptyState/Full 写的是「复用 TheaterView
-    //    条件渲染」），只检查"看起来像路径"的值，否则会报出假的 must。
+    //    条件渲染」），所以对屏幕要跳过非路径值。
+    //    但**组件集不行** —— 组件集的 react 值本来就该是路径；若"不像路径"就跳过，
+    //    `react: xxx.tsx（待新建）` 这种带注释的写法会**静默漏报**
+    //    （2026-10-29 独立评审实测的回退：615a29d 能报，fe13a07 反而不报了）。
     const reactPath = comp.aiContract?.react;
-    if (reactPath && looksLikeRepoPath(reactPath) && !repoFileExists(reactPath)) {
+    const skipNonPath = isScreen && !looksLikeRepoPath(reactPath);
+    if (reactPath && !skipNonPath && !repoFileExists(reactPath)) {
       out.push(
         makeDiff({
           lane: 'components',
@@ -210,18 +232,26 @@ export function diffComponents(snapshotComponents, mappings, repoFileExists, sna
     if (isScreen) {
       // 屏幕只走 a/c（见上方说明），不走 b（unmapped）
       if (map && !exact && map.figmaNodeId && comp.nodeId) {
-        // ⚠️ 同名不同类：`Screen/SourceSelect` 既是 02 页的 COMPONENT_SET（515:133，
-        //    code-connect 映射指的就是它），又是 03 页的同名 FRAME（314:1432）。
-        //    只有当映射的 nodeId **在快照里已经不存在**时，才是真的"被重建过"。
-        if (!allNodeIds.has(map.figmaNodeId)) {
+        const mappedName = nodeIdToName.get(map.figmaNodeId);
+        // 同名不同类（`Screen/SourceSelect` 既是组件集又是同名屏幕）⇒ 映射没错，别报。
+        // 映射 id 在快照里**已不存在** ⇒ 被重建过 ⇒ 报。
+        // 映射 id 还在但**指向别的名字** ⇒ 抄错节点了 ⇒ 也报。
+        if (mappedName !== comp.name) {
           out.push(
             makeDiff({
               lane: 'components',
               kind: 'nodeIdChanged',
               severity: 'should',
               title: `映射的 nodeId 与设计稿现状不符：${comp.name}`,
-              detail: { mapping: map.figmaNodeId, figma: comp.nodeId },
-              action: `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，设计稿现状是 \`${comp.nodeId}\` → 更新映射（对象被重建过）`,
+              detail: {
+                mapping: map.figmaNodeId,
+                figma: comp.nodeId,
+                mappedTo: mappedName ?? null,
+              },
+              action:
+                mappedName === undefined
+                  ? `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，但设计稿里已经没有这个节点了（现状是 \`${comp.nodeId}\`）→ 更新映射（对象被重建过）`
+                  : `figma-code-connect.json 里 \`${map.figmaNodeId}\` 指向的是 **${mappedName}**，不是 ${comp.name} → 映射抄错节点了，改成 \`${comp.nodeId}\``,
               target: 'figma-code-connect.json',
             }),
           );
@@ -246,17 +276,21 @@ export function diffComponents(snapshotComponents, mappings, repoFileExists, sna
       continue;
     }
 
-    // c) nodeId 对不上 → 通道指错位置（常见于 Figma 侧重建过组件）
+    // c) nodeId 对不上 → 通道指错位置（常见于 Figma 侧重建过组件 / 抄错节点）
     if (!exact && map.figmaNodeId && comp.nodeId && map.figmaNodeId !== comp.nodeId) {
-      if (!allNodeIds.has(map.figmaNodeId)) {
+      const mappedName = nodeIdToName.get(map.figmaNodeId);
+      if (mappedName !== comp.name) {
         out.push(
           makeDiff({
             lane: 'components',
             kind: 'nodeIdChanged',
             severity: 'should',
             title: `映射的 nodeId 与设计稿现状不符：${comp.name}`,
-            detail: { mapping: map.figmaNodeId, figma: comp.nodeId },
-            action: `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，设计稿现状是 \`${comp.nodeId}\` → 更新映射（组件被重建过）`,
+            detail: { mapping: map.figmaNodeId, figma: comp.nodeId, mappedTo: mappedName ?? null },
+            action:
+              mappedName === undefined
+                ? `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，但设计稿里已经没有这个节点了（现状是 \`${comp.nodeId}\`）→ 更新映射（组件被重建过）`
+                : `figma-code-connect.json 里 \`${map.figmaNodeId}\` 指向的是 **${mappedName}**，不是 ${comp.name} → 映射抄错节点了，改成 \`${comp.nodeId}\``,
             target: 'figma-code-connect.json',
           }),
         );

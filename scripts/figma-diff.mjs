@@ -18,6 +18,8 @@
 //   node scripts/figma-diff.mjs --gate           # 有未豁免的 must/should 差异 → exit 1
 //   node scripts/figma-diff.mjs --snapshot <p>   # 指定别的 snapshot 文件
 //   node scripts/figma-diff.mjs --allowlist <p>  # 指定别的豁免表（默认 scripts/figma-diff-allowlist.json）
+//   node scripts/figma-diff.mjs --token-dump <p>  # 指定别的 token dump（默认 scripts/figma-tokens-dump.json）
+//   node scripts/figma-diff.mjs --code-connect <p># 指定别的 code-connect 映射表（默认 figma-code-connect.json）
 //   node scripts/figma-diff.mjs --only tokens    # 只看某条腿（tokens|components|descriptions|motion）
 //
 // 退出码：0 = 无未豁免的 must/should 差异；1 = 有差异（--gate）；2 = 用法/文件错误/快照退化
@@ -66,12 +68,15 @@ const only = onlyAt !== -1 ? argv[onlyAt + 1] : null;
 const dumpAt = argv.indexOf('--token-dump');
 const tokenDumpPath =
   dumpAt !== -1 ? argv[dumpAt + 1] : resolve(__dirname, 'figma-tokens-dump.json');
+// --code-connect 同理：映射表原先写死路径 ⇒「映射抄错节点」这类判据没法端到端测。
+const ccAt = argv.indexOf('--code-connect');
+const codeConnectPath = ccAt !== -1 ? argv[ccAt + 1] : resolve(ROOT, 'figma-code-connect.json');
 
 const PATHS = {
   snapshot: snapshotPath,
   tokenDump: tokenDumpPath,
   generated: resolve(ROOT, 'packages/renderer/src/styles/base/_tokens.generated.scss'),
-  codeConnect: resolve(ROOT, 'figma-code-connect.json'),
+  codeConnect: codeConnectPath,
   motionSpec: resolve(ROOT, 'specs/motion-spec.json'),
   allowlist: allowlistPath,
   rendererSrc: resolve(ROOT, 'packages/renderer/src'),
@@ -202,6 +207,23 @@ if (existsSync(PATHS.codeConnect)) {
   } catch (e) {
     fail(`figma-code-connect.json 不是合法 JSON: ${e.message}`);
   }
+  // 映射表存在但**是空的** ⇒ 退化输入：所有组件都变成 unmapped，
+  // 而 unmapped 正好在豁免表里 ⇒ 门禁照样绿 —— 与「空 token dump」同一种假绿。
+  // ⇒ 显式报错，不静默。
+  if (!Array.isArray(mappings)) {
+    fail(`code-connect 映射表的 mappings 必须是数组: ${PATHS.codeConnect}`);
+  }
+  if (mappings.length === 0) {
+    fail(
+      `code-connect 映射表是空的（0 条映射）: ${PATHS.codeConnect}\n` +
+        `   ⇒ 所有组件都会变成"未映射"，而"未映射"在豁免表里 ⇒ 门禁会假绿。\n` +
+        `   这不是"设计稿没有组件"，是映射表退化了。`,
+    );
+  }
+} else if (ccAt !== -1) {
+  // 显式指定了路径却不存在 ⇒ 是调用方的错，不是"仓库没映射表"⇒ 必须报错。
+  // （否则映射表为空 ⇒ 所有组件都变成 unmapped ⇒ 差异清单失真。）
+  fail(`找不到 code-connect 映射表: ${PATHS.codeConnect}`);
 }
 
 // 2b. 生成的 token 层
@@ -228,11 +250,11 @@ if (existsSync(PATHS.tokenDump)) {
     fail(`token dump 解析失败: ${e.message}`);
   }
 }
-// dump 退化成 {}（变量数组不在）时，tokens 腿会被**静默跳过** → 门禁绿，
-// 而真相是"token 那条腿压根没跑"。要跑 tokens 腿却没有可用 dump ⇒ 报错。
-if (wants('tokens') && !tokenDumpMeta.present) {
+// dump 退化成 {}（变量数组不在）或 {"variables":[]}（空数组）时，tokens 腿会被**静默跳过**
+// ⇒ 门禁绿，而真相是"token 那条腿压根没跑"。要跑 tokens 腿却没有可用 dump ⇒ 报错。
+if (wants('tokens') && (!tokenDumpMeta.present || tokenDumpMeta.variables === 0)) {
   fail(
-    `token dump 缺失或没有 variables 数组：${PATHS.tokenDump}\n` +
+    `token dump 缺失 / 没有 variables 数组 / 变量数组为空：${PATHS.tokenDump}\n` +
       `   ⇒ tokens 腿无法运行（不能静默跳过，否则门禁会假装跑过了）。\n` +
       `   重新导出：node scripts/figma-export-tokens.mjs scripts/figma-tokens-dump.json`,
   );
