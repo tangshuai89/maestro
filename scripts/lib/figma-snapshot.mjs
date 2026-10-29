@@ -152,38 +152,82 @@ export function diffTokens(repoTokens, figmaTokens) {
 }
 
 // ── 2. components 腿 ────────────────────────────────────────────
-// 输入：Figma 侧组件集清单、code-connect 映射数组。
+// 输入：Figma 侧组件集清单 + 屏幕清单、code-connect 映射数组。
 // 主线：
 //   a) AI_CONTRACT 声明的 react 路径在仓库里不存在 → 代码该补组件
 //   b) Figma 组件集没有任何映射 → 驱动通道缺失（AI 读不到它）
 //   c) 映射指向的 nodeId 与 Figma 现状不符 → 通道指错位置
-// snapshotScreens 只参与反向（orphaned）查找：Screen/*/Modal 这类映射指向的是
-// 03 · Screens 上的 FRAME，不在组件集清单里，但它们确实存在。
+//
+// snapshotScreens（03 · Screens 上的 FRAME）**与组件集同样走正向检查 a/c** ——
+// 之前只查组件集，导致「屏幕的 react 路径不存在」「屏幕被重建过」两条完全看不见
+// （2026-10-29 独立评审实测：把 Screen/Search/Modal 的 react 改成不存在的文件，
+//   must 0 / exit 0；把它的 nodeId 改掉，整条屏幕直接消失）。
+// 但**屏幕不参与 b（unmapped）**：屏幕清单含嵌套状态帧（Screen/NowPlaying/NoLyrics
+// 之类），且 code-connect 映射的是顶层对象 —— 对屏幕报"没映射"是噪音。
+const looksLikeRepoPath = (v) =>
+  typeof v === 'string' && /[/\\]/.test(v.trim()) && /\.[cm]?[jt]sx?$/.test(v.trim());
+
 export function diffComponents(snapshotComponents, mappings, repoFileExists, snapshotScreens = []) {
   const out = [];
   const byName = new Map();
   for (const m of mappings) {
-    if (!byName.has(m.figmaComponent)) byName.set(m.figmaComponent, m);
+    if (!byName.has(m.figmaComponent)) byName.set(m.figmaComponent, []);
+    byName.get(m.figmaComponent).push(m);
   }
-  const figmaNames = new Set([...snapshotComponents, ...snapshotScreens].map((c) => c.name));
+  // 反向查找的候选 = 组件集 ∪ 屏幕
+  //（Screen/*/Modal 这类映射指向 03 · Screens 上的 FRAME，不在组件集清单里）
+  const allNodes = [...snapshotComponents, ...snapshotScreens];
+  const figmaNames = new Set(allNodes.map((c) => c.name));
+  const allNodeIds = new Set(allNodes.map((c) => c.nodeId).filter(Boolean));
+  const screenNames = new Set(snapshotScreens.map((c) => c.name));
 
-  for (const comp of snapshotComponents) {
-    const map = byName.get(comp.name);
+  for (const comp of allNodes) {
+    const isScreen = screenNames.has(comp.name);
+    const kindWord = isScreen ? '屏幕' : '组件';
+    const candidates = byName.get(comp.name) ?? [];
+    // 这个节点自己就是被映射的那个吗？
+    const exact = candidates.find((m) => m.figmaNodeId && m.figmaNodeId === comp.nodeId);
+    const map = exact ?? candidates[0];
 
     // a) AI_CONTRACT 指向的 React 文件不存在 → 前端该补组件（这是"向下驱动"的主线）
+    //    屏幕的 react 值未必是路径（Screen/EmptyState/Full 写的是「复用 TheaterView
+    //    条件渲染」），只检查"看起来像路径"的值，否则会报出假的 must。
     const reactPath = comp.aiContract?.react;
-    if (reactPath && !repoFileExists(reactPath)) {
+    if (reactPath && looksLikeRepoPath(reactPath) && !repoFileExists(reactPath)) {
       out.push(
         makeDiff({
           lane: 'components',
           kind: 'reactPathMissing',
           severity: 'must',
-          title: `设计稿要求的组件在代码里不存在：${comp.name}`,
+          title: `设计稿要求的${kindWord}在代码里不存在：${comp.name}`,
           detail: { reactPath, nodeId: comp.nodeId, variants: comp.variants },
-          action: `设计稿 ${comp.name} 的 AI_CONTRACT 声明 react 路径 \`${reactPath}\`，但该文件不存在 → 按设计稿的变体清单（${(comp.variants ?? []).join(' / ') || '未声明'}）新建该组件`,
+          action: `设计稿 ${comp.name} 的 AI_CONTRACT 声明 react 路径 \`${reactPath}\`，但该文件不存在 → 按设计稿的变体清单（${(comp.variants ?? []).join(' / ') || '未声明'}）新建该${kindWord}`,
           target: reactPath,
         }),
       );
+    }
+
+    if (isScreen) {
+      // 屏幕只走 a/c（见上方说明），不走 b（unmapped）
+      if (map && !exact && map.figmaNodeId && comp.nodeId) {
+        // ⚠️ 同名不同类：`Screen/SourceSelect` 既是 02 页的 COMPONENT_SET（515:133，
+        //    code-connect 映射指的就是它），又是 03 页的同名 FRAME（314:1432）。
+        //    只有当映射的 nodeId **在快照里已经不存在**时，才是真的"被重建过"。
+        if (!allNodeIds.has(map.figmaNodeId)) {
+          out.push(
+            makeDiff({
+              lane: 'components',
+              kind: 'nodeIdChanged',
+              severity: 'should',
+              title: `映射的 nodeId 与设计稿现状不符：${comp.name}`,
+              detail: { mapping: map.figmaNodeId, figma: comp.nodeId },
+              action: `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，设计稿现状是 \`${comp.nodeId}\` → 更新映射（对象被重建过）`,
+              target: 'figma-code-connect.json',
+            }),
+          );
+        }
+      }
+      continue;
     }
 
     // b) Figma 组件集没有映射 → 驱动通道缺失
@@ -203,18 +247,20 @@ export function diffComponents(snapshotComponents, mappings, repoFileExists, sna
     }
 
     // c) nodeId 对不上 → 通道指错位置（常见于 Figma 侧重建过组件）
-    if (map.figmaNodeId && comp.nodeId && map.figmaNodeId !== comp.nodeId) {
-      out.push(
-        makeDiff({
-          lane: 'components',
-          kind: 'nodeIdChanged',
-          severity: 'should',
-          title: `映射的 nodeId 与设计稿现状不符：${comp.name}`,
-          detail: { mapping: map.figmaNodeId, figma: comp.nodeId },
-          action: `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，设计稿现状是 \`${comp.nodeId}\` → 更新映射（组件被重建过）`,
-          target: 'figma-code-connect.json',
-        }),
-      );
+    if (!exact && map.figmaNodeId && comp.nodeId && map.figmaNodeId !== comp.nodeId) {
+      if (!allNodeIds.has(map.figmaNodeId)) {
+        out.push(
+          makeDiff({
+            lane: 'components',
+            kind: 'nodeIdChanged',
+            severity: 'should',
+            title: `映射的 nodeId 与设计稿现状不符：${comp.name}`,
+            detail: { mapping: map.figmaNodeId, figma: comp.nodeId },
+            action: `figma-code-connect.json 里写的是 \`${map.figmaNodeId}\`，设计稿现状是 \`${comp.nodeId}\` → 更新映射（组件被重建过）`,
+            target: 'figma-code-connect.json',
+          }),
+        );
+      }
     }
   }
 
@@ -348,8 +394,23 @@ export function diffMotion(figmaSpec, repoSpec, codeKeyframes) {
   }
 
   // 代码里的 @keyframes 没被任何 spec 条目登记 → 仓库内部一致性问题（主线，属代码侧）
-  const specBlob = JSON.stringify(repoSpec);
-  const unregistered = [...codeKeyframes].filter((k) => !specBlob.includes(k));
+  //
+  // ⚠️ 必须**按 token 精确比对**，不能用 `JSON.stringify(spec).includes(k)` ——
+  //    子串匹配会把散文里的普通单词当成"已登记"（有名为 fade 的 keyframe 时，
+  //    spec 描述里只要出现单词 fade 就算登记了 ⇒ 漏报）。
+  //    做法：把 spec 里所有字符串值拆成 token 集合，再做**整词**比对。
+  const specTokens = new Set();
+  const collectTokens = (v) => {
+    if (typeof v === 'string') {
+      for (const t of v.match(/[A-Za-z0-9_-]+/g) || []) specTokens.add(t);
+    } else if (Array.isArray(v)) {
+      for (const x of v) collectTokens(x);
+    } else if (v && typeof v === 'object') {
+      for (const x of Object.values(v)) collectTokens(x);
+    }
+  };
+  for (const s of repoSpec) collectTokens(s);
+  const unregistered = [...codeKeyframes].filter((k) => !specTokens.has(k));
   if (unregistered.length) {
     out.push(
       makeDiff({

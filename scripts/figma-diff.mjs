@@ -61,10 +61,15 @@ const allowlistPath =
   allowAt !== -1 ? argv[allowAt + 1] : resolve(__dirname, 'figma-diff-allowlist.json');
 const onlyAt = argv.indexOf('--only');
 const only = onlyAt !== -1 ? argv[onlyAt + 1] : null;
+// --token-dump 是为了让 tokens 腿**可测**（原先路径写死，任何针对 tokens 腿的
+// 变异都测不到 —— 2026-10-29 独立评审实测「整条关掉 tokens 腿」测试仍然全绿）。
+const dumpAt = argv.indexOf('--token-dump');
+const tokenDumpPath =
+  dumpAt !== -1 ? argv[dumpAt + 1] : resolve(__dirname, 'figma-tokens-dump.json');
 
 const PATHS = {
   snapshot: snapshotPath,
-  tokenDump: resolve(__dirname, 'figma-tokens-dump.json'),
+  tokenDump: tokenDumpPath,
   generated: resolve(ROOT, 'packages/renderer/src/styles/base/_tokens.generated.scss'),
   codeConnect: resolve(ROOT, 'figma-code-connect.json'),
   motionSpec: resolve(ROOT, 'specs/motion-spec.json'),
@@ -72,34 +77,30 @@ const PATHS = {
   rendererSrc: resolve(ROOT, 'packages/renderer/src'),
 };
 
+// 四条腿的名字 —— `--only` 拼错必须报错，不能静默跑成 0 条差异
+const LANES = ['tokens', 'components', 'descriptions', 'motion'];
+if (only !== null && !LANES.includes(only)) {
+  console.error(`❌ --only 的值 "${only}" 不是已知的腿。可用：${LANES.join(' / ')}`);
+  process.exit(2);
+}
+const wants = (lane) => !only || only === lane;
+
 function fail(msg) {
   console.error(`❌ ${msg}`);
   process.exit(2);
 }
 
 // ── 0. 读 snapshot ───────────────────────────────────────────────
-// 快照缺失 **不是错误状态**（还没采集过）→ 明确提示并 exit 0，让 CI 跳过这条腿。
-// 但显式 `--snapshot <path>` 指定了却不存在 → exit 2（那是调用方的错）。
-const SNAPSHOT_EXPLICIT = flagAt !== -1;
+// 快照缺失 **是错误状态**：快照已提交进仓库（commit 1ce7248），它不在 = 仓库坏了，
+// 不是"还没采集过"。早先"缺失就 exit 0 跳过"的规则留下了**最直接的绕过路径**
+// —— `git rm scripts/figma-snapshot.json` 就能让门禁变绿（2026-10-29 独立评审实测）。
+// ⇒ 缺失一律 exit 2，消息里给出采集步骤。
 if (!existsSync(PATHS.snapshot)) {
-  if (SNAPSHOT_EXPLICIT) {
-    fail(`找不到 Figma 快照: ${PATHS.snapshot}`);
-  }
-  if (AS_JSON) {
-    console.log(
-      JSON.stringify(
-        { ok: true, skipped: true, reason: 'no_snapshot', snapshot: PATHS.snapshot, diffs: [] },
-        null,
-        2,
-      ),
-    );
-  } else {
-    console.log('ℹ️  尚未采集 Figma 快照 —— 本腿跳过（不是错误）。');
-    console.log('');
-    console.log('   采集步骤：把 scripts/figma-snapshot-seg.js 的 SEG1 贴给 use_figma 跑一次，');
-    console.log('   把返回值落盘成 scripts/figma-snapshot.json（采集脚本里有完整用法）。');
-  }
-  process.exit(0);
+  fail(
+    `找不到 Figma 快照: ${PATHS.snapshot}\n` +
+      `   快照是**门禁的基线**，已提交进仓库（scripts/figma-snapshot.json）—— 它不在 = 仓库被改坏了，不是"还没采集"。\n` +
+      `   若确实要重新采集：把 scripts/figma-snapshot-seg.js 的 SEG1 贴给 use_figma 跑一次，落盘回这个路径。`,
+  );
 }
 let snapshot;
 try {
@@ -128,6 +129,50 @@ if (rawComponents.length === 0 && rawScreens.length === 0) {
   fail(
     `快照是空的（components 0 个 / screens 0 个）—— 这几乎一定是采集失败或抄断，不是"设计稿没有差异"。\n   请重跑采集段并核对 scripts/figma-snapshot.json 的内容。`,
   );
+}
+
+// ── 0c. counts 交叉校验（防"抄断但看起来正常"）────────────────────
+// 采集段会同时返回 counts（components/screens/motionEntries 三个数）。
+// 若数组被截断而 counts 还在，两者就会对不上 ⇒ 直接报错。
+// 之前只查"两个数组都空"，于是 `{"components":[{...1 个...}],"screens":[]}`
+// 这种"只抄了 1 个组件"的快照能顺利通过 → 门禁绿 → 而真相是"只采到 1 个"。
+const counts = snapshot.counts;
+if (!counts || typeof counts !== 'object') {
+  fail(
+    `快照缺 counts 字段 —— 这不是采集段的产物形状（采集段一定会返回 counts）。\n   ${PATHS.snapshot}`,
+  );
+}
+const motionSpecLen = Array.isArray(snapshot.motion?.spec) ? snapshot.motion.spec.length : null;
+const expected = {
+  components: rawComponents.length,
+  screens: rawScreens.length,
+  motionEntries: motionSpecLen,
+};
+for (const [k, actual] of Object.entries(expected)) {
+  if (counts[k] !== actual) {
+    fail(
+      `快照与 counts 对不上：counts.${k}=${counts[k]}，实际数组长度=${actual}。\n` +
+        `   ⇒ 抄写时被截断了（或手工改过）。请重跑采集段。`,
+    );
+  }
+}
+
+// ── 0d. motion 采集失败的信号必须被读 ─────────────────────────────
+// 采集段在 MOTION SPEC 解析失败时会写 parseError / missing:true。
+// 不读它 ⇒ 采集侧失败被当成"设计稿没有动效"⇒ motion 腿的 must 永远报不出来。
+if (!snapshot.motion || typeof snapshot.motion !== 'object') {
+  fail(`快照的 motion 字段缺失或不是对象 —— 采集失败，不是"设计稿没有动效"。`);
+}
+if (snapshot.motion.parseError) {
+  fail(`Figma 的 MOTION SPEC 解析失败：${snapshot.motion.parseError}\n   请重跑采集段。`);
+}
+if (snapshot.motion.missing === true) {
+  fail(
+    `采集段没找到 04 · Motion 页的 MOTION SPEC frame —— 采集失败，不是"设计稿没有动效"。\n   请确认 Figma 文件里该 frame 还在。`,
+  );
+}
+if (!Array.isArray(snapshot.motion.spec)) {
+  fail(`快照的 motion.spec 必须是数组（当前 ${typeof snapshot.motion.spec}）。`);
 }
 
 // ── 1. 解析 AI_CONTRACT（浅解析逻辑在 lib/figma-snapshot.mjs，可离线单测）──
@@ -183,6 +228,15 @@ if (existsSync(PATHS.tokenDump)) {
     fail(`token dump 解析失败: ${e.message}`);
   }
 }
+// dump 退化成 {}（变量数组不在）时，tokens 腿会被**静默跳过** → 门禁绿，
+// 而真相是"token 那条腿压根没跑"。要跑 tokens 腿却没有可用 dump ⇒ 报错。
+if (wants('tokens') && !tokenDumpMeta.present) {
+  fail(
+    `token dump 缺失或没有 variables 数组：${PATHS.tokenDump}\n` +
+      `   ⇒ tokens 腿无法运行（不能静默跳过，否则门禁会假装跑过了）。\n` +
+      `   重新导出：node scripts/figma-export-tokens.mjs scripts/figma-tokens-dump.json`,
+  );
+}
 
 // 2d. 仓库侧动效 spec
 let repoMotionSpec = [];
@@ -220,7 +274,6 @@ const repoFileExists = (rel) => {
 };
 
 // ── 3. 比对 ─────────────────────────────────────────────────────
-const wants = (lane) => !only || only === lane;
 let diffs = [];
 
 if (wants('tokens') && figmaTokens.size) {
@@ -270,12 +323,17 @@ function waiverReasonFor(diff, allowlist) {
   if (diff.severity === 'must') return null; // must 不可豁免
   for (const entry of allowlist) {
     if (!entry || typeof entry !== 'object') continue;
-    if (!entry.reason || !String(entry.reason).trim()) continue; // 无 reason = 未登记
+    // reason 必须**是非空字符串**：
+    //   ① `reason: true` 这种非字符串不能被当成有效理由（String(true).trim() === "true"）；
+    //   ② 而且**必须崩不了** —— 直接 entry.reason.trim() 在 reason 是布尔时抛 TypeError，
+    //      退出码恰好也是 1 ⇒ 测试区分不出"正确地不豁免"和"脚本崩了"。
+    const reason = typeof entry.reason === 'string' ? entry.reason.trim() : '';
+    if (!reason) continue;
     if (entry.kind && entry.kind !== diff.kind) continue;
     if (entry.lane && entry.lane !== diff.lane) continue;
     if (entry.target && entry.target !== diff.target) continue;
     if (!entry.kind && !entry.lane && !entry.target) continue; // 空条件不许豁免一切
-    return String(entry.reason);
+    return reason;
   }
   return null;
 }

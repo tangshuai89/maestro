@@ -183,34 +183,61 @@ npm run figma:diff:mutation           # 变异验证（改坏判据 → 必须�
 
 ### 5.1 退出码
 
-| 码  | 含义                                                                   |
-| --- | ---------------------------------------------------------------------- |
-| 0   | 无未豁免的 must/should 差异，或**无快照已跳过**（还没采集不是错误）    |
-| 1   | 有未豁免的 must/should 差异（`--gate` 时）；无 `--gate` 时仅 must 触发 |
-| 2   | 用法/文件错误（快照显式指定却不存在、JSON 解析失败、**快照退化**等）   |
+| 码  | 含义                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------- |
+| 0   | 无未豁免的 must/should 差异                                                                             |
+| 1   | 有未豁免的 must/should 差异（`--gate` 时）；无 `--gate` 时仅 must 触发                                  |
+| 2   | 用法/文件错误（快照不存在、JSON 解析失败、**快照退化**、motion 采集失败、lane 拼错、token dump 退化等） |
 
-### 5.2 快照缺失的两档语义
+### 5.2 快照缺失 = 错误（不是"跳过"）
 
-- 默认路径 `scripts/figma-snapshot.json` 不存在 → **exit 0 + 提示如何采集**。
-  理由：CI 里这条腿在没有采集时必须**静默通过**，否则第一次接线就红。
-- `--snapshot <path>` 显式指定却不存在 → **exit 2**。理由：那是调用方的错，不能吞。
+- 快照已提交进仓库（commit `1ce7248`）⇒ 它**不在 = 仓库被改坏了**，不是"还没采集过"。
+  ⇒ 缺失一律 **exit 2**，消息里附采集步骤。
+- ⚠️ 早先的规则是"缺失就 exit 0 跳过"（为了让第一次接线不红）。
+  独立评审实测出这是**最直接的绕过路径**：`git rm scripts/figma-snapshot.json` 就能让门禁变绿。
+  ⇒ 规则已改（2026-10-29），变异项 M21 守住。
 
-### 5.3 两条「防假绿」硬规则
+### 5.3 六条「防假绿」硬规则
 
-> 这两条是 2026-10-29 实现期实测加的 —— 都是「看起来绿，其实没测到」的形态。
+> 这六条是 2026-10-29 实现期 + **独立评审**实测加的 —— 都是「看起来绿，其实没测到」的形态。
+> 每一条都有对应的变异项（见 §6.2）。
 
-**① 空快照必须报错（exit 2）**
+**① 快照缺失必须报错（exit 2）** —— 见 §5.2。
+
+**② 退化快照必须报错（exit 2）**
 
 `components` 与 `screens` **同时为空** ⇒ 几乎一定是采集失败 / JSON 抄断 / 写成 `{}`。
 这种快照跑出来的比对结果是"0 差异" ⇒ 门禁绿 ⇒ **而真相是"根本没采到"**。
 ⇒ 必须 exit 2 而不是当成"设计稿没有差异"。
-（`motion` 可以为空 —— MOTION SPEC frame 可能不存在，不作为判据。）
 
-**② `must` 永远不可豁免**
+**②b `counts` 必须与数组长度对得上（exit 2）**
 
-豁免表 `scripts/figma-diff-allowlist.json` 只对 `should` 生效。豁免条目必须带 `reason`，
-否则视为**未登记**（不豁免）；匹配条件（`kind` / `lane` / `target`）不能全空，
-否则等于豁免一切。豁免项**仍会打印**在清单的「已豁免」段 —— 只是不红。
+采集段同时返回 `counts`（components / screens / motionEntries 三个数）。
+**只查"两个数组都空"不够** —— 只抄了 1 个组件、counts 还写着 35 的快照能顺利通过。
+⇒ 快照必须带 `counts`，且三个数必须与实际数组长度**逐一相等**，否则 exit 2。
+
+**③ motion 采集失败必须报错（exit 2）**
+
+采集段在 MOTION SPEC 解析失败时写 `parseError`，找不到 frame 时写 `missing: true`。
+不读它 ⇒ 采集侧失败被当成"设计稿没有动效" ⇒ **motion 腿的 `figmaOnly`（must）永远报不出来**。
+⇒ `parseError` / `missing` / motion 非对象 / `motion.spec` 非数组 ⇒ 一律 exit 2。
+
+**④ token dump 退化必须报错（exit 2）**
+
+dump 退化成 `{}`（没有 `variables`）时 tokens 腿会被**静默跳过** ⇒ 门禁绿，
+而真相是"token 那条腿压根没跑"。⇒ 要跑 tokens 腿却没有可用 dump ⇒ exit 2。
+
+**⑤ `must` 永远不可豁免**
+
+豁免表 `scripts/figma-diff-allowlist.json` 只对 `should` 生效。豁免条目必须带**非空字符串**
+`reason`（`reason: true` 这种非字符串不算），否则视为**未登记**（不豁免）；
+匹配条件（`kind` / `lane` / `target`）不能全空，否则等于豁免一切。
+豁免项**仍会打印**在清单的「已豁免」段 —— 只是不红。
+
+**⑥ `--only` 拼错必须报错（exit 2）**
+
+`--only component`（少个 s）曾会静默跑成 0 条差异、exit 0 ⇒ 看起来"没差异"。
+⇒ lane 名不在白名单里 ⇒ exit 2。
 
 **为什么需要豁免**：快照一提交进仓库，`--gate` 就从"永远跳过"变成**真门禁**。
 而真门禁上线当天必然红 —— 当前已知的 should 级差异有两类（code-connect 覆盖率没跟上 /
@@ -224,17 +251,20 @@ motion spec 没登记全部 keyframes），短期修不完（后者要同步 Fig
 
 ### 6.1 功能
 
-- [x] `node scripts/figma-diff.test.mjs` → **36/36 pass**
-- [x] `node scripts/figma-diff.mjs` → 无快照时提示采集步骤并 exit 0
-- [x] `node scripts/figma-diff.mjs --json` → `{ok, skipped, reason:"no_snapshot"}`
-- [x] `node scripts/figma-diff.mjs --gate` → 有未豁免的 must/should 时 exit 1
-- [x] `node scripts/figma-diff.mjs --only tokens` 单腿可用
+- [x] `node scripts/figma-diff.test.mjs` → **57/57 pass**
+- [x] `node scripts/figma-diff.mjs --gate`（真实快照）→ exit 0
+- [x] `node scripts/figma-diff.mjs --json` → `{ok, meta, stats, statsAll, diffs, waived}`
+- [x] `node scripts/figma-diff.mjs --only tokens` 单腿可用；`--only` 拼错 → exit 2
 - [x] `node scripts/figma-diff.mjs --snapshot /tmp/nope.json` → exit 2
 - [x] markdown 主线段只含 must/should；note 单列「附注：设计稿侧待办（不占待办清单位置）」
 - [x] 每条差异带 `target`（相对仓库根的文件路径）→ 可直接喂 coding agent
-- [x] 空快照 / components-screens 非数组 → exit 2（不退化成"0 差异"）
 - [x] 豁免项仍出现在清单「已豁免」段；`--json` 里进 `waived` 数组
-- [x] `must` 被豁免 → 门禁仍红；豁免条目缺 `reason` / 条件全空 → 不豁免
+- [x] `must` 被豁免 → 门禁仍红；豁免条目缺 `reason` / reason 非字符串 / 条件全空 → 不豁免
+- [x] **六条防假绿守卫**（§5.3）各有端到端用例：
+      快照缺失 · 空快照 · counts 不符 · components-screens 非数组 ·
+      motion parseError / missing / 非对象 · token dump 退化 · `--only` 拼错
+- [x] **屏幕也走正向检查**：react 路径不存在 → must；被重建 → nodeIdChanged；
+      非路径的 react 值（复用说明）→ 不报假 must；同名不同类（组件集 + 同名屏幕）→ 不误报
 
 ### 6.2 判据可验证（**交付标准**）
 
@@ -243,30 +273,63 @@ motion spec 没登记全部 keyframes），短期修不完（后者要同步 Fig
 >
 > **一次性手测不算数** —— 必须是**可复现**的脚本，否则下次改判据时无法复查。
 
-- [x] **可复现变异验证**：`scripts/figma-diff.mutation.mjs` → **12/12 变异全部被抓住**
+- [x] **可复现变异验证**：`scripts/figma-diff.mutation.mjs` → **24/24 变异全部被抓住**
       （脚本会原地改坏源码 → 跑测试 → 断言至少 1 个测试红 → 还原；
-      基线不绿则直接 exit 1）
+      基线不绿则直接 exit 1；变异锚点不唯一命中也 exit 1 —— 防"变异没生效"被误读成"门禁没抓到"）
 
-| #   | 故意改坏什么                           | 代表哪类失效               |
-| --- | -------------------------------------- | -------------------------- |
-| M1  | `reactPathMissing` 降级 must→note      | 主线丢失真问题             |
-| M2  | `parseContract` 不再区分缩进层级       | 嵌套 key 泄漏、契约被拍平  |
-| M3  | 关掉 `unregisteredKeyframes` 检测      | motion 腿变哑              |
-| M4  | 让 note 也进主线段                     | 违反 10-24 方向铁律        |
-| M5  | `figmaOnly` 的 target 指错文件         | agent 改错地方             |
-| M6  | descriptions 腿只认 `description` 字段 | 全量误报（40+ 假附注）     |
-| M7  | 令牌名重复 `--` 前缀                   | 渲染成 `----accent`        |
-| M8  | 关掉「AI_CONTRACT 缺必填字段」检测     | 描述腿变哑                 |
-| M9  | 允许豁免 `must` 级差异                 | 真问题被"为了过门禁"豁免掉 |
-| M10 | 退化快照守卫失效                       | 空/截断快照 → 门禁假绿     |
-| M11 | 豁免条目不要求 `reason`                | 随手加一条就能过门禁       |
-| M12 | 豁免条目条件全空也生效                 | 豁免掉一切差异             |
+| #   | 故意改坏什么                           | 代表哪类失效                   |
+| --- | -------------------------------------- | ------------------------------ |
+| M1  | `reactPathMissing` 降级 must→note      | 主线丢失真问题                 |
+| M2  | `parseContract` 不再区分缩进层级       | 嵌套 key 泄漏、契约被拍平      |
+| M3  | 关掉 `unregisteredKeyframes` 检测      | motion 腿变哑                  |
+| M4  | 让 note 也进主线段                     | 违反 10-24 方向铁律            |
+| M5  | `figmaOnly` 的 target 指错文件         | agent 改错地方                 |
+| M6  | descriptions 腿只认 `description` 字段 | 全量误报（40+ 假附注）         |
+| M7  | 令牌名重复 `--` 前缀                   | 渲染成 `----accent`            |
+| M8  | 关掉「AI_CONTRACT 缺必填字段」检测     | 描述腿变哑                     |
+| M9  | 允许豁免 `must` 级差异                 | 真问题被"为了过门禁"豁免掉     |
+| M10 | 退化快照守卫失效                       | 空/截断快照 → 门禁假绿         |
+| M11 | 豁免条目不要求 `reason`                | 随手加一条就能过门禁           |
+| M12 | 豁免条目条件全空也生效                 | 豁免掉一切差异                 |
+| M13 | 调用点不传 `screens`                   | 屏幕不参与反向查找 → 30 条误报 |
+| M14 | 整条关掉 tokens 腿                     | tokens 腿此前**不可测**        |
+| M15 | 豁免不按 `kind` 过滤                   | 豁免 A 顺带豁免 B              |
+| M16 | 豁免不按 `target` 过滤                 | 豁免范围失控                   |
+| M17 | react 路径不清洗引号                   | 带引号的路径 → 假 must         |
+| M18 | 屏幕不走正向检查                       | 屏幕的 react/重建完全看不见    |
+| M19 | 退化快照守卫失效（计数版）             | 空快照 → 门禁假绿              |
+| M20 | motion 采集失败不报错                  | motion 的 must 永远报不出来    |
+| M21 | 快照缺失时 exit 0                      | `git rm` 快照就能让门禁变绿    |
+| M22 | `reason` 只判空不判类型                | `reason: true` 也能豁免        |
+| M23 | `@keyframes` 回到子串匹配              | 散文单词被当成"已登记"（漏报） |
+| M24 | `--only` 拼错不报错                    | 静默跑成 0 条差异              |
 
-- [x] 还原后复跑 → 36/36 绿
+- [x] 还原后复跑 → 57/57 绿
 - [x] 端到端反例：坏快照必须报出差异且退出码非 0；干净快照 → 零 must/should
 - [x] **M9 是被变异验证抓出来的**：那条测试原本还剩别的 `should` 项撑着 exit 1，
       就算 `must` 被豁免也看不出区别 ⇒ 测试没在测它声称的东西。修法：把 `unmapped`
       一并豁免，让 `must` 成为唯一生效差异。
+
+### 6.2.1 独立评审（2026-10-29，Claude Code 在沙箱里跑）
+
+评审在 `/tmp` 沙箱里对 `feat/figma-diff` 跑了 11 条候选变异，**6 条存活**
+⇒ 说明当时的测试没在测它声称的东西。本地复核**逐条复现了存活**（不是"疑似"）：
+
+| 存活变异               | 后果                                | 现在由谁守住              |
+| ---------------------- | ----------------------------------- | ------------------------- |
+| 调用点不传 `screens`   | 30 条 orphaned 误报                 | M13 + 端到端用例          |
+| 整条关掉 tokens 腿     | tokens 腿此前**不可测**（路径写死） | M14 + `--token-dump` 参数 |
+| 豁免不按 `kind` 过滤   | 豁免 A 顺带豁免 B                   | M15 + 端到端用例          |
+| 豁免不按 `target` 过滤 | 豁免范围失控                        | M16 + 端到端用例          |
+| react 路径不清洗       | 带引号的路径 → 假 must              | M17 + 端到端用例          |
+| `reason` 非字符串      | `reason: true` 也能豁免             | M22 + 端到端用例          |
+
+评审还找出 **5 条判据漏洞**（都能让 `--gate` 在不该绿时变绿），全部已修：
+快照缺失 / 退化快照只查"都空" / motion 采集失败不报 / 屏幕不走正向检查 / 屏幕重建无信号。
+对应 M19–M21、M24 与新增守卫（§5.3）。
+
+> 评审同时确认：**首份快照 4 个抽查对象全对**（nodeId / 变体数 / react 路径 /
+> Hologram/Cover 确实没有契约段）—— 内容真实性由它对着画布核过，我只验了结构。
 
 ### 6.3 接线
 

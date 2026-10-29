@@ -111,8 +111,8 @@ const MUTATIONS = [
   {
     id: 'M11',
     file: 'figma-diff.mjs',
-    from: '    if (!entry.reason || !String(entry.reason).trim()) continue; // 无 reason = 未登记',
-    to: '    // 无 reason 也豁免',
+    from: "    const reason = typeof entry.reason === 'string' ? entry.reason.trim() : '';",
+    to: "    const reason = typeof entry.reason === 'string' ? entry.reason.trim() : '（未写理由也放行）';",
     why: '豁免条目不要求 reason（"随手加一条就能过门禁"）',
   },
   {
@@ -121,6 +121,96 @@ const MUTATIONS = [
     from: '    if (!entry.kind && !entry.lane && !entry.target) continue; // 空条件不许豁免一切',
     to: '    // 空条件也豁免',
     why: '空匹配条件的豁免条目豁免掉一切差异',
+  },
+
+  // ── 2026-10-29 独立评审（Claude Code）实测出的 6 条存活变异 ──
+  // 评审在沙箱里跑了 11 条候选变异，6 条存活 —— 说明当时的测试没在测它声称的东西。
+  // 下面这 6 条 + 我补的防绕过变体，就是把那个洞永久封住。
+  {
+    id: 'M13',
+    file: 'figma-diff.mjs',
+    from: 'diffComponents(components, mappings, repoFileExists, screens)',
+    to: 'diffComponents(components, mappings, repoFileExists)',
+    why: '调用点不传 screens（屏幕就不参与反向查找 → 30 条 orphaned 误报）',
+  },
+  {
+    id: 'M14',
+    file: 'figma-diff.mjs',
+    from: "if (wants('tokens') && figmaTokens.size) {",
+    to: 'if (false) {',
+    why: '整条关掉 tokens 腿（此前路径写死，任何针对它的变异都测不到）',
+  },
+  {
+    id: 'M15',
+    file: 'figma-diff.mjs',
+    from: '    if (entry.kind && entry.kind !== diff.kind) continue;',
+    to: '    // 不按 kind 过滤',
+    why: '豁免不按 kind 过滤 → 豁免 A 顺带豁免 B',
+  },
+  {
+    id: 'M16',
+    file: 'figma-diff.mjs',
+    from: '    if (entry.target && entry.target !== diff.target) continue;',
+    to: '    // 不按 target 过滤',
+    why: '豁免不按 target 过滤',
+  },
+  {
+    id: 'M17',
+    file: 'lib/figma-snapshot.mjs',
+    from: "    .replace(/^['\"]|['\"]$/g, '')\n",
+    to: '',
+    why: 'react 路径不清洗引号 → 带引号的路径被判成"文件不存在"（假 must）',
+  },
+  {
+    id: 'M18',
+    file: 'lib/figma-snapshot.mjs',
+    from: 'for (const comp of allNodes) {',
+    to: 'for (const comp of snapshotComponents) {',
+    why: '屏幕不走正向检查（屏幕的 react 路径/重建完全看不见）',
+  },
+
+  // ── 防绕过类：让门禁在"不该绿"的时候变绿 ──
+  {
+    id: 'M19',
+    file: 'figma-diff.mjs',
+    from: 'if (rawComponents.length === 0 && rawScreens.length === 0) {',
+    to: 'if (false) {',
+    why: '退化快照守卫失效（空快照被当成"设计稿没有差异"）',
+  },
+  {
+    id: 'M20',
+    file: 'figma-diff.mjs',
+    from: 'if (snapshot.motion.parseError) {',
+    to: 'if (false) {',
+    why: 'motion 采集失败不报错 → motion 腿的 must 永远报不出来',
+  },
+  {
+    id: 'M21',
+    file: 'figma-diff.mjs',
+    from: 'if (!existsSync(PATHS.snapshot)) {\n  fail(',
+    to: 'if (!existsSync(PATHS.snapshot)) {\n  if (true) { process.exit(0); }\n  fail(',
+    why: '快照缺失时 exit 0 → `git rm` 快照就能让门禁变绿（最直接的绕过）',
+  },
+  {
+    id: 'M22',
+    file: 'figma-diff.mjs',
+    from: "    const reason = typeof entry.reason === 'string' ? entry.reason.trim() : '';",
+    to: "    const reason = String(entry.reason ?? '').trim();",
+    why: '豁免条目的 reason 只判空不判类型 → reason:true（布尔）也会生效',
+  },
+  {
+    id: 'M23',
+    file: 'lib/figma-snapshot.mjs',
+    from: 'const unregistered = [...codeKeyframes].filter((k) => !specTokens.has(k));',
+    to: 'const unregistered = [...codeKeyframes].filter((k) => !JSON.stringify(repoSpec).includes(k));',
+    why: '@keyframes 回到子串匹配 → 散文里的普通单词被当成"已登记"（漏报）',
+  },
+  {
+    id: 'M24',
+    file: 'figma-diff.mjs',
+    from: 'if (only !== null && !LANES.includes(only)) {',
+    to: 'if (false) {',
+    why: '--only 拼错不报错 → 静默跑成 0 条差异',
   },
 ];
 
