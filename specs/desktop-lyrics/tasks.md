@@ -25,7 +25,7 @@
 ## Phase 4 — 门禁与手测
 
 - [x] **D14** `npm test` / `typecheck` / `lint` / `scan-hardcoded-colors --gate` / `build:renderer` / `build:electron`
-- [ ] **D15** 手测：置顶逐行高亮 / 拖动 + 重启恢复 / 样式调节 / 锁定穿透 + hover 恢复 /
+- [ ] @manual **D15** 手测：置顶逐行高亮 / 拖动 + 重启恢复 / 样式调节 / 锁定穿透 + hover 恢复 /
       切歌·无歌词·暂停 / Tray 与 Titlebar 勾选同步 / 多显示器
 - [x] **D16** 打包模式（`npm run pack`）验证浮窗资源路径 `lyrics.html` 落在 `Resources/renderer/`
       —— 2026-10-24 核过：出厂包里 `Resources/renderer/` 下

@@ -59,7 +59,7 @@
       关闭 S3-8。
 - [x] **S3-8b** SCSS 机械尾巴 —— **2026-09-24 决议**：仓库无对应语义 token（这些色都用在 gradient stop / load icon 描边 / 装饰边框等无主语义位置），保留为字面量；"基线不许动"理解为不引入新差异。S3-8b 关闭。
 - [x] **S3-8c** 无对应令牌的值 —— **2026-09-24 决议**：`rgba(0,0,0,*)` 是功能性 scrim/shadow（modal backdrop、box-shadow halo），`#94a3b8`（slate-400）专用于 `_liked-modal.scss` 的 VersionType 角标色（instrumental/karaoke）—— 都不通用化，保留字面量。S3-8c 关闭。
-- [ ] **S3-9** `_tokens.scss` 手写层与生成层的遮蔽收敛（含 D4 留的 `--text-dim` 决策）—— ⚠️ **决策待 user 拍板**：当前 `_tokens.scss` `--text-dim: rgba(245, 240, 232, 0.55)`（WCAG AA 注释）被 `_tokens.generated.scss` 的 `--text-dim: rgba(245, 240, 232, 0.4)` 静默覆盖（D4 §1 P5 已识别）。两种走法：(a) 走 D4 导出链把 Figma 端改成 0.55；(b) 删手写层 `--text-dim` 接受 0.4。**本 PR 不动代码**，留作 follow-up。
+- [ ] @blocked **S3-9** `_tokens.scss` 手写层与生成层的遮蔽收敛（含 D4 留的 `--text-dim` 决策）—— ⚠️ **决策待 user 拍板**：当前 `_tokens.scss` `--text-dim: rgba(245, 240, 232, 0.55)`（WCAG AA 注释）被 `_tokens.generated.scss` 的 `--text-dim: rgba(245, 240, 232, 0.4)` 静默覆盖（D4 §1 P5 已识别）。两种走法：(a) 走 D4 导出链把 Figma 端改成 0.55；(b) 删手写层 `--text-dim` 接受 0.4。**本 PR 不动代码**，留作 follow-up。
 
 - [x] **S3-10**（2026-10-20）**"故意不收"批 —— 语义双关色的收口**。S3-5c / S3-8 当时把
       几组色值判为"语义双关 / 无主语义"刻意留着，本批按上下文逐个定案：
@@ -96,7 +96,7 @@
       `color-mix(in srgb, var(--badge) 25%, transparent)`）：Chrome 实测
       嵌套与字面量 computed 值**逐位相同**（`color(srgb 1 0.85098 0.239216 / 0.25)`），
       alpha 0.25 正确解析 —— 正是 spec §2 警告过的雷区，已排除。
-- [ ] **S3-11**（未做）Tailwind 默认色阶批（`_liked-modal.scss` 36 处 +
+- [ ] @todo **S3-11**（未做）Tailwind 默认色阶批（`_liked-modal.scss` 36 处 +
       `_settings-modal.scss` 9 处 + `_transport.scss` 7 处 + `_error-panel.scss` 5 处 +
       `_netease-modal.scss` 5 处 + `useReco.ts` 5 处）—— 这些是 **shadcn/Tailwind 色阶**
       （`#3b82f6/#60a5fa/#a855f7/#c084fc/#f97316/#fb923c/#94a3b8/#64748b/#cbd5e1/#fbbf24/#f59e0b`），
@@ -104,11 +104,11 @@
       （`--sh-primary/--sh-destructive/--sh-muted-foreground/…`），
       属 `specs/shadcn-migration` Phase 2「批 1：迁移 `_liked-modal.scss` 的 45 处硬编码颜色
       到 shadcn theme」—— 两个专题在同一批文件上，**必须合并做**，别各开各的。
-- [ ] **S3-12**（未做）provider 健康状态色 / AI 理由色 —— 设计稿里**没有**这套语义
+- [ ] @todo **S3-12**（未做）provider 健康状态色 / AI 理由色 —— 设计稿里**没有**这套语义
       （`#ffb800/#ff6b00/#d63031/#c0392b/#6c5ce7/#4834d4/#0f8a3a/#1db954` 是 provider 健康态，
       `#FF3B3B/#FFD60A/#4CD964/#2D7FFF/#FF2D87` 是 `useReco.ts` 的 AI 推荐理由色标）。
       要么进 Figma 补变量（走 D4 导出链），要么落成 shadcn token。**需先拍板语义归属**。
 
 ## S4 — 后续（不在本专题）
 
-- [ ] **S4-1** spacing / radius / 字号 的硬编码扫描与替换（方法同 S1/S2，噪音大，单开）
+- [ ] @todo **S4-1** spacing / radius / 字号 的硬编码扫描与替换（方法同 S1/S2，噪音大，单开）

@@ -148,10 +148,10 @@
 ### Phase 3 — 验证与收尾
 
 - [x] 3.1 端到端：用**失效 cookie** 起 server - `curl '/auth/status?provider=qq&validate=1'` → `AUTH_EXPIRED` - `curl '/auth/status?provider=qq'`（不带 validate）→ 仍是 `loggedIn:true`（回归护栏）- `curl '/music/stream/qq/004Gq0xE1YC8xp'` → `401 + AUTH_EXPIRED`
-- [ ] 3.2 端到端：用**有效 cookie** 重复上述三条 → 全部正常播放 / 200 - 🔴 **仍被 F0 阻塞**：没有有效 cookie 基线，本条未做
+- [ ] @blocked 3.2 端到端：用**有效 cookie** 重复上述三条 → 全部正常播放 / 200 - 🔴 **仍被 F0 阻塞**：没有有效 cookie 基线，本条未做
 - [x] 3.3 `npm run typecheck && npm run lint && npm test` 全绿
 - [x] 3.4 清理 `/tmp/probe-*.mjs`（不进仓库）
-- [ ] 3.5 把有效态基线补进 `spec.md` 附录；把「`get_user_baseinfo_v2` 不是真校验」
+- [ ] @blocked 3.5 把有效态基线补进 `spec.md` 附录；把「`get_user_baseinfo_v2` 不是真校验」
       这一发现补进 Phase 11 线索（`loginWithCookie` 的 guard 该换成探针）
 
 ## Phase 11 — review 遗留修复（2026-10-10）

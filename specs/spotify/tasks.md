@@ -25,7 +25,7 @@
 - [x] 22. index.html：defer 加载 sdk.scdn.co/spotify-player.js
 - [x] 23. spotify.test.ts 加 5 条 v2 白盒（like PUT / unlike DELETE / like 401 / getValidTokenForRenderer 边界）——共 12 条
 - [x] 24. typecheck 干净 + npm test 全绿（55+ case）+ renderer vite build 通过 + SDK script 进产物
-- [ ] 25. 【需 Premium 手动】全曲播放 / 设备可见 / transport / token 重连 —— 开发者无 Premium，代码 code-complete 未运行验证（见 spec v2 验收）
+- [ ] @blocked 25. 【需 Premium 手动】全曲播放 / 设备可见 / transport / token 重连 —— 开发者无 Premium，代码 code-complete 未运行验证（见 spec v2 验收）
 
 ## v2.1（Widevine 运行时：换 castLabs Electron —— 解决 WPS 起不来的真正卡点）
 
@@ -41,8 +41,8 @@
 - [x] 29. 删死路脚本 scripts/get-widevine-cdm.js（手动下 CDM 过不了 VMP）
 - [x] 30. 打包 VMP：afterPack-vmp.cjs 调 `castlabs_evs.vmp sign-pkg`（codesign 前）+ build.afterPack + build.electronDist 指本地 castLabs dist
 - [x] 31. typecheck 干净 + build:electron 通过 + 启动看 components.status() Widevine 就绪
-- [ ] 32. ⚠️ 本机 iOA 挡 CDM 运行时下载：`components.whenReady()` 报 error 0 但 WidevineCdm/ 空，直连 CDM CDN 返回 567B HTML 拦截页。代码/配置正确，全曲无法在此机验证（见 spec v2 已知限制）
-- [ ] 33. 【需无 TLS 拦截网络 + Premium 手动】dev 下 CDM 能下 + Premium 播整曲；【需 EVS 账号 + Premium】打包 DMG VMP 签名后仍能播整曲
+- [ ] @blocked 32. ⚠️ 本机 iOA 挡 CDM 运行时下载：`components.whenReady()` 报 error 0 但 WidevineCdm/ 空，直连 CDM CDN 返回 567B HTML 拦截页。代码/配置正确，全曲无法在此机验证（见 spec v2 已知限制）
+- [ ] @blocked 33. 【需无 TLS 拦截网络 + Premium 手动】dev 下 CDM 能下 + Premium 播整曲；【需 EVS 账号 + Premium】打包 DMG VMP 签名后仍能播整曲
 
 ## v2.2（调试：定位"Premium 但仍 30s"根因 → 锁在 license 500）
 
@@ -70,7 +70,7 @@
 > 个人开发者零成本，签 streaming signature 不收费。**前置 = Apple Developer**
 > （$99/年）做 macOS code-sign / notarize，否则 Gatekeeper 拦 dmg。
 
-- [ ] 41. **买 Apple Developer Account**（[developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/)，$99/年，1–3 天批）—— **⚠️ 先提交**（1–3 天延迟），同时跑 #42-#44
+- [ ] @blocked 41. **买 Apple Developer Account**（[developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll/)，$99/年，1–3 天批）—— **⚠️ 先提交**（1–3 天延迟），同时跑 #42-#44
   - ⚠️ 2026-10-24 实测：本机 `security find-identity -v -p codesigning` →
     **0 valid identities**（只有腾讯 IOA MDM 的、不受信）→ electron-builder 打包时
     直接跳过 codesigning（"skipped macOS application code signing"）。
@@ -93,20 +93,20 @@
   - ✅ **2026-10-24 实测：已经装好了** —— `~/.castlabs-evs-venv/bin/` 下
     `evs-vmp` 和 `evs-account` 都在，`evs-vmp sign-pkg --help` 正常。
     （重装命令：`~/.castlabs-evs-venv/bin/pip install --upgrade castlabs-evs`）
-- [ ] 43. **注册 EVS 账号**（e-mail 验证，凭据缓存 `~/.castlabs-evs/`）—— **0 成本**
+- [ ] @blocked 43. **注册 EVS 账号**（e-mail 验证，凭据缓存 `~/.castlabs-evs/`）—— **0 成本**
   - ❌ **2026-10-24 实测：`~/.castlabs-evs/` 目录不存在** → **账号从没注册过**。
   - ⚠️ **命令入口**：`evs-account signup`（**不是** `python3 -m castlabs_evs.account signup`
     —— castlabs-evs 只提供 `evs-vmp` / `evs-account` 两个 CLI，**没有
     `python3 -m castlabs_evs` 的 `__main__`**；这个坑在
     `packages/electron/afterPack-vmp.cjs` 的注释里已经踩过并修掉）。
   - 命令：`~/.castlabs-evs-venv/bin/evs-account signup`（要邮箱 + 密码，**得本人来**）
-- [ ] 44. EVS 签出 dev 用 .app —— ⚠️ **命令入口要改**：`python3 -m castlabs_evs.vmp
+- [ ] @blocked 44. EVS 签出 dev 用 .app —— ⚠️ **命令入口要改**：`python3 -m castlabs_evs.vmp
 sign-pkg` 不存在（见 #43）→ 用
       `~/.castlabs-evs-venv/bin/evs-vmp sign-pkg <dist/mac-arm64/Maestro.app>`
   - ⚠️ `sign-pkg` 收的是「**包含 .app 的目录**」，不是 `.app` 本身。
   - 验证：`?wpsDebug=1` 重跑 → license 返 200 + `hasTrack=true`
   - ⚠️ 前提：`npm run pack` 得先跑通（**已通**，见 `specs/stability/tasks.md` A2）
-- [ ] 45. `afterPack-vmp.cjs` 钩子**生产模式**（无 `SKIP_VMP=1`）跑通：sign → codesign → notarize → dmg
+- [ ] @blocked 45. `afterPack-vmp.cjs` 钩子**生产模式**（无 `SKIP_VMP=1`）跑通：sign → codesign → notarize → dmg
   - 依赖 #41（Developer ID 证书）+ #43（EVS 凭据）
   - ✅ **配置前置已补上**：`packages/electron/package.json` 的 `build.mac` 里加了
     `"notarize": true`。⚠️ **不加会崩**：2026-10-24 实测 electron-builder 24.13.3
@@ -164,5 +164,5 @@ sign-pkg` 不存在（见 #43）→ 用
     `afterPack`（VMP 签名，行 125）→ `doSign`（行 ~260）→ `notarizeIfProvided`（行 275）
     → dmg。⇒ VMP 签名在 codesign **之前**，符合 castLabs 要求，
     `afterPack-vmp.cjs` 的设计不用改。
-- [ ] 46. 装 EVS-signed dmg → 登录 Premium → 播整曲 / Spotify 桌面端可见 "maestro-xxxx" 设备 / transport / token 1h 重连不掉播
-- [ ] 47. CI 化（可选）：EVS 凭据进 GitHub Actions secret，`EVS_NO_ASK=1` 跑 release tag 自动出 prod-signed dmg
+- [ ] @blocked 46. 装 EVS-signed dmg → 登录 Premium → 播整曲 / Spotify 桌面端可见 "maestro-xxxx" 设备 / transport / token 1h 重连不掉播
+- [ ] @deferred 47. CI 化（可选）：EVS 凭据进 GitHub Actions secret，`EVS_NO_ASK=1` 跑 release tag 自动出 prod-signed dmg

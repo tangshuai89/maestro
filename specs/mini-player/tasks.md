@@ -16,7 +16,7 @@
 - [x] **P1-7** 门禁：`npm test`（全仓）+ `typecheck` + `lint` + `scan-hardcoded-colors --gate` + `build:renderer` 全绿
 - [x] **P1-8** 窗口缩放：preload `reportPlayerMode` + main `player:mode` handler（保存/恢复 bounds、minSize 切换、居中收缩、fullscreen/maximized 处理）+ `.mini-mode` titlebar 精简
 - [x] **P1-9** Apple Music 化：窗口 `titleBarStyle: 'hiddenInset'`（红绿灯叠内容，无原生标题栏）；mini 窗口 600×104 时 pill 撑满窗口（`@media max-height:220px` + `inset:6px` + 整条 `-webkit-app-region:drag`）；点封面=展开；进度条双侧 `当前/-剩余` 时间
-- [ ] **P1-10** 手测：`npm run dev` → theater↔mini 音频不中断、窗口收缩/还原动画、红绿灯落位、拖拽、快捷键、重启恢复 mode
+- [ ] @manual **P1-10** 手测：`npm run dev` → theater↔mini 音频不中断、窗口收缩/还原动画、红绿灯落位、拖拽、快捷键、重启恢复 mode
 
 > 偏离说明：设计 spec §4 草图里的「队列」按钮未实现 —— 现有代码没有独立队列视图，
 > ❤ 库弹窗已走 titlebar。如要补，先定队列 UI 再加。
@@ -33,6 +33,6 @@
 
 ## Phase 3 — 集成与打磨
 
-- [ ] `npm run test:ci` 全绿
-- [ ] 手测验收（spec §5）
-- [ ] 可选 `visual:test`
+- [x] `npm run test:ci` 全绿 —— **2026-10-29 勾上**：CI 现在全绿（实测：common 7 / server 74 / electron 14 / renderer 90 + vitest 809，退出码 0）
+- [ ] @manual 手测验收（spec §5）
+- [ ] @deferred 可选 `visual:test`

@@ -32,8 +32,8 @@
       （实测「最后的水族馆」21 首 / 2 碟全对）。当年记的 `-462 "请绑定手机后再试哦~"`
       是**未登录态**触发的反爬响应 —— spec 自己的结论就是"需登录态，本机无登录
       会话无法验证"，现在有会话了，验证通过。实现见任务 1.2
-- [ ] **B2** Spotify 整条线 — 需 OAuth token 才能继续任务 1.5 / 1.6
-- [ ] **B3** Deezer 限流阈值 — 需测出「多少次请求/多少时间内」触发，
+- [ ] @blocked **B2** Spotify 整条线 — 需 OAuth token 才能继续任务 1.5 / 1.6
+- [ ] @blocked **B3** Deezer 限流阈值 — 需测出「多少次请求/多少时间内」触发，
       以便在 `withTimeout` 之外加请求节流。当前只有定性结论（压测必触发，正常使用未验证）
 
 ## Phase 0：类型与接口签名
@@ -59,10 +59,10 @@
       未登录时端点回 `-462` → 明确提示"请先登录网易云"（不甩 code 给用户看）
 - [x] 1.3 `deezer.provider.ts:searchAlbums()` — `/search/album`
 - [x] 1.4 `deezer.provider.ts:getAlbumTracks()` — `/album/{id}` → `tracks.data[]`
-- [ ] 1.5 ~~`spotify.provider.ts:searchAlbums()`~~ → 🔴 **挂起（B2）**
+- [ ] @blocked 1.5 ~~`spotify.provider.ts:searchAlbums()`~~ → 🔴 **挂起（B2）**
       无 OAuth token，`/v1/search?type=album` 直接 401，schema / limit 上限全未知。
       **不要照 track 的 clamp=10 猜一个值写进代码。**
-- [ ] 1.6 ~~`spotify.provider.ts:getAlbumTracks()`~~ → 🔴 **挂起（B2）**，同上
+- [ ] @blocked 1.6 ~~`spotify.provider.ts:getAlbumTracks()`~~ → 🔴 **挂起（B2）**，同上
 - [x] 1.7 `qq.provider.ts:searchAlbums()` — `client_search_cp&t=8`（Spike 已定稿，6/6）
       → `albumName`/`singerName`/`albumPic`(R180)/`song_count`/`publicTime`
 - [x] 1.8 `qq.provider.ts:getAlbumTracks()` — `fcg_v8_album_info_cp.fcg?albummid=`（已定稿，6/6）
@@ -151,7 +151,7 @@
 - [x] 4.7 错误态：部分平台失败 → `.sp-album-warn` 非阻塞提示条（仍显示已有结果）；
       全失败 → 提示条 + 「暂无结果」；`searchAlbums` 抛错 → `.sp-error`；
       拉曲目失败 → 卡片内提示，不影响其它卡片
-- [ ] 4.8 Figma 定稿后把 4.3 的最简列表换成正式网格卡片（**本轮按设计刻意延后**）
+- [ ] @deferred 4.8 Figma 定稿后把 4.3 的最简列表换成正式网格卡片（**本轮按设计刻意延后**）
       —— 本轮只交最简列表视图（复用 `.sp-row` 等现有类名）保证功能闭环。
       等专辑 UI 设计稿定稿后再换网格。**这是唯一未做的 Phase 4 任务**
 - [x] 4.9 `SearchPanel.test.tsx` 回归

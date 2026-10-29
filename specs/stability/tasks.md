@@ -5,7 +5,7 @@
 
 ## A. 环境/账号阻塞（代码已就位，缺凭据）
 
-- [ ] **A1** Spotify Widevine license 500 修复（**2026-10-24：工具链已就位，只差账号**）
+- [ ] @blocked **A1** Spotify Widevine license 500 修复（**2026-10-24：工具链已就位，只差账号**）
   - 买 Apple Developer Account（$99/年，1-3 天批，尽早提交）
     - ⚠️ 实测：本机 `security find-identity -v -p codesigning` → **0 valid identities**
       → electron-builder 打包时直接跳过 codesigning（"skipped macOS application
@@ -1156,9 +1156,9 @@ vitest.config.ts`）→ cwd = 仓库根 → root 也变 → `include` 相对 roo
   `music.controller.ts` 的 `proxyAudio`（899-1001）是**所有平台音频流的必经之路**：
 
       renderer <audio src="/music/stream/qq/xxx">
-                                                                                                        → GET /music/stream/:provider/:trackId
-                                                                                                          → musicService.getStreamUrl() 拿上游 URL
-                                                                                                            → proxyAudio() 转发到上游 CDN
+                                                                                                            → GET /music/stream/:provider/:trackId
+                                                                                                              → musicService.getStreamUrl() 拿上游 URL
+                                                                                                                → proxyAudio() 转发到上游 CDN
 
   它此前 **899-1001 连续 102 行零覆盖**。
 
