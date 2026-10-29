@@ -1,0 +1,10 @@
+{
+  "_comment": "验收证据门禁的豁免表。每条必须写 reason —— 没有 reason 的视为『未登记』，门禁照样红（防止为了过门禁去改清单措辞）。",
+  "ignore": [
+    {
+      "spec": "specs/stability/tasks.md",
+      "evidence": "packages/electron/release/Maestro-1.0.0-arm64.dmg",
+      "reason": "这是**历史事实记录**（2026-10-24 那次 `npm run pack` 确实产出了这个 dmg、116MB）。release/ 不在版本控制里、文件名带版本号 → 本来就不可复现；保留它是为了记下『dmg 真的出来了』这件事。产出它的脚本见同文件 §packaging #16–#20。"
+    }
+  ]
+}

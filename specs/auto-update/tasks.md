@@ -29,9 +29,9 @@
 - [x] `packages/electron/package.json`：`electron-updater` 生产依赖 +
       `build.publish`（GitHub Releases）
 - [x] `build.files`：带上 `node_modules/**/*`（主进程的运行时依赖）
-- [x] `scripts/updater-runtime-deps.cjs`（16 个包的子树）：把依赖子树复制到 appDir/node_modules
+- [x] `packages/electron/scripts/updater-runtime-deps.cjs`（16 个包的子树）：把依赖子树复制到 appDir/node_modules
       （npm workspace 把它提升到根 ⇒ electron-builder 在 appDir 找不到）
-- [x] `scripts/pack.cjs`：打包前装配 + 工作区完整性复查
+- [x] `packages/electron/scripts/pack.cjs`：打包前装配 + 工作区完整性复查
 
 ## 5. 测试
 

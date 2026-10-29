@@ -25,7 +25,7 @@
 
 ## 4. 测试
 
-- [x] `packages/renderer/src/lib/shortcuts.test.ts`（判定 / 定义表完整性 / 分组 / 格式化）
+- [x] `packages/renderer/src/lib/shortcuts.test.tsx`（判定 / 定义表完整性 / 分组 / 格式化）
 - [x] `packages/renderer/src/components/modals/ShortcutModal.test.tsx`（4 条）
 - [x] `packages/renderer/src/components/layout/Titlebar.test.tsx` 补 1 条
 

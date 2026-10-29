@@ -172,11 +172,11 @@
       markExpired 两路）；reducer.test.mjs 补 18/19/20 三条（20 用例全过）。
       复审补：熔断抽 `auth/relogin-grace.ts` 纯函数（时钟注入），
       `relogin-grace.test.mjs` 5 条白盒（边界/隔离/重登刷新/误报演练）
-- [x] 11.4 `electron/dev-port.ts` 加 `waitForDevPort()`（150ms 轮询，30s 上限 + devPort() 兜底 + warn）；`main.ts` dev 分支等端口文件再 loadURL；
+- [x] 11.4 `packages/electron/src/dev-port.ts` 加 `waitForDevPort()`（150ms 轮询，30s 上限 + devPort() 兜底 + warn）；`main.ts` dev 分支等端口文件再 loadURL；
       dev-port.test.ts 5 用例
 - [x] 11.5 `config.ts`：CORS 派生区间扩到 5273–5322（=MAX_TRIES 全段），
       `RENDERER_ORIGINS` env 改为追加合并不可替换；config.test.ts 新增
-- [x] 11.6 `common/mask.ts` 新增 `maskUin()`（`81***59`）+ index 导出；
+- [x] 11.6 `packages/common/src/mask.ts` 新增 `maskUin()`（`81***59`）+ index 导出；
       qq.provider.ts 与 qq.strategy.ts 的 uin 日志脱敏；mask.test.ts 7 用例
 - [x] 11.7 5173 注释清扫（vite.config / api.ts / spotify-wps / server main.ts /
       两个 dev-port 头部 / dev-port.test.mjs / desktop-lyrics 测试 stub）；

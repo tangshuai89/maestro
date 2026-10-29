@@ -12,7 +12,7 @@
 
 ## 2. 服务端
 
-- [x] `common/storage.ts`：`SESSION_SCOPED_PREFIXES` 加 `history:`
+- [x] `packages/server/src/common/storage.ts`：`SESSION_SCOPED_PREFIXES` 加 `history:`
 - [x] `music.service.ts`：`historyKey` / `getPlayHistory` / `recordPlayHistory` /
       `clearPlayHistory`
 - [x] `music.controller.ts`：`GET/POST/DELETE /music/history`

@@ -40,7 +40,7 @@
 
 - [x] 0.1 新建 `packages/server/src/music/album-types.ts`：`AlbumSource` /
       `UnifiedAlbum` / `UnifiedAlbumSearchResult`（结构照 spec「类型」节）
-- [x] 0.2 `packages/common/src/provider.ts` 的 `MusicProvider` 加两个**可选**方法
+- [x] 0.2 `packages/server/src/music/album-types.ts` 的 `MusicProvider` 加两个**可选**方法
       `searchAlbums?` / `getAlbumTracks?`
 - [x] 0.3 `npm run typecheck` 通过（可选方法不该引起任何现有实现报错）
 
