@@ -24,6 +24,6 @@
 
 ## Phase D — 需人工/后续
 
-- [ ] **D1** 在 Figma UI 手连 3 条 Smart Animate（Playing↔Paused↔Buffering）+ 3 条 AFTER_TIMEOUT 轮播
-- [ ] **D2** （可选）把 NoLyrics / TrialFallback / RecoUnconfigured 也并入同一组件集
+- [ ] @blocked **D1** 在 Figma UI 手连 3 条 Smart Animate（Playing↔Paused↔Buffering）+ 3 条 AFTER_TIMEOUT 轮播
+- [ ] @deferred **D2** （可选）把 NoLyrics / TrialFallback / RecoUnconfigured 也并入同一组件集
       （变体数会到 6；需先确认它们与三播放态的图层名一致性）

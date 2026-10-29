@@ -28,8 +28,8 @@
 
 - [x] **C1** 在 03 · Screens 截图 6 个新 frame 确认视觉与 v4-ABC 一致
 - [x] **C2** D5 已顺带做掉：figma-code-connect.json 6 个 D1-PLACEHOLDER-N 换成真实 node id（466:2 / 467:2 / 476:2 / 477:2 / 478:2 / 479:2）
-- [ ] **C2b** （可选）D5 平行 PR：补 5 个 Code Connect 映射（Modal / RecoKeyModal / SettingsModal / LikedLibraryModal / SearchPanel）——不在 D1 范围
-- [ ] **C3** （可选）D3 平行 PR：用 AI CONTRACT 里的 transition 矩阵做 12 条 prototype wirings（需 Figma UI 手动）——不在 D1 范围
+- [ ] @deferred **C2b** （可选）D5 平行 PR：补 5 个 Code Connect 映射（Modal / RecoKeyModal / SettingsModal / LikedLibraryModal / SearchPanel）——不在 D1 范围
+- [ ] @deferred **C3** （可选）D3 平行 PR：用 AI CONTRACT 里的 transition 矩阵做 12 条 prototype wirings（需 Figma UI 手动）——不在 D1 范围
 
 ## Phase B 执行记录（2026-09-10）
 

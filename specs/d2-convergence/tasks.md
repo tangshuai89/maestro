@@ -28,8 +28,8 @@
 
 ## Phase D — 后续
 
-- [ ] **D1** 视觉回归保护（Playwright 截图 baseline）—— 升级到 D6 阶段 5 或独立 P3 PR
-- [ ] **D2** （可选）AETHER 主题令牌补漏——观察 TheatherView 还有没有 hardcoded 颜色遗漏
+- [ ] @deferred **D1** 视觉回归保护（Playwright 截图 baseline）—— 升级到 D6 阶段 5 或独立 P3 PR
+- [ ] @deferred **D2** （可选）AETHER 主题令牌补漏——观察 TheatherView 还有没有 hardcoded 颜色遗漏
 
 ## Phase C 执行记录（2026-09-10）
 

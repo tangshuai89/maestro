@@ -32,8 +32,8 @@
 
 ## Phase C — 待用户拍板的后续
 
-- [ ] **C1** `--text-dim` 的修法抉择（Figma 改 0.55 / 保持 0.4 并删掉手写覆盖）
-- [ ] **C2** 给 CI 配 `FIGMA_TOKEN`（需 Enterprise `file_variables:read`）→ live 腿才真正跑起来；
+- [ ] @blocked **C1** `--text-dim` 的修法抉择（Figma 改 0.55 / 保持 0.4 并删掉手写覆盖）
+- [ ] @blocked **C2** 给 CI 配 `FIGMA_TOKEN`（需 Enterprise `file_variables:read`）→ live 腿才真正跑起来；
       没有该套餐则走 MCP 只读段 + 离线腿（spec §8 两条出路）
 - [x] **C3** `--status-error` 落地：7 处 `#ff3b5c` + 6 处 `rgba(255,59,92,α)` 改 token
       （`_error-panel` 8 · `_liked-modal` 5 · `_theater` 2 · `_auth-error-panel` 2 ·
@@ -41,7 +41,7 @@
 - [x] **C4** 硬编码 hex 扫描（独立专题）—— **已由 `specs/token-adoption` 承接并完成**：
       `scripts/scan-hardcoded-colors.mjs`（按文件/按色值聚合）+ `token-adoption-budget.json`
       棘轮门禁 + `--gate` 接进 `test:ci`（S1/S2 全部 ✅）
-- [ ] **C5** token 从未被消费的根因收敛 —— **进行中，数字已过时**：
+- [ ] @todo **C5** token 从未被消费的根因收敛 —— **进行中，数字已过时**：
       §5.1 记的"52 个里 44 个零消费"是 **2026-09-20** 的快照；生成层实为 **57** 个
       （含 10 个 primitive），当前 **27/57 已被消费（47%）**。
       硬编码侧：全仓 **140 → 90 处**（`--write-budget` 生成，棘轮只降不升）。

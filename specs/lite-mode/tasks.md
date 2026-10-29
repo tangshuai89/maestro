@@ -38,5 +38,5 @@
 - [x] **P5-5a** 浏览器级验证（vite preview + Playwright，2026-09-28）：
       三类元素计数 = 3 · ⛶ hover 由 opacity 0 → 1 · `⌘⇧L` 双向切换且偏好落盘
       (`player-mode=lite|therater`) · `Esc` 回 theater · 480×300 与 1200×800 均正常
-- [ ] **P5-5b** Electron 手测（需 `npm run dev`）：窗口收成 480×300 / 回 theater 还原
+- [ ] @manual **P5-5b** Electron 手测（需 `npm run dev`）：窗口收成 480×300 / 回 theater 还原
       bounds+maximized · mini ⇄ lite 互切不丢存档 · ✨ 真跑 DeepSeek 出歌可播 · 切换不中断音频

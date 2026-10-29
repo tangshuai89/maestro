@@ -35,17 +35,17 @@
 
 ## Phase 3 — Spotify（阻塞：产品决策）
 
-- [ ] 15. **【阻塞，需用户决策】** 确认是否接受「所有已登录用户被强制重新授权」
+- [ ] @blocked 15. **【阻塞，需用户决策】** 确认是否接受「所有已登录用户被强制重新授权」
       （改 `SPOTIFY_SCOPES` 加 `playlist-read-private` / `playlist-read-collaborative`）
-- [ ] 16. `spotify.provider.ts` 加 `listPlaylists`（`GET /v1/me/playlists`，翻 `next`）
-- [ ] 17. `spotify.provider.ts` 加 `fetchPlaylistTracks`（`GET /v1/playlists/{id}/tracks`，翻 `next`）
+- [ ] @blocked 16. `spotify.provider.ts` 加 `listPlaylists`（`GET /v1/me/playlists`，翻 `next`）
+- [ ] @blocked 17. `spotify.provider.ts` 加 `fetchPlaylistTracks`（`GET /v1/playlists/{id}/tracks`，翻 `next`）
 
 ## Phase 4 — Deezer（✅ 只读公开歌单已解锁）
 
 - [x] 18. ~~确认是否要做 Deezer OAuth~~ → **不做**。公开歌单匿名即可，覆盖零阻塞部分
 - [x] 19. 公开歌单读取：`/playlist/{id}` + `/playlist/{id}/tracks` follow `next` 游标
       （`limit=300` 上限，实测 490 首歌单 2 页取满、去重 490/490）
-- [ ] ~~20. 用户歌单读取~~ → **取消**，需 OAuth（`/user/{id}/playlists` 匿名实测
+- [ ] @deferred ~~20. 用户歌单读取~~ → **取消**，需 OAuth（`/user/{id}/playlists` 匿名实测
       `error.code=800`），不在本 spec 范围
 - [x] 20'. ⚠️ Deezer 对不存在的歌单回 **HTTP 200** + body `error.code=800`（不是 404），
       实现里必须查 body，否则「不存在」会被误判成「成功但空歌单」

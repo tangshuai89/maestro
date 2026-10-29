@@ -19,8 +19,10 @@
 - [x] **B2** `FIGMA_TOKEN=xxx node scripts/figma-aether-v4-audit-d10.mjs` → **20/20 全绿**
       （含 `Figma ↔ 仓库 spec id 集合一致`）。该脚本只读 `/files/:key`，只需
       `file_content:read`，不需要 `file_variables`，所以普通 PAT 就能跑。
-- [ ] **B3** 跑 `npm run test:ci` 跑通 —— 本沙箱断网导致 `music.controller.e2e` 的 QQ 搜索 500，
-      `test.sh` 会在此中断；需要能出网的环境。D10 自身链路已由 B1+B2 覆盖。
+- [x] **B3** 跑 `npm run test:ci` 跑通 —— **2026-10-29 勾上**：当年的阻塞（本沙箱断网 →
+      `music.controller.e2e` 的 QQ 搜索 500 → `test.sh` 中断）已不存在，
+      `npm run test:ci` 现在在 CI 上全绿（PR #142 / #143 / #144 三轮均通过）。
+      D10 自身链路由 B1+B2 覆盖。
 
 ## Phase C — 持续
 

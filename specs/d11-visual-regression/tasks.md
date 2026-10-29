@@ -34,7 +34,7 @@
 - [x] **D3** 门禁自检（**故障注入**）：把 `.th-hud` 从 `top:24` 挪到 `32`（8px）
       → compact/regular/wide **3 例变红**、narrow 与 SourceSelect 保持绿（narrow 有覆盖规则钉 16px、
       SourceSelect 无 `.th-hud`）；撤回后 6/6 回绿。**这个自检顺带证明容差得收紧**，见下。
-- [ ] **D4** （可选）把 D8 的真机视觉验收改用这套机制做：`npm run dev` 手感 + baseline 兜回归
+- [ ] @deferred **D4** （可选）把 D8 的真机视觉验收改用这套机制做：`npm run dev` 手感 + baseline 兜回归
 
 ## Phase E — 首次运行抓到的真问题（这就是做 D11 的理由）
 

@@ -13,7 +13,7 @@
       VIP 付费单曲 / pl 缺失兜底，共 4 项）
 - [x] 8. 跑 `npm run typecheck && npm run lint && npm test`，全绿（196 + 各
       e2e suite 全过，0 failed）
-- [ ] 9. 端到端：本地启 server 模拟「台北车站」搜索，确认 bestSource 正确避开
+- [ ] @manual 9. 端到端：本地启 server 模拟「台北车站」搜索，确认 bestSource 正确避开
       数字专辑源（手动复现 — 留给用户自己跑）
 - [x] 10. renderer 侧同症状第二根因（接手后续修）：`searchOne`（单平台模式）
       映射的 UnifiedSearchItem `versions: []`，而 SearchPanel.handleRowClick
