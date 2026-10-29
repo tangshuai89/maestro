@@ -477,5 +477,34 @@ live workflow 无 `FIGMA_TOKEN` 时静默跳过 ⇒ **「设计稿变更 → 前
 > 全部组件变 `unmapped` ⇒ 而 `unmapped` 正好在豁免表里 ⇒ **门禁照样绿**。
 > ⇒ 判据不是"文件在不在"，而是"**这张表里有没有它该有的东西**"（§5.3 ⑧）。
 
+**写通道（2026-10-29 追加）—— 不需要 Figma 席位升级**：
+
+`scripts/figma-write-plugin/` —— 本地开发插件把契约草案写回设计稿。
+官方口径「Creating a development plugin is supported on any plan」——
+**写入权限 = 你自己对文件的编辑权**，不看席位类型、不看套餐墙，**也不吃 MCP 配额**
+（远程 MCP 的 `use_figma` 写画布要付费套餐 + Full 席位；桌面 MCP 根本不支持写画布；
+REST 对文件内容是只读的）。
+
+配套 `scripts/figma-contract-payload.mjs` 生成草案（`--check` 防漂移）、
+`scripts/figma-contract-payload.test.mjs`（33 个反向验证）、
+`scripts/figma-contract-payload.mutation.mjs`（12 条变异全被抓住）。
+
+「契约段」的定义**只有一份实现** —— `scripts/lib/figma-contract-section.js`：
+采集段（CommonJS，require 时拼源码）与写入插件（生成器 `toString()` 内联）**共用**。
+这是 2026-10-29 修 P1 时的决定：以前三处各写一份，口径漂移会**静默漏写**
+（插件以为写过了、采集段提不出来 ⇒ 设计稿上永远没有契约，而 `figma:diff` 现场无异常）。
+配套 `scripts/figma-contract-section.test.mjs`（22 个反向验证，含「三端口径一致」、
+**结构性守卫**——fence 正则只许出现在共享实现区域内、**采集段端到端模拟**——真跑一遍 SEG1）
+与 `scripts/figma-contract-section.mutation.mjs`（12 条变异全被抓住，含两条
+「又手写了一份」的回归变异）。
+
+⚠️ **比对层 `scripts/lib/figma-snapshot.mjs` 不参与这份实现**（别再往里加）：
+它消费的是采集段**已提取好的契约原文**，只做 YAML 浅解析，根本不做 fence 提取 ⇒ 没有口径可漂移。
+
+⚠️ **插件写的是「合并」不是「覆盖」** —— 契约段加在前面，人工写的散文原样保留
+（真实快照里 21 个组件本来就有散文 description，覆盖会直接抹掉设计文档）。
+
+逐步操作指引见 **`docs/figma-contract-write-guide.md`**。
+
 **为什么没被 10-24 归档掉**：归档的是"一次性/持续对齐"（产出物是"设计稿与代码对齐"），
 本入口属**驱动基础设施**——它不对齐任何东西，它**让变更可被感知**。
