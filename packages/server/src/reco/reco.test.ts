@@ -1394,7 +1394,184 @@ void (async () => {
     console.log('✅ 47. evaluate(): 检索全空 → 指标 0（无假阳性）');
   }
 
-  console.log('\n🎉 全部 47 个测试通过');
+  // ── 48. run() + 空库 + intent（风格指令）→ **不能**报 library_empty ──
+  //
+  // 回归（2026-10-23 线上 bug）：库检查原本无条件前置在 intent 判定之前 →
+  // 从没导入过 ❤ 库的用户点 NL 歌单「生成队列」必然 400 library_empty，尽管意图
+  // 解析完全正确。intent 模式的检索层只走意图种子（流派代表艺人 → 平台真实目录），
+  // 根本不依赖个人库 → 空库必须放行。
+  {
+    const music = {
+      getLibrary: () => null, // 从没 import 过 ❤ 库
+      searchUnified: async (_s: any, q: string) => {
+        // 按种子艺人搜 → 给该艺人的真实曲目
+        if (q === 'Macintosh Plus') {
+          return {
+            items: [uItem('c1', 'Sunset', 'Macintosh Plus')],
+          };
+        }
+        // 填源：查询形如 "<歌名> <艺人>"
+        const m = /^(.*) (Macintosh Plus)$/.exec(q);
+        if (m) return { items: [uItem(`f-${m[1]}`, m[1], 'Macintosh Plus')] };
+        return { items: [] };
+      },
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    let sentPrompt = '';
+    const realFetch = global.fetch;
+    global.fetch = (async (_url: string, init: any) => {
+      sentPrompt = JSON.parse(init.body).messages[1].content;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ picks: [{ id: 0, reason: '蒸汽波' }] }),
+              },
+            },
+          ],
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    const realKey = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
+    try {
+      const svcRun = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+      const res = await svcRun.run({ id: 'sess-intent-emptylib' } as any, {
+        count: 1,
+        intent: {
+          mood: '复古梦幻',
+          genres: ['vaporwave'],
+          tempo: 'any',
+          language: 'any',
+          similar_artists: [],
+          similar_tracks: [],
+          exclude_artists: [],
+          exclude_genres: [],
+          genre_artists: [{ genre: 'vaporwave', artists: ['Macintosh Plus'] }],
+          target_count: 1,
+          rationale: '蒸汽波',
+        },
+      });
+      assert.strictEqual(res.mode, 'select', 'intent 模式 + 空库应走挑选模式');
+      assert.strictEqual(res.items.length, 1, '空库 + intent 也应产出可播曲目');
+      assert.strictEqual(res.items[0].title, 'Sunset', '应产出种子艺人的真实曲目');
+      assert.strictEqual(res.items[0].artist, 'Macintosh Plus', '艺人应是意图种子里的流派代表艺人');
+      assert.ok(
+        sentPrompt.includes('Sunset'),
+        '候选清单应含意图种子捞到的曲目（证明检索层走了种子而非口味档案）',
+      );
+      console.log('✅ 48. run(): 空库 + intent（风格指令）→ 放行，不报 library_empty');
+    } finally {
+      global.fetch = realFetch;
+      if (realKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = realKey;
+    }
+  }
+
+  // ── 49. run() + 空库 + **无** intent → 仍报 library_empty（向后兼容）──
+  //
+  // 普通「✨推荐」的候选池 = 库里的主干艺人 + 平台 FM，空库时推荐等于无中生有，
+  // 必须拒。前端 useReco 有「库空 → 自动 import」兜底，服务端这道闸不能松。
+  {
+    const music = {
+      getLibrary: () => null,
+      searchUnified: async () => ({ items: [] }),
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    const realKey = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
+    try {
+      const svcRun = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+      let msg = '';
+      try {
+        await svcRun.run({ id: 'sess-plain-emptylib' } as any, { count: 3 });
+        assert.fail('空库 + 无 intent 应抛 library_empty');
+      } catch (e) {
+        msg = (e as Error).message ?? '';
+      }
+      assert.ok(msg.includes('library_empty'), `应报 library_empty，实际：${msg}`);
+      console.log('✅ 49. run(): 空库 + 无 intent → 仍报 library_empty（普通路径不变）');
+    } finally {
+      if (realKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = realKey;
+    }
+  }
+
+  // ── 50. run() + 空库 + intent（**无**风格指令）→ 也不能报 library_empty ──
+  //
+  // 判据是「有没有传 intent」，不是「意图里有没有风格指令」——用户说"来点好听的"
+  // 时 DeepSeek 可能解析出空 genres，那条路也不能被空库拦住（spec nl-intent-retrieval
+  // §验收"意图检索失败 → 优雅回退自由生成，不报错、不空队列"）。
+  {
+    const music = {
+      getLibrary: () => null,
+      searchUnified: async (_s: any, q: string) => {
+        // 自由生成路径的填源：查询形如 "<歌名> <艺人>"
+        const m = /^(.*) (乙)$/.exec(q);
+        if (m) return { items: [uItem(`f-${m[1]}`, m[1], '乙')] };
+        return { items: [] };
+      },
+      findRelatedArtists: async () => [],
+      fetchRecoRadioCandidates: async () => [],
+      fetchCoverFallback: async () => '',
+    };
+    const realFetch = global.fetch;
+    global.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({ items: [{ title: '好听的歌', artist: '乙' }] }),
+            },
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const realKey = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'sk-test-12345678';
+    try {
+      const svcRun = new RecoService(fakeConfig, fakeStorage, fakeSessionService, music as any);
+      const res = await svcRun.run({ id: 'sess-intent-nostyle-emptylib' } as any, {
+        count: 1,
+        intent: {
+          mood: '好听的',
+          genres: [], // 没给流派 → 无风格指令
+          tempo: 'any',
+          language: 'any',
+          similar_artists: [],
+          similar_tracks: [],
+          exclude_artists: [],
+          exclude_genres: [],
+          genre_artists: [],
+          target_count: 1,
+          rationale: 'x',
+        },
+      });
+      assert.strictEqual(res.mode, 'generate', '无风格指令 + 空库 → 候选池空，回退自由生成');
+      assert.strictEqual(res.items.length, 1, '应产出可播曲目（不交白卷）');
+      assert.strictEqual(res.items[0].title, '好听的歌');
+      console.log('✅ 50. run(): 空库 + intent（无风格指令）→ 放行，回退自由生成');
+    } finally {
+      global.fetch = realFetch;
+      if (realKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = realKey;
+    }
+  }
+
+  console.log('\n🎉 全部 50 个测试通过');
 })().catch((err) => {
   console.error('❌ reco.test 失败:', err);
   process.exit(1);
