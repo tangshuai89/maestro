@@ -38,6 +38,14 @@
 - [x] **C5** 回归：无 intent 的普通推荐路径行为不变（`reco.test.ts` / `reco.controller.e2e.test.ts` 全绿）
 - [x] **C6** 人工验收：「来点儿爵士乐」→ 队列主体是爵士
       → `scripts/nl-intent-e2e-probe.mjs`（真实 DeepSeek + 真实平台检索）
+- [x] **C7** 回归：**空库 + intent** 不能报 `library_empty`（2026-10-23 线上 bug）
+      → `reco.test.ts` 用例 48 / 49 / 50：48 = 空库 + 有风格指令 → 放行走挑选；
+      49 = 空库 + **没传** intent → 仍报 `library_empty`（普通路径不变）；
+      50 = 空库 + intent 但**无**风格指令 → 放行，回退自由生成。
+      生产修复在 `reco.service.ts` §库非空的前置检查（判据 = 「有没有传 `intent`」，
+      不是「有没有风格指令」）；口径同步写进 `spec.md` §库的前置条件。
+      变异验证（实测）：① 判据还原成「无条件前置」→ 用例 48 红；
+      ② 判据改成「有没有风格指令」→ 用例 50 红。
 
 ## Phase D — 度量（风格纯度）
 
