@@ -112,6 +112,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     约定一改，motion 腿会**静默失效**（提不出 JSON ⇒ spec 空 ⇒ 门禁看不出异常）。
   - 顺带更正两处**文档漂移**：比对层其实**不参与** fence 提取
     （它消费的是已提取好的契约原文）；文件 `.cjs` → `.js` 改名后 4 个文档里 6 处引用没跟上。
+  - **插件本体此前一行都没被执行过**（跑在 Figma 沙箱里，本地没有 Figma ⇒ 只有语法检查）
+    ⇒ 补 `scripts/figma-write-plugin.test.mjs`：mock Figma API **真跑一遍**插件，
+    覆盖 description / text-child 两个载体分支、合并不覆盖散文、幂等跳过、
+    「散文提及 `AI_CONTRACT:` 不算已写过」、节点找不到只 skip、`closePlugin` 收到字符串
+    （**8/8**）。反向验证：改回「覆盖」3 个测试红、改回「关键词判幂等」1 个测试红。
+    ⚠️ 它证明**插件逻辑**，不证明 Figma 桌面端运行时行为。
   - 测试 18 → **22**、变异 10 → **12**（全被抓住）。
 
   另外核实了 Figma Plugin API 的三条硬事实（查官方文档）：
