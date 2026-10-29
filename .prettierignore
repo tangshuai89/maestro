@@ -24,3 +24,9 @@ scripts/figma-tokens-dump.json
 # `npm run test:ci` 里的 check-token-drift.mjs 会报「生成物被手改过」。
 # prettier 会把 cubic-bezier(0.16,1,0.3,1) 规范成带空格形式，直接把它改挂。
 packages/renderer/src/styles/base/_tokens.generated.scss
+# Figma 契约写入插件的**生成物**（node scripts/figma-contract-payload.mjs 的输出）——
+# 它必须与生成器输出**逐字节**一致，否则 `npm run figma:payload:check` 会报
+# 「插件产物与快照不同步」。
+# prettier 会把内联的 payload JSON 改写成 JS 字面量风格（去引号、单引号）⇒ 直接把它改挂。
+# ⇒ 生成物一律不格式化；要改逻辑请改 scripts/figma-write-plugin/plugin.src.js 后重新生成。
+scripts/figma-write-plugin/code.js
