@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`figma:diff` 统一入口 —— 「设计稿变了，前端代码该改什么」**（2026-10-29）
+
+  D1–D11 各自解决一个对齐问题，但**没有一条能回答「现在该改哪些前端文件」**。
+  且 token 腿的 dump 停在 2026-10-13（之后 `renderer/src/styles/` 改了 26 次），
+  live workflow 无 `FIGMA_TOKEN` 时静默跳过 ⇒ **「设计稿变更 → 前端感知」的真实能力 ≈ 0**。
+
+  新增一个**统一入口**，四条腿（`tokens` / `components` / `descriptions` / `motion`）
+  跑完产出一份**能直接喂给 coding agent**的差异清单：
+
+  ```bash
+  npm run figma:diff          # markdown 清单（主线段 + 附注段）
+  npm run figma:diff:json     # 机器可读 {ok, meta, stats, diffs, waived}
+  npm run figma:diff:gate     # 有未豁免的 must/should → exit 1（已挂进 test:ci）
+  npm run figma:test          # 判据自检（68 个反向验证）
+  npm run figma:diff:mutation # 变异验证（改坏判据 → 必须有测试红）
+  ```
+
+  - **清单方向铁律**：主线段只放「Figma 要求前端改」的（`must` / `should`）；
+    反向差异（仓库有、设计稿没有；映射指向不存在的组件）一律降为 `note` 并单列
+    「附注：设计稿侧待办（不占待办清单位置）」—— 与 2026-10-24 归档决策同一条边界。
+  - **首份真实快照已提交进仓库**（`scripts/figma-snapshot.json`，35 组件 / 15 屏 / 20 动效）
+    ⇒ `--gate` 在 CI 里是**真门禁**，不是"永远跳过"。
+  - **八条「防假绿」硬规则**（spec §5.3）：快照缺失 / 退化快照 / counts 不符 /
+    motion 采集失败 / token dump 退化 / 映射表退化 / `--only` 拼错 / 显式指定的输入文件缺失
+    ⇒ 一律 **exit 2**（不是"没差异"）。`must` 级差异**永远不可豁免**。
+  - **判据可验证**：68 个反向验证测试 + **37 条变异全部被抓住**（可复现脚本，入库）。
+    经**两轮独立评审**（Claude Code 沙箱，各用自己的变异集）—— 第一轮 11 条候选变异
+    **存活 6 条**、第二轮又找出 **2 条存活 + 2 个新引入的回退 + 1 个退化输入**，全部修掉
+    且每条都补成了变异项。
+  - 变异脚本带**等效变异检测**：测试全绿时再比对工具的**行为指纹** ⇒ 区分
+    「判据没被测到」（真洞）与「锚点写错、压根没改到判据」（变异脚本自己的 bug）。
+  - 新增 `specs/figma-diff/`（spec + tasks）与 `docs/figma-driven-frontend.md` §9 状态记录。
+
 - **验收清单的「未勾项」分类台账 + 门禁加一条规则 —— 「没勾」必须带理由**（2026-10-29）
 
   上一条治的是「勾了但证据指向的文件不存在」。这轮治另一半：**「没勾」本身没有理由**。
