@@ -128,15 +128,17 @@ const semanticOf = (node) => {
 };
 
 const pages = figma.root.children.filter((p) => p.type === 'PAGE');
-// ⚠️ **fileKey 直接取 figma.fileKey**，不要用「figma.currentPage && figma.fileKey」：
-//    本插件的 manifest 是 documentAccess:"dynamic-page" ⇒ **figma.currentPage
-//    初始为 null**（必须先 setCurrentPageAsync 才有值）⇒ 那行写法在真实 Figma 里
-//    会把 fileKey 取成 **null**（2026-10-30 实测：接收器拒收「fileKey 缺失」）。
-//    而 figma.fileKey 是**文档级**属性，跟当前页无关 ⇒ 直接取。
-//
-// ⚠️ 这段注释在 SEG1_PART2 这个**模板字符串**里 ⇒ 里面**不许出现反引号**，
-//    否则模板会被截断（require 时直接抛 "Unexpected identifier"）。
-const out = { fileKey: figma.fileKey || null, pages: [], components: [], screens: [], motion: null };
+// ⚠️ **fileKey：公开插件拿不到 figma.fileKey**（官方 API 文档原文：
+//    「fileKey: string | undefined — Only private plugins and Figma-owned resources
+//    (such as the Jira and Asana widgets) have access to this. To enable this
+//    behavior, you need to specify enablePrivatePluginApi in your manifest.json.
+//    For all other plugins, this property returns undefined.」）
+//    ⇒ 本地开发插件属于「other plugins」⇒ figma.fileKey 恒为 undefined。
+//    ⇒ 这里**自带常量**（MCP 路径下 figma.fileKey 由调用参数提供，优先用它）。
+//    ⚠️ 常量必须与 figma-code-connect.json 的 $figmaFileKey 一致 ——
+//       由 scripts/figma-collect-plugin.mjs 断言（漂移 ⇒ 直接报错）。
+const EXPECTED_FILE_KEY = 'FtbRZXvzlCp4Sq9e322cQQ';
+const out = { fileKey: figma.fileKey || EXPECTED_FILE_KEY, pages: [], components: [], screens: [], motion: null };
 
 // ── 02 · Components ──────────────────────────────────────────
 const compPage = pageByName('02 · Components');

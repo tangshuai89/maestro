@@ -123,6 +123,30 @@ for (const d of domains) {
   }
 }
 
+// ── fileKey 一致性（SEG1 自带的常量 vs 仓库的单一事实源）────────────
+// ⚠️ **公开插件拿不到 figma.fileKey**（官方文档：只有私有插件和 Figma 自家资源有；
+//    enablePrivatePluginApi 对本地开发插件无效）⇒ 采集段只能**自带常量**。
+//    而仓库的单一事实源是 figma-code-connect.json 的 $figmaFileKey
+//    （code-connect 映射本来就绑在这个文件上）⇒ 两处必须一致，漂移就报错。
+const codeConnectPath = resolve(ROOT, 'figma-code-connect.json');
+if (!existsSync(codeConnectPath)) fail(`找不到 ${codeConnectPath}`);
+let figmaFileKey;
+try {
+  figmaFileKey = JSON.parse(readFileSync(codeConnectPath, 'utf8')).$figmaFileKey;
+} catch (e) {
+  fail(`figma-code-connect.json 解析失败：${e.message}`);
+}
+if (typeof figmaFileKey !== 'string' || !figmaFileKey.trim()) {
+  fail('figma-code-connect.json 里没有 $figmaFileKey（采集段没有别的 fileKey 来源）');
+}
+if (!SEG1.includes(`'${figmaFileKey}'`)) {
+  fail(
+    `采集段里的 fileKey 常量与 figma-code-connect.json 的 $figmaFileKey 不一致\n` +
+      `   期望：${figmaFileKey}\n` +
+      `   ⇒ 改 scripts/figma-snapshot-seg.js 的 EXPECTED_FILE_KEY，或改 code-connect 的 $figmaFileKey。`,
+  );
+}
+
 // ⚠️ **必须用函数形式的 replacement** ——
 //    `str.replace(占位符, 字符串)` 时替换串里的 `$&` / `$1` / `$'` 是**特殊语法**，
 //    会被展开成别的东西 ⇒ SEG1 被悄悄改形 ⇒ 采集结果错得没痕迹。

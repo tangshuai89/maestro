@@ -159,6 +159,22 @@ npm run figma:collect:serve
 采集插件的权限 = **你自己对该文件的编辑权** ⇒ **零配额**、零外部网络（只连本机）。
 （与写入插件同一条路，已实测跑通。）
 
+### 为什么采集段要自带 fileKey
+
+> **公开插件拿不到 `figma.fileKey`**（官方 API 文档原文：
+> 「fileKey: string | undefined — Only private plugins and Figma-owned resources
+> (such as the Jira and Asana widgets) have access to this. To enable this behavior,
+> you need to specify enablePrivatePluginApi in your manifest.json. For all other
+> plugins, this property returns undefined.」）
+>
+> ⇒ 本地开发插件属于「other plugins」⇒ `figma.fileKey` **恒为 undefined**。
+> （manifest 的 `enablePrivatePluginApi` 对本地开发插件无效，那是私有插件专用的。）
+> ⇒ 所以采集段**自带常量** `EXPECTED_FILE_KEY`，并用
+> `figma.fileKey || EXPECTED_FILE_KEY` 兜底（MCP 路径下由调用参数提供，优先用它）。
+>
+> 常量与仓库的单一事实源（`figma-code-connect.json` 的 ``）必须一致 ——
+> `npm run figma:collect:check` 会断言，不一致直接报错（换 Figma 文件时不会悄悄漂移）。
+
 ### 采集段只有一份实现
 
 插件里跑的采集逻辑 = `scripts/figma-snapshot-seg.js` 的 **SEG1**，由

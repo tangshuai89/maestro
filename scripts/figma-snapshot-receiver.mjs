@@ -93,8 +93,8 @@ export function validateSnapshot(obj) {
   }
   if (typeof obj.fileKey !== 'string' || !obj.fileKey.trim()) {
     errors.push(
-      'fileKey 缺失（空/null）—— 旧版采集段在 dynamic-page 模式下会取成 null' +
-        '（figma.currentPage 初始为 null）',
+      'fileKey 缺失（空/null）—— 公开插件拿不到 figma.fileKey（官方文档：仅私有插件有）' +
+        '⇒ 采集段必须自带常量；旧版采集器会取成 null',
     );
   }
   const counts = obj.counts;

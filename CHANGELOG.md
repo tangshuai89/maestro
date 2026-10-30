@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   不会产出一个连不上的插件。采集插件测试 6 → 11 条；
   接收器测试 19 条（真起 HTTP、真落盘、真拒脏数据、真实快照能过校验）。
 
+  ⚠️ **公开插件拿不到 `figma.fileKey`**（官方 API 文档：只有私有插件和 Figma 自家
+  资源有；`enablePrivatePluginApi` 对本地开发插件无效 ⇒ 恒为 undefined）
+  ⇒ 采集段**自带 fileKey 常量**（`figma.fileKey || EXPECTED_FILE_KEY`），
+  常量与 `figma-code-connect.json` 的 `$figmaFileKey` 必须一致 ——
+  `figma:collect:check` 会断言，不一致直接报错。
+  ⚠️ 这个坑也被 mock **掩盖**过：mock 一直给 `figma.fileKey` 塞值
+  ⇒ 现在 mock 忠实还原「公开插件 + dynamic-page」两个真实前提，并各有回归测试。
+
 - **`figma:diff` 统一入口 —— 「设计稿变了，前端代码该改什么」**（2026-10-29）
 
   D1–D11 各自解决一个对齐问题，但**没有一条能回答「现在该改哪些前端文件」**。

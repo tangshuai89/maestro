@@ -43,7 +43,16 @@ function findAllWithCriteria(node, types) {
   return out;
 }
 
-function mockFigma({ pages, fileKey = 'FtbRZXvzlCp4Sq9e322cQQ', clipboardFails = false } = {}) {
+/**
+ * mock Figma API。
+ *
+ * ⚠️ **fileKey 默认 undefined 是刻意的**（2026-10-30 实测踩到）：
+ *    官方 API 文档写明 `figma.fileKey`「Only private plugins and Figma-owned
+ *    resources have access to this … For all other plugins, this property
+ *    returns undefined」⇒ **本地开发插件（公开插件）永远拿不到 fileKey**。
+ *    mock 若给它塞一个 fileKey，就会掩盖「采集段必须自带 fileKey」这件事。
+ */
+function mockFigma({ pages, fileKey = undefined, clipboardFails = false } = {}) {
   const log = { notified: [], closed: [], clipboard: [], loadedPages: 0, currentPage: null };
   const figma = {
     root: { children: pages },
@@ -170,6 +179,11 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     assert.ok(snapshot.capturedAt, 'capturedAt 应被补上');
     assert.match(snapshot.capturedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
     assert.equal(snapshot.fileKey, 'FtbRZXvzlCp4Sq9e322cQQ');
+    assert.equal(
+      figma.fileKey,
+      undefined,
+      '⚠️ mock 失真：公开插件拿不到 figma.fileKey（官方文档）⇒ mock 必须忠实还原 undefined',
+    );
 
     assert.equal(log.loadedPages, 1, '⚠️ dynamic-page 模式必须先 loadAllPagesAsync');
     assert.equal(log.clipboard.length, 1, '快照 JSON 应写进剪贴板');
@@ -178,23 +192,28 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     assert.equal(fromClipboard.screens.length, 1);
   });
 
-  it('采集: **dynamic-page 模式下 currentPage 初始为 null** ⇒ fileKey 仍要有值（回归）', async () => {
+  it('采集: **公开插件 + dynamic-page** ⇒ fileKey 仍要有值（两个真实前提）', async () => {
     const compPage = {
       type: 'PAGE',
       name: '02 · Components',
       children: [componentSet('1:1', 'Hologram/Cover', CONTRACT)],
     };
     const figma = mockFigma({ pages: [compPage] });
-    // ⚠️ mock 必须**忠实还原** dynamic-page：currentPage 初始为 null。
-    //    （之前 mock 偷懒设成 pages[0] ⇒ 掩盖了「fileKey 取成 null」的真 bug，
-    //      2026-10-30 在真实 Figma 里才暴露：接收器拒收「fileKey 缺失」。）
+    // ⚠️ mock 必须**忠实还原真实 Figma 的两个前提**（缺一个都会掩盖 bug）：
+    //    ① dynamic-page：currentPage 初始为 null
+    //       （之前 mock 偷懒设成 pages[0] ⇒ 掩盖了「fileKey 取成 null」的 bug，
+    //        2026-10-30 在真实 Figma 里才暴露：接收器拒收「fileKey 缺失」）。
+    //    ② 公开插件：figma.fileKey 恒为 undefined
+    //       （官方文档：只有私有插件 + Figma 自家资源有；
+    //        enablePrivatePluginApi 对本地开发插件无效 ⇒ fileKey 只能自带）。
     assert.equal(figma.currentPage, null, '⚠️ mock 失真 ⇒ 这条回归测试就白写了');
+    assert.equal(figma.fileKey, undefined, '⚠️ mock 失真 ⇒ 公开插件拿不到 fileKey');
 
     const { snapshot } = await runPlugin(figma);
     assert.equal(
       snapshot.fileKey,
       'FtbRZXvzlCp4Sq9e322cQQ',
-      '⚠️ fileKey 不能依赖 figma.currentPage（dynamic-page 下它初始为 null）',
+      '⚠️ fileKey 不能依赖 figma.currentPage / figma.fileKey ⇒ 必须自带常量',
     );
   });
 
