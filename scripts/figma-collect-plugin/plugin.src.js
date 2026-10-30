@@ -135,11 +135,15 @@ async function main() {
 
   const raw = await collectSnapshot();
   const parsed = JSON.parse(raw);
-  parsed.capturedAt = localStamp();
-  const json = JSON.stringify(parsed, null, 2);
+  // ⚠️ **capturedAt 放第一个键**：仓库里那份快照（MCP 路径产出）就是 capturedAt 在前
+  //    ⇒ 两条采集路径的产物**形状一致** ⇒ 换采集器不会把整个文件挪一遍键。
+  //    （`parsed.capturedAt = …` 会把键追加到**最后** ⇒ 与仓库现状不一致 ⇒ 每次采集
+  //      都产生一处无关 diff。）
+  const snapshot = { capturedAt: localStamp(), ...parsed };
+  const json = JSON.stringify(snapshot, null, 2);
 
-  const components = parsed.components ?? [];
-  const screens = parsed.screens ?? [];
+  const components = snapshot.components ?? [];
+  const screens = snapshot.screens ?? [];
   const all = [...components, ...screens];
   const withContract = all.filter((n) => n.hasContract).length;
   const withProse = all.filter((n) => n.hasDescription).length;

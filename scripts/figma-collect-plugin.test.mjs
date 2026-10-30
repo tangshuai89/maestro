@@ -177,6 +177,11 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     assert.equal(snapshot.counts.screens, snapshot.screens.length);
     assert.equal(snapshot.counts.motionEntries, 0);
     assert.ok(snapshot.capturedAt, 'capturedAt 应被补上');
+    assert.equal(
+      Object.keys(snapshot)[0],
+      'capturedAt',
+      '⚠️ capturedAt 必须是**第一个**键（与仓库里那份快照的形状一致 ⇒ 换采集器不挪键）',
+    );
     assert.match(snapshot.capturedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
     assert.equal(snapshot.fileKey, 'FtbRZXvzlCp4Sq9e322cQQ');
     assert.equal(

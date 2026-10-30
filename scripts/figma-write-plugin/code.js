@@ -30,7 +30,7 @@
 // ⚠️ 下面这行由生成器替换（不要手改 code.js，要改 plugin.src.js）
 const PAYLOAD = {
   "fileKey": "FtbRZXvzlCp4Sq9e322cQQ",
-  "snapshotCapturedAt": "2026-10-30T11:31:06+08:00",
+  "snapshotCapturedAt": "2026-10-30T13:57:16+08:00",
   "writes": [],
   "skipped": [
     {
