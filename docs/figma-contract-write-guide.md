@@ -81,7 +81,7 @@ npm run figma:payload
 ## 跑完之后
 
 ```bash
-# 1. 重跑采集（用 scripts/figma-snapshot-seg.js 的 SEG1 段）
+# 1. 重跑采集（用采集插件，零配额）—— 见下面「采集：把 Figma 现状读成快照」
 #    → 产出新的 scripts/figma-snapshot.json
 # 2. 重新生成草案（快照变了，草案要跟上）
 npm run figma:payload
@@ -92,6 +92,45 @@ npm run figma:diff
 
 > ⚠️ **第 1 步必须做**：不重跑采集，`figma:diff` 读的还是旧快照，
 > 看不到新写的契约 —— **现场看不出任何异常**（这就是 `--check` 那条腿存在的原因）。
+
+---
+
+## 采集：把 Figma 现状读成快照
+
+> 快照是 `figma:diff` 的**唯一输入**。它不新鲜，后面所有结论都是错的 —— 而且看不出异常。
+
+### 用采集插件（零配额，推荐）
+
+```bash
+# 1. 导入插件（只需一次）
+#    Figma 桌面 App → Plugins → Development → Import plugin from manifest
+#    选 scripts/figma-collect-plugin/manifest.json（**不是** plugin.src.js）
+# 2. 打开 AETHER 文件 → Design 模式 → Plugins → Development → AETHER Snapshot Collector
+#    通知会直接报数字：组件 N · 屏 M · 带契约段 X/N
+#    （X = N 说明契约全写进去了；X = 0 说明一条都没写进去）
+# 3. 落盘（插件已把 JSON 复制进剪贴板）
+pbpaste > scripts/figma-snapshot.json
+```
+
+> ⚠️ 插件是**只读**的：不创建 / 不修改 / 不删除任何节点，跑多少次都安全。
+> ⚠️ 剪贴板写不进去时（通知会说），完整 JSON 也在 Figma 的 console 里，可人工复制。
+
+### 为什么不用 MCP 的 `use_figma`
+
+`use_figma` **吃套餐配额**（Starter / View / Collab **20 次/月**）⇒ 每采一次就少一次。
+采集插件的权限 = **你自己对该文件的编辑权** ⇒ **零配额**、零网络。
+（与写入插件同一条路，已实测跑通。）
+
+### 采集段只有一份实现
+
+插件里跑的采集逻辑 = `scripts/figma-snapshot-seg.js` 的 **SEG1**，由
+`npm run figma:collect` 内联进插件产物（`scripts/figma-collect-plugin/code.js`）。
+`npm run figma:collect:check` 保证产物与 SEG1 同步 ——
+**SEG1 改了但插件没重生成 ⇒ 插件采到的口径与仓库里的不一致 ⇒ 快照不可信**。
+
+契约段的提取走**共享实现**（`scripts/lib/figma-contract-section.js`），
+与**写入插件同源** ⇒ 写进去的段，采集端必定提得出来（写→读闭环）。
+`npm run figma:collect:test` 用 mock 的 Figma API 真跑一遍插件验证这件事。
 
 ---
 

@@ -30,3 +30,8 @@ packages/renderer/src/styles/base/_tokens.generated.scss
 # prettier 会把内联的 payload JSON 改写成 JS 字面量风格（去引号、单引号）⇒ 直接把它改挂。
 # ⇒ 生成物一律不格式化；要改逻辑请改 scripts/figma-write-plugin/plugin.src.js 后重新生成。
 scripts/figma-write-plugin/code.js
+# Figma 快照采集插件的**生成物**（node scripts/figma-collect-plugin.mjs 的输出）——
+# 同理：它必须与生成器输出**逐字节**一致，否则 `npm run figma:collect:check` 会报
+# 「采集插件产物与 SEG1 不同步」。⇒ 生成物一律不格式化；
+# 要改逻辑请改 scripts/figma-collect-plugin/plugin.src.js 后重新生成。
+scripts/figma-collect-plugin/code.js
