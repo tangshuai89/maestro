@@ -140,21 +140,26 @@
 
 **I1 的通道对照（查 Figma 官方文档核实过，2026-10-29）**
 
-| 通道                                                    | 写画布？                                 | 席位 / 套餐要求                                               |
-| ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
-| **远程** `mcp.figma.com/mcp`（仓库 `.mcp.json` 就是它） | ✅ `use_figma` 写画布                    | **付费套餐（Professional/Org/Enterprise）+ Dev 或 Full 席位** |
-| **桌面** `http://127.0.0.1:3845/mcp`                    | ❌ **不支持写画布**（只读 + 选区上下文） | 付费套餐 + Dev/Full 席位（Collab 不行）                       |
-| mcode-tools Figma 连接器（本 profile）                  | ❌ 只有 2 个只读工具                     | —                                                             |
+| 通道                                                    | 写画布？                                 | 席位 / 套餐要求                                                           |
+| ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
+| **远程** `mcp.figma.com/mcp`（仓库 `.mcp.json` 就是它） | ✅ `use_figma` 写画布                    | **写团队共享文件必须 Full 席位**（Dev 席位只能写自己的 drafts，其余只读） |
+| **桌面** `http://127.0.0.1:3845/mcp`                    | ❌ **不支持写画布**（只读 + 选区上下文） | 付费套餐 + Dev/Full 席位（Collab 不行）                                   |
+| mcode-tools Figma 连接器（本 profile）                  | ❌ 只有 2 个只读工具                     | —                                                                         |
 
-**限额现状（官方表格）**
+**限额现状（官方表格，2026-10-30 复核）**
 
-| 席位         | Starter | Professional（View/Collab）     | Professional（Dev/Full） | Organization（Dev/Full） |
-| ------------ | ------- | ------------------------------- | ------------------------ | ------------------------ |
-| 工具调用限额 | 20 / 月 | **6 / 月**（比 Starter 还少！） | 200 / 天，10–15 / 分钟   | 600 / 天，20 / 分钟      |
+| 席位         | Starter | Professional（View/Collab） | Professional（Dev/Full） | Organization（Dev/Full） | Enterprise（Dev/Full） |
+| ------------ | ------- | --------------------------- | ------------------------ | ------------------------ | ---------------------- |
+| 工具调用限额 | 20 / 月 | 20 / 月                     | 200 / 天，10 / 分钟      | 600 / 天，20 / 分钟      | 200 / 天，15 / 分钟    |
 
-⚠️ **只升套餐不升席位会更差**（付费套餐的 View/Collab 席位只有 6 次/月）。
-⚠️ 免限额的写工具只有 `whoami` / `add_code_connect_map` / `generate_figma_design`
-—— **`use_figma` 写画布要算进限额** ⇒ 补 34 个契约段要分批，别一次打完。
+（Education 套餐同 Professional 的 Dev/Full：200 / 天、10 / 分钟。）
+
+⚠️ **限额只管「读」** —— 官方原文：「Rate limits apply to tools that **read** data from Figma.
+Some tools are **exempt**, including tools that write to Figma files, such as:
+`add_code_connect_map` / `create_new_file` / `generate_figma_design` / `whoami`」。
+⇒ **`use_figma` 不在豁免名单里 ⇒ 它计入限额** ⇒ 补 34 个契约段要分批，别一次打完。
+⚠️ **只升套餐不升席位不会变多**（View/Collab 与 Starter 同为 20 / 月）⇒
+要提限额**必须升到 Dev/Full 席位**。
 ⚠️ **不要同时配桌面服务器**：官方明确说「两个都配时客户端可能连上桌面那个，
 于是远端独有的写工具永远加载不上」⇒ 保持 `.mcp.json` 只指向远程。
 
