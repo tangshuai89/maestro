@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { buildContractPayload } from './lib/figma-contract-payload.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -27,8 +28,13 @@ const require = createRequire(import.meta.url);
 const section = require('./lib/figma-contract-section.js');
 const { extractContractSection, hasContractSection, mergeContractSection, SECTION_FENCE } = section;
 
-// 真实快照里的散文（人工写的设计文档）—— 用真数据，不用编的
-const SNAPSHOT = JSON.parse(readFileSync(resolve(__dirname, 'figma-snapshot.json'), 'utf8'));
+// 真实快照里出现过的人工散文样本（冻结为 fixture，不随当前回填状态消失）
+const PROSE_FIXTURES = [
+  'Holographic cover area 480×500: orbit ring + 12 ticks + 280×280 holographic cover + caption.',
+  'Lyrics line (theater style). Variants: state=prev | current | next.',
+  '上一首（lucide skip-back）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）',
+  'Theater backdrop: 3 nebula glows + 60 stardust particles + horizon line.',
+];
 
 const BODY =
   'AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}';
@@ -127,24 +133,18 @@ test('mergeContractSection: 散文里有 --- 时，提取仍拿到契约段（�
 // 3. 真实快照回归：所有「有散文无契约」的节点，合并不丢散文
 // ════════════════════════════════════════════════════════════════
 
-test('真实快照: 21 个「有散文无契约」的节点 ⇒ 合并后散文全在', () => {
-  const nodes = [...(SNAPSHOT.components ?? []), ...(SNAPSHOT.screens ?? [])];
-  const proseOnly = nodes.filter((n) => n.hasDescription && !n.hasContract);
-  assert.ok(proseOnly.length > 0, '快照里应当有「有散文无契约」的节点');
-
-  for (const n of proseOnly) {
-    const preview = String(n.descriptionPreview ?? '');
-    if (!preview) continue;
+test('真实散文样本: 合并契约段后散文逐字保留', () => {
+  for (const preview of PROSE_FIXTURES) {
     // ⚠️ 比较用 trim 后的散文：合并实现会对载体现有文本做 trim
     //    （去首尾空白，语义无损）⇒ 直接拿未 trim 的原文 includes 会假红。
     //    （实测抓到过：Controls/Transport 的预览末尾有个尾随空格。）
     const trimmed = preview.trim();
     const merged = mergeContractSection(preview, BODY);
-    assert.ok(merged.includes(trimmed), `${n.name}: 散文丢了`);
-    assert.equal(extractContractSection(merged), BODY, `${n.name}: 契约段提取不到`);
+    assert.ok(merged.includes(trimmed), '散文丢了');
+    assert.equal(extractContractSection(merged), BODY, '契约段提取不到');
     // 散文必须**逐字**保留（不只是「包含」）
     const prosePart = merged.slice(merged.indexOf('---', 4) + 3).trim();
-    assert.equal(prosePart, trimmed, `${n.name}: 散文被改动了`);
+    assert.equal(prosePart, trimmed, '散文被改动了');
   }
 });
 
@@ -219,9 +219,30 @@ test('三端口径一致: 写入插件（code.js 内联）与共享实现行为�
 });
 
 test('三端口径一致: 生成器产出的载体文本能被采集段提取回来', () => {
-  const payload = JSON.parse(
-    readFileSync(resolve(__dirname, 'figma-contract-payload.json'), 'utf8'),
-  );
+  const payload = buildContractPayload({
+    snapshot: {
+      components: [
+        {
+          name: 'Button/Test',
+          nodeId: '1:1',
+          type: 'COMPONENT_SET',
+          variants: ['state=default'],
+          contract: '',
+        },
+      ],
+      screens: [],
+    },
+    mappings: [
+      {
+        figmaComponent: 'Button/Test',
+        figmaNodeId: '1:1',
+        reactComponent: 'Button',
+        reactPath: 'packages/renderer/src/components/example.tsx',
+        props: {},
+      },
+    ],
+    repoFileExists: () => true,
+  });
   assert.ok(payload.writes.length > 0);
   for (const w of payload.writes) {
     const extracted = extractContractSection(w.carrierText);

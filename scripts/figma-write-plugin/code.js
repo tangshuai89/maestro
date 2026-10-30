@@ -30,656 +30,93 @@
 // ⚠️ 下面这行由生成器替换（不要手改 code.js，要改 plugin.src.js）
 const PAYLOAD = {
   "fileKey": "FtbRZXvzlCp4Sq9e322cQQ",
-  "snapshotCapturedAt": "2026-10-29T11:06:15+08:00",
-  "writes": [
+  "snapshotCapturedAt": "2026-10-30T11:31:06+08:00",
+  "writes": [],
+  "skipped": [
     {
       "nodeId": "257:174",
       "name": "Hologram/Cover",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { coverUrl: string }\n  a11y: { role: img, keyboard: [] }\n  states: [idle, playing, loading, no-cover]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { coverUrl: string }\n  a11y: { role: img, keyboard: [] }\n  states: [idle, playing, loading, no-cover]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "257:184",
       "name": "Lyrics/Line",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum }\n  a11y: { role: group, keyboard: [] }\n  states: [prev, current, next, empty]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum }\n  a11y: { role: group, keyboard: [] }\n  states: [prev, current, next, empty]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "257:206",
       "name": "Core/Play",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: button, keyboard: [] }\n  states: [idle, hover, pressed, playing]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: button, keyboard: [] }\n  states: [idle, hover, pressed, playing]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "none",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "263:81",
       "name": "Card/Neural",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { type: enum, match: number }\n  a11y: { role: group, keyboard: [] }\n  states: [default, hover]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { type: enum, match: number }\n  a11y: { role: group, keyboard: [] }\n  states: [default, hover]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "263:106",
       "name": "Button/Like",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { fanOutCount: number }\n  a11y: { role: button, keyboard: [] }\n  states: [unliked, liked, fanout]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { fanOutCount: number }\n  a11y: { role: button, keyboard: [] }\n  states: [unliked, liked, fanout]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "263:158",
       "name": "Controls/Transport",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: group, keyboard: [] }\n  states: [playing, paused]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: group, keyboard: [] }\n  states: [playing, paused]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "none",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "295:98",
       "name": "Button/Icon",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: button, keyboard: [] }\n  states: [default, hover, active, disabled]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: button, keyboard: [] }\n  states: [default, hover, active, disabled]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "295:115",
       "name": "Badge/Platform",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { platform: enum }\n  a11y: { role: img, keyboard: [] }\n  states: [idle, active]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { platform: enum }\n  a11y: { role: img, keyboard: [] }\n  states: [idle, active]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "295:152",
       "name": "Tag/Stat",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { tone: enum, label: string }\n  a11y: { role: status, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { tone: enum, label: string }\n  a11y: { role: status, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "313:139",
       "name": "Ring/Sound",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: progressbar, keyboard: [] }\n  states: [idle, playing]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: progressbar, keyboard: [] }\n  states: [idle, playing]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "none",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "313:182",
       "name": "Ring/Progress",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { progress: number }\n  a11y: { role: progressbar, keyboard: [] }\n  states: [idle, hover, dragging]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { progress: number }\n  a11y: { role: progressbar, keyboard: [] }\n  states: [idle, hover, dragging]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "440:85",
       "name": "Button/Text",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { tone: enum, state: enum, label: string }\n  a11y: { role: button, keyboard: [] }\n  states: [default, hover, disabled]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { tone: enum, state: enum, label: string }\n  a11y: { role: button, keyboard: [] }\n  states: [default, hover, disabled]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "441:72",
       "name": "Input/Text",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum, placeholder: string }\n  a11y: { role: textbox, keyboard: [] }\n  states: [default, focus, disabled]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum, placeholder: string }\n  a11y: { role: textbox, keyboard: [] }\n  states: [default, focus, disabled]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
     {
       "nodeId": "441:83",
       "name": "Card/Skeleton",
       "kind": "component",
-      "type": "COMPONENT_SET",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum }\n  a11y: { role: group, keyboard: [] }\n  states: [loading, loaded]\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum }\n  a11y: { role: group, keyboard: [] }\n  states: [loading, loaded]\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "variants",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
+      "reason": "already-has-contract"
     },
-    {
-      "nodeId": "252:68",
-      "name": "Icon/Prev",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:72",
-      "name": "Icon/Next",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:76",
-      "name": "Icon/Play",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:79",
-      "name": "Icon/Pause",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:83",
-      "name": "Icon/Shuffle",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:90",
-      "name": "Icon/Repeat",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:96",
-      "name": "Icon/Heart",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "252:99",
-      "name": "Icon/Search",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/search/SearchPanel.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/search/SearchPanel.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "263:82",
-      "name": "State/RecoUnconfigured",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { recoConfigured: boolean, onConfigureReco?: function }\n  a11y: { role: status, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { recoConfigured: boolean, onConfigureReco?: function }\n  a11y: { role: status, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "313:66",
-      "name": "Scene/Backdrop",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: presentation, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: presentation, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "none",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "431:66",
-      "name": "Icon/Dislike",
-      "kind": "component",
-      "type": "COMPONENT",
-      "carrier": "description",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "314:1432",
-      "name": "Screen/SourceSelect",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/source-select/SourceSelect.tsx\n  props: { onSelect: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/source-select/SourceSelect.tsx\n  props: { onSelect: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "314:1538",
-      "name": "Screen/NowPlaying/NoLyrics",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { lyrics: LyricLine[] | null }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { lyrics: LyricLine[] | null }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "314:1702",
-      "name": "Screen/NowPlaying/TrialFallback",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { trialFellBack?: boolean }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { trialFellBack?: boolean }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "314:1881",
-      "name": "Screen/NowPlaying/RecoUnconfigured",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { recoConfigured: boolean, onConfigureReco?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { recoConfigured: boolean, onConfigureReco?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "365:1008",
-      "name": "Screen/Search",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/search/SearchPanel.tsx\n  props: { onPlay: function, onClose: function, onOpenNL?: function, onOpenRemote?: function, wpsReady?: boolean }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/search/SearchPanel.tsx\n  props: { onPlay: function, onClose: function, onOpenNL?: function, onOpenRemote?: function, wpsReady?: boolean }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "390:1081",
-      "name": "Screen/Library",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/modals/LikedLibraryModal.tsx\n  props: { onClose: function, onPlay: function, refreshSignal?: number, onImportSettled?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/modals/LikedLibraryModal.tsx\n  props: { onClose: function, onPlay: function, refreshSignal?: number, onImportSettled?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "399:1153",
-      "name": "Screen/Settings",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/modals/SettingsModal.tsx\n  props: { onClose: function, playerMode: enum[theater|mini|lite], onChangePlayerMode: function, audioFx: object, onEqEnabled: function, volume: number, muted: boolean, onVolumeChange: function, onToggleMute: function, onCrossfadeSec: function, onEqBandGain: function, onApplyEqPreset: function, onReplayGuide: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/modals/SettingsModal.tsx\n  props: { onClose: function, playerMode: enum[theater|mini|lite], onChangePlayerMode: function, audioFx: object, onEqEnabled: function, volume: number, muted: boolean, onVolumeChange: function, onToggleMute: function, onCrossfadeSec: function, onEqBandGain: function, onApplyEqPreset: function, onReplayGuide: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "401:1287",
-      "name": "Screen/Error",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/common/AuthErrorPanel.tsx\n  props: { provider: enum[qq|netease|deezer|spotify], error: AuthError | null, onRetry: function, onReLogin: function, onSwitch: function, onPasteCookie?: function, onDismiss: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/common/AuthErrorPanel.tsx\n  props: { provider: enum[qq|netease|deezer|spotify], error: AuthError | null, onRetry: function, onReLogin: function, onSwitch: function, onPasteCookie?: function, onDismiss: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    },
-    {
-      "nodeId": "403:1351",
-      "name": "Screen/RecoLoading",
-      "kind": "screen",
-      "type": "FRAME",
-      "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
-      "provenance": {
-        "react": "mapping",
-        "props": "mapping-signature",
-        "a11y": "convention",
-        "states": "none",
-        "tokens": "none",
-        "bindings": "none",
-        "draft": true
-      },
-      "reactExists": true
-    }
-  ],
-  "skipped": [
     {
       "nodeId": "514:72",
       "name": "Modal/Shell",
@@ -741,6 +178,126 @@ const PAYLOAD = {
       "reason": "already-has-contract"
     },
     {
+      "nodeId": "252:68",
+      "name": "Icon/Prev",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:72",
+      "name": "Icon/Next",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:76",
+      "name": "Icon/Play",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:79",
+      "name": "Icon/Pause",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:83",
+      "name": "Icon/Shuffle",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:90",
+      "name": "Icon/Repeat",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:96",
+      "name": "Icon/Heart",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "252:99",
+      "name": "Icon/Search",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "263:82",
+      "name": "State/RecoUnconfigured",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "313:66",
+      "name": "Scene/Backdrop",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "431:66",
+      "name": "Icon/Dislike",
+      "kind": "component",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "314:1432",
+      "name": "Screen/SourceSelect",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "314:1538",
+      "name": "Screen/NowPlaying/NoLyrics",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "314:1702",
+      "name": "Screen/NowPlaying/TrialFallback",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "314:1881",
+      "name": "Screen/NowPlaying/RecoUnconfigured",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "365:1008",
+      "name": "Screen/Search",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "390:1081",
+      "name": "Screen/Library",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "399:1153",
+      "name": "Screen/Settings",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "401:1287",
+      "name": "Screen/Error",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
+      "nodeId": "403:1351",
+      "name": "Screen/RecoLoading",
+      "kind": "screen",
+      "reason": "already-has-contract"
+    },
+    {
       "nodeId": "466:2",
       "name": "Screen/Search/Modal",
       "kind": "screen",
@@ -779,10 +336,10 @@ const PAYLOAD = {
   ],
   "stats": {
     "total": 50,
-    "writes": 34,
-    "skipped": 16,
+    "writes": 0,
+    "skipped": 50,
     "byReason": {
-      "already-has-contract": 16
+      "already-has-contract": 50
     }
   }
 };

@@ -8,23 +8,23 @@
 
 ## 0. 一句话结论
 
-全仓 **1188** 条勾选项里 **55 条**未勾。逐条判定后：
+全仓 **1188** 条勾选项里 **54 条**未勾。逐条判定后：
 
 | 分类        | 条数 | 含义                                                 | 谁来解           |
 | ----------- | ---- | ---------------------------------------------------- | ---------------- |
 | `@blocked`  | 24   | **外部阻塞** —— 缺凭据 / 缺账号 / 缺网络 / 等你拍板  | 不是工程债       |
-| `@manual`   | 13   | **必须人测** —— 真机 / 桌面 / 真实登录态，机器验不了 | 你（一次性点完） |
+| `@manual`   | 12   | **必须人测** —— 真机 / 桌面 / 真实登录态，机器验不了 | 你（一次性点完） |
 | `@deferred` | 12   | **明确延后** —— 标了「可选」或不在本期范围           | 不急             |
 | `@todo`     | 6    | **真·欠着的工程活**                                  | 工程侧           |
 
-⇒ **55 条里只有 6 条是真正的工程债。** 其余 49 条要么在等外部条件，要么只能人点，
+⇒ **54 条里只有 6 条是真正的工程债。** 其余 48 条要么在等外部条件，要么只能人点，
 要么当初就写了「可选」。**欠的工程活比清单看起来少得多** —— 这就是分类的价值。
 
 > **2026-10-29 补记**：`specs/figma-diff/` 是 PR #146 引入的新专题，它的 7 条未勾项
 > 在本台账初建（PR #144）时还不存在（那时 `figma-diff` 还没合进 master）⇒ 本轮补登记。
 >
-> **2026-10-30 更新**：I2（19 条 Code Connect 映射）与 I4（覆盖率反向门禁）已完成；
-> I1 从 `@blocked` 改为 `@manual`（本地插件已就绪，只差真实 Figma 桌面端跑一次）。
+> **2026-10-30 更新**：I1（真实 Figma 契约写入）、I2（19 条 Code Connect 映射）
+> 与 I4（覆盖率反向门禁）均已完成。快照为 50/50 有契约，payload 已收口为 0 条待写。
 
 ## 1. `@todo` —— 真·欠着的工程活（6 条）
 
@@ -39,41 +39,40 @@
 | 5   | `specs/token-adoption/tasks.md:107`   | provider 健康状态色 / AI 理由色 —— **设计稿里没有这套语义**                                                           | ⚠️ 缺的是**设计**，不是代码 → 归到「等设计」更准，本轮先留在 `@todo`           |
 | 6   | `specs/figma-diff/tasks.md`           | 刷新 `docs/d-series-status.md`（停在 2026-10-15）                                                                     | 一次性刷新，跟本批 PR 走                                                       |
 
-## 2. `@manual` —— 手测清单（13 条，机器验不了）
+## 2. `@manual` —— 手测清单（12 条，机器验不了）
 
 这批的共同点：**只有真机 / 真实登录态 / 真人手点才能验**。
-下面按「一次能点完」的顺序排，勾完这 13 条，验收清单就只剩外部阻塞了。
+下面按「一次能点完」的顺序排，勾完这 12 条，验收清单就只剩外部阻塞了。
 
-| #   | 出处                                     | 前置                           | 要做什么                                                                            | 期望                                       |
-| --- | ---------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------ |
-| 1   | `specs/album-fanout/tasks.md:183`        | 网易云已登录                   | 搜一张专辑 → 点 ❤                                                                   | 网易云「我的收藏专辑」里真的出现           |
-| 2   | `specs/album-fanout/tasks.md:185`        | 同上                           | 看 `POST /api/album/sub` 的返回                                                     | 200；若非 200 → 日志里的 code 是多少       |
-| 3   | `specs/album-fanout/tasks.md:187`        | QQ 已登录                      | 搜一张**只在 QQ** 有的专辑 → 点 ❤                                                   | 走定向等价查找，别的平台也能收藏           |
-| 4   | `specs/consistency-fixes/tasks.md:184`   | —                              | 推荐页点红心 / radio 点红心 / 取消红心                                              | 三处角标与远端一致                         |
-| 5   | `specs/consistency-fixes/tasks.md:183`   | 打包产物                       | 打包版出声 + 显示封面                                                               | T1 验收                                    |
-| 6   | `specs/paid-album-detection/tasks.md:16` | 本地 server                    | 模拟「台北车站」搜索                                                                | `bestSource` 正确避开付费源                |
-| 7   | `specs/d8-compact-layout/tasks.md:33`    | `npm run dev`                  | 拖窗口过 960 / 1200 / 1920 三档                                                     | 紧凑档间距与字号正确                       |
-| 8   | `specs/lite-mode/tasks.md:41`            | `npm run dev`（Electron）      | 窗口收成 480×300 / 回 theater                                                       | 还原正常                                   |
-| 9   | `specs/mini-player/tasks.md:19`          | `npm run dev`                  | theater↔mini 音频不中断、窗口收缩/还原动画、红绿灯落位、拖拽、快捷键、重启恢复 mode | 全过                                       |
-| 10  | `specs/mini-player/tasks.md:37`          | 同上                           | 按 `specs/mini-player/spec.md` §5 逐条验收                                          | 全过                                       |
-| 11  | `specs/desktop-lyrics/tasks.md:28`       | `npm run dev`                  | 置顶逐行高亮 / 拖动 + 重启恢复 / 样式调节 / 锁定穿透 + hover 恢复                   | 全过                                       |
-| 12  | `specs/desktop-integration/tasks.md:58`  | 插**带媒体键的耳机**           | ⏯ / ⏭ / ⏮ 响应                                                                      | 耳机上的按键能控制播放                     |
-| 13  | `specs/figma-diff/tasks.md` I1           | Figma 桌面 App + AETHER 编辑权 | 运行本地插件写 34 条 AI_CONTRACT，再重采集                                          | 应用 34 / 失败 0；散文保留；新快照出现契约 |
+| #   | 出处                                     | 前置                      | 要做什么                                                                            | 期望                                 |
+| --- | ---------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | `specs/album-fanout/tasks.md:183`        | 网易云已登录              | 搜一张专辑 → 点 ❤                                                                   | 网易云「我的收藏专辑」里真的出现     |
+| 2   | `specs/album-fanout/tasks.md:185`        | 同上                      | 看 `POST /api/album/sub` 的返回                                                     | 200；若非 200 → 日志里的 code 是多少 |
+| 3   | `specs/album-fanout/tasks.md:187`        | QQ 已登录                 | 搜一张**只在 QQ** 有的专辑 → 点 ❤                                                   | 走定向等价查找，别的平台也能收藏     |
+| 4   | `specs/consistency-fixes/tasks.md:184`   | —                         | 推荐页点红心 / radio 点红心 / 取消红心                                              | 三处角标与远端一致                   |
+| 5   | `specs/consistency-fixes/tasks.md:183`   | 打包产物                  | 打包版出声 + 显示封面                                                               | T1 验收                              |
+| 6   | `specs/paid-album-detection/tasks.md:16` | 本地 server               | 模拟「台北车站」搜索                                                                | `bestSource` 正确避开付费源          |
+| 7   | `specs/d8-compact-layout/tasks.md:33`    | `npm run dev`             | 拖窗口过 960 / 1200 / 1920 三档                                                     | 紧凑档间距与字号正确                 |
+| 8   | `specs/lite-mode/tasks.md:41`            | `npm run dev`（Electron） | 窗口收成 480×300 / 回 theater                                                       | 还原正常                             |
+| 9   | `specs/mini-player/tasks.md:19`          | `npm run dev`             | theater↔mini 音频不中断、窗口收缩/还原动画、红绿灯落位、拖拽、快捷键、重启恢复 mode | 全过                                 |
+| 10  | `specs/mini-player/tasks.md:37`          | 同上                      | 按 `specs/mini-player/spec.md` §5 逐条验收                                          | 全过                                 |
+| 11  | `specs/desktop-lyrics/tasks.md:28`       | `npm run dev`             | 置顶逐行高亮 / 拖动 + 重启恢复 / 样式调节 / 锁定穿透 + hover 恢复                   | 全过                                 |
+| 12  | `specs/desktop-integration/tasks.md:58`  | 插**带媒体键的耳机**      | ⏯ / ⏭ / ⏮ 响应                                                                      | 耳机上的按键能控制播放               |
 
 ## 3. `@blocked` —— 外部阻塞（24 条，**不是工程债**）
 
 按阻塞源分组 —— 每组的**解锁条件**都写在右边：
 
-| 阻塞源                                                 | 条数 | 出处                                                                                                                                          | 解锁条件                                                                                                                    |
-| ------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| **Spotify OAuth token**                                | 6    | `album-search` 35/62/65、`remote-playlist` 40/41/48                                                                                           | 拿到一个 Spotify 账号的 token（`specs/spotify` 里有换取流程）                                                               |
-| **Apple Dev + castLabs EVS**                           | 7    | `spotify` 73/96/103/109/167/168、`stability` 8                                                                                                | ① Apple Developer（$99/年，1–3 天批）② EVS 注册（**0 成本**）。⚠️ 2026-10-28 起卡在苹果售后，**外部依赖，工程侧无解**       |
-| **Premium 账号 + 无 TLS 拦截网络**                     | 3    | `spotify` 28/44/45                                                                                                                            | 本机 iOA 拦 CDM CDN（`redirector.gvt1.com` → 567B HTML 拦截页）⇒ 需换网络；再叠加 Premium 账号                              |
-| **FIGMA_TOKEN**（含 Enterprise `file_variables:read`） | 2    | `d4-token-drift` 36、`d7-screen-variants` 27                                                                                                  | token 是有的，但**没有 Enterprise 权限**读 `file_variables`；后者还需在 Figma UI 里手动连线                                 |
-| **有效 cookie 基线**                                   | 2    | `auth-resilience` 151/154                                                                                                                     | 有一份**没过期**的 cookie 才能测；顺带要把「`get_user_baseinfo_v2` 不是真校验」记进 spec 附录                               |
-| **Deezer 限流阈值实测**                                | 1    | `album-search` 36                                                                                                                             | 得真的去压 Deezer 的接口（会吃限流额度）                                                                                    |
-| **等你拍板**                                           | 3    | `d4-token-drift` 35（`--text-dim` 0.55 / 0.4）、`token-adoption` 62（同上）、`remote-playlist` 38（是否接受「所有已登录用户被强制重新授权」） | 产品决策，不是技术选择                                                                                                      |
-| **Figma 同步 / 读权限**                                | 2    | `figma-diff` I3（motion spec 补登记 39 个 keyframes，须同步 Figma）、I5（刷新 token dump 需 REST 读权限）                                     | I3 还缺 motion writer + Figma 双向同步；I5 仍需 Enterprise `file_variables:read`。I1 已移入 `@manual`，契约写通道无需升席位 |
+| 阻塞源                                                 | 条数 | 出处                                                                                                                                          | 解锁条件                                                                                                              |
+| ------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Spotify OAuth token**                                | 6    | `album-search` 35/62/65、`remote-playlist` 40/41/48                                                                                           | 拿到一个 Spotify 账号的 token（`specs/spotify` 里有换取流程）                                                         |
+| **Apple Dev + castLabs EVS**                           | 7    | `spotify` 73/96/103/109/167/168、`stability` 8                                                                                                | ① Apple Developer（$99/年，1–3 天批）② EVS 注册（**0 成本**）。⚠️ 2026-10-28 起卡在苹果售后，**外部依赖，工程侧无解** |
+| **Premium 账号 + 无 TLS 拦截网络**                     | 3    | `spotify` 28/44/45                                                                                                                            | 本机 iOA 拦 CDM CDN（`redirector.gvt1.com` → 567B HTML 拦截页）⇒ 需换网络；再叠加 Premium 账号                        |
+| **FIGMA_TOKEN**（含 Enterprise `file_variables:read`） | 2    | `d4-token-drift` 36、`d7-screen-variants` 27                                                                                                  | token 是有的，但**没有 Enterprise 权限**读 `file_variables`；后者还需在 Figma UI 里手动连线                           |
+| **有效 cookie 基线**                                   | 2    | `auth-resilience` 151/154                                                                                                                     | 有一份**没过期**的 cookie 才能测；顺带要把「`get_user_baseinfo_v2` 不是真校验」记进 spec 附录                         |
+| **Deezer 限流阈值实测**                                | 1    | `album-search` 36                                                                                                                             | 得真的去压 Deezer 的接口（会吃限流额度）                                                                              |
+| **等你拍板**                                           | 3    | `d4-token-drift` 35（`--text-dim` 0.55 / 0.4）、`token-adoption` 62（同上）、`remote-playlist` 38（是否接受「所有已登录用户被强制重新授权」） | 产品决策，不是技术选择                                                                                                |
+| **Figma 同步 / 读权限**                                | 2    | `figma-diff` I3（motion spec 补登记 39 个 keyframes，须同步 Figma）、I5（刷新 token dump 需 REST 读权限）                                     | I3 还缺 motion writer + Figma 双向同步；I5 仍需 Enterprise `file_variables:read`。契约写通道本身无需升席位            |
 
 ## 4. `@deferred` —— 明确延后（12 条）
 

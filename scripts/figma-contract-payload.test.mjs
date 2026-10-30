@@ -362,7 +362,19 @@ test('端到端: 真实快照 → payload 自洽（必填字段齐 / 不编路�
   const cc = JSON.parse(readFileSync(resolve(ROOT, 'figma-code-connect.json'), 'utf8'));
   const p = buildContractPayload({ snapshot, mappings: cc.mappings, repoFileExists: () => true });
 
-  assert.ok(p.writes.length > 0, '真实快照应当有可写的节点');
+  // 2026-10-30：首轮回填后真实快照已经 50/50 有契约 ⇒ writes 可以为 0。
+  // 此时仍要验证「所有节点都因已有契约被幂等跳过」，而不是产物意外变空。
+  if (p.writes.length === 0) {
+    assert.equal(
+      p.skipped.length,
+      (snapshot.components?.length ?? 0) + (snapshot.screens?.length ?? 0),
+      '零待写时，所有快照节点都必须出现在 skipped 中',
+    );
+    assert.ok(
+      p.skipped.every((s) => s.reason === 'already-has-contract'),
+      '零待写时，skip 原因必须全部是 already-has-contract',
+    );
+  }
   for (const w of p.writes) {
     for (const f of ['react', 'props', 'a11y', 'states']) {
       assert.ok(new RegExp(`^ {2}${f}: `, 'm').test(w.contractBody), `${w.name} 缺必填字段 ${f}`);

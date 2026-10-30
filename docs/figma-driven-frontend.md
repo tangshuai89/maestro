@@ -490,9 +490,9 @@ REST 对文件内容是只读的）。
 `scripts/figma-contract-payload.mutation.mjs`（12 条变异全被抓住）。
 
 **2026-10-30 更新**：Code Connect 已补齐到 **50 条映射**（components 35/35 ·
-screens 15/15），契约 payload 变成 **34 条可写 / 16 条已有契约跳过**。
-覆盖率反向检查已进 `test:ci`；但插件仍**没在真实 Figma 桌面端跑过**，
-所以这是“写入准备完成”，不是“设计稿已回填”。
+screens 15/15）。Figma 桌面插件已真实运行：34 个目标节点都有合法契约，
+实际内容与 payload 逐条哈希一致；二次运行 `应用 0 / 跳过 34` 是幂等成功。
+快照回填后 **50/50 有契约**，payload 收口为 **0 条待写**，`figma:diff` 生效差异为 0。
 
 「契约段」的定义**只有一份实现** —— `scripts/lib/figma-contract-section.js`：
 采集段（CommonJS，require 时拼源码）与写入插件（生成器 `toString()` 内联）**共用**。

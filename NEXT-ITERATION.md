@@ -50,16 +50,15 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple 
 （Figma 0.55 / 代码 0.4）冲突。本轮默认先做**结构对齐**；视觉回填与
 `--text-dim` 数值另拍板，不把未决值写进设计稿。
 
-| 顺序 | 谁做                 | 事项                                                                        | 完成判据                                                                |
-| ---- | -------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| 1    | 你（Figma 桌面 App） | 跑 `AETHER Contract Writer`，写当前 **34** 条契约草案                       | 通知为应用 34 / 跳过 0 / 失败 0，且已有散文未被覆盖                     |
-| 2    | Codex                | 你跑完后重跑采集段 → `figma:payload` → `figma:payload:check` + `figma:diff` | 新快照契约覆盖到 35/35 组件 + 15/15 屏幕；34 条 `descriptions` 附注消失 |
-| 3    | 你（同一段桌面时间） | 按 `specs/acceptance-backlog.md` §2 手测 12 条 App 行为                     | 每条按前置 / 步骤 / 期望留结果；失败项另开修，不混进 Figma 回填         |
-| 4    | 你拍板               | `--text-dim` 选 0.55（WCAG AA）或保持 0.4                                   | 二选一后才允许视觉回填 / token 收敛                                     |
+| 顺序 | 谁做                 | 事项                                                                        | 状态 / 判据                                                  |
+| ---- | -------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1    | 你（Figma 桌面 App） | 跑 `AETHER Contract Writer`，写当前 **34** 条契约草案                       | ✅ 已完成；二次运行 `0 应用 / 34 跳过`，34/34 契约已在 Figma |
+| 2    | Codex                | 你跑完后重跑采集段 → `figma:payload` → `figma:payload:check` + `figma:diff` | ✅ 已完成；快照 50/50 有契约，`figma:diff` 生效差异 0        |
+| 3    | 你（同一段桌面时间） | 按 `specs/acceptance-backlog.md` §2 手测 12 条 App 行为                     | ⏳ 待你执行；失败项另开修，不混进 Figma 回填                 |
+| 4    | 你拍板               | `--text-dim` 选 0.55（WCAG AA）或保持 0.4                                   | ⏳ 待拍板；二选一后才允许视觉回填 / token 收敛               |
 
-Figma 侧代码准备已就绪：Code Connect **50 条映射覆盖 35/35 组件 + 15/15 屏幕**，
-覆盖率缺口现在是 CI 门禁；插件逻辑已有 mock 测试，但**尚未在真实 Figma 桌面端运行**。
-因此第 1 步仍是整条写通道最后一个未知，不应被代码侧门禁变绿替代。
+Figma 写通道已真跑闭环：二次运行 `应用 0 · 跳过 34` 是幂等成功；
+实际 34 条契约与 payload 哈希逐条一致，快照已更新为 50/50。
 
 剩下的工作集中在四类：
 
@@ -98,22 +97,25 @@ Figma 侧代码准备已就绪：Code Connect **50 条映射覆盖 35/35 组件 
          真要强制得加一道检查（判据：PR 的 SCSS 改了 transition/animation/
          @keyframes → motion-spec.json 必须也改）。
 
-         ⚠️ **2026-10-29 实测：这道门禁现在还不能直接上**，两个前置都没到位：
-                                     ① **`motion-spec.json` 已经脱节** —— D10 落地之后又发生了 **14 次**动效改动，
-                                        spec 一次都没动过；其中 **2 个新增 `@keyframes`**（`player-notice-in` /
-                                        `mini-player-in`）**根本没登记**。直接上门禁 = 要先补这 14 条。
-                                     ② **补条目要同步 Figma** —— `audit-d10.mjs` 会核对「Figma ↔ 仓库 spec id
-                                        集合一致」，只改仓库会让那条校验红 ⇒ **必须有 FIGMA_TOKEN** 才能补。
-                                     ⇒ 建议顺序：① 先把 `motion-spec.json` 与代码**重新对齐**（含 Figma 侧）；
-                                        ② 门禁的判据**收窄**到「PR 新增了 `@keyframes` 名字」才要求登记
-                                        （改 transition 时长只 warn），否则日常改样式会被误伤。
-
    - [x] **`verify-pack.sh` 改成「有 ❌ 就 exit 1」（2026-10-28，PR #142 已合）**：
          失败项逐条列出 + `--no-dmg` 开关 + 新增 `.github/workflows/packaged-app.yml`
          （macOS runner，`electron-builder --dir` 造 .app → 跑 verify → 有 ❌ 就红）。
          同一轮还修掉两个真 bug：`ensure-electron-dist.cjs` 的路径算错（**从来没真
          正装过 electron 二进制**）+ `verify-pack.sh` 的 `REPO_ROOT` 在 `cd` 之后
          用相对 `$0` 算（新鲜度检查一直在静默跳过）。
+
+> **2026-10-29 实测：motion-spec 门禁现在还不能直接上**，两个前置都没到位：
+>
+> ① **`motion-spec.json` 已经脱节** —— D10 落地之后又发生了 **14 次**动效改动，
+> spec 一次都没动过；其中 **2 个新增 `@keyframes`**（`player-notice-in` /
+> `mini-player-in`）**根本没登记**。直接上门禁 = 要先补这 14 条。
+>
+> ② **补条目要同步 Figma** —— `audit-d10.mjs` 会核对「Figma ↔ 仓库 spec id
+> 集合一致」，只改仓库会让那条校验红 ⇒ **必须有 FIGMA_TOKEN** 才能补。
+>
+> ⇒ 建议顺序：① 先把 `motion-spec.json` 与代码**重新对齐**（含 Figma 侧）；
+> ② 门禁的判据**收窄**到「PR 新增了 `@keyframes` 名字」才要求登记
+> （改 transition 时长只 warn），否则日常改样式会被误伤。
 
 已交付并从本文件移出的历史条目：歌词多源聚合与分享图、渠道优先级、macOS Tray
 与应用图标、AETHER 剧场视图与 Figma 驱动管线、自然语言歌单。

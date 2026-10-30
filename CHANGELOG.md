@@ -19,9 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mapped / total / missing`：新增设计节点没有映射 ⇒ exit 1，缺口不会再静默扩大。
   对应测试先红后绿，已挂进 `test:ci`。删除只针对这一缺口的临时豁免。
 
-  重新生成契约草案后：**34 条可写 / 16 条已有契约跳过 / 0 条缺 react 归属**。
-  `figma:payload:check` 与 `figma:diff --gate` 均绿；插件本身仍需在真实
-  Figma 桌面端跑一次，跑完并重采集后才算写通道闭环。
+  Figma 桌面插件真实运行并二次验证幂等：`应用 0 / 跳过 34 / 失败 0`。
+  34 个目标节点全部存在，实际契约与 payload 逐条哈希一致；快照回填后
+  **50/50 有契约**，payload 收口为 **0 条待写**。
+  `figma:payload:check` 与 `figma:diff --gate` 均绿，生效差异为 0。
 
 - **`figma:diff` 统一入口 —— 「设计稿变了，前端代码该改什么」**（2026-10-29）
 
@@ -87,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `provenance`**，整段带 `draft: true`，**不冒充权威**。
 
   2026-10-29 初次生成时为**可写 15 个 / 缺归属 19 个**；2026-10-30 补齐 Code Connect
-  映射后更新为 **可写 34 个 / 已有契约跳过 16 个 / 缺归属 0 个**。
+  映射后首轮变为 **可写 34 个 / 已有契约跳过 16 个 / 缺归属 0 个**；真实写入完成后
+  payload 收口为 **待写 0 个 / 已有契约跳过 50 个**。
 
 - **写通道自查：修掉一个会丢数据的 bug + 一个会静默漏写的 bug（2026-10-29）**
 

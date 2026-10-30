@@ -168,12 +168,14 @@ Some tools are **exempt**, including tools that write to Figma files, such as:
 is supported on any plan」）—— 写入权限 = 你自己对文件的编辑权，不看席位、不吃 MCP 配额。
 ⇒ **不必升级席位、不必搬文件**。本条降级为「若将来要用 MCP 写工具才需要」。
 
-- [ ] @manual **I1** **在 Figma 桌面 App 跑本地开发插件，把 34 条 AI_CONTRACT 草案写回设计稿**
-      —— 代码侧已全部就绪：50 条 Code Connect 映射覆盖 35/35 组件 + 15/15 屏幕；
-      当前 payload = **可写 34 条 · 已有契约跳过 16 条 · 无归属跳过 0 条**。
-      插件逻辑已有 mock 测试，但桌面端运行时（字体加载 / 跨页 / 通知）只能真人跑一次。
-      **跑完后必须重跑采集段**，再跑 `npm run figma:payload` 和
-      `npm run figma:diff`，确认新快照里契约段真的出现；只看插件通知不算验收。
+- [x] **I1** **在 Figma 桌面 App 跑本地开发插件，把 AI_CONTRACT 草案写回设计稿**（2026-10-30 完成）
+  - 真实 Figma 二次运行通知：**应用 0 · 跳过 34 · 失败 0** —— 34 个节点都已在首轮写入，
+    这是幂等命中，不是失败。
+  - 通过 Figma MCP 只读复核：34/34 节点存在、都能提取到 `AI_CONTRACT:` 段；
+    与仓库 payload 做逐条 FNV 哈希比对，**34/34 完全一致**。
+  - 按 Figma 实际契约回填快照：**components 35/35 · screens 15/15 有契约**；
+    `figma:diff --gate` 变为 **must 0 / should 0 / note 0**。
+  - 重新生成 payload：**待写 0 / 已有契约跳过 50**；`figma:payload:check` 绿。
 
 - [x] **I2** code-connect 补 19 条缺失映射（**2026-10-30 完成**）
   - 8 个 `Icon/*` · `State/RecoUnconfigured` · `Scene/Backdrop` · 9 个屏幕帧
@@ -408,4 +410,4 @@ is supported on any plan」）—— 写入权限 = 你自己对文件的编辑�
 | 2026-10-29 | **第二轮**独立评审又查出 2 条存活 + 2 个新回退 + 1 个退化输入 ⇒ Phase L 全部修掉；自检 57→**68**，变异 24→**37**（全被抓住）；变异脚本加**等效变异检测**（区分"真洞"与"锚点写错"）；自查再补两条：code-connect 映射表为空 ⇒ 门禁假绿、「是不是屏幕」不能按名字判                                                                                                                                                                                                                                                |
 | 2026-10-29 | **Phase N** 写通道自查：修 **P0**（插件覆盖散文 description ⇒ 抹掉 21 个组件的人工设计文档）+ **P1**（三端口径不一致 ⇒ 静默漏写）⇒ 抽出唯一实现 `scripts/lib/figma-contract-section.js`，采集段与插件共用；新测试 18/18 绿、新变异 10/10 全被抓住；核实 Figma Plugin API 三条硬事实（dynamic-page 不自动装载全页 / `getNodeById` 已废弃 / Figma 预载 Inter 字体）                                                                                                                                               |
 | 2026-10-29 | **Phase N2** 单一实现收口：采集段 motion 路径也统一到共享实现（最后一份手写 fence 正则）；加**结构性守卫**（fence 正则只许出现在共享实现区域内）+ 两条对应变异；加**采集段端到端模拟**（SEG1 此前从未被跑过 —— 实测真跑时立刻抓到模板字符串里的反引号把模板截断，而当时所有既有测试都是绿的）；加**插件本体的 mock 测试**（插件此前一行都没被执行过）；更正两处文档漂移（比对层其实不参与 fence 提取 / `.cjs`→`.js` 改名后 6 处引用没跟上）；测试 18→**22**、变异 10→**12**（全被抓住）、插件 mock 测试 **8/8** |
-| 2026-10-30 | **I2 / I4 完成**：19 条缺失映射补齐（31→50，components 35/35 + screens 15/15）；删除“10 个未映射”临时豁免；新增覆盖率反向检查与先红后绿测试并挂进 `test:ci`；重生成 payload → 34 条可写 / 16 条幂等跳过，`figma:payload:check` 与 `figma:diff --gate` 均绿                                                                                                                                                                                                                                                      |
+| 2026-10-30 | **I1 / I2 / I4 完成**：19 条缺失映射补齐（31→50）；Figma 桌面插件真实运行并二次验证幂等（0 应用 / 34 跳过）；34 条实际契约与 payload 哈希全一致；快照回填为 50/50 有契约，payload 变为待写 0，`figma:payload:check` 与 `figma:diff --gate` 均绿                                                                                                                                                                                                                                                                 |
