@@ -150,6 +150,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；用 icon=dislike 区分)",
       "_note": "设计稿侧**没有任何描述**（快照 hasDescription=false）⇒ 图标语义只能从代码反推：ThIcon 的 ICONS.thumbsDown（调用点 TheaterView.tsx:735）。设计稿补描述时须与代码对齐（别按「lucide thumbs-down」想当然）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "dislike": "thumbsDown" } }
       }
@@ -473,6 +474,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.skipBack；调用点 TheaterView.tsx:873)",
       "_note": "设计稿写「lucide skip-back」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipBack），不是 lucide-react。⚠ 同一图标在另外两处有**平行实现**（各自一份 ICONS map）：mini/MiniPlayer.tsx:42（MiniIcon，调用点 :193）与 views/LiteView.tsx:29（LiteIcon，调用点 :114）—— 改这个图标要三处一起改。ThIcon 未 export ⇒ 未来要独立成组件。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "prev": "skipBack" } }
       }
@@ -485,6 +487,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.skipForward；调用点 TheaterView.tsx:917)",
       "_note": "设计稿写「lucide skip-forward」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipForward），不是 lucide-react。⚠ 同一图标在另外两处有**平行实现**（各自一份 ICONS map）：mini/MiniPlayer.tsx:43（调用点 :219）与 views/LiteView.tsx:30（调用点 :124）—— 改这个图标要三处一起改。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "next": "skipForward" } }
       }
@@ -497,6 +500,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.play；调用点 TheaterView.tsx:907)",
       "_note": "设计稿写「lucide play」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.play），不是 lucide-react。与 Icon/Pause 是同一个按钮的互斥态（TheaterView.tsx:905/907）。⚠ 迷你播放器有平行实现：mini/MiniPlayer.tsx:40（调用点 :208）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "play": "play" } }
       }
@@ -509,6 +513,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.pause；调用点 TheaterView.tsx:905)",
       "_note": "设计稿写「lucide pause」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.pause），不是 lucide-react。与 Icon/Play 是同一个按钮的互斥态。⚠ 迷你播放器有平行实现：mini/MiniPlayer.tsx:41（调用点 :206）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "pause": "pause" } }
       }
@@ -521,6 +526,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.shuffle 存在，但**代码里没有调用点**)",
       "_note": "⚠ 设计稿写「lucide shuffle」；代码里 ICONS.shuffle 有定义但**没有任何 <ThIcon icon=\"shuffle\"> 调用点** ⇒ 该图标当前是死代码，回填设计稿后前端要么接上、要么删定义。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "shuffle": "shuffle" } }
       }
@@ -533,6 +539,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.repeat 存在，但**代码里没有调用点**)",
       "_note": "⚠ 设计稿写「lucide repeat」；代码里 ICONS.repeat 有定义但**没有任何 <ThIcon icon=\"repeat\"> 调用点** ⇒ 该图标当前是死代码，回填设计稿后前端要么接上、要么删定义。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "repeat": "repeat" } }
       }
@@ -545,6 +552,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.heart；调用点 TheaterView.tsx:889)",
       "_note": "设计稿写「lucide heart」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.heart），不是 lucide-react。⚠ ① TheaterView 里 heart 的**唯一**调用点在 .th-like 按钮内（= Button/Like 263:106 的 DOM 区域），别与那个可点按钮混；② 迷你播放器有平行实现：mini/MiniPlayer.tsx:44（调用点 :230）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "heart": "heart" } }
       }
@@ -557,6 +565,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "SearchPanel (内联 <svg className=\"sp-search-icon\">；SearchPanel.tsx:475-488)",
       "_note": "⚠ 设计稿写「lucide search」；代码里 **ICONS 没有 search 这个 key** ⇒ 搜索图标不是 ThIcon，而是内联的一枚同款 SVG（circle + handle path）。⚠ 另有**第二份平行实现**：modals/LikedLibraryModal.tsx:437-450 的 .lib-search-icon —— 改搜索图标要两处一起改。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "search": "svg.sp-search-icon" } }
       }
@@ -569,7 +578,7 @@
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (内联 .th-reco-unconfigured 块；TheaterView.tsx:922-930)",
       "_note": "组件级降级态（标题 + 说明 + 配置 KEY 按钮）。触发条件是 **!recoConfigured && !recoRunning**（不只是 recoConfigured=false）。全屏对应 Screen/NowPlaying/RecoUnconfigured（314:1881）。代码里没有独立 export。",
-      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** props 检查（不是 interface 命名问题）⇒ 这条 props 已人工逐字段核对。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条 props 已人工逐字段核对（独立复核确认：recoConfigured / onConfigureReco 都是 TheaterViewProps 的真实字段）。",
       "props": {
         "recoConfigured": { "figmaProp": "state", "type": "boolean" },
         "onConfigureReco": { "figmaProp": "(回调)", "type": "function?" }
@@ -582,7 +591,8 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (内联 .th-bg 块；TheaterView.tsx:471-493)",
-      "_note": "th-bg-radial + 3×th-nebula(violet/cyan/acid) + th-stardust（useStardust 生成 60 个 .th-star）+ th-horizon —— 与设计稿「3 nebula glows + 60 stardust particles + horizon line」逐项对上。纯装饰（aria-hidden）。⚠ 其它复用 .th-bg 的地方（common/AuthErrorPanel.tsx:97-103）**没有** th-stardust ⇒ 「60 粒子」只在本处成立。",
+      "_note": "th-bg-radial + 3×th-nebula(violet/cyan/acid) + th-stardust（useStardust 生成 60 个 .th-star）+ th-horizon —— 与设计稿「3 nebula glows + 60 stardust particles + horizon line」逐项对上。纯装饰（aria-hidden）。⚠ `.th-bg` 在 7 个文件里重复（LikedLibraryModal:351 / SettingsModal:265 / SearchPanel:377 / AuthErrorPanel:97 / RecoLoading:76 / SourceSelect:108 / TheaterView:471），但**只有 TheaterView 这一处有 th-stardust** ⇒「60 粒子」只在本处成立。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里整段跳过 reactComponent/props 检查 ⇒ 本条已人工核对（独立复核确认：.th-bg 块与 60 粒子都真实存在）。",
       "props": {}
     },
     {
