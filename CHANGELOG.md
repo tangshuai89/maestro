@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Code Connect 全量归属 + 覆盖率反向门禁**（2026-10-30）
+
+  补齐 19 条缺失映射：8 个 `Icon/*`、`State/RecoUnconfigured`、`Scene/Backdrop`
+  和 9 个屏幕帧。`figma-code-connect.json` 从 31 → **50 条**，快照覆盖
+  **components 35/35 · screens 15/15**；同名不同类按 nodeId 严格区分。
+
+  `figma-code-connect-validate.mjs` 现在读取快照并报告
+  `mapped / total / missing`：新增设计节点没有映射 ⇒ exit 1，缺口不会再静默扩大。
+  对应测试先红后绿，已挂进 `test:ci`。删除只针对这一缺口的临时豁免。
+
+  重新生成契约草案后：**34 条可写 / 16 条已有契约跳过 / 0 条缺 react 归属**。
+  `figma:payload:check` 与 `figma:diff --gate` 均绿；插件本身仍需在真实
+  Figma 桌面端跑一次，跑完并重采集后才算写通道闭环。
+
 - **`figma:diff` 统一入口 —— 「设计稿变了，前端代码该改什么」**（2026-10-29）
 
   D1–D11 各自解决一个对齐问题，但**没有一条能回答「现在该改哪些前端文件」**。
@@ -72,8 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   会被省略、顺序会变；`a11y`/`tokens`/`bindings` 映射里压根没有）⇒ 生成器只**起草 + 标注
   `provenance`**，整段带 `draft: true`，**不冒充权威**。
 
-  现状：**可写 15 个**（components 腿覆盖率 10 → 25）· 跳过 19 个 ——
-  那 19 个缺的不是「能写进 Figma」，是「在前端该对应哪个组件」⇒ 该走 code-connect 补映射。
+  2026-10-29 初次生成时为**可写 15 个 / 缺归属 19 个**；2026-10-30 补齐 Code Connect
+  映射后更新为 **可写 34 个 / 已有契约跳过 16 个 / 缺归属 0 个**。
 
 - **写通道自查：修掉一个会丢数据的 bug + 一个会静默漏写的 bug（2026-10-29）**
 

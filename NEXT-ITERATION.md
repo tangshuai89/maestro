@@ -44,6 +44,23 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple 
 > 常量 `NETEASE_ALBUM_SUB_ENDPOINT`，不符时一行可改）；
 > ③ QQ / Deezer 无收藏专辑 API —— 结构性跳过，不是待办。
 
+### 2026-10-30 当前编排 — Figma 结构回填 + App 手测
+
+两条轨并行，只有“Figma 回填深度选到结构 + 视觉”时才会和 `--text-dim`
+（Figma 0.55 / 代码 0.4）冲突。本轮默认先做**结构对齐**；视觉回填与
+`--text-dim` 数值另拍板，不把未决值写进设计稿。
+
+| 顺序 | 谁做                 | 事项                                                                        | 完成判据                                                                |
+| ---- | -------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1    | 你（Figma 桌面 App） | 跑 `AETHER Contract Writer`，写当前 **34** 条契约草案                       | 通知为应用 34 / 跳过 0 / 失败 0，且已有散文未被覆盖                     |
+| 2    | Codex                | 你跑完后重跑采集段 → `figma:payload` → `figma:payload:check` + `figma:diff` | 新快照契约覆盖到 35/35 组件 + 15/15 屏幕；34 条 `descriptions` 附注消失 |
+| 3    | 你（同一段桌面时间） | 按 `specs/acceptance-backlog.md` §2 手测 12 条 App 行为                     | 每条按前置 / 步骤 / 期望留结果；失败项另开修，不混进 Figma 回填         |
+| 4    | 你拍板               | `--text-dim` 选 0.55（WCAG AA）或保持 0.4                                   | 二选一后才允许视觉回填 / token 收敛                                     |
+
+Figma 侧代码准备已就绪：Code Connect **50 条映射覆盖 35/35 组件 + 15/15 屏幕**，
+覆盖率缺口现在是 CI 门禁；插件逻辑已有 mock 测试，但**尚未在真实 Figma 桌面端运行**。
+因此第 1 步仍是整条写通道最后一个未知，不应被代码侧门禁变绿替代。
+
 剩下的工作集中在四类：
 
 1. **Apple Dev + EVS 落地（本期最优先）**：见下 0 节。0 成本 EVS + $99/年 Apple Dev。
@@ -82,14 +99,14 @@ Developer Account（macOS code-sign / notarize 必需）**，见下 0 节"Apple 
          @keyframes → motion-spec.json 必须也改）。
 
          ⚠️ **2026-10-29 实测：这道门禁现在还不能直接上**，两个前置都没到位：
-                         ① **`motion-spec.json` 已经脱节** —— D10 落地之后又发生了 **14 次**动效改动，
-                            spec 一次都没动过；其中 **2 个新增 `@keyframes`**（`player-notice-in` /
-                            `mini-player-in`）**根本没登记**。直接上门禁 = 要先补这 14 条。
-                         ② **补条目要同步 Figma** —— `audit-d10.mjs` 会核对「Figma ↔ 仓库 spec id
-                            集合一致」，只改仓库会让那条校验红 ⇒ **必须有 FIGMA_TOKEN** 才能补。
-                         ⇒ 建议顺序：① 先把 `motion-spec.json` 与代码**重新对齐**（含 Figma 侧）；
-                            ② 门禁的判据**收窄**到「PR 新增了 `@keyframes` 名字」才要求登记
-                            （改 transition 时长只 warn），否则日常改样式会被误伤。
+                                     ① **`motion-spec.json` 已经脱节** —— D10 落地之后又发生了 **14 次**动效改动，
+                                        spec 一次都没动过；其中 **2 个新增 `@keyframes`**（`player-notice-in` /
+                                        `mini-player-in`）**根本没登记**。直接上门禁 = 要先补这 14 条。
+                                     ② **补条目要同步 Figma** —— `audit-d10.mjs` 会核对「Figma ↔ 仓库 spec id
+                                        集合一致」，只改仓库会让那条校验红 ⇒ **必须有 FIGMA_TOKEN** 才能补。
+                                     ⇒ 建议顺序：① 先把 `motion-spec.json` 与代码**重新对齐**（含 Figma 侧）；
+                                        ② 门禁的判据**收窄**到「PR 新增了 `@keyframes` 名字」才要求登记
+                                        （改 transition 时长只 warn），否则日常改样式会被误伤。
 
    - [x] **`verify-pack.sh` 改成「有 ❌ 就 exit 1」（2026-10-28，PR #142 已合）**：
          失败项逐条列出 + `--no-dmg` 开关 + 新增 `.github/workflows/packaged-app.yml`

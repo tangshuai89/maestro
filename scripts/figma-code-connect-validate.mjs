@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────
 // Figma Code Connect 校验脚本
-// 验证 figma-code-connect.json 的 21+ 映射：路径存在、Props 覆盖、schema 一致
+// 验证 figma-code-connect.json：路径存在、Props 覆盖、schema 一致、
+// 且快照里的每个组件 / 屏幕都至少有一条映射（防覆盖率静默后退）。
 // 用法:
-//   node scripts/figma-code-connect-validate.mjs           # 基础校验（21+ 项必须通过）
+//   node scripts/figma-code-connect-validate.mjs           # 基础校验 + 快照覆盖率
 //   node scripts/figma-code-connect-validate.mjs --strict   # 严格（无 D1-PLACEHOLDER；props 100% 覆盖）
+//   node scripts/figma-code-connect-validate.mjs --map <path> --snapshot <path> --json
 // 退出码: 0 = 全部通过, 1 = 有 FAIL
 // 关联: specs/d5-code-connect/spec.md §5 Schema 规范
 // ─────────────────────────────────────────────────────────────
@@ -15,10 +17,19 @@ import { execSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(__dirname, '..');
-const JSON_PATH = join(repo, 'figma-code-connect.json');
+function argValue(name, fallback) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return fallback;
+  const value = process.argv[index + 1];
+  return value && !value.startsWith('--') ? value : fallback;
+}
+
+const JSON_PATH = resolve(repo, argValue('--map', 'figma-code-connect.json'));
+const SNAPSHOT_PATH = resolve(repo, argValue('--snapshot', 'scripts/figma-snapshot.json'));
 const STRICT = process.argv.includes('--strict');
 
 const map = JSON.parse(readFileSync(JSON_PATH, 'utf8'));
+const snapshot = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8'));
 const mappings = map.mappings || [];
 const fileKey = map['$figmaFileKey'] || '<missing>';
 
@@ -192,7 +203,29 @@ if (fileKey === 'FtbRZXvzlCp4Sq9e322cQQ') {
   check('figmaFileKey 与项目文档一致', false, `当前: ${fileKey}（期望 FtbRZXvzlCp4Sq9e322cQQ）`);
 }
 
-// ── 3. 汇总 ──
+// ── 3. 快照反向覆盖率：新增节点没有映射时不能静默漏掉 ──
+const mappedNodeIds = new Set(mappings.map((m) => m.figmaNodeId));
+const coverage = {};
+for (const [kind, listName] of [
+  ['components', 'components'],
+  ['screens', 'screens'],
+]) {
+  const nodes = Array.isArray(snapshot[listName]) ? snapshot[listName] : [];
+  const missing = nodes
+    .filter((node) => !mappedNodeIds.has(node.nodeId))
+    .map((node) => ({ name: node.name, nodeId: node.nodeId }));
+  const mapped = nodes.length - missing.length;
+  coverage[kind] = { mapped, total: nodes.length, missing };
+  check(
+    `Code Connect 覆盖率: ${kind}`,
+    missing.length === 0,
+    missing.length === 0
+      ? `${mapped}/${nodes.length}`
+      : `${mapped}/${nodes.length}；缺 ${missing.map((node) => `${node.name} (${node.nodeId})`).join('、')}`,
+  );
+}
+
+// ── 4. 汇总 ──
 const fails = results.filter((r) => !r.ok);
 const lines = results.map(
   (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ' — ' + r.detail : ''}`,
@@ -205,6 +238,7 @@ if (process.argv.includes('--json')) {
         total: results.length,
         fails: fails.length,
         mappings: mappings.length,
+        coverage,
         results,
       },
       null,

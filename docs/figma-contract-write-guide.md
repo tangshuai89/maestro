@@ -65,7 +65,7 @@ npm run figma:payload
 1. 打开 **AETHER 文件**（fileKey `FtbRZXvzlCp4Sq9e322cQQ`）
 2. 确认处于 **Design 模式**
 3. **Plugins → Development → AETHER Contract Writer**
-4. 看右上角通知：`AETHER 契约写入：应用 15 · 跳过 0 · 失败 0`
+4. 看右上角通知：`AETHER 契约写入：应用 34 · 跳过 0 · 失败 0`
 5. 插件的完整报告在 Figma 的 **console**（开发者工具）里
 
 **重复跑是安全的**：生成器只产出「还没有契约段」的节点，插件运行时再查一次载体 ⇒
@@ -86,7 +86,7 @@ npm run figma:payload
 # 2. 重新生成草案（快照变了，草案要跟上）
 npm run figma:payload
 
-# 3. 看差异清单 —— components 腿的覆盖率应该从 10 个组件变成 25 个
+# 3. 看差异清单 —— 契约附注应消失，components / screens 覆盖率应到 35/35、15/15
 npm run figma:diff
 ```
 
@@ -111,8 +111,8 @@ npm run figma:diff
 > ⚠️ `npm run figma:payload:check` **不能**证明这一点 —— 它只比对
 > 「仓库里的产物」与「仓库里的快照」是否同步，**跟 Figma 里实际写了什么无关**。
 > 快照没更新时它照样绿（典型的假绿）。
-> ⇒ 真正的自查只有一条：**重跑采集**，看新快照里那些组件的 `contract` 字段有没有内容，
-> 再跑 `npm run figma:diff` 看 components 腿的覆盖率是否从 10 个涨到 25 个。
+> ⇒ 真正的自查只有一条：**重跑采集**，看新快照里那些节点的 `contract` 字段有没有内容，
+> 再跑 `npm run figma:diff` 看契约附注是否消失。
 > 想逐条看内容 ⇒ 用 Figma 的 Dev Mode 或直接看节点的 description。
 
 ---
@@ -126,9 +126,9 @@ npm run figma:diff
   原来的写法会把 21 个组件的设计文档直接抹掉。）
 - **草案不是权威** ⇒ 整段带 `draft: true`，且 `provenance` 标注了每个字段的来源。
   落地后应该**人工审阅**再当设计契约用。
-- **19 个节点被跳过**（`Icon/* ×8` · `State/RecoUnconfigured` · `Scene/Backdrop` · 9 个屏幕）
-  ⇒ 它们缺的不是「能写进 Figma」，是「在前端该对应哪个组件」⇒ 该先做 code-connect 补映射
-  （tasks.md 的 I2 / I4），不是补契约能解决的。
+- **2026-10-30 起没有“无 react 归属”节点**：50 条 Code Connect 映射覆盖
+  **35/35 组件 + 15/15 屏幕**；当前 payload 为 **34 条可写 / 16 条已有契约跳过**。
+  覆盖率由 `figma-code-connect-validate.mjs` 守，新增设计节点但没补映射会直接红。
 - **插件本体没在真实 Figma 里跑过**（开发它的人没有桌面端）⇒
   离线能验的都验了（推导规则、写→读闭环、三端口径一致、采集段端到端模拟、
   **插件本体的 mock 测试**、变异 12/12 全被抓住），

@@ -168,31 +168,25 @@ Some tools are **exempt**, including tools that write to Figma files, such as:
 is supported on any plan」）—— 写入权限 = 你自己对文件的编辑权，不看席位、不吃 MCP 配额。
 ⇒ **不必升级席位、不必搬文件**。本条降级为「若将来要用 MCP 写工具才需要」。
 
-- [ ] @blocked **I1** **补 AI_CONTRACT 段到其余 25 个组件 + 9 屏** ——
-      设计稿侧写操作（10-24 归档区，**不占待办清单位置**），
-      但它是「向下驱动」的**前提**（不是"对齐"）⇒ 值得单独拍板。
-      **已拍板（2026-10-29）**：走「**升 Figma 席位**」路线。
-      ⚠️ **上面的通道对照表是查 Figma 官方文档核过的**（2026-10-29），
-      **更正了此前的错误说法**：「升 Dev/Full 席位 ⇒ 解锁**桌面**写通道」——
-      **桌面服务器根本不支持写画布**，写通道只在**远程**服务器。
-      **⇒ 正确的目标是：把团队从 Starter 升到付费套餐（Professional 起）+ Full 席位。**
-      为什么是 **Full** 而不是 Dev：**「写自己 drafts 以外的文件需要 Full 席位」**
-      —— AETHER 是**团队共享文件**，Dev 席位在它上面只有只读。
-      （Dev 席位在**自己的 draft** 里可写。）
+- [ ] @manual **I1** **在 Figma 桌面 App 跑本地开发插件，把 34 条 AI_CONTRACT 草案写回设计稿**
+      —— 代码侧已全部就绪：50 条 Code Connect 映射覆盖 35/35 组件 + 15/15 屏幕；
+      当前 payload = **可写 34 条 · 已有契约跳过 16 条 · 无归属跳过 0 条**。
+      插件逻辑已有 mock 测试，但桌面端运行时（字体加载 / 跨页 / 通知）只能真人跑一次。
+      **跑完后必须重跑采集段**，再跑 `npm run figma:payload` 和
+      `npm run figma:diff`，确认新快照里契约段真的出现；只看插件通知不算验收。
 
-  ⇒ **「升席位 ≠ 立刻能干完，还差两步」这条已作废**（2026-10-29 Phase M 交付）：
-  写段脚本**已存在**，而且**不需要任何席位升级** —— 本地开发插件的写入权限 =
-  你自己对文件的编辑权（不看席位、不吃 MCP 配额）⇒ **不必等席位，也不必搬文件**。
-  ⇒ I1 剩下的**真阻塞换了**：不是「写不进 Figma」，而是「**19 个组件在前端还没有归属**」
-  ⇒ 走 **I2 / I4**（code-connect 补映射）。
-  ⇒ 当前**可写 15 个**（都有映射），写完 components 腿覆盖率 **10 → 25**。
-
-- [ ] @deferred **I2** code-connect 补 10 个映射（Icon/* ×8 · State/RecoUnconfigured · Scene/Backdrop）
-      —— 属 10-24 归档决策里「持续对齐」那一类，等用户拍板
+- [x] **I2** code-connect 补 19 条缺失映射（**2026-10-30 完成**）
+  - 8 个 `Icon/*` · `State/RecoUnconfigured` · `Scene/Backdrop` · 9 个屏幕帧
+  - 映射 31 → **50**；快照覆盖率 **components 35/35 · screens 15/15**
+  - 同名不同类按 nodeId 严格区分（`Screen/SourceSelect` 的组件集 `515:133`
+    与屏幕帧 `314:1432` 各一条）
+  - 删除 `figma-diff-allowlist.json` 里“10 个组件未映射”的临时豁免
 - [ ] @blocked **I3** motion spec 补登记 39 个 `@keyframes` → **须同步 Figma**（`audit-d10` 核对 id 集合一致），只改仓库会让校验红
-      （这是豁免表第 2 条的由来；写权限被套餐锁死 ⇒ 解不开）
-- [ ] @todo **I4** code-connect 覆盖率反向检查（映射数落后于组件数，缺口静默扩大）→ `figma-code-connect-validate.mjs` 现无覆盖率检查
-      （这是豁免表第 1 条的由来；这是**真·欠着的工程活**，不需要 Figma 权限）
+      （这是豁免表第 2 条的由来；座位墙已被本地插件绕过，但仍缺 motion writer + Figma 双向同步）
+- [x] **I4** code-connect 覆盖率反向检查（**2026-10-30 完成**）
+      → `figma-code-connect-validate.mjs` 现在读取快照，输出
+      `components/screens` 的 `mapped / total / missing`；快照里新增节点但没映射 ⇒ exit 1。
+      先写 `figma-code-connect-validate.test.mjs` 看它红，再补实现转绿；已挂进 `test:ci`。
 - [ ] @blocked **I5** 刷新 `scripts/figma-tokens-dump.json`（token 腿的 dump 停在 10-13）→ 需先解采集侧限制（缺 Enterprise PAT）
 - [ ] @todo **I6** 刷新 `docs/d-series-status.md`（停在 10-15）
 - [ ] @deferred **I7** D7-D1 的 6 条手连线是否随 10-24 决策一并归档 —— 等用户拍板
@@ -414,3 +408,4 @@ is supported on any plan」）—— 写入权限 = 你自己对文件的编辑�
 | 2026-10-29 | **第二轮**独立评审又查出 2 条存活 + 2 个新回退 + 1 个退化输入 ⇒ Phase L 全部修掉；自检 57→**68**，变异 24→**37**（全被抓住）；变异脚本加**等效变异检测**（区分"真洞"与"锚点写错"）；自查再补两条：code-connect 映射表为空 ⇒ 门禁假绿、「是不是屏幕」不能按名字判                                                                                                                                                                                                                                                |
 | 2026-10-29 | **Phase N** 写通道自查：修 **P0**（插件覆盖散文 description ⇒ 抹掉 21 个组件的人工设计文档）+ **P1**（三端口径不一致 ⇒ 静默漏写）⇒ 抽出唯一实现 `scripts/lib/figma-contract-section.js`，采集段与插件共用；新测试 18/18 绿、新变异 10/10 全被抓住；核实 Figma Plugin API 三条硬事实（dynamic-page 不自动装载全页 / `getNodeById` 已废弃 / Figma 预载 Inter 字体）                                                                                                                                               |
 | 2026-10-29 | **Phase N2** 单一实现收口：采集段 motion 路径也统一到共享实现（最后一份手写 fence 正则）；加**结构性守卫**（fence 正则只许出现在共享实现区域内）+ 两条对应变异；加**采集段端到端模拟**（SEG1 此前从未被跑过 —— 实测真跑时立刻抓到模板字符串里的反引号把模板截断，而当时所有既有测试都是绿的）；加**插件本体的 mock 测试**（插件此前一行都没被执行过）；更正两处文档漂移（比对层其实不参与 fence 提取 / `.cjs`→`.js` 改名后 6 处引用没跟上）；测试 18→**22**、变异 10→**12**（全被抓住）、插件 mock 测试 **8/8** |
+| 2026-10-30 | **I2 / I4 完成**：19 条缺失映射补齐（31→50，components 35/35 + screens 15/15）；删除“10 个未映射”临时豁免；新增覆盖率反向检查与先红后绿测试并挂进 `test:ci`；重生成 payload → 34 条可写 / 16 条幂等跳过，`figma:payload:check` 与 `figma:diff --gate` 均绿                                                                                                                                                                                                                                                      |
