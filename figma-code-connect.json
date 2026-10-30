@@ -472,7 +472,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.skipBack；调用点 TheaterView.tsx:873)",
-      "_note": "设计稿写「lucide skip-back」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipBack），不是 lucide-react。ThIcon 未 export ⇒ 未来要独立成组件。",
+      "_note": "设计稿写「lucide skip-back」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipBack），不是 lucide-react。⚠ 同一图标在另外两处有**平行实现**（各自一份 ICONS map）：mini/MiniPlayer.tsx:42（MiniIcon，调用点 :193）与 views/LiteView.tsx:29（LiteIcon，调用点 :114）—— 改这个图标要三处一起改。ThIcon 未 export ⇒ 未来要独立成组件。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "prev": "skipBack" } }
       }
@@ -484,7 +484,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.skipForward；调用点 TheaterView.tsx:917)",
-      "_note": "设计稿写「lucide skip-forward」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipForward），不是 lucide-react。",
+      "_note": "设计稿写「lucide skip-forward」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipForward），不是 lucide-react。⚠ 同一图标在另外两处有**平行实现**（各自一份 ICONS map）：mini/MiniPlayer.tsx:43（调用点 :219）与 views/LiteView.tsx:30（调用点 :124）—— 改这个图标要三处一起改。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "next": "skipForward" } }
       }
@@ -496,7 +496,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.play；调用点 TheaterView.tsx:907)",
-      "_note": "设计稿写「lucide play」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.play），不是 lucide-react。与 Icon/Pause 是同一个按钮的互斥态（TheaterView.tsx:905/907）。",
+      "_note": "设计稿写「lucide play」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.play），不是 lucide-react。与 Icon/Pause 是同一个按钮的互斥态（TheaterView.tsx:905/907）。⚠ 迷你播放器有平行实现：mini/MiniPlayer.tsx:40（调用点 :208）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "play": "play" } }
       }
@@ -508,7 +508,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.pause；调用点 TheaterView.tsx:905)",
-      "_note": "设计稿写「lucide pause」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.pause），不是 lucide-react。与 Icon/Play 是同一个按钮的互斥态。",
+      "_note": "设计稿写「lucide pause」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.pause），不是 lucide-react。与 Icon/Play 是同一个按钮的互斥态。⚠ 迷你播放器有平行实现：mini/MiniPlayer.tsx:41（调用点 :206）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "pause": "pause" } }
       }
@@ -544,7 +544,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；ICONS.heart；调用点 TheaterView.tsx:889)",
-      "_note": "设计稿写「lucide heart」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.heart），不是 lucide-react。注意别与 Button/Like（263:106）混 —— 那是可点的红心按钮。",
+      "_note": "设计稿写「lucide heart」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.heart），不是 lucide-react。⚠ ① TheaterView 里 heart 的**唯一**调用点在 .th-like 按钮内（= Button/Like 263:106 的 DOM 区域），别与那个可点按钮混；② 迷你播放器有平行实现：mini/MiniPlayer.tsx:44（调用点 :230）。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "heart": "heart" } }
       }
@@ -555,8 +555,8 @@
       "reactComponent": "svg.sp-search-icon",
       "reactPath": "packages/renderer/src/components/search/SearchPanel.tsx",
       "_status": "PENDING_REFACTOR",
-      "_inlineIn": "SearchPanel (内联 <svg className=\"sp-search-icon\">；SearchPanel.tsx:475-484)",
-      "_note": "⚠ 设计稿写「lucide search」；代码里 **ICONS 没有 search 这个 key** ⇒ 搜索图标不是 ThIcon，而是 SearchPanel 里内联的一枚同款 SVG（circle + handle path）。",
+      "_inlineIn": "SearchPanel (内联 <svg className=\"sp-search-icon\">；SearchPanel.tsx:475-488)",
+      "_note": "⚠ 设计稿写「lucide search」；代码里 **ICONS 没有 search 这个 key** ⇒ 搜索图标不是 ThIcon，而是内联的一枚同款 SVG（circle + handle path）。⚠ 另有**第二份平行实现**：modals/LikedLibraryModal.tsx:437-450 的 .lib-search-icon —— 改搜索图标要两处一起改。",
       "props": {
         "icon": { "figmaProp": "icon", "type": "enum", "map": { "search": "svg.sp-search-icon" } }
       }
@@ -568,7 +568,8 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (内联 .th-reco-unconfigured 块；TheaterView.tsx:922-930)",
-      "_note": "组件级降级态（标题 + 说明 + 配置 KEY 按钮）。全屏对应 Screen/NowPlaying/RecoUnconfigured（314:1881）。代码里没有独立 export。",
+      "_note": "组件级降级态（标题 + 说明 + 配置 KEY 按钮）。触发条件是 **!recoConfigured && !recoRunning**（不只是 recoConfigured=false）。全屏对应 Screen/NowPlaying/RecoUnconfigured（314:1881）。代码里没有独立 export。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** props 检查（不是 interface 命名问题）⇒ 这条 props 已人工逐字段核对。",
       "props": {
         "recoConfigured": { "figmaProp": "state", "type": "boolean" },
         "onConfigureReco": { "figmaProp": "(回调)", "type": "function?" }
@@ -581,7 +582,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (内联 .th-bg 块；TheaterView.tsx:471-493)",
-      "_note": "th-bg-radial + 3×th-nebula(violet/cyan/acid) + th-stardust（useStardust 生成 60 个 .th-star）+ th-horizon —— 与设计稿「3 nebula glows + 60 stardust particles + horizon line」逐项对上。纯装饰（aria-hidden）。",
+      "_note": "th-bg-radial + 3×th-nebula(violet/cyan/acid) + th-stardust（useStardust 生成 60 个 .th-star）+ th-horizon —— 与设计稿「3 nebula glows + 60 stardust particles + horizon line」逐项对上。纯装饰（aria-hidden）。⚠ 其它复用 .th-bg 的地方（common/AuthErrorPanel.tsx:97-103）**没有** th-stardust ⇒ 「60 粒子」只在本处成立。",
       "props": {}
     },
     {
@@ -591,6 +592,7 @@
       "reactPath": "packages/renderer/src/components/source-select/SourceSelect.tsx",
       "_status": "D1_DONE",
       "_note": "03 页的 Screen/SourceSelect **屏幕帧**；02 页同名组件集是 515:133（另有一条映射），两者靠 nodeId 严格区分，别混。SourceSelect.tsx 文件头标注「Figma 03/Screen/SourceSelect 还原（node 314:1432）」。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `SourceSelectProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
       "props": {
         "onSelect": { "figmaProp": "(回调)", "type": "function", "args": "provider: MusicProvider" }
       }
@@ -602,6 +604,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "D1_DONE",
       "_note": "无歌词态：TheaterView 内 hasTrack && (!lyrics || lyrics.length===0) → noLyrics 分支（TheaterView.tsx:303 / 769），不是独立组件。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `TheaterViewProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
       "props": {
         "lyrics": { "figmaProp": "lyrics", "type": "LyricLine[] | null" }
       }
@@ -613,6 +616,7 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "D1_DONE",
       "_note": "试听降级态：TheaterView 的 trialFellBack prop 分支（TheaterView.tsx:56 / 857），不是独立组件。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `TheaterViewProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
       "props": {
         "trialFellBack": { "figmaProp": "state", "type": "boolean?" }
       }
@@ -623,7 +627,8 @@
       "reactComponent": "TheaterView",
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "D1_DONE",
-      "_note": "推荐未配置态：TheaterView 的 recoConfigured=false 分支（TheaterView.tsx:922-930 的 .th-reco-unconfigured 块）。组件级对应 State/RecoUnconfigured（263:82）。",
+      "_note": "推荐未配置态：TheaterView 的 recoConfigured=false 分支（TheaterView.tsx:922-930 的 .th-reco-unconfigured 块）；完整触发条件是 **!recoConfigured && !recoRunning**。组件级对应 State/RecoUnconfigured（263:82）。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `TheaterViewProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
       "props": {
         "recoConfigured": { "figmaProp": "state", "type": "boolean" },
         "onConfigureReco": { "figmaProp": "(回调)", "type": "function?" }
@@ -733,7 +738,7 @@
       "reactComponent": "AuthErrorPanel",
       "reactPath": "packages/renderer/src/components/common/AuthErrorPanel.tsx",
       "_status": "D1_DONE",
-      "_note": "AuthErrorPanel.tsx 文件头标注「设计稿结构（1440×900，node 401:1287）」。⚠ 别误映射到 common/ErrorPanel.tsx —— 那是 TheaterView 内的**子面板**（文件头明说「不是全屏」）。另有一条 Screen/AuthError/Full（478:2）指向同一组件。",
+      "_note": "AuthErrorPanel.tsx 文件头标注「设计稿结构（1440×900，node 401:1287）」。⚠ 别误映射到 common/ErrorPanel.tsx —— 它对应的是 Screen/Error 里 error-panel **子组件**的语义，且**当前没有任何渲染点**（只有它自己的测试文件 import；TheaterView 只在注释里提到它）⇒ 目前是死代码。另有一条 Screen/AuthError/Full（478:2）指向同一组件。",
       "props": {
         "provider": { "figmaProp": "provider", "type": "enum[qq|netease|deezer|spotify]" },
         "error": { "figmaProp": "error", "type": "AuthError | null" },
@@ -757,7 +762,7 @@
       "_note": "⚠ node id 漂移：RecoLoading.tsx 文件头写的是 **408:1402**，快照里是 **403:1351**（组件被重建过）。归属证据是文件头「Figma 03/Screen/RecoLoading 还原」；写回 Figma 前须确认哪个 id 现存。组件集另有 Modal/RecoLoading（514:97）映射。",
       "props": {
         "librarySize": { "figmaProp": "librarySize", "type": "number" },
-        "onClose": { "figmaProp": "(回调)", "type": "function" }
+        "onClose": { "figmaProp": "(回调)", "type": "function?" }
       }
     }
   ]

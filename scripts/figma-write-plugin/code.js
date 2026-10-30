@@ -665,8 +665,8 @@ const PAYLOAD = {
       "kind": "screen",
       "type": "FRAME",
       "carrier": "text-child",
-      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
-      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "carrierText": "---\nAI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---",
+      "contractBody": "AI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "provenance": {
         "react": "mapping",
         "props": "mapping-signature",
