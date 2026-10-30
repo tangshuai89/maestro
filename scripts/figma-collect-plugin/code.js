@@ -168,7 +168,15 @@ const semanticOf = (node) => {
 };
 
 const pages = figma.root.children.filter((p) => p.type === 'PAGE');
-const out = { fileKey: figma.currentPage && figma.fileKey ? figma.fileKey : null, pages: [], components: [], screens: [], motion: null };
+// ⚠️ **fileKey 直接取 figma.fileKey**，不要用「figma.currentPage && figma.fileKey」：
+//    本插件的 manifest 是 documentAccess:"dynamic-page" ⇒ **figma.currentPage
+//    初始为 null**（必须先 setCurrentPageAsync 才有值）⇒ 那行写法在真实 Figma 里
+//    会把 fileKey 取成 **null**（2026-10-30 实测：接收器拒收「fileKey 缺失」）。
+//    而 figma.fileKey 是**文档级**属性，跟当前页无关 ⇒ 直接取。
+//
+// ⚠️ 这段注释在 SEG1_PART2 这个**模板字符串**里 ⇒ 里面**不许出现反引号**，
+//    否则模板会被截断（require 时直接抛 "Unexpected identifier"）。
+const out = { fileKey: figma.fileKey || null, pages: [], components: [], screens: [], motion: null };
 
 // ── 02 · Components ──────────────────────────────────────────
 const compPage = pageByName('02 · Components');

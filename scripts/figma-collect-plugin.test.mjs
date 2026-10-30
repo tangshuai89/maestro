@@ -70,10 +70,14 @@ function mockFigma({ pages, fileKey = 'FtbRZXvzlCp4Sq9e322cQQ', clipboardFails =
       log.closed.push(msg);
     },
   };
-  // ⚠️ 真 Figma 里 `figma.currentPage` **永远有值**（用户所在的页）⇒ 初始就设上。
-  //    否则 SEG1 里的 `figma.currentPage && figma.fileKey ? … : null` 会取到 null
-  //    ⇒ 快照的 fileKey 变 null（假失败，mock 造成的）。
-  log.currentPage = pages[0] ?? null;
+  // ⚠️ **忠实模拟 dynamic-page 模式**：本插件 manifest 是
+  //    `documentAccess: "dynamic-page"` ⇒ `figma.currentPage` **初始为 null**
+  //    （必须先 setCurrentPageAsync 才有值）。
+  //    ⚠️ 之前这里偷懒设成了 pages[0] ⇒ **掩盖了一个真 bug**：
+  //    SEG1 曾用 `figma.currentPage && figma.fileKey ? … : null` 取 fileKey
+  //    ⇒ 真实 Figma 里取成 null（2026-10-30 实测：接收器拒收「fileKey 缺失」）。
+  //    ⇒ 现在 mock 忠实还原：**初始 null**，由 SEG1 自己 setCurrentPageAsync 切页。
+  log.currentPage = null;
   for (const p of pages) p.findAllWithCriteria = (opts) => findAllWithCriteria(p, opts.types);
   figma.__log = log;
   return figma;
@@ -172,6 +176,26 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     const fromClipboard = JSON.parse(log.clipboard[0]);
     assert.equal(fromClipboard.components.length, 1);
     assert.equal(fromClipboard.screens.length, 1);
+  });
+
+  it('采集: **dynamic-page 模式下 currentPage 初始为 null** ⇒ fileKey 仍要有值（回归）', async () => {
+    const compPage = {
+      type: 'PAGE',
+      name: '02 · Components',
+      children: [componentSet('1:1', 'Hologram/Cover', CONTRACT)],
+    };
+    const figma = mockFigma({ pages: [compPage] });
+    // ⚠️ mock 必须**忠实还原** dynamic-page：currentPage 初始为 null。
+    //    （之前 mock 偷懒设成 pages[0] ⇒ 掩盖了「fileKey 取成 null」的真 bug，
+    //      2026-10-30 在真实 Figma 里才暴露：接收器拒收「fileKey 缺失」。）
+    assert.equal(figma.currentPage, null, '⚠️ mock 失真 ⇒ 这条回归测试就白写了');
+
+    const { snapshot } = await runPlugin(figma);
+    assert.equal(
+      snapshot.fileKey,
+      'FtbRZXvzlCp4Sq9e322cQQ',
+      '⚠️ fileKey 不能依赖 figma.currentPage（dynamic-page 下它初始为 null）',
+    );
   });
 
   // ════════════════════════════════════════════════════════════════

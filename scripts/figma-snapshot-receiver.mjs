@@ -92,7 +92,10 @@ export function validateSnapshot(obj) {
     errors.push(`capturedAt 不是带时区的 ISO 时间戳：${JSON.stringify(obj.capturedAt)}`);
   }
   if (typeof obj.fileKey !== 'string' || !obj.fileKey.trim()) {
-    errors.push('fileKey 缺失');
+    errors.push(
+      'fileKey 缺失（空/null）—— 旧版采集段在 dynamic-page 模式下会取成 null' +
+        '（figma.currentPage 初始为 null）',
+    );
   }
   const counts = obj.counts;
   if (!counts || typeof counts !== 'object') {
