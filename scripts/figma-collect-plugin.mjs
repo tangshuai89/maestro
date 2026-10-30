@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { DEFAULT_PORT } from './figma-snapshot-receiver.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,7 @@ const require = createRequire(import.meta.url);
 
 const CHECK = process.argv.includes('--check');
 const PLACEHOLDER = '/* __COLLECTOR__ */';
+const BUILD_PLACEHOLDER = '__BUILD__';
 
 const PATHS = {
   pluginSrc: resolve(__dirname, 'figma-collect-plugin/plugin.src.js'),
@@ -68,6 +70,9 @@ if (typeof SEG1 !== 'string' || !SEG1.includes('JSON.stringify(out)')) {
 const src = readFileSync(PATHS.pluginSrc, 'utf8');
 if (!src.includes(PLACEHOLDER)) {
   fail(`插件源码里找不到占位符 ${PLACEHOLDER}：${PATHS.pluginSrc}`);
+}
+if (!src.includes(BUILD_PLACEHOLDER)) {
+  fail(`插件源码里找不到构建号占位符 ${BUILD_PLACEHOLDER}：${PATHS.pluginSrc}`);
 }
 
 // ── 端口一致性（同一个事实写在三个文件里）────────────────────────
@@ -122,7 +127,17 @@ for (const d of domains) {
 //    `str.replace(占位符, 字符串)` 时替换串里的 `$&` / `$1` / `$'` 是**特殊语法**，
 //    会被展开成别的东西 ⇒ SEG1 被悄悄改形 ⇒ 采集结果错得没痕迹。
 //    函数形式（`() => SEG1`）按**字面量**替换，不会被解释。
-const code = src.replace(PLACEHOLDER, () => SEG1);
+//
+// ⚠️ 构建号 = **输入**（SEG1 + 插件源码）的哈希 ⇒ 内容变则号变，
+//    两个不同版本不会同号。注入到插件里、印在通知上 ⇒
+//    一眼看出「Figma 跑的是不是磁盘上这份」（Figma 会缓存已导入的开发插件）。
+const build = createHash('sha256')
+  .update(SEG1)
+  .update('\u0000')
+  .update(src)
+  .digest('hex')
+  .slice(0, 8);
+const code = src.replace(PLACEHOLDER, () => SEG1).replace(BUILD_PLACEHOLDER, () => build);
 
 // ⚠️ SEG1 里带 `await` 与顶层 `return` ⇒ 它必须待在 async 函数体内。
 //    这里断言它确实被放进了函数里（而不是悬在顶层）。

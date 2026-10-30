@@ -198,6 +198,27 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     );
   });
 
+  it('采集: 通知里带**构建号**（判断 Figma 跑的是不是磁盘上这份）', async () => {
+    const compPage = {
+      type: 'PAGE',
+      name: '02 · Components',
+      children: [componentSet('1:1', 'Hologram/Cover', CONTRACT)],
+    };
+    const figma = mockFigma({ pages: [compPage] });
+    const { log } = await runPlugin(figma);
+
+    const notice = log.notified.join('\n');
+    const m = /build ([0-9a-f]{8})/.exec(notice);
+    assert.ok(m, '通知应带 8 位构建号');
+    assert.notEqual(m[1], '__BUILD__', '⚠️ 占位符没被替换 ⇒ 生成器没注入构建号');
+
+    // ⚠️ 必须与**磁盘上产物**的构建号一致 ⇒ 通知里的号能唯一标识「跑的是哪份代码」。
+    //    （Figma 桌面端会缓存已导入的开发插件 ⇒ 不带这个号就只能靠猜。）
+    const onDisk = /const PLUGIN_BUILD = '([0-9a-f]{8})'/.exec(CODE);
+    assert.ok(onDisk, '产物里应有构建号');
+    assert.equal(m[1], onDisk[1], '通知里的构建号应与产物一致');
+  });
+
   // ════════════════════════════════════════════════════════════════
   // 2. 契约段提取口径（与写入插件同源 ⇒ 写→读闭环）
   // ════════════════════════════════════════════════════════════════

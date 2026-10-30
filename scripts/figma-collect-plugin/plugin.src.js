@@ -40,6 +40,17 @@
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * 插件构建号（由 `scripts/figma-collect-plugin.mjs` 注入）。
+ *
+ * ⚠️ 为什么需要它：Figma 桌面端会**缓存已导入的开发插件**，改了磁盘上的 code.js
+ *    再跑一次，可能跑的仍是旧代码（实测：修了 fileKey 的 bug，重新跑插件仍然
+ *    报同一个错 ⇒ 插件被缓存了）。
+ *    ⇒ 通知里印出构建号 ⇒ 一眼看出「Figma 跑的是不是磁盘上这份」。
+ *    （构建号 = 输入的哈希 ⇒ 内容变则号变，不会出现两个版本同号。）
+ */
+const PLUGIN_BUILD = '__BUILD__';
+
+/**
  * 接收器地址。
  *
  * ⚠️ 端口必须与 `scripts/figma-snapshot-receiver.mjs` 的 DEFAULT_PORT 一致 ——
@@ -134,7 +145,8 @@ async function main() {
   const withProse = all.filter((n) => n.hasDescription).length;
   const head =
     `采集完成：组件 ${components.length} · 屏 ${screens.length}` +
-    ` · 带契约段 ${withContract}/${all.length} · 有语义 ${withProse}/${all.length}`;
+    ` · 带契约段 ${withContract}/${all.length} · 有语义 ${withProse}/${all.length}` +
+    ` · build ${PLUGIN_BUILD}`;
 
   // ① 主路径：POST 给本机接收器 ⇒ **直接落盘**（零人工）
   let landed = false;
