@@ -34,7 +34,57 @@
 // ③ 契约段在 description 开头，截断几乎无损（段内做精确提取，不是截断）。
 // ─────────────────────────────────────────────────────────────
 
-const SEG1 = `
+// ── 共享实现注入 ─────────────────────────────────────────────────
+// ⚠️ 「契约段提取」**只有一份实现**（scripts/lib/figma-contract-section.js），
+//    采集段 / 写入插件 / 生成器三处共用。
+//
+//    为什么必须共用：以前采集段手写了一份 `/---([\s\S]*?)---/`，
+//    插件那边手写了另一份 `includes('AI_CONTRACT:')` ——
+//    **口径不一致 ⇒ 静默漏写**：插件以为「已经写过了」而跳过，
+//    采集段却提不出契约段 ⇒ 设计稿上永远没有契约，而 `figma:diff` 现场看不出异常。
+//
+//    怎么做到「只有一份」而三处都能用（采集段跑在 Figma 沙箱里，不能 import）：
+//    ① 本文件是 CommonJS ⇒ require 时把共享实现的**函数源码**拼进 SEG1 字符串；
+//    ② 写入插件由 scripts/figma-contract-payload.mjs 同样用 toString() 内联。
+//    两边贴的都是同一份源码 ⇒ 不可能漂移。
+const {
+  SECTION_FENCE,
+  extractContractSection,
+  hasContractSection,
+  mergeContractSection,
+} = require('./lib/figma-contract-section.js');
+
+/**
+ * 把共享实现转成「可放进 SEG1 模板字符串」的源码。
+ *
+ * ⚠️ **转义怎么做**（这里踩过一次坑）：
+ *    SEG1 是个模板字符串，里面要放含反斜杠的函数源码（正则里的 `\s`）。
+ *    · 模板的 `${...}` 插值是**字面替换** —— 插进来的内容**不再被模板解析**；
+ *      所以不能指望「模板帮我把 `\\s` 还原成 `\s`」。
+ *    · 也不能**预先**把 `\` 翻倍 —— 那样输出里留下 `\\s`，
+ *      正则变成「匹配字面反斜杠」⇒ 提取永远失败。
+ *    ⇒ 唯一可靠的做法：**先在模板之外拼好最终字符串**（见下），
+ *      模板只负责承载不含反斜杠的固定部分。
+ *
+ * ⇒ 共享实现直接拼进 SEG1（不进模板）：
+ *    拼接时把 `\` 换成 `\\` 是给**模板**用的；
+ *    但既然最终字符串是拼出来的，就该拼**最终形态**（`\s` 一个反斜杠），
+ *    不经过任何模板求值 ⇒ 不用转义。
+ */
+const SHARED_SECTION_SRC = [
+  `const SECTION_FENCE = ${JSON.stringify(SECTION_FENCE)};`,
+  extractContractSection.toString(),
+  hasContractSection.toString(),
+  mergeContractSection.toString(),
+].join('\n\n');
+
+const SEG1_PART1 = `
+// ── 共享实现（由 scripts/lib/figma-contract-section.js 内联）──
+// ⚠️ **不要手改这段**：它来自共享实现，手改会让采集段与写入插件口径漂移（⇒ 静默漏写）。
+`;
+
+/** SEG1 尾段（模板字面量，不含共享实现 ⇒ 不涉及转义问题）。 */
+const SEG1_PART2 = `
 // ── 只读遍历（不创建 / 不修改 / 不删除任何节点）──
 const pageByName = (n) => figma.root.children.find((p) => p.name === n);
 // 不做 findAllWithCriteriaAsync 特性探测：use_figma 运行时读不存在的属性会直接抛错
@@ -50,11 +100,13 @@ const carrierOf = (node) =>
   '';
 
 // 只取 ---...--- 契约段（AI 要的是结构化那几行，不是散文）
-const contractOf = (node) => {
-  const raw = carrierOf(node);
-  const m = raw.match(/---([\\s\\S]*?)---/);
-  return m ? m[1].trim() : '';
-};
+//
+// ⚠️ **extractContractSection 是共享实现**（scripts/lib/figma-contract-section.js），
+//    由本文件 require 时内联进来 —— 采集段跑在 Figma 沙箱里不能 import，
+//    但**源码只有一份**（写入插件那边也是同一份 toString() 内联）。
+//    以前这里手写了一份提取正则，插件那边又手写了另一份「文本里含 AI_CONTRACT:」的判断，
+//    三端口径不一致 ⇒ 插件以为写过了而采集段提不出来 ⇒ 静默漏写。
+const contractOf = (node) => extractContractSection(carrierOf(node));
 
 // 语义载体信息：有没有描述 / 有描述但没契约段时给一段预览
 //
@@ -136,14 +188,17 @@ if (motionPage) {
   const specFrame = (motionPage.children || []).find((n) => n.name === 'MOTION SPEC');
   if (specFrame) {
     const carrier = carrierOf(specFrame);
-    const m = carrier.match(/---([\\s\\S]*?)---/);
+    // ⚠️ **也走共享实现**：MOTION SPEC 的 JSON 用的就是同一套「---」包裹约定，
+    //    这里若手写第二份正则 ⇒ 约定一改（fence 换了写法）motion 腿会**静默失效**
+    //    （提不出 JSON ⇒ spec 空 ⇒ 门禁看不出任何异常）。
+    const body = extractContractSection(carrier);
     let motion = null;
-    if (m) {
+    if (body) {
       try {
-        const parsed = JSON.parse(m[1].trim());
-        motion = { spec: parsed.spec || [], version: parsed.MOTION_SPEC || null, rawLength: m[1].trim().length };
+        const parsed = JSON.parse(body);
+        motion = { spec: parsed.spec || [], version: parsed.MOTION_SPEC || null, rawLength: body.length };
       } catch (e) {
-        motion = { spec: [], version: null, parseError: String(e && e.message ? e.message : e), rawLength: m[1].trim().length };
+        motion = { spec: [], version: null, parseError: String(e && e.message ? e.message : e), rawLength: body.length };
       }
     }
     out.motion = motion || { spec: [], version: null, missing: true };
@@ -158,5 +213,18 @@ out.counts = {
 };
 return JSON.stringify(out);
 `;
+
+/**
+ * SEG1 最终形态 = 头 + 共享实现 + 尾。
+ *
+ * ⚠️ **为什么用拼接而不是模板插值**：
+ *    模板的 `${...}` 是**字面替换**（插进来的内容不再被模板解析），
+ *    而共享实现里有反斜杠（正则的 `\s`）。
+ *    · 预先翻倍 ⇒ 输出留下 `\\s` ⇒ 正则匹配字面反斜杠 ⇒ 提取永远失败；
+ *    · 不翻倍   ⇒ 插值是字面的，本来就没事 —— 但**这依赖插值不再解析**这一事实，
+ *      太脆（改一行就可能踩）。
+ *    ⇒ 改成**在模板之外拼好最终字符串**：没有第二层求值 ⇒ 不用转义 ⇒ 不会错。
+ */
+const SEG1 = SEG1_PART1 + SHARED_SECTION_SRC + SEG1_PART2;
 
 module.exports = { SEG1 };

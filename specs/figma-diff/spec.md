@@ -559,12 +559,220 @@ git add scripts/figma-snapshot.json && git commit -m "figma: 首次采集设计�
 
 ## 9. 文件清单
 
-| 文件                                | 类型 | 作用                                          |
-| ----------------------------------- | ---- | --------------------------------------------- |
-| `scripts/figma-diff.mjs`            | 新   | 主入口（四腿比对 + 输出 + gate）              |
-| `scripts/lib/figma-snapshot.mjs`    | 新   | 纯函数核心（契约解析 / 四腿 diff / 渲染）     |
-| `scripts/figma-snapshot-seg.js`     | 新   | use_figma 只读采集段（SEG1）                  |
-| `scripts/figma-diff.test.mjs`       | 新   | 36 个反向验证测试                             |
-| `scripts/figma-diff.mutation.mjs`   | 新   | 可复现变异验证（12 条变异，改坏判据必须红）   |
-| `scripts/figma-diff-allowlist.json` | 新   | should 级豁免表（必填 reason；must 不可豁免） |
-| `package.json`                      | 改   | 5 个 script + `test:ci` 追加两段              |
+| 文件                                          | 类型 | 作用                                                        |
+| --------------------------------------------- | ---- | ----------------------------------------------------------- |
+| `scripts/figma-diff.mjs`                      | 新   | 主入口（四腿比对 + 输出 + gate）                            |
+| `scripts/lib/figma-snapshot.mjs`              | 新   | 纯函数核心（契约解析 / 四腿 diff / 渲染）                   |
+| `scripts/figma-snapshot-seg.js`               | 新   | use_figma 只读采集段（SEG1）                                |
+| `scripts/figma-diff.test.mjs`                 | 新   | 68 个反向验证测试                                           |
+| `scripts/figma-diff.mutation.mjs`             | 新   | 可复现变异验证（37 条变异，改坏判据必须红）                 |
+| `scripts/figma-diff-allowlist.json`           | 新   | should 级豁免表（必填 reason；must 不可豁免）               |
+| `package.json`                                | 改   | 5 个 script + `test:ci` 追加两段                            |
+| `scripts/lib/figma-contract-payload.mjs`      | 新   | 契约草案推导（纯函数，不编造）                              |
+| `scripts/lib/figma-contract-section.js`       | 新   | **契约段的唯一实现**（提取/判定/合并；三处共用）            |
+| `scripts/figma-contract-payload.mjs`          | 新   | 草案生成器 CLI（+ `--check` 防漂移）                        |
+| `scripts/figma-contract-payload.test.mjs`     | 新   | 33 个反向验证测试                                           |
+| `scripts/figma-contract-payload.mutation.mjs` | 新   | 12 条变异验证                                               |
+| `scripts/figma-contract-section.test.mjs`     | 新   | 18 个反向验证（含「三端口径一致」）                         |
+| `scripts/figma-contract-section.mutation.mjs` | 新   | 10 条变异验证                                               |
+| `scripts/figma-contract-payload.json`         | 新   | 生成物：待写清单                                            |
+| `scripts/figma-write-plugin/manifest.json`    | 新   | 写入插件的 manifest                                         |
+| `scripts/figma-write-plugin/plugin.src.js`    | 新   | 写入插件源码（`__PAYLOAD__` + `__CONTRACT_SECTION__` 占位） |
+| `scripts/figma-write-plugin/code.js`          | 生成 | 插件产物（payload + 共享实现内联）                          |
+
+---
+
+## 10. 写通道 —— 把契约段写回设计稿（2026-10-29）
+
+### 10.1 为什么不用 MCP 写工具
+
+| 通道                             | 写画布？            | 要求                                          |
+| -------------------------------- | ------------------- | --------------------------------------------- |
+| 远程 MCP（`mcp.figma.com/mcp`）  | ✅ `use_figma`      | 付费套餐 + **Full** 席位（写团队文件需 Full） |
+| 桌面 MCP（`127.0.0.1:3845/mcp`） | ❌ **不支持写画布** | 付费套餐 + Dev/Full                           |
+| **本地开发插件**（本专题采用）   | ✅                  | **任何套餐都行**，只需「你对文件有编辑权」    |
+| REST API + PAT                   | ❌                  | REST 对**文件内容是只读**的，没有改节点的接口 |
+
+⇒ 官方口径：「Creating a development plugin is supported on any plan」。
+插件的写入权限 = **用户自己对该文件的编辑权**，不看席位类型、不看套餐墙，
+**也不吃 MCP 配额**（200/天那个计数器管的是 MCP 工具调用）。
+⇒ 不必等席位升级、不必把文件搬进教育团队。
+
+### 10.2 三条红线（生成器 + 插件共同守住）
+
+1. **不编造** —— 推不出来的字段不生成。最典型的是 `react` 路径：
+   没有 code-connect 映射 ⇒ 这个组件在前端**还没有归属** ⇒ 编一个路径等于给前端
+   发一条它永远不会兑现的 must ⇒ **跳过并写明原因**。
+2. **格式对** —— 载体文本必须用 `---` 裹住。采集段的 `contractOf()` 是
+   `raw.match(/---([\s\S]*?)---/)` ⇒ **不裹就提不出契约段**（写→读闭环断）。
+3. **推导不越界** —— `states` 只认 `state=` 前缀的变体；
+   `platform=` / `provider=` / `quality=` / `tone=` 是别的维度。
+   实证：已完成的 `SourceChip` 变体是 `platform=qq|…`，而它的 `states` 是
+   `[default, best, no-rights]` —— 压根不在变体里。
+
+### 10.3 契约内容**不是**机械推导得出来的（2026-10-29 实测）
+
+逐条比对 code-connect 映射与 10 份已有人工契约，发现：
+
+- `props` —— 映射是 `{provider: MusicProvider}`，人工契约写的是
+  `{provider: enum[qq|netease|deezer|spotify]}`；`Array` 写成了 `DeezerEditorial[]`；
+  `string?` 一处写成 `panelClassName?: string`、另一处（Titlebar）写成不带 `?`；
+  Titlebar 的 23 个 props 到契约里变成 22 个、顺序变了、类型整列省略。
+- `a11y` / `tokens` / `bindings` —— 映射里**根本没有**这些字段。
+
+⇒ 所以生成器**只起草 + 标注来源**，不冒充权威：
+每个字段带 `provenance`（`mapping` / `mapping-signature` / `variants` /
+`convention` / `none`），整段带 `draft: true`，报告里单列「需人审阅」的部分。
+
+### 10.4 落地流程
+
+> 逐步操作指引见 **`docs/figma-contract-write-guide.md`**（给人照着做的那份）。
+
+```bash
+npm run figma:payload          # 生成 payload.json + 插件产物 code.js + 审阅报告
+npm run figma:payload:check    # 产物与快照是否同步（漂移 ⇒ exit 1）
+```
+
+然后在 **Figma 桌面 App**：
+
+1. Plugins → Development → **Import plugin from manifest**
+   → 选 `scripts/figma-write-plugin/manifest.json`
+2. ⚠️ 必须处于 **Design 模式**（不是 Dev Mode；`Shift+D` 是双向切换）
+3. 打开 AETHER 文件 → 运行插件 → 看通知里的「应用 N 条」
+
+**幂等**：生成器只产出「还没有契约段」的节点，插件运行时再查一次载体 ⇒
+重复跑不会覆盖、不会叠加。
+
+### 10.4.1 「契约段」只有一份实现（2026-10-29 修 P1）
+
+三处都在做同一件事：「从载体文本里把契约段抠出来」——
+**采集段**（提取）、**写入插件**（判幂等 + 写回）、**生成器**（判跳过）。
+以前三处各写一份，口径不一致 ⇒ **静默漏写**：
+
+> 插件用「文本里含 `AI_CONTRACT:`」判幂等，采集段用 `/---([\s\S]*?)---/` 提取。
+> 散文里顺口提一句 `AI_CONTRACT:` ⇒ 插件以为「已经写过了」而跳过，
+> 采集段却提不出契约段 ⇒ 设计稿上永远没有契约，而 `figma:diff` **现场看不出任何异常**。
+
+⇒ 现在共用 **`scripts/lib/figma-contract-section.js`**（唯一实现）：
+
+| 函数                                 | 作用                                         |
+| ------------------------------------ | -------------------------------------------- |
+| `extractContractSection(raw)`        | 按 `/---([\s\S]*?)---/` 提取段正文           |
+| `hasContractSection(raw)`            | 有没有契约段（**不是**「文本含不含关键词」） |
+| `mergeContractSection(raw, section)` | 把契约段**合进**载体文本，不覆盖             |
+
+**怎么做到「只有一份」而三处都能用**（采集段与插件都跑在 Figma 沙箱里，不能 import）：
+
+- 采集段（`scripts/figma-snapshot-seg.js`）= CommonJS ⇒ require 时用
+  `fn.toString()` 把**函数源码**拼进 SEG1 字符串；
+- 写入插件（`scripts/figma-write-plugin/`）= 由 `scripts/figma-contract-payload.mjs`
+  同样用 `toString()` 内联（`__CONTRACT_SECTION__` 占位符）。
+
+⇒ 两边跑的是**同一份源码**，不可能漂移。
+判据：`scripts/figma-contract-section.test.mjs` 里有「三端口径一致」用例
+（把 SEG1 与 code.js 里的内联实现抠出来，在沙箱里跑同一批输入，比对行为）。
+
+⚠️ **比对层 `scripts/lib/figma-snapshot.mjs` 不参与这份实现**（别再往里加）：
+它消费的是采集段**已提取好的契约原文**（快照的 `contract` 字段），只做 YAML 浅解析，
+**根本不做 fence 提取** ⇒ 没有口径可漂移。
+
+⚠️ **踩过的坑（别再踩）**：SEG1 是模板字符串，但 `${...}` 插值是**字面替换**
+（插进来的内容不再被模板解析）⇒ 预先把 `\` 翻倍会留下 `\\s`（正则变成匹配字面反斜杠），
+不翻倍又依赖「插值不再解析」这一脆弱事实。
+⇒ 最终改成**在模板之外拼好最终字符串**（`SEG1_PART1 + SHARED + SEG1_PART2`），
+没有第二层求值 ⇒ 不用转义。
+
+⚠️ **模板字符串里的注释也不能随便写反引号**（2026-10-29 实测）：
+在 SEG1 的模板段落里写了一个 `` `---` `` 形式的行内代码 ⇒ **反引号把模板字符串截断**
+⇒ SEG1 整段语法错 ⇒ 采集段完全跑不起来。
+而当时**所有既有测试都是绿的** —— 因为没人真跑过 SEG1（见 §10.4.4）。
+
+### 10.4.2 合并不覆盖（2026-10-29 修 P0 —— 会丢数据）
+
+真实快照里 **21 个组件已有人工写的散文 description**
+（例：「Holographic cover area 480×500: orbit ring + 12 ticks…」）。
+插件原来写的是 `node.description = text` ⇒ **跑一次就把那些设计文档抹掉**（不可逆）。
+
+⇒ 改为 `mergeContractSection()`：**契约段放前面**、**散文原样保留在后面**。
+
+契约段为什么放前面：
+
+- 采集段用 `/---([\s\S]*?)---/` 提取 —— **非贪婪，取第一对 `---`**。
+  契约段在前 ⇒ 提取到的就是契约段；散文在前 ⇒ 散文里若出现 `---` 会提错段。
+- 与既有 10 份人工契约的形态一致（契约段在 description 开头）。
+
+判据：`scripts/figma-contract-section.test.mjs` 里
+「真实快照: 21 个「有散文无契约」的节点 ⇒ 合并后散文全在」用例，
+逐字比对散文（不只是 `includes`）。
+
+### 10.4.3 Figma Plugin API 的三条硬事实（2026-10-29 查官方文档）
+
+| 事实                                                      | 影响                                                                                                                                                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documentAccess: dynamic-page` 下**不会**自动装载全部页面 | 跨页访问节点前必须 `await figma.loadAllPagesAsync()`，否则读未加载页会抛错                                                                                              |
+| 同步 `figma.getNodeById` **已废弃**                       | 用 `await figma.getNodeByIdAsync(id)`                                                                                                                                   |
+| **Figma 会为插件预载 Inter 字体**                         | `loadFontAsync({family:'Inter'})` 几乎必然成功；兜底用 `listAvailableFontsAsync()`（**不用** `figma.root.findAll` —— 它在 dynamic-page 下只遍历当前页，且大文件上很慢） |
+
+`figma.closePlugin()` 的参数是**字符串**（官方签名 `closePlugin(message?: string)`）
+⇒ 传对象会被忽略，调用方拿不到任何结果 ⇒ 传摘要字符串，并在失败时点名是哪几个。
+
+### 10.4.4 「只有一份」要怎么**守得住**（2026-10-29）
+
+「共用一份源码」这件事本身**不构成门禁**。两种漏法：
+
+| 漏法                                     | 现象                                        | 怎么抓                                               |
+| ---------------------------------------- | ------------------------------------------- | ---------------------------------------------------- |
+| **行为漂移**（口径改了）                 | 三处提取结果不一致 ⇒ 静默漏写               | 「三端口径一致」用例（把内联实现抠出来同批输入比对） |
+| **结构漂移**（又写了一份，行为暂时一致） | 变成两份实现 ⇒ 迟早漂移，但**当下测试全绿** | **结构性守卫**：fence 正则只许出现在共享实现区域内   |
+
+⇒ 因此有三条硬要求：
+
+1. **结构性守卫**（`figma-contract-section.test.mjs`）
+   采集段 / 插件产物 / 插件源码里，fence 正则的**区域外计数必须为 0**、
+   总数必须为 1。配套两条变异（M11 采集段 / M12 插件源码）⇒ 改坏必被抓。
+2. **采集段必须真跑一遍**（同文件「采集段端到端」用例）
+   SEG1 是「贴给 `use_figma` 执行的代码字符串」，不参与构建/测试 ⇒
+   它坏了没有任何门禁会发现。
+   ⇒ 用最小 figma mock + `AsyncFunction` 执行 SEG1，断言组件腿/屏幕腿/动效腿
+   与 `counts` 一致性。**实证**：本轮第一次真跑就抓到模板字符串里的反引号把模板截断
+   （而当时所有既有测试都是绿的）。
+3. **不留第二份手写实现**
+   MOTION SPEC 的 JSON 用的是同一套 `---` 包裹约定，
+   采集段里曾有**唯一**一份手写的第二份正则 ⇒ 已统一到共享实现。
+   （约定一改，motion 腿会**静默失效**：提不出 JSON ⇒ spec 空 ⇒ 门禁看不出异常。）
+
+### 10.4.5 插件本体也必须**被执行过**（2026-10-29）
+
+插件跑在 Figma 沙箱里 ⇒ 本地没有 Figma ⇒ 在补上 mock 测试之前，
+`code.js` **只有 `node --check` 语法检查** ⇒ 载体分支 / 幂等守卫 / 错误处理
+全都只是「看着对」。按本仓库的规矩「判据类交付必须可验证」，
+`scripts/figma-write-plugin.test.mjs` 用 mock 的 Figma API **真跑一遍**插件：
+
+| 用例                                                    | 守住什么                                    |
+| ------------------------------------------------------- | ------------------------------------------- |
+| description 载体：契约段写进去 + **散文原样保留**       | P0（覆盖 ⇒ 抹掉 21 个组件的人工设计文档）   |
+| text-child 载体：建隐藏 TEXT 子节点、名字 `AI_CONTRACT` | FRAME 没有 `.description` ⇒ 载体必须走 TEXT |
+| 已有载体节点：合并不覆盖 + **加载它自己的字体**         | 混排字体会抛错 ⇒ 必须加载该节点自己的字体   |
+| 已有契约段 ⇒ 跳过，且**一个字节都不改**                 | 幂等                                        |
+| **散文里提到 `AI_CONTRACT:` ⇒ 不算已写过**              | P1（静默漏写）                              |
+| 连跑两次 ⇒ 第二次全部跳过、不叠加                       | 幂等                                        |
+| 节点找不到 ⇒ 只 skip，不抛异常                          | 快照 nodeId 过期时的降级                    |
+| `closePlugin` 收到的是**字符串**                        | 官方签名只接受字符串（传对象会被忽略）      |
+
+**反向验证**：把插件改回「覆盖」⇒ 3 个测试红；改回「关键词判幂等」⇒ 1 个测试红。
+
+⚠️ **本测试证明的是插件逻辑，不证明 Figma 桌面端的运行时行为**
+（字体加载、跨页、通知）⇒ 那仍需在 Figma 桌面 App 跑一次确认。
+
+### 10.5 当前基线（2026-10-29）
+
+| 分类                                | 数量 | 说明                                                  |
+| ----------------------------------- | ---- | ----------------------------------------------------- |
+| 可写（有映射 + 有 nodeId 严格相等） | 15   | 全部指向 `views/TheaterView.tsx`（文件已存在）        |
+| 跳过：已有契约段                    | 16   | 幂等，不覆盖                                          |
+| 跳过：无 react 归属                 | 19   | **前端还没有对应组件** ⇒ 需要先做 code-connect 补映射 |
+
+⚠️ **这 19 个才是 I1 的真阻塞**：它们缺的不是「能写进 Figma」，
+而是「在前端该对应哪个组件」。补契约不能替代那个决定。
+写完这 15 条后，`figma:diff` 的 components 腿覆盖率会从 **10 个组件 → 25 个**，
+且从此这些组件的 react 路径进入**持续校验**（文件被删/改名会被报出来）。
