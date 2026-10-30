@@ -22,11 +22,69 @@
 //
 // ⚠️ **只读**：本插件只遍历、只读属性，不创建 / 修改 / 删除任何节点。
 //
+// ⚠️ **落盘走本机接收器，不是剪贴板**（2026-10-30 实测）：
+//   `figma.clipboard.writeText` 在 Figma 桌面 App 里**直接失败**
+//   ⇒ 原先「复制到剪贴板 → 人肉 pbpaste > 文件」的最后一步断了。
+//   ⇒ 改走 Figma 官方文档明确支持的一条路：manifest 的
+//     `networkAccess.devAllowedDomains` 可以写 `http://localhost:<port>`
+//     （官方原文：「During development, the plugin can access a
+//      local/development web server」）⇒ 插件把 JSON POST 给本机接收器，
+//     接收器校验后**直接落盘** `scripts/figma-snapshot.json` —— 零人工、零配额。
+//   剪贴板 / console 仍保留为兜底（三条路依次降级，通知里会说明走通了哪条）。
+//
 // 关联：scripts/figma-snapshot-seg.js（SEG1 = 唯一的采集实现）
+//       · scripts/figma-snapshot-receiver.mjs（本机接收器 = 端口的单一事实源）
 //       · scripts/figma-collect-plugin.mjs（生成器）
 //       · scripts/figma-collect-plugin.test.mjs（mock Figma API 真跑）
 //       · docs/figma-contract-write-guide.md
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * 接收器地址。
+ *
+ * ⚠️ 端口必须与 `scripts/figma-snapshot-receiver.mjs` 的 DEFAULT_PORT 一致 ——
+ *    不一致时 `scripts/figma-collect-plugin.mjs`（生成器）会**报错**，
+ *    不会悄悄产出一个连不上的插件。
+ *    两个地址都试：127.0.0.1（接收器绑的回环）与 localhost（官方文档的示例写法）。
+ */
+const RECEIVER_URLS = ['http://127.0.0.1:4771/snapshot', 'http://localhost:4771/snapshot'];
+
+/**
+ * 把 JSON POST 给本机接收器。
+ *
+ * ⚠️ `Content-Type: text/plain` 是**故意的**：
+ *    `application/json` 会触发 CORS 预检（OPTIONS），插件沙箱里预检不一定被放行；
+ *    `text/plain` 属于「简单请求」⇒ 不触发预检 ⇒ 一次 POST 就到位。
+ *    接收器那边自己 JSON.parse，不依赖 Content-Type。
+ *
+ * @returns {Promise<{ok:boolean, url?:string, error?:string, info?:object}>}
+ */
+async function postSnapshot(json) {
+  const errs = [];
+  for (const url of RECEIVER_URLS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: json,
+      });
+      if (!res.ok) {
+        errs.push(`${url} → HTTP ${res.status}`);
+        continue;
+      }
+      let info = null;
+      try {
+        info = await res.json();
+      } catch {
+        // 响应不是 JSON 也没关系 —— 接收器已经写盘了。
+      }
+      return { ok: true, url, info };
+    } catch (e) {
+      errs.push(`${url} → ${String(e && e.message ? e.message : e)}`);
+    }
+  }
+  return { ok: false, error: errs.join(' | ') };
+}
 
 /**
  * 采集：跑共享的 SEG1 段（只读遍历）⇒ 返回快照 JSON 字符串。
@@ -222,29 +280,48 @@ async function main() {
   const all = [...components, ...screens];
   const withContract = all.filter((n) => n.hasContract).length;
   const withProse = all.filter((n) => n.hasDescription).length;
-
-  const summary =
+  const head =
     `采集完成：组件 ${components.length} · 屏 ${screens.length}` +
-    ` · 带契约段 ${withContract}/${all.length} · 有语义 ${withProse}/${all.length}` +
-    ` —— JSON 已复制到剪贴板`;
+    ` · 带契约段 ${withContract}/${all.length} · 有语义 ${withProse}/${all.length}`;
 
-  let clipboardOk = false;
+  // ① 主路径：POST 给本机接收器 ⇒ **直接落盘**（零人工）
+  let landed = false;
+  let landedUrl = '';
   try {
-    await figma.clipboard.writeText(json);
-    clipboardOk = true;
+    const r = await postSnapshot(json);
+    if (r.ok) {
+      landed = true;
+      landedUrl = r.url;
+    } else {
+      console.log('[aether-snapshot-collector] ERROR 接收器落盘失败：' + r.error);
+    }
   } catch (e) {
-    // ⚠️ 用 **ERROR** 前缀 —— 这一行**不是**快照 JSON。
-    //    若与 JSON 用同一个前缀，机器抓「第一行以 [aether-snapshot-collector] 开头」
-    //    就会抓到这行 ⇒ JSON.parse 炸。⇒ 前缀必须能区分。
-    console.log('[aether-snapshot-collector] ERROR 剪贴板写入失败：' + String(e));
+    console.log('[aether-snapshot-collector] ERROR 接收器落盘异常：' + String(e));
   }
 
-  // 完整 JSON 也进 console —— 剪贴板不可用时的兜底（人工从 console 复制）
+  // ② 兜底一：剪贴板（人工 pbpaste 落盘）
+  let clipboardOk = false;
+  if (!landed) {
+    try {
+      await figma.clipboard.writeText(json);
+      clipboardOk = true;
+    } catch (e) {
+      // ⚠️ 用 **ERROR** 前缀 —— 这一行**不是**快照 JSON。
+      //    若与 JSON 用同一个前缀，机器抓「第一行以 [aether-snapshot-collector] 开头」
+      //    就会抓到这行 ⇒ JSON.parse 炸。⇒ 前缀必须能区分。
+      console.log('[aether-snapshot-collector] ERROR 剪贴板写入失败：' + String(e));
+    }
+  }
+
+  // ③ 兜底二：完整 JSON 进 console（人工从 console 复制）
   console.log('[aether-snapshot-collector] ' + json);
 
-  const notice = clipboardOk
-    ? summary
-    : `采集完成：组件 ${components.length} · 屏 ${screens.length} · 带契约段 ${withContract}/${all.length} —— 剪贴板写入失败，请从 console 复制 JSON`;
+  const notice = landed
+    ? `${head} —— 已落盘 scripts/figma-snapshot.json`
+    : clipboardOk
+      ? `${head} —— 接收器没连上，JSON 已复制到剪贴板（请 pbpaste 落盘）`
+      : `${head} —— 落盘与剪贴板都失败，请从 console 复制 JSON`;
+
   figma.notify(notice);
   figma.closePlugin(notice);
 }

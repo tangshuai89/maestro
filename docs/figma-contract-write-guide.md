@@ -111,23 +111,51 @@ npm run figma:diff
 ### 用采集插件（零配额，推荐）
 
 ```bash
-# 1. 导入插件（只需一次）
+# 1. 先起接收器（另开一个终端；它会把插件发来的 JSON 校验后直接落盘）
+npm run figma:collect:serve
+#    ⇒ 监听 http://127.0.0.1:4771/snapshot，落盘 scripts/figma-snapshot.json
+
+# 2. 导入插件（只需一次）
 #    Figma 桌面 App → Plugins → Development → Import plugin from manifest
 #    选 scripts/figma-collect-plugin/manifest.json（**不是** plugin.src.js）
-# 2. 打开 AETHER 文件 → Design 模式 → Plugins → Development → AETHER Snapshot Collector
+# 3. 打开 AETHER 文件 → Design 模式 → Plugins → Development → AETHER Snapshot Collector
 #    通知会直接报数字：组件 N · 屏 M · 带契约段 X/N
 #    （X = N 说明契约全写进去了；X = 0 说明一条都没写进去）
-# 3. 落盘（插件已把 JSON 复制进剪贴板）
-pbpaste > scripts/figma-snapshot.json
+#    末尾会写「—— 已落盘 scripts/figma-snapshot.json」⇒ **不用再手动复制**
 ```
 
 > ⚠️ 插件是**只读**的：不创建 / 不修改 / 不删除任何节点，跑多少次都安全。
-> ⚠️ 剪贴板写不进去时（通知会说），完整 JSON 也在 Figma 的 console 里，可人工复制。
+
+### 为什么是「插件 → 本机接收器」，不是剪贴板
+
+2026-10-30 实测：桌面 App 里 `figma.clipboard.writeText` **直接失败**
+（通知：「剪贴板写入失败，请从 console 复制 JSON」）⇒ 落盘链路断在最后一步。
+
+- 不是 manifest 权限问题：官方 `PluginPermissionType` 枚举里**没有任何 clipboard 项**
+  （只有 `currentuser` / `activeusers` / `fileusers` / `payments` / `teamlibrary`）。
+- 官方明确支持的另一条路是**本地开发服务器**：
+  `networkAccess.devAllowedDomains` 可以写 `http://localhost:<port>`
+  （官方原文：「During development, the plugin can access a local/development web server」）。
+
+⇒ 插件把 JSON POST 给 `scripts/figma-snapshot-receiver.mjs`，它**校验后直接落盘** ——
+零配额、零人工。三条路依次降级：**接收器 → 剪贴板 → console**，通知里会写明走通了哪条。
+
+接收器的边界：
+
+- 只绑 **127.0.0.1**（回环）⇒ 局域网访问不到；
+- **先校验后写**（counts 与数组长度自洽 / capturedAt 是带时区 ISO / 节点有 name·nodeId·type）
+  ⇒ 脏数据**不会**覆盖仓库里那份好快照；
+- 「临时文件 + rename」原子落盘 ⇒ 写到一半崩了也不留半个坏 JSON；
+- 输出走 **prettier** ⇒ pre-commit 钩子不会再改写它（不产生无关 diff）。
+
+> 端口的**单一事实源**是 `scripts/figma-snapshot-receiver.mjs` 的 `DEFAULT_PORT`；
+> 插件产物与 `manifest.json` 里的域名/端口由 `npm run figma:collect:check` 断言一致
+> ⇒ 端口漂移会**报错**，不会产出一个连不上的插件。
 
 ### 为什么不用 MCP 的 `use_figma`
 
 `use_figma` **吃套餐配额**（Starter / View / Collab **20 次/月**）⇒ 每采一次就少一次。
-采集插件的权限 = **你自己对该文件的编辑权** ⇒ **零配额**、零网络。
+采集插件的权限 = **你自己对该文件的编辑权** ⇒ **零配额**、零外部网络（只连本机）。
 （与写入插件同一条路，已实测跑通。）
 
 ### 采集段只有一份实现

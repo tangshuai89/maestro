@@ -769,7 +769,7 @@
       "reactComponent": "RecoLoading",
       "reactPath": "packages/renderer/src/components/common/RecoLoading.tsx",
       "_status": "D1_DONE",
-      "_note": "⚠ node id 漂移：RecoLoading.tsx 文件头写的是 **408:1402**，快照里是 **403:1351**（组件被重建过）。归属证据是文件头「Figma 03/Screen/RecoLoading 还原」；写回 Figma 前须确认哪个 id 现存。组件集另有 Modal/RecoLoading（514:97）映射。",
+      "_note": "node id 漂移**已定案**（2026-10-30）：文件头原写 **408:1402**，新采集的快照里是 **403:1351**，且 408:1402 在当前文件里**不存在** ⇒ 组件被重建过，现存 id 是 **403:1351**。归属证据是文件头「Figma 03/Screen/RecoLoading 还原」+ 快照 nodeId 严格相等。组件集另有 Modal/RecoLoading（514:97）映射。",
       "props": {
         "librarySize": { "figmaProp": "librarySize", "type": "number" },
         "onClose": { "figmaProp": "(回调)", "type": "function?" }

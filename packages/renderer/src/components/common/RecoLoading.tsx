@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 /**
  * AETHER RecoLoading — AI 推荐生成中全屏（Figma 03/Screen/RecoLoading 还原）。
  *
- * 设计稿结构（1440×900，node 408:1402）：
+ * 设计稿结构（1440×900，node 403:1351）：
  *  - backdrop（星云 + 地平线，复用 th-bg）
  *  - top-hud（DEEP.SEEK // NEURAL FEED + close 按钮）
  *  - 中央 Card/Neural × 3（skeleton 占位，pulse 动画）

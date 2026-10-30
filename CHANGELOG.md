@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **50/50 有契约**，payload 收口为 **0 条待写**。
   `figma:payload:check` 与 `figma:diff --gate` 均绿，生效差异为 0。
 
+- **快照采集落到「点一下插件」—— 本机接收器直写仓库**（2026-10-30）
+
+  实测 `figma.clipboard.writeText` 在 Figma 桌面 App 里**直接失败**
+  ⇒ 原先「复制到剪贴板 → 人肉 `pbpaste >` 落盘」的最后一步断了。
+  官方 manifest 的 `permissions` 枚举里**没有 clipboard 项**（不是权限声明问题），
+  但 `networkAccess.devAllowedDomains` 明确支持本地开发服务器
+  （官方原文：During development, the plugin can access a local/development web server）。
+
+  ⇒ 新增 `scripts/figma-snapshot-receiver.mjs`：插件把 JSON POST 给它，
+  它**先校验后落盘**（counts 与数组长度自洽 / capturedAt 是带时区 ISO /
+  节点有 name·nodeId·type）⇒ 脏数据不会覆盖仓库里那份好快照；
+  「临时文件 + rename」原子落盘；输出走 prettier ⇒ pre-commit 钩子不再改写它。
+  只绑 `127.0.0.1`（局域网访问不到）。插件侧三条路依次降级：
+  **接收器 → 剪贴板 → console**，通知里写明走通了哪条。
+
+  端口的单一事实源是接收器的 `DEFAULT_PORT`；`figma:collect:check` 断言
+  插件产物与 manifest 的域名/端口一致 ⇒ 端口漂移会**报错**，
+  不会产出一个连不上的插件。采集插件测试 6 → 11 条；
+  接收器测试 19 条（真起 HTTP、真落盘、真拒脏数据、真实快照能过校验）。
+
 - **`figma:diff` 统一入口 —— 「设计稿变了，前端代码该改什么」**（2026-10-29）
 
   D1–D11 各自解决一个对齐问题，但**没有一条能回答「现在该改哪些前端文件」**。
@@ -173,6 +193,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **变异验证**（门禁可信度）：把「分类标记判定」改成恒为通过 → 自测立刻红
   （❌ 没分类标记的未勾项被抓）。
+
+### Fixed
+
+- **`Screen/RecoLoading` 的 node id 漂移定案**（2026-10-30）
+
+  文件头写的是 `408:1402`，新采集的快照里是 `403:1351`，且 `408:1402`
+  在当前文件里**不存在** ⇒ 组件被重建过，现存 id 是 `403:1351`。
+  `RecoLoading.tsx` / `_reco-loading.scss` 的注释与 `figma-code-connect.json`
+  的 `_note` 已一并更正（映射一直按 `403:1351` 落位，没写错过）。
 
 ### Added
 

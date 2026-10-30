@@ -6,7 +6,9 @@
   "editorType": ["figma"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["none"]
+    "allowedDomains": ["http://127.0.0.1:4771", "http://localhost:4771"],
+    "devAllowedDomains": ["http://127.0.0.1:4771", "http://localhost:4771"],
+    "reasoning": "把采集到的快照 JSON 发给**本机**接收器（scripts/figma-snapshot-receiver.mjs），由它校验后直接落盘到仓库 scripts/figma-snapshot.json。不经过任何外部服务器、不出本机。"
   },
   "permissions": []
 }

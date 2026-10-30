@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { DEFAULT_PORT } from './figma-snapshot-receiver.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -67,6 +68,43 @@ if (typeof SEG1 !== 'string' || !SEG1.includes('JSON.stringify(out)')) {
 const src = readFileSync(PATHS.pluginSrc, 'utf8');
 if (!src.includes(PLACEHOLDER)) {
   fail(`插件源码里找不到占位符 ${PLACEHOLDER}：${PATHS.pluginSrc}`);
+}
+
+// ── 端口一致性（同一个事实写在三个文件里）────────────────────────
+// 接收器端口的**单一事实源** = scripts/figma-snapshot-receiver.mjs 的 DEFAULT_PORT。
+// 插件源码与 manifest.json 里各写了一份「域名 + 端口」⇒ 会漂移 ⇒ 插件连不上接收器，
+// 而**现场看不出任何异常**（只会看到「剪贴板写入失败」这种兜底提示）。
+// ⇒ 这里断言：三处端口必须一致，不一致就**报错**，不产出对不上的插件。
+const manifestPath = resolve(__dirname, 'figma-collect-plugin/manifest.json');
+if (!existsSync(manifestPath)) fail(`找不到 manifest：${manifestPath}`);
+
+let manifest;
+try {
+  manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+} catch (e) {
+  fail(`manifest.json 解析失败：${e.message}`);
+}
+const net = manifest.networkAccess ?? {};
+const domains = [...(net.allowedDomains ?? []), ...(net.devAllowedDomains ?? [])];
+
+for (const host of ['127.0.0.1', 'localhost']) {
+  const want = `http://${host}:${DEFAULT_PORT}`;
+  if (!src.includes(`${want}/snapshot`)) {
+    fail(
+      `插件源码里的接收器地址与端口不一致：期望 ${want}/snapshot` +
+        `（接收器 DEFAULT_PORT=${DEFAULT_PORT}）`,
+    );
+  }
+  if (!domains.includes(want)) {
+    fail(`manifest.json 的 networkAccess 里缺少 ${want}（接收器 DEFAULT_PORT=${DEFAULT_PORT}）`);
+  }
+}
+// 反向：manifest 里残留的**旧端口**也要抓出来（换了端口忘了改 manifest 的典型漂移）
+for (const d of domains) {
+  const m = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d+)$/.exec(d);
+  if (m && Number(m[1]) !== DEFAULT_PORT) {
+    fail(`manifest.json 里的 ${d} 与接收器端口 ${DEFAULT_PORT} 不一致（残留的旧端口？）`);
+  }
 }
 
 // ⚠️ **必须用函数形式的 replacement** ——

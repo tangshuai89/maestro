@@ -98,14 +98,18 @@ function screenFrame(id, name, carrierText) {
  *
  * ⚠️ 插件末尾是 `main().catch(...)`（**不 await**）⇒ 必须让事件循环转起来
  *    等它把 closePlugin 调完，否则会在 main 跑完之前就断言。
+ *
+ * ⚠️ `fetch` 以**参数**注入（`new AsyncFunction('figma', 'fetch', code)`）：
+ *    函数参数会遮蔽同名全局 ⇒ 插件里的 fetch 打到 mock 上，
+ *    **绝不会**真的去连 127.0.0.1:4771（测试里不允许真网络）。
  */
-async function runPlugin(figma, code = CODE) {
+async function runPlugin(figma, code = CODE, fetchImpl = refuseFetch) {
   const logs = [];
   const origLog = console.log;
   const closedBefore = figma.__log.closed.length;
   console.log = (...args) => logs.push(args.join(' '));
   try {
-    await new AsyncFunction('figma', code)(figma);
+    await new AsyncFunction('figma', 'fetch', code)(figma, fetchImpl);
     for (let i = 0; i < 200 && figma.__log.closed.length === closedBefore; i++) {
       await new Promise((r) => setImmediate(r));
     }
@@ -125,7 +129,12 @@ async function runPlugin(figma, code = CODE) {
       /* 不是 JSON 行 ⇒ 继续找 */
     }
   }
-  return { snapshot, log: figma.__log };
+  return { snapshot, log: figma.__log, logs };
+}
+
+/** 默认 fetch：模拟「本机没开接收器」⇒ 连接被拒（最常见的降级起点）。 */
+async function refuseFetch() {
+  throw new Error('fetch failed: connect ECONNREFUSED 127.0.0.1:4771');
 }
 
 const CONTRACT = '---\nAI_CONTRACT:\n  react: packages/renderer/src/App.tsx\n  props: {}\n---';
@@ -237,7 +246,7 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
   // 3. 兜底路径：剪贴板挂了也不能崩（JSON 仍进 console）
   // ════════════════════════════════════════════════════════════════
 
-  it('采集: 剪贴板写入失败 ⇒ 不抛异常，JSON 仍进 console，通知里说清', async () => {
+  it('采集: 接收器 + 剪贴板都失败 ⇒ 不抛异常，JSON 仍进 console，通知里说清', async () => {
     const compPage = {
       type: 'PAGE',
       name: '02 · Components',
@@ -246,10 +255,12 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     const figma = mockFigma({ pages: [compPage], clipboardFails: true });
     const { snapshot, log } = await runPlugin(figma);
 
-    assert.ok(snapshot, '剪贴板失败也要产出快照');
+    assert.ok(snapshot, '两条路都挂了也要产出快照');
     assert.equal(log.clipboard.length, 0);
     assert.ok(log.notified.length >= 1);
-    assert.match(log.notified.join('\n'), /剪贴板/, '通知要点明剪贴板失败');
+    const notice = log.notified.join('\n');
+    assert.match(notice, /剪贴板/, '通知要点明剪贴板失败');
+    assert.match(notice, /落盘/, '通知要点明落盘也失败（别让人以为文件已经写好了）');
     assert.equal(log.closed.length, 1, 'closePlugin 应被调用一次');
     assert.equal(typeof log.closed[0], 'string', '⚠️ closePlugin 只接受字符串');
   });
@@ -266,5 +277,106 @@ describe('AETHER 快照采集插件（mock Figma API）', () => {
     const notice = log.notified.join('\n');
     assert.match(notice, /组件 2/, '通知应报组件数');
     assert.match(notice, /带契约段 1\/2/, '通知应报「几个节点带契约段」');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+// 4. 落盘通道：POST 本机接收器（主路径）→ 剪贴板 → console（兜底）
+//
+//    为什么单独测：实测 `figma.clipboard.writeText` 在 Figma 桌面 App 里
+//    **直接失败** ⇒ 落盘链路断在最后一步。改走官方文档支持的
+//    `devAllowedDomains`（本地开发服务器）⇒ 插件 POST，接收器落盘。
+//    ⚠️ 这三条路是**降级链**，通知必须说清走通了哪条 ——
+//       否则用户看到「失败」却不知道文件到底写没写。
+// ════════════════════════════════════════════════════════════════
+
+describe('AETHER 快照采集插件 · 落盘通道（mock fetch）', () => {
+  const compPage = {
+    type: 'PAGE',
+    name: '02 · Components',
+    children: [componentSet('1:1', 'Hologram/Cover', CONTRACT)],
+  };
+
+  it('接收器 POST 成功 ⇒ 通知报「已落盘」，且**不再走剪贴板**', async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, json: async () => ({ ok: true, target: 'x' }) };
+    };
+    const figma = mockFigma({ pages: [compPage] });
+    const { snapshot, log } = await runPlugin(figma, CODE, fetchImpl);
+
+    assert.equal(calls.length, 1, '成功时只该请求一次');
+    assert.equal(calls[0].url, 'http://127.0.0.1:4771/snapshot', '⚠️ 首选回环地址');
+    assert.equal(calls[0].init.method, 'POST');
+    assert.equal(
+      calls[0].init.headers['Content-Type'],
+      'text/plain;charset=utf-8',
+      '⚠️ 必须 text/plain ⇒ 不触发 CORS 预检（application/json 会预检）',
+    );
+
+    // POST 出去的 body 必须**就是**那份快照（不是别的什么）
+    const posted = JSON.parse(calls[0].init.body);
+    assert.equal(posted.components.length, snapshot.components.length);
+    assert.equal(posted.screens.length, snapshot.screens.length);
+    assert.ok(posted.capturedAt, 'POST 的 body 应带 capturedAt');
+    assert.equal(posted.counts.components, posted.components.length, 'counts 必须自洽');
+
+    assert.equal(log.clipboard.length, 0, '落盘成功就不该再折腾剪贴板');
+    assert.match(log.notified.join('\n'), /已落盘/, '通知要点明已落盘');
+    assert.ok(
+      !/剪贴板/.test(log.notified.join('\n')),
+      '走通主路径时通知里不该再提剪贴板（免得人以为还要手动粘）',
+    );
+  });
+
+  it('接收器连不上 ⇒ 自动试第二个地址（127.0.0.1 → localhost）', async () => {
+    const seen = [];
+    const fetchImpl = async (url) => {
+      seen.push(url);
+      if (url.includes('127.0.0.1')) throw new Error('ECONNREFUSED');
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const figma = mockFigma({ pages: [compPage] });
+    const { log } = await runPlugin(figma, CODE, fetchImpl);
+
+    assert.deepEqual(seen, ['http://127.0.0.1:4771/snapshot', 'http://localhost:4771/snapshot']);
+    assert.match(log.notified.join('\n'), /已落盘/);
+  });
+
+  it('接收器返回非 2xx ⇒ 当失败处理（不是「成功」）', async () => {
+    const fetchImpl = async () => ({ ok: false, status: 500, json: async () => ({}) });
+    const figma = mockFigma({ pages: [compPage] });
+    const { log } = await runPlugin(figma, CODE, fetchImpl);
+
+    assert.equal(log.clipboard.length, 1, 'HTTP 500 ⇒ 应降级到剪贴板');
+    assert.ok(!/已落盘/.test(log.notified.join('\n')), '⚠️ 非 2xx 不许说「已落盘」');
+  });
+
+  it('接收器 + 剪贴板都失败 ⇒ 通知说清两条路都挂了，JSON 仍在 console', async () => {
+    const figma = mockFigma({ pages: [compPage], clipboardFails: true });
+    const { snapshot, log, logs } = await runPlugin(figma, CODE, refuseFetch);
+
+    assert.ok(snapshot, '两条路都挂了也要产出快照（console 兜底）');
+    const notice = log.notified.join('\n');
+    assert.match(notice, /落盘/);
+    assert.match(notice, /剪贴板/);
+    assert.match(notice, /console/, '⚠️ 必须告诉人还能从 console 捞');
+    assert.ok(
+      logs.some((l) => l.startsWith(PREFIX) && l.includes('"components"')),
+      'console 里必须还有完整 JSON',
+    );
+  });
+
+  it('接收器抛异常（沙箱里 fetch 直接炸）⇒ 插件不崩，降级到剪贴板', async () => {
+    const fetchImpl = async () => {
+      throw new TypeError('fetch is not a function');
+    };
+    const figma = mockFigma({ pages: [compPage] });
+    const { snapshot, log } = await runPlugin(figma, CODE, fetchImpl);
+
+    assert.ok(snapshot, 'fetch 炸了也要产出快照');
+    assert.equal(log.clipboard.length, 1, '应降级到剪贴板');
+    assert.equal(log.closed.length, 1, '插件必须正常收尾');
   });
 });
