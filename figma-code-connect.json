@@ -2,6 +2,7 @@
   "$comment": "Figma Code Connect 映射 — 组件 → React 实现。导入 Figma Dev Mode 后 AI agent 看到 Figma 节点就能定位源码。",
   "$figmaFileKey": "FtbRZXvzlCp4Sq9e322cQQ",
   "$history": {
+    "I2/I4 甲层（2026-10-30）": "补 19 条映射（31 → 50 条，覆盖快照全部 50 个节点）：8 个 Icon/*（252:68~252:99）+ State/RecoUnconfigured（263:82）+ Scene/Backdrop（313:66）+ 9 个屏幕帧（314:1432 / 314:1538 / 314:1702 / 314:1881 / 365:1008 / 390:1081 / 399:1153 / 401:1287 / 403:1351）。归属一律按 nodeId 严格相等落位 —— 同名不同类用 nodeId 区分（Screen/SourceSelect 的组件集 515:133 与屏幕帧 314:1432 各一条）。每条都带证据来源（文件头 node 引用 / 行号 / 分支条件），偏差如实标注（Icon/Shuffle·Repeat 定义了但无调用点；Icon/Search 不在 ICONS 里；Screen/RecoLoading 的 node id 漂移 408:1402 ↔ 403:1351）。",
     "D5_NEW 阶段（2026-09-20）": "在 02 · Components 增 10 个 component set（28 变体），10 个 TBD-FIGMA 占位已由 scripts/figma-code-connect-inject.mjs 替换为真实 node_id，_status 统一为 D1_DONE；figma-code-connect-validate --strict 110/110。",
     "v4-ABC 阶段（2026-08-20）": "建 15 个 v4-ABC 映射，引用 components/player/cover/lyrics 子组件；后 D2 收敛（2026-09-10）将这些子组件内联到 TheaterView.tsx，文件目录删除，映射变 PENDING_REFACTOR（保留历史对照）",
     "D1 阶段（2026-09-10）": "在 03 · Screens 增 6 屏，6 个 D1-PLACEHOLDER 占位由用户跑完 D1 后替换为真实 node_id",
@@ -148,8 +149,10 @@
       "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
       "_status": "PENDING_REFACTOR",
       "_inlineIn": "TheaterView (ThIcon 内联；用 icon=dislike 区分)",
+      "_note": "设计稿侧**没有任何描述**（快照 hasDescription=false）⇒ 图标语义只能从代码反推：ThIcon 的 ICONS.thumbsDown（调用点 TheaterView.tsx:735）。设计稿补描述时须与代码对齐（别按「lucide thumbs-down」想当然）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
       "props": {
-        "icon": { "figmaProp": "icon", "map": { "dislike": "thumbsDown" } }
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "dislike": "thumbsDown" } }
       }
     },
     {
@@ -206,6 +209,11 @@
         },
         "onClose": { "figmaProp": "(回调)", "type": "function" },
         "onOpenNL": { "figmaProp": "(回调)", "type": "function?", "args": "—（打开 NL 歌单弹窗）" },
+        "onOpenRemote": {
+          "figmaProp": "(回调)",
+          "type": "function?",
+          "args": "—（打开远端歌单入口，specs/remote-playlist）"
+        },
         "wpsReady": {
           "figmaProp": "state",
           "type": "boolean?",
@@ -260,12 +268,26 @@
           "desc": "EQ 偏好镜像：eqEnabled / eqGains[10] / presetId / crossfadeSec（specs/audio-fx）"
         },
         "onEqEnabled": { "figmaProp": "(回调)", "type": "function", "args": "enabled: boolean" },
+        "volume": {
+          "figmaProp": "state",
+          "type": "number",
+          "desc": "音量 0..1（2026-10-20 接上）"
+        },
+        "muted": { "figmaProp": "state", "type": "boolean" },
+        "onVolumeChange": { "figmaProp": "(回调)", "type": "function", "args": "volume: number" },
+        "onToggleMute": { "figmaProp": "(回调)", "type": "function" },
+        "onCrossfadeSec": { "figmaProp": "(回调)", "type": "function", "args": "sec: number" },
         "onEqBandGain": {
           "figmaProp": "(回调)",
           "type": "function",
           "args": "index: number, dB: number"
         },
-        "onApplyEqPreset": { "figmaProp": "(回调)", "type": "function", "args": "presetId: string" }
+        "onApplyEqPreset": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "presetId: string"
+        },
+        "onReplayGuide": { "figmaProp": "(回调)", "type": "function" }
       }
     },
     {
@@ -442,6 +464,315 @@
       "props": {
         "onSuccess": { "figmaProp": "(回调)", "type": "function" },
         "onClose": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Prev",
+      "figmaNodeId": "252:68",
+      "reactComponent": "ThIcon (icon=skipBack)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.skipBack；调用点 TheaterView.tsx:873)",
+      "_note": "设计稿写「lucide skip-back」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipBack），不是 lucide-react。⚠ 同一图标在另外两处有**平行实现**（各自一份 ICONS map）：mini/MiniPlayer.tsx:42（MiniIcon，调用点 :193）与 views/LiteView.tsx:29（LiteIcon，调用点 :114）—— 改这个图标要三处一起改。ThIcon 未 export ⇒ 未来要独立成组件。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "prev": "skipBack" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Next",
+      "figmaNodeId": "252:72",
+      "reactComponent": "ThIcon (icon=skipForward)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.skipForward；调用点 TheaterView.tsx:917)",
+      "_note": "设计稿写「lucide skip-forward」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.skipForward），不是 lucide-react。⚠ 同一图标在另外两处有**平行实现**（各自一份 ICONS map）：mini/MiniPlayer.tsx:43（调用点 :219）与 views/LiteView.tsx:30（调用点 :124）—— 改这个图标要三处一起改。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "next": "skipForward" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Play",
+      "figmaNodeId": "252:76",
+      "reactComponent": "ThIcon (icon=play)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.play；调用点 TheaterView.tsx:907)",
+      "_note": "设计稿写「lucide play」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.play），不是 lucide-react。与 Icon/Pause 是同一个按钮的互斥态（TheaterView.tsx:905/907）。⚠ 迷你播放器有平行实现：mini/MiniPlayer.tsx:40（调用点 :208）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "play": "play" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Pause",
+      "figmaNodeId": "252:79",
+      "reactComponent": "ThIcon (icon=pause)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.pause；调用点 TheaterView.tsx:905)",
+      "_note": "设计稿写「lucide pause」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.pause），不是 lucide-react。与 Icon/Play 是同一个按钮的互斥态。⚠ 迷你播放器有平行实现：mini/MiniPlayer.tsx:41（调用点 :206）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "pause": "pause" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Shuffle",
+      "figmaNodeId": "252:83",
+      "reactComponent": "ThIcon (icon=shuffle)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.shuffle 存在，但**代码里没有调用点**)",
+      "_note": "⚠ 设计稿写「lucide shuffle」；代码里 ICONS.shuffle 有定义但**没有任何 <ThIcon icon=\"shuffle\"> 调用点** ⇒ 该图标当前是死代码，回填设计稿后前端要么接上、要么删定义。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "shuffle": "shuffle" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Repeat",
+      "figmaNodeId": "252:90",
+      "reactComponent": "ThIcon (icon=repeat)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.repeat 存在，但**代码里没有调用点**)",
+      "_note": "⚠ 设计稿写「lucide repeat」；代码里 ICONS.repeat 有定义但**没有任何 <ThIcon icon=\"repeat\"> 调用点** ⇒ 该图标当前是死代码，回填设计稿后前端要么接上、要么删定义。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "repeat": "repeat" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Heart",
+      "figmaNodeId": "252:96",
+      "reactComponent": "ThIcon (icon=heart)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (ThIcon 内联；ICONS.heart；调用点 TheaterView.tsx:889)",
+      "_note": "设计稿写「lucide heart」；代码是 ThIcon 里手抄的同款 SVG path（ICONS.heart），不是 lucide-react。⚠ ① TheaterView 里 heart 的**唯一**调用点在 .th-like 按钮内（= Button/Like 263:106 的 DOM 区域），别与那个可点按钮混；② 迷你播放器有平行实现：mini/MiniPlayer.tsx:44（调用点 :230）。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "heart": "heart" } }
+      }
+    },
+    {
+      "figmaComponent": "Icon/Search",
+      "figmaNodeId": "252:99",
+      "reactComponent": "svg.sp-search-icon",
+      "reactPath": "packages/renderer/src/components/search/SearchPanel.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "SearchPanel (内联 <svg className=\"sp-search-icon\">；SearchPanel.tsx:475-488)",
+      "_note": "⚠ 设计稿写「lucide search」；代码里 **ICONS 没有 search 这个 key** ⇒ 搜索图标不是 ThIcon，而是内联的一枚同款 SVG（circle + handle path）。⚠ 另有**第二份平行实现**：modals/LikedLibraryModal.tsx:437-450 的 .lib-search-icon —— 改搜索图标要两处一起改。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条已人工逐字段核对（独立复核确认）。",
+      "props": {
+        "icon": { "figmaProp": "icon", "type": "enum", "map": { "search": "svg.sp-search-icon" } }
+      }
+    },
+    {
+      "figmaComponent": "State/RecoUnconfigured",
+      "figmaNodeId": "263:82",
+      "reactComponent": "TheaterView (.th-reco-unconfigured)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (内联 .th-reco-unconfigured 块；TheaterView.tsx:922-930)",
+      "_note": "组件级降级态（标题 + 说明 + 配置 KEY 按钮）。触发条件是 **!recoConfigured && !recoRunning**（不只是 recoConfigured=false）。全屏对应 Screen/NowPlaying/RecoUnconfigured（314:1881）。代码里没有独立 export。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里**整段跳过** reactComponent/props 检查（实测：把本条改成不存在的组件仍然全绿）⇒ 本条 props 已人工逐字段核对（独立复核确认：recoConfigured / onConfigureReco 都是 TheaterViewProps 的真实字段）。",
+      "props": {
+        "recoConfigured": { "figmaProp": "state", "type": "boolean" },
+        "onConfigureReco": { "figmaProp": "(回调)", "type": "function?" }
+      }
+    },
+    {
+      "figmaComponent": "Scene/Backdrop",
+      "figmaNodeId": "313:66",
+      "reactComponent": "TheaterView (.th-bg)",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "PENDING_REFACTOR",
+      "_inlineIn": "TheaterView (内联 .th-bg 块；TheaterView.tsx:471-493)",
+      "_note": "th-bg-radial + 3×th-nebula(violet/cyan/acid) + th-stardust（useStardust 生成 60 个 .th-star）+ th-horizon —— 与设计稿「3 nebula glows + 60 stardust particles + horizon line」逐项对上。纯装饰（aria-hidden）。⚠ `.th-bg` 在 7 个文件里重复（LikedLibraryModal:351 / SettingsModal:265 / SearchPanel:377 / AuthErrorPanel:97 / RecoLoading:76 / SourceSelect:108 / TheaterView:471），但**只有 TheaterView 这一处有 th-stardust** ⇒「60 粒子」只在本处成立。",
+      "_propsNote": "PENDING_REFACTOR 条目在校验器里整段跳过 reactComponent/props 检查 ⇒ 本条已人工核对（独立复核确认：.th-bg 块与 60 粒子都真实存在）。",
+      "props": {}
+    },
+    {
+      "figmaComponent": "Screen/SourceSelect",
+      "figmaNodeId": "314:1432",
+      "reactComponent": "SourceSelect",
+      "reactPath": "packages/renderer/src/components/source-select/SourceSelect.tsx",
+      "_status": "D1_DONE",
+      "_note": "03 页的 Screen/SourceSelect **屏幕帧**；02 页同名组件集是 515:133（另有一条映射），两者靠 nodeId 严格区分，别混。SourceSelect.tsx 文件头标注「Figma 03/Screen/SourceSelect 还原（node 314:1432）」。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `SourceSelectProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
+      "props": {
+        "onSelect": { "figmaProp": "(回调)", "type": "function", "args": "provider: MusicProvider" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/NowPlaying/NoLyrics",
+      "figmaNodeId": "314:1538",
+      "reactComponent": "TheaterView",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "D1_DONE",
+      "_note": "无歌词态：TheaterView 内 hasTrack && (!lyrics || lyrics.length===0) → noLyrics 分支（TheaterView.tsx:303 / 769），不是独立组件。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `TheaterViewProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
+      "props": {
+        "lyrics": { "figmaProp": "lyrics", "type": "LyricLine[] | null" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/NowPlaying/TrialFallback",
+      "figmaNodeId": "314:1702",
+      "reactComponent": "TheaterView",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "D1_DONE",
+      "_note": "试听降级态：TheaterView 的 trialFellBack prop 分支（TheaterView.tsx:56 / 857），不是独立组件。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `TheaterViewProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
+      "props": {
+        "trialFellBack": { "figmaProp": "state", "type": "boolean?" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/NowPlaying/RecoUnconfigured",
+      "figmaNodeId": "314:1881",
+      "reactComponent": "TheaterView",
+      "reactPath": "packages/renderer/src/components/views/TheaterView.tsx",
+      "_status": "D1_DONE",
+      "_note": "推荐未配置态：TheaterView 的 recoConfigured=false 分支（TheaterView.tsx:922-930 的 .th-reco-unconfigured 块）；完整触发条件是 **!recoConfigured && !recoRunning**。组件级对应 State/RecoUnconfigured（263:82）。",
+      "_propsNote": "校验器的 props 覆盖门禁只认 `interface Props`（本文件是 `TheaterViewProps`）⇒ 这条 props **不被机器校验**，已人工逐字段核对。",
+      "props": {
+        "recoConfigured": { "figmaProp": "state", "type": "boolean" },
+        "onConfigureReco": { "figmaProp": "(回调)", "type": "function?" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Search",
+      "figmaNodeId": "365:1008",
+      "reactComponent": "SearchPanel",
+      "reactPath": "packages/renderer/src/components/search/SearchPanel.tsx",
+      "_status": "D1_DONE",
+      "_note": "SearchPanel.tsx 文件头标注「Figma 03/Screen/Search 还原（node 365:1008）」。弹窗变体是 Screen/Search/Modal（466:2，另有一条映射）。",
+      "props": {
+        "onPlay": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "items: UnifiedSearchItem[], index: number"
+        },
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "onOpenNL": { "figmaProp": "(回调)", "type": "function?", "args": "—（打开 NL 歌单弹窗）" },
+        "onOpenRemote": {
+          "figmaProp": "(回调)",
+          "type": "function?",
+          "args": "—（打开远端歌单入口，specs/remote-playlist）"
+        },
+        "wpsReady": {
+          "figmaProp": "state",
+          "type": "boolean?",
+          "default": "undefined",
+          "map": { "true": "connected", "false": "disconnected" },
+          "desc": "Spotify Web Playback SDK 是否已连；决定 Spotify 独占源算不算能出声"
+        }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Library",
+      "figmaNodeId": "390:1081",
+      "reactComponent": "LikedLibraryModal",
+      "reactPath": "packages/renderer/src/components/modals/LikedLibraryModal.tsx",
+      "_status": "D1_DONE",
+      "_note": "LikedLibraryModal.tsx 文件头标注「Figma 03/Screen/Library 还原（node 390:1081）」。另有一条 Screen/Liked/Modal（467:2）指向同一组件。",
+      "props": {
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "onPlay": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "items: UnifiedSearchItem[], index: number"
+        },
+        "refreshSignal": {
+          "figmaProp": "(数据刷新信号)",
+          "type": "number?",
+          "default": "undefined"
+        },
+        "onImportSettled": {
+          "figmaProp": "(回调)",
+          "type": "function?",
+          "args": "newCount: number | undefined"
+        }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Settings",
+      "figmaNodeId": "399:1153",
+      "reactComponent": "SettingsModal",
+      "reactPath": "packages/renderer/src/components/modals/SettingsModal.tsx",
+      "_status": "D1_DONE",
+      "_note": "SettingsModal.tsx 文件头按**名字**引用「Figma 03/Screen/Settings 还原」（未写 node id）⇒ nodeId 取自快照 399:1153，属按名+类型的推定归属。全屏变体另有 Screen/Settings/Full（476:2）映射。",
+      "props": {
+        "onClose": { "figmaProp": "(回调)", "type": "function" },
+        "playerMode": { "figmaProp": "playerMode", "type": "enum[theater|mini|lite]" },
+        "onChangePlayerMode": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "mode: 'theater' | 'mini' | 'lite'"
+        },
+        "audioFx": {
+          "figmaProp": "state",
+          "type": "object",
+          "desc": "EQ 偏好镜像：eqEnabled / eqGains[10] / presetId / crossfadeSec（specs/audio-fx）"
+        },
+        "onEqEnabled": { "figmaProp": "(回调)", "type": "function", "args": "enabled: boolean" },
+        "volume": {
+          "figmaProp": "state",
+          "type": "number",
+          "desc": "音量 0..1（2026-10-20 接上）"
+        },
+        "muted": { "figmaProp": "state", "type": "boolean" },
+        "onVolumeChange": { "figmaProp": "(回调)", "type": "function", "args": "volume: number" },
+        "onToggleMute": { "figmaProp": "(回调)", "type": "function" },
+        "onCrossfadeSec": { "figmaProp": "(回调)", "type": "function", "args": "sec: number" },
+        "onEqBandGain": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "index: number, dB: number"
+        },
+        "onApplyEqPreset": {
+          "figmaProp": "(回调)",
+          "type": "function",
+          "args": "presetId: string"
+        },
+        "onReplayGuide": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/Error",
+      "figmaNodeId": "401:1287",
+      "reactComponent": "AuthErrorPanel",
+      "reactPath": "packages/renderer/src/components/common/AuthErrorPanel.tsx",
+      "_status": "D1_DONE",
+      "_note": "AuthErrorPanel.tsx 文件头标注「设计稿结构（1440×900，node 401:1287）」。⚠ 别误映射到 common/ErrorPanel.tsx —— 它对应的是 Screen/Error 里 error-panel **子组件**的语义，且**当前没有任何渲染点**（只有它自己的测试文件 import；TheaterView 只在注释里提到它）⇒ 目前是死代码。另有一条 Screen/AuthError/Full（478:2）指向同一组件。",
+      "props": {
+        "provider": { "figmaProp": "provider", "type": "enum[qq|netease|deezer|spotify]" },
+        "error": { "figmaProp": "error", "type": "AuthError | null" },
+        "onRetry": { "figmaProp": "(回调)", "type": "function" },
+        "onReLogin": { "figmaProp": "(回调)", "type": "function" },
+        "onSwitch": { "figmaProp": "(回调)", "type": "function" },
+        "onPasteCookie": {
+          "figmaProp": "(回调，可选)",
+          "type": "function?",
+          "note": "仅 provider=qq|netease 时显示按钮"
+        },
+        "onDismiss": { "figmaProp": "(回调)", "type": "function" }
+      }
+    },
+    {
+      "figmaComponent": "Screen/RecoLoading",
+      "figmaNodeId": "403:1351",
+      "reactComponent": "RecoLoading",
+      "reactPath": "packages/renderer/src/components/common/RecoLoading.tsx",
+      "_status": "D1_DONE",
+      "_note": "node id 漂移**已定案**（2026-10-30）：文件头原写 **408:1402**，新采集的快照里是 **403:1351**，且 408:1402 在当前文件里**不存在** ⇒ 组件被重建过，现存 id 是 **403:1351**。归属证据是文件头「Figma 03/Screen/RecoLoading 还原」+ 快照 nodeId 严格相等。组件集另有 Modal/RecoLoading（514:97）映射。",
+      "props": {
+        "librarySize": { "figmaProp": "librarySize", "type": "number" },
+        "onClose": { "figmaProp": "(回调)", "type": "function?" }
       }
     }
   ]

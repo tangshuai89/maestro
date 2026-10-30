@@ -128,7 +128,17 @@ const semanticOf = (node) => {
 };
 
 const pages = figma.root.children.filter((p) => p.type === 'PAGE');
-const out = { fileKey: figma.currentPage && figma.fileKey ? figma.fileKey : null, pages: [], components: [], screens: [], motion: null };
+// ⚠️ **fileKey：公开插件拿不到 figma.fileKey**（官方 API 文档原文：
+//    「fileKey: string | undefined — Only private plugins and Figma-owned resources
+//    (such as the Jira and Asana widgets) have access to this. To enable this
+//    behavior, you need to specify enablePrivatePluginApi in your manifest.json.
+//    For all other plugins, this property returns undefined.」）
+//    ⇒ 本地开发插件属于「other plugins」⇒ figma.fileKey 恒为 undefined。
+//    ⇒ 这里**自带常量**（MCP 路径下 figma.fileKey 由调用参数提供，优先用它）。
+//    ⚠️ 常量必须与 figma-code-connect.json 的 $figmaFileKey 一致 ——
+//       由 scripts/figma-collect-plugin.mjs 断言（漂移 ⇒ 直接报错）。
+const EXPECTED_FILE_KEY = 'FtbRZXvzlCp4Sq9e322cQQ';
+const out = { fileKey: figma.fileKey || EXPECTED_FILE_KEY, pages: [], components: [], screens: [], motion: null };
 
 // ── 02 · Components ──────────────────────────────────────────
 const compPage = pageByName('02 · Components');

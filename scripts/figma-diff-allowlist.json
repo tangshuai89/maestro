@@ -2,11 +2,6 @@
   "_comment": "figma:diff 的 should 级豁免表。每条必须写 reason，否则视为『未登记』→ 不豁免、门禁照样红（防止为了过门禁随手加一条）。只对 `should` 生效 —— `must` 永远不可豁免（must 是『前端不做就错』的真问题）。匹配条件可组合：kind（必填）/ lane / target 都可选，但至少要有一个 + reason，否则不生效。数字来自 2026-10-29 首份真实快照（35 组件 / 15 屏 / 20 动效）。",
   "allow": [
     {
-      "kind": "unmapped",
-      "target": "figma-code-connect.json",
-      "reason": "真实差异 = 10 个组件集没有 Code Connect 映射（Icon/Prev · Icon/Next · Icon/Play · Icon/Pause · Icon/Shuffle · Icon/Repeat · Icon/Heart · Icon/Search · State/RecoUnconfigured · Scene/Backdrop）。补映射属于 2026-10-24 归档决策里『持续对齐』那一类 —— 用户 2026-10-29 明确说『我乱了，我再想想其他的』，本轮不拍板要不要做。在拍板前：门禁**看见**这些差异（会打印在清单里），但不阻断 CI。补齐后请删掉本条。"
-    },
-    {
       "kind": "unregisteredKeyframes",
       "target": "specs/motion-spec.json",
       "reason": "代码里有 39 个 @keyframes，specs/motion-spec.json 只登记了 20 条规格、且 spec 里提到的 keyframes 名字 0 个（D10 的双向闭环从未跑通）。补登记是**死锁**：audit-d10 要求『Figma ↔ 仓库 spec id 集合一致』，只改仓库会让校验红 ⇒ 必须同时有 Figma 写入权限，而当前账号是 Starter 团队、云端 MCP 的写工具被套餐锁死。死锁解开前不阻断 CI，但差异照常打印。"

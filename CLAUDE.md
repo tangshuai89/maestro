@@ -47,6 +47,14 @@
   **评测自己的准则**：门禁必须能主动抓出坏改动（`eval-invariants.test.ts` 里的
   反向验证就是干这个的）——一个永远绿的门禁等于没有门禁。
   详见 `specs/eval-driven-nl/`。
+- **改 `figma-code-connect.json`（映射表）时不能只看门禁绿**——
+  `scripts/figma-code-connect-validate.mjs` 命中 `_status: PENDING_REFACTOR`
+  的条目会**整段跳过** `reactComponent` / `props` 检查（实测：把一条图标映射的
+  `reactComponent` 改成不存在的组件、`props` 改成不存在的字段，仍然 178/178 全绿）；
+  它的 props 正则也只认 `interface Props`，对 `interface TheaterViewProps` 之类
+  **不匹配** ⇒ 那些条目的 props **根本没被检查**（输出还写「无 Props interface（合理）」）。
+  ⇒ 映射表里带 `_propsNote` 的条目 = **不受机器保护**，改完必须自己回源码核对；
+  没有 `_propsNote` 的才真的受校验器覆盖。
 
 ## Specs 规则
 

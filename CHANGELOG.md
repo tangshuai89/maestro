@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Code Connect 全量归属 + 覆盖率反向门禁**（2026-10-30）
+
+  补齐 19 条缺失映射：8 个 `Icon/*`、`State/RecoUnconfigured`、`Scene/Backdrop`
+  和 9 个屏幕帧。`figma-code-connect.json` 从 31 → **50 条**，快照覆盖
+  **components 35/35 · screens 15/15**；同名不同类按 nodeId 严格区分。
+
+  `figma-code-connect-validate.mjs` 现在读取快照并报告
+  `mapped / total / missing`：新增设计节点没有映射 ⇒ exit 1，缺口不会再静默扩大。
+  对应测试先红后绿，已挂进 `test:ci`。删除只针对这一缺口的临时豁免。
+
+  Figma 桌面插件真实运行并二次验证幂等：`应用 0 / 跳过 34 / 失败 0`。
+  34 个目标节点全部存在，实际契约与 payload 逐条哈希一致；快照回填后
+  **50/50 有契约**，payload 收口为 **0 条待写**。
+  `figma:payload:check` 与 `figma:diff --gate` 均绿，生效差异为 0。
+
+- **快照采集落到「点一下插件」—— 本机接收器直写仓库**（2026-10-30）
+
+  实测 `figma.clipboard.writeText` 在 Figma 桌面 App 里**直接失败**
+  ⇒ 原先「复制到剪贴板 → 人肉 `pbpaste >` 落盘」的最后一步断了。
+  官方 manifest 的 `permissions` 枚举里**没有 clipboard 项**（不是权限声明问题），
+  但 `networkAccess.devAllowedDomains` 明确支持本地开发服务器
+  （官方原文：During development, the plugin can access a local/development web server）。
+
+  ⇒ 新增 `scripts/figma-snapshot-receiver.mjs`：插件把 JSON POST 给它，
+  它**先校验后落盘**（counts 与数组长度自洽 / capturedAt 是带时区 ISO /
+  节点有 name·nodeId·type）⇒ 脏数据不会覆盖仓库里那份好快照；
+  「临时文件 + rename」原子落盘；输出走 prettier ⇒ pre-commit 钩子不再改写它。
+  只接受**回环请求**（双栈监听 + 回环白名单 ⇒ 不开局域网口子）。插件侧三条路依次降级：
+  **接收器 → 剪贴板 → console**，通知里写明走通了哪条。
+
+  ⚠️ **只能用 `http://localhost:<port>`，不能用 IP 形式**（2026-10-30 实测踩到）：
+  Figma 的 manifest 校验器会直接拒绝 ——
+  「Invalid value for allowedDomains. 'http://127.0.0.1:4771' must be a valid URL」
+  ⇒ 插件**根本加载不了**（Figma 只弹一条红条，插件不出现）。
+  ⇒ 接收器改成**双栈监听**（`localhost` 落到 `::1` 或 `127.0.0.1` 都通），
+  再用回环白名单把局域网请求挡掉；并把「manifest 里不许出现 IP 形式」做成**门禁**
+  （`npm run figma:collect:check` 会直接报错，不放行）。
+
+  端口的单一事实源是接收器的 `DEFAULT_PORT`；`figma:collect:check` 断言
+  插件产物与 manifest 的域名/端口一致 ⇒ 端口漂移会**报错**，
+  不会产出一个连不上的插件。采集插件测试 6 → 11 条；
+  接收器测试 19 条（真起 HTTP、真落盘、真拒脏数据、真实快照能过校验）。
+
+  ⚠️ **公开插件拿不到 `figma.fileKey`**（官方 API 文档：只有私有插件和 Figma 自家
+  资源有；`enablePrivatePluginApi` 对本地开发插件无效 ⇒ 恒为 undefined）
+  ⇒ 采集段**自带 fileKey 常量**（`figma.fileKey || EXPECTED_FILE_KEY`），
+  常量与 `figma-code-connect.json` 的 `$figmaFileKey` 必须一致 ——
+  `figma:collect:check` 会断言，不一致直接报错。
+  ⚠️ 这个坑也被 mock **掩盖**过：mock 一直给 `figma.fileKey` 塞值
+  ⇒ 现在 mock 忠实还原「公开插件 + dynamic-page」两个真实前提，并各有回归测试。
+
 - **`figma:diff` 统一入口 —— 「设计稿变了，前端代码该改什么」**（2026-10-29）
 
   D1–D11 各自解决一个对齐问题，但**没有一条能回答「现在该改哪些前端文件」**。
@@ -72,8 +123,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   会被省略、顺序会变；`a11y`/`tokens`/`bindings` 映射里压根没有）⇒ 生成器只**起草 + 标注
   `provenance`**，整段带 `draft: true`，**不冒充权威**。
 
-  现状：**可写 15 个**（components 腿覆盖率 10 → 25）· 跳过 19 个 ——
-  那 19 个缺的不是「能写进 Figma」，是「在前端该对应哪个组件」⇒ 该走 code-connect 补映射。
+  2026-10-29 初次生成时为**可写 15 个 / 缺归属 19 个**；2026-10-30 补齐 Code Connect
+  映射后首轮变为 **可写 34 个 / 已有契约跳过 16 个 / 缺归属 0 个**；真实写入完成后
+  payload 收口为 **待写 0 个 / 已有契约跳过 50 个**。
 
 - **写通道自查：修掉一个会丢数据的 bug + 一个会静默漏写的 bug（2026-10-29）**
 
@@ -157,6 +209,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **变异验证**（门禁可信度）：把「分类标记判定」改成恒为通过 → 自测立刻红
   （❌ 没分类标记的未勾项被抓）。
+
+### Fixed
+
+- **`Screen/RecoLoading` 的 node id 漂移定案**（2026-10-30）
+
+  文件头写的是 `408:1402`，新采集的快照里是 `403:1351`，且 `408:1402`
+  在当前文件里**不存在** ⇒ 组件被重建过，现存 id 是 `403:1351`。
+  `RecoLoading.tsx` / `_reco-loading.scss` 的注释与 `figma-code-connect.json`
+  的 `_note` 已一并更正（映射一直按 `403:1351` 落位，没写错过）。
 
 ### Added
 

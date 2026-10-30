@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-10-29T11:06:15+08:00",
+  "capturedAt": "2026-10-30T13:57:16+08:00",
   "fileKey": "FtbRZXvzlCp4Sq9e322cQQ",
   "pages": ["01 · Foundations", "02 · Components", "03 · Screens", "04 · Motion", "99 · Archive"],
   "components": [
@@ -8,60 +8,60 @@
       "nodeId": "257:174",
       "type": "COMPONENT_SET",
       "variants": ["state=idle", "state=playing", "state=loading", "state=no-cover"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { coverUrl: string }\n  a11y: { role: img, keyboard: [] }\n  states: [idle, playing, loading, no-cover]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Holographic cover area 480×500: orbit ring + 12 ticks + 280×280 holographic cover + caption. Variants: state=idle|playin"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Lyrics/Line",
       "nodeId": "257:184",
       "type": "COMPONENT_SET",
       "variants": ["state=prev", "state=current", "state=next", "state=empty"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum }\n  a11y: { role: group, keyboard: [] }\n  states: [prev, current, next, empty]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Lyrics line (theater style). Variants: state=prev (20px white18%) | current (40px semibold + cyan active-bar) | next (20"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Core/Play",
       "nodeId": "257:206",
       "type": "COMPONENT_SET",
       "variants": ["state=idle", "state=hover", "state=pressed", "state=playing"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: button, keyboard: [] }\n  states: [idle, hover, pressed, playing]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Energy-core play button 72×72 (ring + glyph). Variants: state=idle|hover|pressed|playing (playing shows ⏸ + cyan glow ri"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Card/Neural",
       "nodeId": "263:81",
       "type": "COMPONENT_SET",
       "variants": ["state=default", "state=hover"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { type: enum, match: number }\n  a11y: { role: group, keyboard: [] }\n  states: [default, hover]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "AI suggestion card 120×120 (art gradient + song/artist/match). Variants: state=default|hover (lift + brighter). TEXT pro"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Button/Like",
       "nodeId": "263:106",
       "type": "COMPONENT_SET",
       "variants": ["state=unliked", "state=liked", "state=fanout"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { fanOutCount: number }\n  a11y: { role: button, keyboard: [] }\n  states: [unliked, liked, fanout]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "跨平台红心按钮 40×40（fan-out 核心功能）。Variants: state=unliked（白心未收藏）| liked（红心+红晕已收藏）| fanout（红心+右上青色徽章显示已同步平台数）。TEXT prop fanOutC"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Controls/Transport",
       "nodeId": "263:158",
       "type": "COMPONENT_SET",
       "variants": ["state=playing", "state=paused"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: group, keyboard: [] }\n  states: [playing, paused]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Transport cluster (theater): prev + Button/Like(红心) + Core/Play + next. Variants: state=playing|paused (swaps Core/Play "
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Button/Icon",
@@ -77,10 +77,10 @@
         "size=md, state=active",
         "size=md, state=disabled"
       ],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: button, keyboard: [] }\n  states: [default, hover, active, disabled]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Theater icon buttons (core-labels style, radius 8). Variants: size=sm(32)|md(40) × state=default|hover|active|disabled. "
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Badge/Platform",
@@ -96,10 +96,10 @@
         "platform=spotify, state=idle",
         "platform=spotify, state=active"
       ],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { platform: enum }\n  a11y: { role: img, keyboard: [] }\n  states: [idle, active]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Platform badge 28×28. Variants: platform=qq|netease|deezer|spotify × state=idle|active. letter 为平台固定首字母（无 TEXT prop，避免变体"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Tag/Stat",
@@ -119,30 +119,30 @@
         "tone=green, live=false",
         "tone=green, live=true"
       ],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { tone: enum, label: string }\n  a11y: { role: status, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Telemetry mono label 10px (top-hud/neural style). Variants: tone=cyan|purple|dim|muted|red|green × live=false|true (live"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Ring/Sound",
       "nodeId": "313:139",
       "type": "COMPONENT_SET",
       "variants": ["state=idle", "state=playing"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: progressbar, keyboard: [] }\n  states: [idle, playing]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Sound visualization rings 720×720. Variants: state=idle|playing (playing = cyan tint + outer glow). Motion: playing puls"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Ring/Progress",
       "nodeId": "313:182",
       "type": "COMPONENT_SET",
       "variants": ["state=idle", "state=hover", "state=dragging"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { progress: number }\n  a11y: { role: progressbar, keyboard: [] }\n  states: [idle, hover, dragging]\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Circular seek progress 300×300 (arc = 45% via strokeDashes; adjust per instance). Variants: state=idle|hover|dragging (d"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Button/Text",
@@ -159,9 +159,9 @@
         "tone=danger, state=hover",
         "tone=danger, state=disabled"
       ],
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { tone: enum, state: enum, label: string }\n  a11y: { role: button, keyboard: [] }\n  states: [default, hover, disabled]\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
@@ -169,9 +169,9 @@
       "nodeId": "441:72",
       "type": "COMPONENT_SET",
       "variants": ["state=default", "state=focus", "state=disabled"],
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum, placeholder: string }\n  a11y: { role: textbox, keyboard: [] }\n  states: [default, focus, disabled]\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
@@ -179,9 +179,9 @@
       "nodeId": "441:83",
       "type": "COMPONENT_SET",
       "variants": ["state=loading", "state=loaded"],
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { state: enum }\n  a11y: { role: group, keyboard: [] }\n  states: [loading, loaded]\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
@@ -289,109 +289,109 @@
       "nodeId": "252:68",
       "type": "COMPONENT",
       "variants": ["Icon/Prev"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "上一首（lucide skip-back）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Next",
       "nodeId": "252:72",
       "type": "COMPONENT",
       "variants": ["Icon/Next"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "下一首（lucide skip-forward）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Play",
       "nodeId": "252:76",
       "type": "COMPONENT",
       "variants": ["Icon/Play"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "播放（lucide play）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Pause",
       "nodeId": "252:79",
       "type": "COMPONENT",
       "variants": ["Icon/Pause"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "暂停（lucide pause）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Shuffle",
       "nodeId": "252:83",
       "type": "COMPONENT",
       "variants": ["Icon/Shuffle"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "随机（lucide shuffle）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Repeat",
       "nodeId": "252:90",
       "type": "COMPONENT",
       "variants": ["Icon/Repeat"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "循环（lucide repeat）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Heart",
       "nodeId": "252:96",
       "type": "COMPONENT",
       "variants": ["Icon/Heart"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "收藏（lucide heart）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Search",
       "nodeId": "252:99",
       "type": "COMPONENT",
       "variants": ["Icon/Search"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/search/SearchPanel.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "搜索（lucide search）（SVG 线性图标，stroke 绑定 text-main；经 INSTANCE_SWAP 使用）"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "State/RecoUnconfigured",
       "nodeId": "263:82",
       "type": "COMPONENT",
       "variants": ["State/RecoUnconfigured"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { recoConfigured: boolean, onConfigureReco?: function }\n  a11y: { role: status, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "AI 推荐未配置引导态（recoConfigured=false）：标题 + 说明 + 配置 KEY 按钮。降级态组件，AI 还原时对应未配置 Key 的分支。"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Scene/Backdrop",
       "nodeId": "313:66",
       "type": "COMPONENT",
       "variants": ["Scene/Backdrop"],
-      "contract": "",
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: {}\n  a11y: { role: presentation, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
       "hasDescription": true,
-      "hasContract": false,
-      "descriptionPreview": "Theater backdrop: 3 nebula glows (bound to primitive vars) + 60 stardust particles + horizon line. Motion: stardust drif"
+      "hasContract": true,
+      "descriptionPreview": ""
     },
     {
       "name": "Icon/Dislike",
       "nodeId": "431:66",
       "type": "COMPONENT",
       "variants": ["Icon/Dislike"],
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { icon: enum }\n  a11y: { role: img, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     }
   ],
@@ -400,81 +400,81 @@
       "name": "Screen/SourceSelect",
       "nodeId": "314:1432",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/source-select/SourceSelect.tsx\n  props: { onSelect: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/NowPlaying/NoLyrics",
       "nodeId": "314:1538",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { lyrics: LyricLine[] | null }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/NowPlaying/TrialFallback",
       "nodeId": "314:1702",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { trialFellBack?: boolean }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/NowPlaying/RecoUnconfigured",
       "nodeId": "314:1881",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/views/TheaterView.tsx\n  props: { recoConfigured: boolean, onConfigureReco?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/Search",
       "nodeId": "365:1008",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/search/SearchPanel.tsx\n  props: { onPlay: function, onClose: function, onOpenNL?: function, onOpenRemote?: function, wpsReady?: boolean }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/Library",
       "nodeId": "390:1081",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/modals/LikedLibraryModal.tsx\n  props: { onClose: function, onPlay: function, refreshSignal?: number, onImportSettled?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/Settings",
       "nodeId": "399:1153",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/modals/SettingsModal.tsx\n  props: { onClose: function, playerMode: enum[theater|mini|lite], onChangePlayerMode: function, audioFx: object, onEqEnabled: function, volume: number, muted: boolean, onVolumeChange: function, onToggleMute: function, onCrossfadeSec: function, onEqBandGain: function, onApplyEqPreset: function, onReplayGuide: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/Error",
       "nodeId": "401:1287",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/common/AuthErrorPanel.tsx\n  props: { provider: enum[qq|netease|deezer|spotify], error: AuthError | null, onRetry: function, onReLogin: function, onSwitch: function, onPasteCookie?: function, onDismiss: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {
       "name": "Screen/RecoLoading",
       "nodeId": "403:1351",
       "type": "FRAME",
-      "contract": "",
-      "hasDescription": false,
-      "hasContract": false,
+      "contract": "AI_CONTRACT:\n  react: packages/renderer/src/components/common/RecoLoading.tsx\n  props: { librarySize: number, onClose?: function }\n  a11y: { role: region, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true",
+      "hasDescription": true,
+      "hasContract": true,
       "descriptionPreview": ""
     },
     {

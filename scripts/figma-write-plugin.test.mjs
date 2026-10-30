@@ -27,6 +27,15 @@ const CODE = readFileSync(resolve(__dirname, 'figma-write-plugin/code.js'), 'utf
 const PAYLOAD = JSON.parse(readFileSync(resolve(__dirname, 'figma-contract-payload.json'), 'utf8'));
 const PROSE = 'Holographic cover area 480×500: orbit ring + 12 ticks + 280×280 cover.';
 const PREFIX = '[aether-contract-writer] ';
+const FALLBACK_WRITE = {
+  nodeId: '999:10',
+  name: 'Synth/Component',
+  kind: 'component',
+  type: 'COMPONENT_SET',
+  carrier: 'description',
+  carrierText:
+    '---\nAI_CONTRACT:\n  react: packages/renderer/src/App.tsx\n  props: {}\n  a11y: { role: group, keyboard: [] }\n  states: []\n  tokens: []\n  bindings: []\n  draft: true\n---',
+};
 
 /** code.js 里内联的 payload 字面量（生成器用 JSON.stringify(payload, null, 2) 写的）。 */
 const PAYLOAD_LITERAL = JSON.stringify(PAYLOAD, null, 2);
@@ -117,8 +126,7 @@ function withPayload(writes) {
 
 describe('AETHER 契约写入插件（mock Figma API）', () => {
   it('插件: description 载体 ⇒ 契约段写进 description 且**散文原样保留**', async () => {
-    const write = PAYLOAD.writes.find((w) => w.carrier === 'description');
-    assert.ok(write, 'payload 里应有 description 载体的写入项');
+    const write = PAYLOAD.writes.find((w) => w.carrier === 'description') ?? FALLBACK_WRITE;
 
     const node = {
       id: write.nodeId,
@@ -128,7 +136,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
       children: [],
     };
     const figma = mockFigma({ nodes: new Map([[write.nodeId, node]]) });
-    const { report, log } = await runPlugin(figma);
+    const { report, log } = await runPlugin(figma, withPayload([write]));
 
     assert.ok(report, '插件应输出报告');
     assert.equal(report.applied.length, 1);
@@ -224,7 +232,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
   // ════════════════════════════════════════════════════════════════
 
   it('插件: 载体里已有契约段 ⇒ 跳过（幂等），一个字节都不改', async () => {
-    const write = PAYLOAD.writes[0];
+    const write = PAYLOAD.writes[0] ?? FALLBACK_WRITE;
     const existing = `---\nAI_CONTRACT:\n  react: already.tsx\n---\n${PROSE}`;
     const node = {
       id: write.nodeId,
@@ -234,7 +242,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
       children: [],
     };
     const figma = mockFigma({ nodes: new Map([[write.nodeId, node]]) });
-    const { report } = await runPlugin(figma);
+    const { report } = await runPlugin(figma, withPayload([write]));
 
     assert.equal(report.applied.length, 0, '已有契约段 ⇒ 不该写');
     const entry = report.skipped.find((s) => s.nodeId === write.nodeId);
@@ -243,7 +251,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
   });
 
   it('插件: **散文里提到 AI_CONTRACT: 不算已写过** ⇒ 仍然要写（P1 回归）', async () => {
-    const write = PAYLOAD.writes[0];
+    const write = PAYLOAD.writes[0] ?? FALLBACK_WRITE;
     const tricky = `这个组件的说明：参见 AI_CONTRACT: 段落（在别处定义）。${PROSE}`;
     const node = {
       id: write.nodeId,
@@ -253,7 +261,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
       children: [],
     };
     const figma = mockFigma({ nodes: new Map([[write.nodeId, node]]) });
-    const { report } = await runPlugin(figma);
+    const { report } = await runPlugin(figma, withPayload([write]));
 
     assert.equal(report.applied.length, 1, '散文提及不得被当成「已写过」');
     assert.ok(node.description.includes(tricky), '原散文必须原样保留');
@@ -261,7 +269,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
   });
 
   it('插件: 连跑两次 ⇒ 第二次全部跳过（不叠加）', async () => {
-    const write = PAYLOAD.writes[0];
+    const write = PAYLOAD.writes[0] ?? FALLBACK_WRITE;
     const node = {
       id: write.nodeId,
       name: write.name,
@@ -270,10 +278,11 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
       children: [],
     };
     const figma = mockFigma({ nodes: new Map([[write.nodeId, node]]) });
+    const code = withPayload([write]);
 
-    const first = await runPlugin(figma);
+    const first = await runPlugin(figma, code);
     const afterFirst = node.description;
-    const second = await runPlugin(figma);
+    const second = await runPlugin(figma, code);
 
     assert.equal(first.report.applied.length, 1);
     assert.equal(second.report.applied.length, 0, '第二次不应再写');
@@ -288,16 +297,16 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
 
   it('插件: 节点找不到 ⇒ skipped(node-not-found)，不抛异常', async () => {
     const figma = mockFigma({ nodes: new Map() }); // 空 ⇒ 全都找不到
-    const { report } = await runPlugin(figma);
+    const { report } = await runPlugin(figma, withPayload([FALLBACK_WRITE]));
 
     assert.ok(report, '应输出报告');
     assert.equal(report.failed.length, 0);
-    assert.equal(report.skipped.length, PAYLOAD.writes.length);
+    assert.equal(report.skipped.length, 1);
     assert.ok(report.skipped.every((s) => s.reason === 'node-not-found'));
   });
 
   it('插件: 字体一个都加载不了 ⇒ 仍然产出可读摘要（closePlugin 收到字符串）', async () => {
-    const write = PAYLOAD.writes[0];
+    const write = PAYLOAD.writes[0] ?? FALLBACK_WRITE;
     const node = {
       id: write.nodeId,
       name: write.name,
@@ -310,7 +319,7 @@ describe('AETHER 契约写入插件（mock Figma API）', () => {
       throw new Error('no font');
     };
     figma.listAvailableFontsAsync = async () => [];
-    const { report, log } = await runPlugin(figma);
+    const { report, log } = await runPlugin(figma, withPayload([write]));
 
     assert.ok(report, '报告应存在');
     assert.equal(log.closed.length, 1);
