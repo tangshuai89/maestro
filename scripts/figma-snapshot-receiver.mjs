@@ -18,12 +18,12 @@
 //   那条路还要人点按钮 + 人肉粘贴，只是把「复制」换成「复制」。本接收器**一步落盘**。
 //
 // 安全边界：
-//   · 只绑 **127.0.0.1**（回环）⇒ 局域网访问不到。
+//   · 只接受**回环请求**（双栈监听 + 回环白名单）⇒ 局域网访问不到。
 //   · 只接受 **POST /snapshot**，且**先校验后写** ⇒ 脏数据进不来。
 //   · 落盘用「临时文件 + rename」⇒ 写到一半崩了也不会留下半个坏 JSON。
 //
 // 用法：
-//   node scripts/figma-snapshot-receiver.mjs        # 启动（默认 127.0.0.1:4771）
+//   node scripts/figma-snapshot-receiver.mjs        # 启动（默认 localhost:4771）
 //   FIGMA_SNAPSHOT_PORT=5000 node scripts/figma-snapshot-receiver.mjs
 //
 // ⚠️ 端口是**单一事实源**：DEFAULT_PORT 在本文件里；
@@ -171,6 +171,23 @@ export async function formatSnapshot(obj, targetPath) {
 // HTTP 服务
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * 判断来源地址是不是**回环**（本机）。
+ *
+ * ⚠️ 为什么需要它：为了让 `http://localhost:4771` 在任何解析顺序下都通，
+ *    接收器得**双栈**监听（`::` 同时接 IPv4/IPv6）⇒ 但那样也会把端口开到
+ *    局域网上。⇒ 用这个白名单把非回环的请求**拒掉**（403）。
+ *
+ * @param {string|undefined} addr socket.remoteAddress
+ * @returns {boolean}
+ */
+export function isLoopback(addr) {
+  if (!addr) return false;
+  const a = String(addr).toLowerCase();
+  // ::ffff:127.0.0.1 是 IPv4 映射写法（双栈 socket 看到的 IPv4 客户端）
+  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1' || a.startsWith('127.');
+}
+
 function cors(res) {
   // 插件跑在沙箱 iframe 里（origin 可能是 null）⇒ 必须回 CORS 头才读得到响应。
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -209,20 +226,33 @@ function readBody(req, limit = MAX_BODY_BYTES) {
 /**
  * 建接收器（不监听）—— 测试用它拿到 server 自己 listen(port=0)。
  *
+ * ⚠️ **默认双栈监听（不指定 host）**：Figma 的 manifest 只认
+ *    `http://localhost:<port>`（官方文档的示例写法；**IP 形式会被 manifest
+ *    校验器直接拒绝**：「'http://127.0.0.1:4771' must be a valid URL」）。
+ *    而 `localhost` 在不同系统/解析顺序下可能落到 `::1` 或 `127.0.0.1`
+ *    ⇒ 只绑一个族会时灵时不灵 ⇒ 双栈都接。
+ *    代价是端口会开到局域网 ⇒ 由 `isLoopback` 白名单把非回环请求**拒掉**。
+ *
  * @param {object} opts
  * @param {number} [opts.port]
- * @param {string} [opts.host] 只绑回环
+ * @param {string} [opts.host] 不传 = 双栈（`::`）
  * @param {string} [opts.target] 落盘绝对路径
  * @param {(msg:string)=>void} [opts.log]
  */
 export function createReceiver(opts = {}) {
   const port = opts.port ?? DEFAULT_PORT;
-  const host = opts.host ?? '127.0.0.1';
+  const host = opts.host; // undefined ⇒ 双栈
   const target = opts.target ?? resolve(ROOT, SNAPSHOT_REL);
   const log = opts.log ?? console.log;
 
   const server = createServer((req, res) => {
     (async () => {
+      // ⚠️ 只放回环请求进来（双栈监听的代价）。
+      if (!isLoopback(req.socket?.remoteAddress)) {
+        sendJson(res, 403, { ok: false, error: '只接受本机回环请求' });
+        return;
+      }
+
       const url = (req.url ?? '').split('?')[0];
 
       if (req.method === 'OPTIONS') {
@@ -303,19 +333,24 @@ export function startReceiver(opts = {}) {
   const recv = createReceiver(opts);
   return new Promise((resolveStart, rejectStart) => {
     recv.server.once('error', rejectStart);
-    recv.server.listen(recv.port, recv.host, () => {
+    const onReady = () => {
       const addr = recv.server.address();
       const shown = typeof addr === 'object' && addr ? addr.port : recv.port;
       recv.log('');
       recv.log(`📡 AETHER 快照接收器已启动`);
-      recv.log(`   监听：http://${recv.host}:${shown}/snapshot`);
+      recv.log(`   监听：http://localhost:${shown}/snapshot`);
       recv.log(`   落盘：${recv.target.replace(ROOT + '/', '')}`);
       recv.log('');
       recv.log('   ⇒ 现在去 Figma 桌面 App：Design 模式 → Plugins → Development →');
       recv.log('     AETHER Snapshot Collector（跑一次就会自动落盘）');
       recv.log('   ⇒ Ctrl-C 退出');
       resolveStart(recv);
-    });
+    };
+    // ⚠️ **不指定 host** ⇒ Node 绑 `::`（双栈）⇒ `localhost` 落到 ::1 或
+    //    127.0.0.1 都通（Figma 的 manifest 只认 `http://localhost:<port>`，
+    //    IP 形式会被它的校验器拒掉）。非回环请求由 isLoopback 白名单挡掉。
+    if (recv.host) recv.server.listen(recv.port, recv.host, onReady);
+    else recv.server.listen(recv.port, onReady);
   });
 }
 

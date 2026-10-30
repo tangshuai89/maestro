@@ -36,8 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   它**先校验后落盘**（counts 与数组长度自洽 / capturedAt 是带时区 ISO /
   节点有 name·nodeId·type）⇒ 脏数据不会覆盖仓库里那份好快照；
   「临时文件 + rename」原子落盘；输出走 prettier ⇒ pre-commit 钩子不再改写它。
-  只绑 `127.0.0.1`（局域网访问不到）。插件侧三条路依次降级：
+  只接受**回环请求**（双栈监听 + 回环白名单 ⇒ 不开局域网口子）。插件侧三条路依次降级：
   **接收器 → 剪贴板 → console**，通知里写明走通了哪条。
+
+  ⚠️ **只能用 `http://localhost:<port>`，不能用 IP 形式**（2026-10-30 实测踩到）：
+  Figma 的 manifest 校验器会直接拒绝 ——
+  「Invalid value for allowedDomains. 'http://127.0.0.1:4771' must be a valid URL」
+  ⇒ 插件**根本加载不了**（Figma 只弹一条红条，插件不出现）。
+  ⇒ 接收器改成**双栈监听**（`localhost` 落到 `::1` 或 `127.0.0.1` 都通），
+  再用回环白名单把局域网请求挡掉；并把「manifest 里不许出现 IP 形式」做成**门禁**
+  （`npm run figma:collect:check` 会直接报错，不放行）。
 
   端口的单一事实源是接收器的 `DEFAULT_PORT`；`figma:collect:check` 断言
   插件产物与 manifest 的域名/端口一致 ⇒ 端口漂移会**报错**，

@@ -113,7 +113,7 @@ npm run figma:diff
 ```bash
 # 1. 先起接收器（另开一个终端；它会把插件发来的 JSON 校验后直接落盘）
 npm run figma:collect:serve
-#    ⇒ 监听 http://127.0.0.1:4771/snapshot，落盘 scripts/figma-snapshot.json
+#    ⇒ 监听 http://localhost:4771/snapshot，落盘 scripts/figma-snapshot.json
 
 # 2. 导入插件（只需一次）
 #    Figma 桌面 App → Plugins → Development → Import plugin from manifest
@@ -142,7 +142,8 @@ npm run figma:collect:serve
 
 接收器的边界：
 
-- 只绑 **127.0.0.1**（回环）⇒ 局域网访问不到；
+- **只接受回环请求**（双栈监听以兼容 `localhost` 的两种解析结果，
+  再用回环白名单把局域网请求挡掉 ⇒ 不开局域网口子）；
 - **先校验后写**（counts 与数组长度自洽 / capturedAt 是带时区 ISO / 节点有 name·nodeId·type）
   ⇒ 脏数据**不会**覆盖仓库里那份好快照；
 - 「临时文件 + rename」原子落盘 ⇒ 写到一半崩了也不留半个坏 JSON；

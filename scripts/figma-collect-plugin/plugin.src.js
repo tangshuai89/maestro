@@ -45,9 +45,13 @@
  * ⚠️ 端口必须与 `scripts/figma-snapshot-receiver.mjs` 的 DEFAULT_PORT 一致 ——
  *    不一致时 `scripts/figma-collect-plugin.mjs`（生成器）会**报错**，
  *    不会悄悄产出一个连不上的插件。
- *    两个地址都试：127.0.0.1（接收器绑的回环）与 localhost（官方文档的示例写法）。
+ * ⚠️ **只能用 `localhost`，不能用 IP**（2026-10-30 实测）：
+ *    Figma 的 manifest 校验器会直接拒绝 IP 形式的域名 ——
+ *    「Invalid value for allowedDomains. 'http://127.0.0.1:4771' must be a
+ *    valid URL」。官方文档里给的也是 `http://localhost:3000` 这类写法。
+ *    ⇒ 接收器改成**双栈监听**（`::`），`localhost` 落到 ::1 或 127.0.0.1 都通。
  */
-const RECEIVER_URLS = ['http://127.0.0.1:4771/snapshot', 'http://localhost:4771/snapshot'];
+const RECEIVER_URLS = ['http://localhost:4771/snapshot'];
 
 /**
  * 把 JSON POST 给本机接收器。

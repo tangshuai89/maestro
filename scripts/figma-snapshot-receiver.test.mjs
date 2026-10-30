@@ -23,6 +23,7 @@ import {
   createReceiver,
   validateSnapshot,
   formatSnapshot,
+  isLoopback,
   SNAPSHOT_REL,
 } from './figma-snapshot-receiver.mjs';
 
@@ -72,7 +73,7 @@ async function withReceiver(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'aether-snapshot-'));
   const target = join(dir, 'figma-snapshot.json');
   const recv = createReceiver({ port: 0, target, log: () => {} });
-  await new Promise((r) => recv.server.listen(0, '127.0.0.1', r));
+  await new Promise((r) => recv.server.listen(0, r));
   const port = recv.server.address().port;
   try {
     await fn({ port, target, dir });
@@ -83,7 +84,7 @@ async function withReceiver(fn) {
 }
 
 const post = (port, body) =>
-  fetch(`http://127.0.0.1:${port}/snapshot`, {
+  fetch(`http://localhost:${port}/snapshot`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: typeof body === 'string' ? body : JSON.stringify(body),
@@ -142,7 +143,42 @@ describe('AETHER 快照接收器 · 校验（纯函数）', () => {
   });
 });
 
+// ════════════════════════════════════════════════════════════════
+// 回环白名单 —— 接收器双栈监听，代价是端口会开到局域网
+// ════════════════════════════════════════════════════════════════
+
+describe('AETHER 快照接收器 · 回环白名单', () => {
+  it('回环地址一律放行（IPv4 / IPv6 / IPv4 映射写法）', () => {
+    assert.equal(isLoopback('127.0.0.1'), true);
+    assert.equal(isLoopback('::1'), true);
+    assert.equal(isLoopback('::ffff:127.0.0.1'), true);
+    assert.equal(isLoopback('127.0.0.53'), true, '127/8 整段都是回环');
+  });
+
+  it('局域网地址一律拒绝（双栈监听的代价由这道白名单挡住）', () => {
+    assert.equal(isLoopback('192.168.1.20'), false);
+    assert.equal(isLoopback('10.0.0.3'), false);
+    assert.equal(isLoopback('fe80::1'), false);
+    assert.equal(isLoopback('2606:4700::1111'), false);
+  });
+
+  it('拿不到来源地址 ⇒ 拒绝（fail closed）', () => {
+    assert.equal(isLoopback(undefined), false);
+    assert.equal(isLoopback(''), false);
+  });
+});
+
 describe('AETHER 快照接收器 · HTTP 行为', () => {
+  it('插件用的那个地址（http://localhost:<port>）能通', async () => {
+    // ⚠️ 这条是**插件实际用的 URL**（Figma 的 manifest 只认 localhost，
+    //    IP 形式会被它的校验器拒绝）⇒ 必须真的能通。
+    await withReceiver(async ({ port, target }) => {
+      const res = await post(port, validSnapshot());
+      assert.equal(res.status, 200);
+      assert.ok(existsSync(target), '经 localhost 访问也要能落盘');
+    });
+  });
+
   it('POST 好数据 ⇒ 200 且**真的落盘**，落盘内容能解析回快照', async () => {
     await withReceiver(async ({ port, target }) => {
       const snap = validSnapshot();
@@ -238,7 +274,7 @@ describe('AETHER 快照接收器 · HTTP 行为', () => {
 
   it('GET /health ⇒ 200（人能确认接收器活着）', async () => {
     await withReceiver(async ({ port }) => {
-      const res = await fetch(`http://127.0.0.1:${port}/health`);
+      const res = await fetch(`http://localhost:${port}/health`);
       assert.equal(res.status, 200);
       assert.equal((await res.json()).ok, true);
     });
@@ -246,14 +282,14 @@ describe('AETHER 快照接收器 · HTTP 行为', () => {
 
   it('未知路由 ⇒ 404（不是 500 崩掉）', async () => {
     await withReceiver(async ({ port }) => {
-      const res = await fetch(`http://127.0.0.1:${port}/nope`, { method: 'POST', body: 'x' });
+      const res = await fetch(`http://localhost:${port}/nope`, { method: 'POST', body: 'x' });
       assert.equal(res.status, 404);
     });
   });
 
   it('OPTIONS 预检 ⇒ 204 + CORS 头（插件在 iframe 里要读得到响应）', async () => {
     await withReceiver(async ({ port }) => {
-      const res = await fetch(`http://127.0.0.1:${port}/snapshot`, { method: 'OPTIONS' });
+      const res = await fetch(`http://localhost:${port}/snapshot`, { method: 'OPTIONS' });
       assert.equal(res.status, 204);
       assert.equal(res.headers.get('access-control-allow-origin'), '*');
     });

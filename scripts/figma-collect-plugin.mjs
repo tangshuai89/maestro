@@ -87,21 +87,32 @@ try {
 const net = manifest.networkAccess ?? {};
 const domains = [...(net.allowedDomains ?? []), ...(net.devAllowedDomains ?? [])];
 
-for (const host of ['127.0.0.1', 'localhost']) {
-  const want = `http://${host}:${DEFAULT_PORT}`;
-  if (!src.includes(`${want}/snapshot`)) {
+// ⚠️ **只能用 `localhost`，不能用 IP**（2026-10-30 实测踩到）：
+//    Figma 的 manifest 校验器会直接拒绝 IP 形式的域名 ——
+//    「Invalid value for allowedDomains. 'http://127.0.0.1:4771' must be a
+//    valid URL」⇒ **插件根本加载不了**，现象是 Figma 弹一条红条、插件不出现。
+//    ⇒ 这里把它当成**门禁**：IP 形式一律报错，不放行。
+const want = `http://localhost:${DEFAULT_PORT}`;
+if (!src.includes(`${want}/snapshot`)) {
+  fail(
+    `插件源码里的接收器地址与端口不一致：期望 ${want}/snapshot` +
+      `（接收器 DEFAULT_PORT=${DEFAULT_PORT}）`,
+  );
+}
+if (!domains.includes(want)) {
+  fail(`manifest.json 的 networkAccess 里缺少 ${want}（接收器 DEFAULT_PORT=${DEFAULT_PORT}）`);
+}
+for (const d of domains) {
+  // ① IP 形式：Figma 拒绝加载
+  if (/^https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?:\/.*)?$/.test(d)) {
     fail(
-      `插件源码里的接收器地址与端口不一致：期望 ${want}/snapshot` +
-        `（接收器 DEFAULT_PORT=${DEFAULT_PORT}）`,
+      `manifest.json 的 networkAccess 里不许用 IP 形式：${d}\n` +
+        `   ⇒ Figma 的 manifest 校验器会拒绝加载插件` +
+        `（"'${d}' must be a valid URL"）⇒ 改用 http://localhost:<port>。`,
     );
   }
-  if (!domains.includes(want)) {
-    fail(`manifest.json 的 networkAccess 里缺少 ${want}（接收器 DEFAULT_PORT=${DEFAULT_PORT}）`);
-  }
-}
-// 反向：manifest 里残留的**旧端口**也要抓出来（换了端口忘了改 manifest 的典型漂移）
-for (const d of domains) {
-  const m = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d+)$/.exec(d);
+  // ② 残留的**旧端口**（换了端口忘了改 manifest 的典型漂移）
+  const m = /^http:\/\/localhost:(\d+)$/.exec(d);
   if (m && Number(m[1]) !== DEFAULT_PORT) {
     fail(`manifest.json 里的 ${d} 与接收器端口 ${DEFAULT_PORT} 不一致（残留的旧端口？）`);
   }

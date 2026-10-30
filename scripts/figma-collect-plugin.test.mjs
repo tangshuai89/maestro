@@ -307,7 +307,11 @@ describe('AETHER 快照采集插件 · 落盘通道（mock fetch）', () => {
     const { snapshot, log } = await runPlugin(figma, CODE, fetchImpl);
 
     assert.equal(calls.length, 1, '成功时只该请求一次');
-    assert.equal(calls[0].url, 'http://127.0.0.1:4771/snapshot', '⚠️ 首选回环地址');
+    assert.equal(
+      calls[0].url,
+      'http://localhost:4771/snapshot',
+      '⚠️ 只能用 localhost：Figma 的 manifest 校验器拒绝 IP 形式',
+    );
     assert.equal(calls[0].init.method, 'POST');
     assert.equal(
       calls[0].init.headers['Content-Type'],
@@ -330,17 +334,20 @@ describe('AETHER 快照采集插件 · 落盘通道（mock fetch）', () => {
     );
   });
 
-  it('接收器连不上 ⇒ 自动试第二个地址（127.0.0.1 → localhost）', async () => {
+  it('插件只请求 **localhost** 一个地址（IP 形式会被 Figma 的 manifest 拒绝）', async () => {
     const seen = [];
     const fetchImpl = async (url) => {
       seen.push(url);
-      if (url.includes('127.0.0.1')) throw new Error('ECONNREFUSED');
       return { ok: true, status: 200, json: async () => ({ ok: true }) };
     };
     const figma = mockFigma({ pages: [compPage] });
     const { log } = await runPlugin(figma, CODE, fetchImpl);
 
-    assert.deepEqual(seen, ['http://127.0.0.1:4771/snapshot', 'http://localhost:4771/snapshot']);
+    assert.deepEqual(seen, ['http://localhost:4771/snapshot']);
+    assert.ok(
+      !seen.some((u) => /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(u)),
+      '⚠️ 插件不许请求 IP 形式：Figma 的 manifest 校验器会拒绝加载插件',
+    );
     assert.match(log.notified.join('\n'), /已落盘/);
   });
 
