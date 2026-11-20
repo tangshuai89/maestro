@@ -567,7 +567,11 @@ export default function SearchPanel({
         {/* result-list（960×620 @ y=226） */}
         {tab === 'track' && (
           <div className="sp-results" ref={scrollerRef} onScroll={handleScroll}>
-            {!searched && !loading && <div className="sp-empty">输入歌名 / 歌手，回车搜</div>}
+            {/* 有历史时空态提示让位 —— 否则「输入歌名 / 歌手，回车搜」会挂在
+                历史胶囊下面，看起来像两套互不相干的引导。 */}
+            {!searched && !loading && history.length === 0 && (
+              <div className="sp-empty">输入歌名 / 歌手，回车搜</div>
+            )}
             {searched && !loading && items.length === 0 && <div className="sp-empty">暂无结果</div>}
             {loading && emptyTimedOut && items.length === 0 && (
               <div className="sp-empty">暂无结果</div>

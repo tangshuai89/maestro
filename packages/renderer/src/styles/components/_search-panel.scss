@@ -891,15 +891,25 @@
 // ── 搜索历史（specs/search-history）────────────────────────────────
 // 只在「输入框是空的、还没搜」时出现。样式跟着 .sp-empty 的克制程度走：
 // 不抢结果的视觉重量，但要点得中。
+//
+// ⚠️ 必须给画布坐标：.sp-canvas 里的每个块（hud / entries / search-bar /
+// result-count / results）都是 absolute 定位的，历史块如果留在文档流里会
+// 落在画布左上角 (0,0)，直接和 top-hud 叠在一起（把 "AETHER ENGINE v3.0"
+// 盖住、胶囊贴着窗口左边缘）。位置对齐结果列：标题行占 result-count 的
+// y=196，「清空」在搜索框右边缘；胶囊列表紧接着落在 result-list 的 y≈226。
 .sp-history {
-  padding: 18px 16px 4px;
+  position: absolute;
+  top: 196px;
+  left: 240px;
+  width: 960px;
+  padding: 0 16px;
 }
 
 .sp-history-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .sp-history-title {

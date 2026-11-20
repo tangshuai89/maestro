@@ -238,6 +238,13 @@ describe('SearchPanel', () => {
     expect(localStorage.getItem('maestro:search-history')).toBeNull();
   });
 
+  it('有历史时不显示「输入歌名 / 歌手」空态（两套引导不叠加）', () => {
+    localStorage.setItem('maestro:search-history', JSON.stringify(['晴天']));
+    render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
+    expect(screen.getByLabelText('最近搜索')).toBeInTheDocument();
+    expect(screen.queryByText(/输入歌名.*回车搜/)).toBeNull();
+  });
+
   it('同一个词再搜 → 历史里还是一条（去重）', async () => {
     vi.useFakeTimers();
     render(<SearchPanel onPlay={() => {}} onClose={() => {}} />);
