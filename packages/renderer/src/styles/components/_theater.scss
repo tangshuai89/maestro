@@ -888,16 +888,30 @@
   letter-spacing: 1px;
   text-transform: uppercase;
   text-decoration: none;
-  color: color-mix(in srgb, var(--text-main) 34%, transparent);
+  // 2026-11-18 用户报「工具栏文字不是白色、看不清」。
+  // 旧值 34%（= --text-tertiary 档）在剧场深底上实测只有 **2.8:1**——11px 等宽字
+  // 远低于 WCAG AA(4.5:1)，和同视图其它次要动作（.th-reco-seed 72%）也不在一个档。
+  // 收到 72%：剧场封面染色底 7.2:1 / 深底 8.2:1，读起来是白而不是灰。
+  // 回归门禁：styles/theater-readability.test.mjs。
+  color: color-mix(in srgb, var(--text-main) 72%, transparent);
   cursor: pointer;
   transition: color 120ms ease;
 }
 .th-lyric-action:hover:not(:disabled) {
   color: color-mix(in srgb, var(--accent) 70%, transparent);
 }
+// 键盘可达性：这一行是 <button>/<a>，但 2026-09 加按钮时漏了 focus ring
+// （.th-ctrl/.th-more-btn 都有，见下方）。补上同一条 cyan outline。
+.th-lyric-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 .th-lyric-action:disabled {
   cursor: default;
-  color: color-mix(in srgb, var(--text-main) 16%, transparent);
+  // 禁用态仍要「看得见但不可点」：16% ≈ 1.5:1 基本等于消失。
+  // 32% ≈ 2.6:1 = 旧的可点态亮度，和启用态（72%）拉开明确层级。
+  color: color-mix(in srgb, var(--text-main) 32%, transparent);
 }
 
 // LyricsMerged：多源歌词合并徽章（MERGED · QQ+NETEASE）。

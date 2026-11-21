@@ -1,4 +1,5 @@
 @use '../abstracts' as *;
+@use '../base/themes' as themes;
 
 // Top window bar: drag region + source switch + provider controls + auth.
 
@@ -19,6 +20,24 @@
 
 .titlebar > * {
   -webkit-app-region: no-drag;
+}
+
+// ── 剧场模式：titlebar 钉死深色调色板 ──────────────────────────────
+// 剧场画布（.th-root）永远是深空黑，titlebar 浮在它上面；但按钮和它下面
+// 的 dropdown 用的是**主题翻转令牌**（--text-secondary / --bg-overlay /
+// --border / --bg-elevated）。系统一旦是浅色（theme='system' + macOS 白天，
+// 默认状态就是这套），令牌翻成「深灰字 + 4% 黑底 + 8% 黑边」压在近黑画布上
+// —— 2026-11-20 用户报「上面的按钮看不清」，实测就是这组合（字色
+// rgba(28,25,23,.6) 对 rgb(2,2,10)：约 1.2:1）。
+// ⇒ 剧场模式把 titlebar 整棵子树钉在 dark 调色板（dropdown 锚在 titlebar
+//    里、吃同一批令牌，一起修）。lite 没有 titlebar；mini 的背景走
+//    --bg-primary（主题色）且不在 theater-mode 下，不会被误伤。
+// 回归门禁：styles/theater-readability.test.mjs（钉死结构 + 令牌覆盖 + 反向验证）。
+.app.theater-mode .titlebar {
+  @include themes.dark-tokens;
+  // 混入只重绑变量；.titlebar 自身 color 是从 .app 继承的（浅色主题 = 深灰），
+  // 这里显式接管，免得将来有未自设颜色的文字继续继承深色。
+  color: var(--text-primary);
 }
 
 .titlebar-btn {
