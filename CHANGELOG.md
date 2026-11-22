@@ -212,6 +212,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **剧场顶栏按钮在浅色系统下「隐身」—— titlebar 钉死深色调色板**（2026-11-20）
+
+  用户报「上面的按钮也看不清」：`QQ 音乐 / 搜索 / 推荐 / ❤ / 队列 / 无损 / 词 / 设置`
+  这一排是**深灰字压在近黑画布上**。根因不是某个色值写错，而是**主题翻转**：
+  剧场画布（`.th-root`）永远是深空黑，但 titlebar 的按钮和它下面锚着的 dropdown
+  吃的是 `--text-secondary` / `--bg-overlay` / `--border` 这类**跟随 light/dark
+  翻转**的令牌。`theme` 默认 `system`（切换 UI 早前已移除），macOS 白天是浅色
+  ⇒ 令牌翻成「rgba(28,25,23,.6) 字 + 4% 黑底 + 8% 黑边」，压在 `rgb(2,2,10)` 上
+  只有 **约 1.2:1**。同一排的 `999+` / `20` 徽章走 SCSS 常量，所以还是亮的 ——
+  用户截图里「一半能看、一半不能看」就是这么来的。
+
+  ⇒ `_titlebar.scss` 新增 `.app.theater-mode .titlebar { @include themes.dark-tokens }`：
+  剧场模式把 titlebar 整棵子树（含锚在里面的音源 / 音质 dropdown）钉在 dark 调色板。
+  顶栏文字 1.2:1 → **7.89:1**（画布）/ 7.32:1（星云底）。lite 没有 titlebar；
+  mini 的背景走 `--bg-primary`（主题色）且不在 theater-mode 下 —— 实测浅色 mini
+  仍是深字浅底，未误伤。
+
+  门禁 `styles/theater-readability.test.mjs` 增加三条：钉死结构存在、
+  titlebar / dropdown 用到的 **8 个**翻转令牌全部被 dark 调色板覆盖、反向验证
+  （不钉住时浅色字确实 < AA）。变异验证：拆掉 `.theater-mode` 作用域、从 dark
+  调色板删掉 `--bg-overlay`，门禁各红一次。
+
+  验证：Chromium 在 `colorScheme=light | dark` 两种系统主题下量顶栏文字（都是
+  7.89:1）、浅色下音源 dropdown 可读、浅色 mini 未受影响、`build:renderer`
+  产物含新规则。视觉基线是 `colorScheme: 'dark'` 拍的，渲染未变（同 build 重跑的
+  像素噪声 30.5k px vs 改动前后 32.7k px，按钮区平均差 0.03）。
+
+- **歌词工具行「看不清」—— 34% 白只有 2.8:1，提到 72%（实测 7.5:1）+ 补 focus ring**（2026-11-18）
+
+  用户截图报「tool 区域文字不是白色、看不清」。`.th-lyric-action`（复制歌词 /
+  复制本行 / 导出歌词图 / 换个源找歌词）用的是 `--text-main` **34%**（= 三级文字档），
+  在剧场深底上实测 **2.79:1** —— 11px 等宽字远低于 WCAG AA(4.5:1)，而同视图其它
+  次要动作（`.th-reco-seed`）是 72%，两者根本不在一个档。
+
+  ⇒ 启用态 34% → **72%**（真实截图底色 7.52:1 / 深底 9.16:1）；禁用态 16% → **32%**
+  （「看得见但不可点」，旧值 1.5:1 基本等于消失）；hover 保持 accent；顺手补上
+  漏掉的 `:focus-visible` 键盘环（`.th-ctrl` / `.th-more-btn` 都有，这一行 2026-09
+  加按钮时漏了）。
+
+  新增门禁 `packages/renderer/src/styles/theater-readability.test.mjs`：
+  解析 `_theater.scss` 的可交互类名族默认文字色，按**真实级联**（`main.scss` 的
+  `@use` 顺序）解令牌，断言对比度 ≥ 4.5:1；带两条反向验证（旧 34% 必须判红、
+  未知颜色必须抛错而不是静默跳过）；两条已知欠账登记在 `KNOWN_DIM`
+  （`--text-dim` 被生成层遮蔽成 0.4 ⇒ `.th-more-btn` / `.th-ctrl` 3.42:1，
+  等 `--text-dim` 拍板 0.55 后门禁会主动红一次、提示删豁免）。
+
+  验证：Chromium 量真实渲染色（before 2.79 / after 7.52）、`build:renderer`
+  产物含新规则、`TheaterView` 25 条测试全绿、`tokens:hardcoded:gate` 通过。
+
 - **`Screen/RecoLoading` 的 node id 漂移定案**（2026-10-30）
 
   文件头写的是 `408:1402`，新采集的快照里是 `403:1351`，且 `408:1402`
