@@ -10,3 +10,17 @@
 // AETER SCSS reset（_reset.scss）继续负责全局 reset。
 @tailwind components;
 @tailwind utilities;
+
+// ── 文档级默认前景色（shadcn 隐式约定的显式版） ───────────────────
+// Radix 的 portal（Dialog / Tooltip …）挂在 <body> 上，**不在 .app 子树里**，
+// 所以它的文字颜色来自 body 的继承。而 body 之前没有设 color ⇒ 继承浏览器
+// 默认：`color-scheme: light` 时是**纯黑**。可 DialogContent 的底是固定的深色
+// `--sh-card` 的深底 —— 于是标题 / 意图值 / textarea 里打的字全是「黑底黑字」
+// （2026-11-22 用户报「很多字体有问题」的根因；深色系统下浏览器默认是白，所以
+// 只在浅色系统复现 —— 和之前 titlebar 那次的根因同源）。
+//
+// 用 AETHER 的 --text-main（暖白，固定不随主题翻转；与 --sh-foreground 同源同值）；
+// .app 与 .ss-root 各自有自己的 color，不受这条影响。
+body {
+  color: var(--text-main);
+}

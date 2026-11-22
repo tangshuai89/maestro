@@ -212,6 +212,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **shadcn 弹窗「黑底黑字」—— portal 的文档级前景色**（2026-11-22）
+
+  用户报「很多字体都有问题」：NL 歌单弹窗的标题、意图值、字段值、textarea 里打的字
+  在**浅色系统**下几乎看不见。根因不是色值写错：Radix 的 portal 挂在 `<body>` 上，
+  **不在 `.app` 子树里**，而 `body` 之前没设 `color` ⇒ 继承浏览器默认
+  （`color-scheme: light` 时是纯黑；深色系统下浏览器默认是白，所以只在浅色系统复现
+  —— 与 titlebar 那次同源）。可 `DialogContent` 的底是固定的深色 `--sh-card`
+  ⇒ 黑底黑字，约 **1.1:1**。textarea / Input 更特殊：表单控件吃 UA 的 `fieldtext`，
+  **不继承 body**，只修 body 不够。
+
+  ⇒ ① `_base.scss` 给 `body` 设 `color: var(--text-main)`（暖白、固定不随主题翻转；
+  `.app` / `.ss-root` 各有自己的 color，不受影响）；② `ui/textarea.tsx` /
+  `ui/Input.tsx` 显式加 `text-foreground`（其它 shadcn 弹窗 —— 加歌单 / 歌单管理 /
+  远程歌单 —— 同一处修复）。
+
+  门禁 `theater-readability.test.mjs` 加四条：body 必须设该前景色、`--text-main`
+  在 `--sh-card` 上 ≥ 4.5:1、反向验证纯黑确实 < 4.5、表单控件必须带
+  `text-foreground`（UA fieldtext 不跟 body 走）。
+
+  验证：Chromium 浅色 / 深色两种系统主题下打开 NL 歌单弹窗实测 body / 标题 /
+  意图值 / textarea 全是暖白 (245,240,232)；浅色下重扫全页，只剩「生成队列」
+  按钮的深色字（cyan 底上的设计色）。视觉回归：对照实验证明本改动对
+  `shadcn-smoke` / theater 截图 **0 像素影响**（去掉改动重跑，diff 仍是 5321 px
+  —— 那是「本地 vs CI 基线」的跨机器噪声 1.06%，CI 上为 0）。
+
 - **剧场顶栏按钮在浅色系统下「隐身」—— titlebar 钉死深色调色板**（2026-11-20）
 
   用户报「上面的按钮也看不清」：`QQ 音乐 / 搜索 / 推荐 / ❤ / 队列 / 无损 / 词 / 设置`
