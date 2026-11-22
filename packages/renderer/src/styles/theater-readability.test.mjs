@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// 剧场可读性门禁（两件事，都是用户报出来的「看不清」）
+// 可读性门禁（三件事，都是用户报出来的「看不清」）
 //
 // ① 剧场里「可交互文字」的默认色 ≥ WCAG AA
 //    2026-11-18：歌词工具行（复制歌词 / 复制本行 / 导出歌词图 / 换个源找歌词）
@@ -13,6 +13,12 @@
 //    默认状态），字变 rgba(28,25,23,.6)、底变 4% 黑、边变 8% 黑，压在近黑画布
 //    rgb(2,2,10) 上只有 **~1.2:1** —— 肉眼等于消失。剧场画布永远是深空黑，
 //    所以 titlebar 子树必须固定用 dark 调色板。
+//
+// ③ shadcn 门户（Dialog/Input/textarea）的文档级前景色
+//    2026-11-22：NL 歌单 modal 的标题 / 意图值 / textarea 里打的字在浅色系统下
+//    是**黑底黑字**。根因：Radix portal 挂在 <body> 上，而 body 没设 color ⇒
+//    继承浏览器默认（color-scheme: light → 纯黑），DialogContent 的底却是固定的
+//    深色 --sh-card。修复 = 给 body 一个固定前景色（--sh-foreground）。
 //
 // ① 的门禁口径：
 //   - 只扫 `_theater.scss`（剧场视图底色是固定的深色画布，能算出确定性对比度；
@@ -338,6 +344,87 @@ test('钉住后（dark 调色板）顶栏文字达到 AA', () => {
     ratio >= AA_SMALL_TEXT,
     `dark 调色板的 --text-secondary 只有 ${ratio.toFixed(2)}:1（要 ≥ ${AA_SMALL_TEXT}）`,
   );
+});
+
+// ── ③ shadcn 门户：文档级前景色 ─────────────────────────────────
+const BASE_SCSS = resolve(__dirname, 'base/_base.scss');
+const BRIDGE_SCSS = resolve(__dirname, 'base/tokens-bridge.scss');
+
+/** 解析 tokens-bridge 里的 HSL 三元组令牌（`38 53% 93%`）。 */
+function bridgeHsl(name) {
+  const src = readFileSync(BRIDGE_SCSS, 'utf8');
+  const m = src.match(new RegExp(`--${name}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`));
+  if (!m) throw new Error(`tokens-bridge 里找不到 --${name} 的 HSL 三元组`);
+  return [+m[1], +m[2], +m[3]];
+}
+
+function hslToRgb(h, s, l) {
+  const sn = s / 100;
+  const ln = l / 100;
+  const c = (1 - Math.abs(2 * ln - 1)) * sn;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = ln - c / 2;
+  const seg = Math.floor(h / 60) % 6;
+  const [r, g, b] = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x],
+  ][seg];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255, 1];
+}
+
+test('shadcn 门户有文档级前景色（body { color: var(--text-main) }）', () => {
+  const src = readFileSync(BASE_SCSS, 'utf8');
+  assert(
+    /body\s*\{[^}]*color:\s*var\(--text-main\)/.test(src),
+    '`_base.scss` 里没有给 body 设 --sh-foreground ⇒ portal（Dialog 等）会继承浏览器' +
+      '默认；color-scheme: light 时是纯黑，压在 --sh-card 深底上 = 黑底黑字',
+  );
+});
+
+test('文档前景色 / 对话框底色 达到 AA（--sh-foreground vs --sh-card）', () => {
+  const fg = hslToRgb(...bridgeHsl('sh-foreground'));
+  const card = hslToRgb(...bridgeHsl('sh-card'));
+  const ratio = contrast(
+    fg,
+    card.map((c, i) => (i === 3 ? 1 : c)),
+  );
+  assert(
+    ratio >= AA_SMALL_TEXT,
+    `--sh-foreground 在 --sh-card 上只有 ${ratio.toFixed(2)}:1（要 ≥ ${AA_SMALL_TEXT}）`,
+  );
+});
+
+test('反向验证：浏览器默认黑字压在 --sh-card 上确实低于 AA（门禁抓得住这次回归）', () => {
+  const card = hslToRgb(...bridgeHsl('sh-card'));
+  const ratio = contrast(
+    [0, 0, 0, 1],
+    card.map((c, i) => (i === 3 ? 1 : c)),
+  );
+  assert(
+    ratio < AA_SMALL_TEXT,
+    `纯黑在 --sh-card 上居然有 ${ratio.toFixed(2)}:1 —— 门禁前提不成立，抓不到这次回归`,
+  );
+});
+
+test('表单控件显式设了 text-foreground（UA 的 fieldtext 不跟 body 走）', () => {
+  // <textarea>/<input> 是**表单控件**：UA 样式给的是 `color: fieldtext`，
+  // 它跟随 color-scheme（light → 黑），**不继承 body** —— 只修 body 不够。
+  const controls = [
+    ['components/ui/textarea.tsx', 'Textarea'],
+    ['components/ui/Input.tsx', 'Input'],
+  ];
+  for (const [rel, name] of controls) {
+    const src = readFileSync(resolve(__dirname, '..', rel), 'utf8');
+    assert(
+      /text-foreground/.test(src),
+      `${name} 的 className 里没有 text-foreground ⇒ 浅色系统下输入框里打的字是黑的` +
+        '（UA fieldtext 不继承 body）',
+    );
+  }
 });
 
 test('反向验证：解析器遇到未知颜色会抛错而不是静默跳过', () => {
